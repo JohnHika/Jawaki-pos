@@ -1,34 +1,14 @@
 import 'dart:async';
 
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../domain/partner_models.dart';
 
 /// Turns an API failure into a sentence a shop owner can act on.
-String partnerErrorMessage(Object error) {
-  if (error is DioException) {
-    final data = error.response?.data;
-    if (data is Map) {
-      final message = data['message'];
-      if (message is String && message.trim().isNotEmpty) return message;
-      if (message is List && message.isNotEmpty) return message.first.toString();
-    }
-    final status = error.response?.statusCode;
-    if (status == 403) return "You don't have permission to do that.";
-    if (status == 404) return 'That was not found.';
-    if (status != null && status >= 500) {
-      return 'Server error. Please try again in a moment.';
-    }
-    if (error.type == DioExceptionType.connectionError ||
-        error.type == DioExceptionType.connectionTimeout) {
-      return "Couldn't reach the server. Check your internet and try again.";
-    }
-  }
-  return 'Something went wrong. Please try again.';
-}
+String partnerErrorMessage(Object error) => apiErrorMessage(error);
 
 class PartnersState {
   const PartnersState({

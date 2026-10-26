@@ -8,6 +8,11 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../sales/presentation/providers/catalog_provider.dart'
+    show
+        favoriteProductsProvider,
+        filteredProductsProvider,
+        syncCatalogCacheFromApi;
 import '../../domain/stocktake_models.dart';
 import '../providers/stocktake_provider.dart';
 
@@ -385,7 +390,11 @@ class _ReviewViewState extends ConsumerState<_ReviewView> {
       ),
     );
     if (go != true) return;
-    await _run(() => getIt<ApiClient>().approveStockCount(d.id), 'Stock updated');
+    await _run(
+      () => getIt<ApiClient>().approveStockCount(d.id),
+      'Stock updated',
+      refreshCatalog: true,
+    );
   }
 
   Future<void> _cancel() async {
@@ -409,12 +418,28 @@ class _ReviewViewState extends ConsumerState<_ReviewView> {
         'Count cancelled');
   }
 
-  Future<void> _run(Future<dynamic> Function() action, String done) async {
+  Future<void> _run(Future<dynamic> Function() action, String done,
+      {bool refreshCatalog = false}) async {
     setState(() => _busy = true);
     try {
       await action();
-      ref.invalidate(stockCountProvider(widget.detail.id));
-      ref.invalidate(stockCountsProvider);
+      if (refreshCatalog) {
+        // Approval changes server stock. Pull the authoritative quantities
+        // before invalidating the till's cached product snapshots.
+        try {
+          await syncCatalogCacheFromApi();
+        } catch (_) {
+          // The stock count is already approved. Let the next sync refresh it.
+        }
+        if (mounted) {
+          ref.invalidate(filteredProductsProvider);
+          ref.invalidate(favoriteProductsProvider);
+        }
+      }
+      if (mounted) {
+        ref.invalidate(stockCountProvider(widget.detail.id));
+        ref.invalidate(stockCountsProvider);
+      }
       if (mounted) {
         showGlassSnackBar(context, done,
             icon: Icons.check_circle_rounded, color: DesignColors.success);

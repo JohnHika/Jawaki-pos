@@ -5,6 +5,7 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { getDayBoundsInTimezone, todayInTimezone } from '../common/operating-hours';
 import { AccountabilityService, MANAGER_ROLES } from './accountability.service';
+import { verifiedSalePaymentFilter } from '../sales/sale-payment-filter';
 
 export interface BranchDaySummary {
   branchId: string;
@@ -73,7 +74,12 @@ export class AccountabilitySummaryService {
     const { start, end } = getDayBoundsInTimezone(day, tz);
     const range = { gte: start, lte: end };
 
-    const weekAhead = new Date(Date.now() + 7 * 86_400_000);
+    const today = todayInTimezone(tz);
+    const { start: todayStart } = getDayBoundsInTimezone(today, tz);
+    const weekAheadDate = new Date(`${today}T00:00:00.000Z`);
+    weekAheadDate.setUTCDate(weekAheadDate.getUTCDate() + 7);
+    const weekAheadDay = weekAheadDate.toISOString().slice(0, 10);
+    const weekAheadEnd = getDayBoundsInTimezone(weekAheadDay, tz).end;
     const [byMethod, voided, refunds, creditGiven, creditOpen, close, alerts, coupons, overdue, dueSoon, claims] =
       await Promise.all([
       this.prisma.sale.groupBy({
@@ -82,6 +88,7 @@ export class AccountabilitySummaryService {
           branchId,
           createdAt: range,
           status: { in: [SaleStatus.COMPLETED, SaleStatus.PARTIAL_REFUND, SaleStatus.REFUNDED] },
+          ...verifiedSalePaymentFilter(),
         },
         _sum: { totalAmount: true },
         _count: { _all: true },
@@ -124,11 +131,11 @@ export class AccountabilitySummaryService {
         _count: { _all: true },
       }),
       this.prisma.supplierInvoice.aggregate({
-        where: { tenantId, branchId, status: { not: 'PAID' }, dueDate: { lt: new Date() } },
+        where: { tenantId, branchId, status: { not: 'PAID' }, dueDate: { lt: todayStart } },
         _sum: { dueAmount: true },
       }),
       this.prisma.supplierInvoice.aggregate({
-        where: { tenantId, branchId, status: { not: 'PAID' }, dueDate: { gte: new Date(), lte: weekAhead } },
+        where: { tenantId, branchId, status: { not: 'PAID' }, dueDate: { gte: todayStart, lte: weekAheadEnd } },
         _sum: { dueAmount: true },
       }),
       this.prisma.statementClaim.count({ where: { tenantId, status: 'PENDING' } }),

@@ -2,19 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/accountability_provider.dart';
 
 /// A line on the dashboard that says whether anything in the shop needs the
 /// owner's eye right now, and takes them straight to it. Silent for people
-/// who cannot see alerts, and quiet (no card) while the feed is loading.
+/// who cannot see alerts or have hidden Shop Alerts in their business layout,
+/// and quiet (no card) while the feed is loading.
 class ShopAttentionCard extends ConsumerWidget {
   const ShopAttentionCard({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!ref.watch(permissionsProvider).has('accountability.view')) {
+    if (!ref.watch(permissionsProvider).has('accountability.view') ||
+        !ref.watch(businessLayoutProvider).isActionVisible('/shop-alerts')) {
       return const SizedBox.shrink();
     }
     final state = ref.watch(alertsProvider);

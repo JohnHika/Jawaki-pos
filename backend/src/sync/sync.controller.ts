@@ -39,7 +39,10 @@ export class SyncController {
     @CurrentUser() user: any,
     @Body() dto: PushSyncEventsDto,
   ): Promise<PushSyncResponseDto> {
-    return this.syncService.pushEvents(user.deviceId, user.branchId, dto);
+    return this.syncService.pushEvents(user.deviceId, user.branchId, dto, {
+      userId: user.sub,
+      permissions: user.permissions ?? [],
+    });
   }
 
   @Post('pull')
@@ -95,6 +98,9 @@ export class SyncController {
   @ApiOperation({ summary: 'Retry failed sync events' })
   @ApiResponse({ status: 200, type: PushSyncResponseDto })
   async retryFailedEvents(@CurrentUser() user: any): Promise<PushSyncResponseDto> {
-    return this.syncService.retryFailedEvents(user.deviceId, user.branchId);
+    return this.syncService.retryFailedEvents(user.deviceId, user.branchId, {
+      userId: user.sub,
+      permissions: user.permissions ?? [],
+    });
   }
 }

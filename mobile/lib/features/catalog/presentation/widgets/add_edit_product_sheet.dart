@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:dio/dio.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/form_kit.dart';
@@ -12,6 +11,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../../sales/presentation/providers/catalog_provider.dart'
     as catalog_cache;
 import '../providers/catalog_categories_provider.dart';
@@ -55,31 +55,17 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   String? _imageUrl;
   String? _imagePublicId;
   late List<_UnitPriceTier> _unitPriceTiers;
+  late List<BusinessLayoutProductField> _industryFields;
+  late Map<String, TextEditingController> _industryFieldControllers;
   late String _minStockUnit;
   bool _allowFractions = false;
+  bool _trackInventory = true;
   bool _isSaving = false;
 
   // Axon AI product recognition from the photo the owner just took.
   bool _aiLooking = false;
   Map<String, dynamic>? _aiSuggestion;
   String? _aiMessage;
-
-  final _units = [
-    'piece',
-    'pack',
-    'box',
-    'bottle',
-    'tube',
-    'bar',
-    'roll',
-    'jar',
-    'half dozen',
-    'dozen',
-    'kg',
-    'g',
-    'litre',
-    'ml'
-  ];
 
   bool get isEditing => widget.product != null;
 
@@ -90,15 +76,30 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     _skuController = TextEditingController(text: widget.product?.sku ?? '');
     _descriptionController =
         TextEditingController(text: widget.product?.description ?? '');
-    _selectedCategoryId = widget.product?.categoryId;
+    final existingCategoryId = widget.product?.categoryId;
+    _selectedCategoryId =
+        existingCategoryId?.isNotEmpty == true ? existingCategoryId : null;
     _imageUrl = widget.product?.imageUrl;
-    _allowFractions = widget.product?.allowFractions ?? false;
+    final businessLayout = ref.read(businessLayoutProvider);
+    _industryFields = businessLayout.effectiveProductFields;
+    final existingIndustryValues = _readExistingIndustryValues();
+    _industryFieldControllers = {
+      for (final field in _industryFields)
+        field.key: TextEditingController(
+          text: existingIndustryValues[field.key]?.toString() ?? '',
+        ),
+    };
+    _allowFractions = widget.product?.allowFractions ??
+        businessLayout.effectiveAllowFractionsForNewProducts;
+    _trackInventory = widget.product?.trackInventory ??
+        businessLayout.effectiveTrackInventoryForNewProducts;
+    final defaultUnit = businessLayout.defaultBaseUnit;
 
     // Start with just the primary tier; any existing bulk tiers (any
     // number) load a moment later from the local cache, once fetched.
     _unitPriceTiers = [
       _UnitPriceTier(
-        unit: widget.product?.unit ?? 'piece',
+        unit: widget.product?.unit ?? defaultUnit,
         price: widget.product?.price.toStringAsFixed(0),
       ),
     ];
@@ -116,6 +117,54 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
       _loadExistingPricingTiers();
       _loadServerMinPrice();
     }
+  }
+
+  Map<String, dynamic> _readExistingIndustryValues() {
+    final raw = widget.product?.metadata;
+    if (raw == null || raw.trim().isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map && decoded['industryFields'] is Map) {
+        return Map<String, dynamic>.from(decoded['industryFields'] as Map);
+      }
+    } catch (_) {
+      // Malformed legacy metadata must not prevent product editing.
+    }
+    return const {};
+  }
+
+  Map<String, dynamic> _productMetadataForSave() {
+    final metadata = <String, dynamic>{};
+    final raw = widget.product?.metadata;
+    if (raw != null && raw.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          metadata.addAll(Map<String, dynamic>.from(decoded));
+        }
+      } catch (_) {
+        // Ignore malformed cache data and save a clean metadata object.
+      }
+    }
+    final industryValues = <String, dynamic>{};
+    final existing = metadata['industryFields'];
+    if (existing is Map) {
+      industryValues.addAll(Map<String, dynamic>.from(existing));
+    }
+    for (final entry in _industryFieldControllers.entries) {
+      final value = entry.value.text.trim();
+      if (value.isEmpty) {
+        industryValues.remove(entry.key);
+      } else {
+        industryValues[entry.key] = value;
+      }
+    }
+    if (industryValues.isEmpty) {
+      metadata.remove('industryFields');
+    } else {
+      metadata['industryFields'] = industryValues;
+    }
+    return metadata;
   }
 
   Future<void> _loadServerMinPrice() async {
@@ -247,6 +296,9 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     _descriptionController.dispose();
     _minStockController.dispose();
     _minPriceController.dispose();
+    for (final controller in _industryFieldControllers.values) {
+      controller.dispose();
+    }
     for (final tier in _unitPriceTiers) {
       tier.priceController.dispose();
       tier.qtyController.dispose();
@@ -305,9 +357,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                     style: TextStyle(color: titleColor),
                     decoration: InputDecoration(
                       labelText: '$entityLabel Name *',
-                      hintText: entityLabel == 'Book'
-                          ? 'e.g. A Grain of Wheat — Ngũgĩ wa Thiong\'o'
-                          : 'e.g. Panadol Extra (10 tablets)',
+                      hintText: businessLayout.productNameHint,
                       hintStyle: TextStyle(color: tertiaryColor),
                       labelStyle: TextStyle(
                         color: secondaryColor,
@@ -355,9 +405,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                     ],
                     decoration: InputDecoration(
                       labelText: businessLayout.productCodeLabel,
-                      hintText: entityLabel == 'Book'
-                          ? 'Enter the ISBN or scan code'
-                          : 'Leave blank to generate automatically',
+                      hintText: businessLayout.productCodeHint,
                       hintStyle: TextStyle(color: tertiaryColor),
                       prefixIcon:
                           Icon(Icons.qr_code_2_rounded, color: tertiaryColor),
@@ -393,7 +441,10 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                   // ── Category ──────────────────────────────────────────────
                   categoriesAsync.when(
                     data: (categories) {
-                      final ac = categories.where((c) => c.isActive).toList();
+                      final ac = categories
+                          .where(
+                              (c) => c.isActive || c.id == _selectedCategoryId)
+                          .toList();
                       return Container(
                         decoration: BoxDecoration(
                           color: fieldFill,
@@ -408,7 +459,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                             initialValue: _selectedCategoryId,
                             style: TextStyle(color: titleColor),
                             decoration: InputDecoration(
-                              labelText: 'Category *',
+                              labelText: 'Category (optional)',
                               labelStyle: TextStyle(
                                 color: secondaryColor,
                                 fontWeight: FontWeight.w500,
@@ -431,12 +482,15 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                                 : Colors.white,
                             items: ac
                                 .map((c) => DropdownMenuItem(
-                                    value: c.id, child: Text(c.name)))
+                                      value: c.id,
+                                      child: Text(c.isActive
+                                          ? c.name
+                                          : '${c.name} (inactive)'),
+                                    ))
                                 .toList(),
+                            hint: const Text('Uncategorized'),
                             onChanged: (v) =>
                                 setState(() => _selectedCategoryId = v),
-                            validator: (v) =>
-                                v == null ? 'Select a category' : null,
                           ),
                         ),
                       );
@@ -448,6 +502,35 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
 
                   // ── Multi-unit Pricing ────────────────────────────────────
                   _buildPricingSection(isDark),
+                  const SizedBox(height: DesignSpacing.md + 2),
+
+                  Container(
+                    decoration: BoxDecoration(
+                      color: fieldFill,
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                      border: Border.all(color: fieldBorder),
+                    ),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: SwitchListTile.adaptive(
+                        value: _trackInventory,
+                        onChanged: (value) =>
+                            setState(() => _trackInventory = value),
+                        activeTrackColor: DesignColors.brand,
+                        secondary: Icon(Icons.inventory_2_outlined,
+                            color: secondaryColor),
+                        title: Text('Track stock for this item',
+                            style: TextStyle(color: titleColor)),
+                        subtitle: Text(
+                          _trackInventory
+                              ? 'Stock levels and low-stock alerts follow sales.'
+                              : 'Use for services or items that do not reduce stock.',
+                          style: TextStyle(color: secondaryColor),
+                        ),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: DesignSpacing.md + 2),
 
                   // Weight, volume, fabric, and other measured goods may be sold
@@ -503,8 +586,10 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                   const SizedBox(height: DesignSpacing.md + 2),
 
                   // ── Reorder Point ─────────────────────────────────────────
-                  _buildReorderPointSection(isDark),
-                  const SizedBox(height: DesignSpacing.md + 2),
+                  if (_trackInventory) ...[
+                    _buildReorderPointSection(isDark),
+                    const SizedBox(height: DesignSpacing.md + 2),
+                  ],
 
                   // ── Description ───────────────────────────────────────────
                   TextFormField(
@@ -545,6 +630,54 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                     maxLines: 2,
                   ),
                   const SizedBox(height: DesignSpacing.md + 2),
+
+                  if (_industryFields.isNotEmpty) ...[
+                    Text(
+                      'Product details',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            color: titleColor,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: DesignSpacing.sm),
+                    for (final field in _industryFields) ...[
+                      TextFormField(
+                        controller: _industryFieldControllers[field.key],
+                        style: TextStyle(color: titleColor),
+                        decoration: InputDecoration(
+                          labelText: '${field.label} (optional)',
+                          hintText: field.hint,
+                          hintStyle: TextStyle(color: tertiaryColor),
+                          labelStyle: TextStyle(color: secondaryColor),
+                          prefixIcon:
+                              Icon(Icons.tune_rounded, color: tertiaryColor),
+                          filled: true,
+                          fillColor: fieldFill,
+                          border: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusMd),
+                            borderSide: BorderSide(color: fieldBorder),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusMd),
+                            borderSide: BorderSide(color: fieldBorder),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusMd),
+                            borderSide: const BorderSide(
+                                color: DesignColors.brand, width: 1.5),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: DesignSpacing.lg, vertical: 14),
+                        ),
+                        textCapitalization: TextCapitalization.sentences,
+                        maxLength: 120,
+                      ),
+                      const SizedBox(height: DesignSpacing.md),
+                    ],
+                  ],
 
                   // ── Product image ─────────────────────────────────────────
                   ImagePickerSection(
@@ -720,17 +853,20 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           name: _nameController.text.trim(),
           sku: _skuController.text.trim(),
           basePrice: primaryPrice,
-          categoryIds: [_selectedCategoryId!],
+          categoryIds:
+              _selectedCategoryId == null ? const [] : [_selectedCategoryId!],
           description: description,
           image: _imageUrl,
           imagePublicId: _imagePublicId,
           unit: primary.unit,
           pricingTiers: pricingTiers,
-          minStock: minStock,
+          minStock: _trackInventory ? minStock : null,
           minPrice: minPrice,
           allowFractions: _allowFractions,
+          trackInventory: _trackInventory,
           clearMinPrice: clearMinPrice,
           clearImage: clearImage,
+          metadata: _productMetadataForSave(),
         );
       } else {
         savedProduct = await apiClient.createProduct(
@@ -739,20 +875,31 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
               ? null
               : _skuController.text.trim(),
           basePrice: primaryPrice,
-          categoryIds: [_selectedCategoryId!],
+          categoryIds:
+              _selectedCategoryId == null ? const [] : [_selectedCategoryId!],
           description: description,
           image: _imageUrl,
           imagePublicId: _imagePublicId,
           unit: primary.unit,
           pricingTiers: pricingTiers,
-          minStock: minStock,
+          minStock: _trackInventory ? minStock : null,
           minPrice: minPrice,
           allowFractions: _allowFractions,
+          trackInventory: _trackInventory,
+          metadata: _productMetadataForSave(),
         );
       }
 
       await catalog_cache.upsertProductCacheFromApi(savedProduct);
-      if (mounted) Navigator.pop(context);
+      // POS reads its grid from FutureProviders backed by the local database.
+      // Refresh those snapshots after the cache write so a POS tab kept alive
+      // by navigation immediately reflects edits made from Products.
+      if (mounted) {
+        ref.invalidate(catalog_cache.filteredProductsProvider);
+        ref.invalidate(catalog_cache.favoriteProductsProvider);
+        ref.invalidate(catalog_cache.categoriesProvider);
+        Navigator.pop(context);
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -768,24 +915,11 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   }
 
   String _productSaveErrorMessage(Object error) {
-    if (error is DioException && error.response?.statusCode == 401) {
-      return 'Session expired. Please log in again and try saving the product.';
+    final reason = apiErrorMessage(error);
+    if (reason == 'Something went wrong. Please try again.') {
+      return 'Could not save product. Please check the details and try again.';
     }
-    if (error is DioException && error.response?.statusCode == 429) {
-      return 'Could not save product: server is busy. Please wait a moment and try again.';
-    }
-    if (error is DioException && error.response?.statusCode == 503) {
-      return 'Could not save product: server is unavailable. Please try again later.';
-    }
-    if (error is DioException) {
-      final message = error.response?.data is Map
-          ? (error.response?.data['message']?.toString())
-          : null;
-      if (message != null && message.isNotEmpty) {
-        return 'Could not save product: $message';
-      }
-    }
-    return 'Could not save product. Please check the details and try again.';
+    return 'Could not save product: $reason';
   }
 
   // ─── Reorder point ──────────────────────────────────────────────────────
@@ -1013,8 +1147,8 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                       // standard list (e.g. "bale") must still be selectable,
                       // or the dropdown asserts on its own value.
                       items: [
-                        ..._units,
-                        if (!_units.contains(tier.unit)) tier.unit,
+                        ...businessLayoutUnits,
+                        if (!businessLayoutUnits.contains(tier.unit)) tier.unit,
                       ]
                           .map(
                             (u) => DropdownMenuItem(
@@ -1265,13 +1399,13 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
 
   String _getNextUnit() {
     final used = _unitPriceTiers.map((t) => t.unit).toSet();
-    for (final u in _units) {
+    for (final u in businessLayoutUnits) {
       if (!used.contains(u)) return u;
     }
     // Every option in the dropdown is already used as a tier — fall back
     // to whatever the dropdown's first entry is; the admin can still
     // change it manually.
-    return _units.first;
+    return businessLayoutUnits.first;
   }
 }
 

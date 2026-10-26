@@ -85,15 +85,14 @@ class CartScreen extends ConsumerWidget {
               ),
             ),
           if (cart.items.isNotEmpty)
-            TextButton.icon(
+            IconButton.filledTonal(
+              tooltip: 'Clear all items',
               onPressed: () => _showClearCartDialog(context, ref),
-              icon: const Icon(Icons.delete_sweep_rounded, size: 18),
-              label: const Text('Clear All'),
-              style: TextButton.styleFrom(
+              style: IconButton.styleFrom(
                 foregroundColor: DesignColors.error,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: DesignSpacing.md),
+                backgroundColor: DesignColors.error.withValues(alpha: 0.10),
               ),
+              icon: const Icon(Icons.delete_sweep_rounded),
             ),
           const SizedBox(width: DesignSpacing.xs),
         ],

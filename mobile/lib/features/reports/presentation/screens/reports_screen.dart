@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
@@ -21,13 +22,15 @@ class ReportsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final summaryAsync = ref.watch(dashboardSummaryProvider);
+    final businessLayout = ref.watch(businessLayoutProvider);
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Reports',
+        title: businessLayout.actionLabel('/reports', 'Reports'),
         showBackButton: false,
         actions: [
-          IconButton(tooltip: 'Refresh', 
+          IconButton(
+            tooltip: 'Refresh',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () {
               ref.invalidate(dashboardSummaryProvider);
@@ -83,117 +86,103 @@ class ReportsScreen extends ConsumerWidget {
             const SizedBox(height: DesignSpacing.sm),
 
             StaggeredItem(
-              itemKey: 'reports-tile-sales',
-              index: 2,
-              child:
-              _ReportTile(
-                icon: Icons.bar_chart_rounded,
-                title: 'Sales Report',
-                subtitle: 'View sales by period',
-                color: DesignColors.brand,
-                onTap: () => _showSalesReport(context, ref),
-              )
-            ),
+                itemKey: 'reports-tile-sales',
+                index: 2,
+                child: _ReportTile(
+                  icon: Icons.bar_chart_rounded,
+                  title: 'Sales Report',
+                  subtitle: 'View sales by period',
+                  color: DesignColors.brand,
+                  onTap: () => _showSalesReport(context, ref),
+                )),
             StaggeredItem(
-              itemKey: 'reports-tile-payment-methods',
-              index: 3,
-              child:
-              _ReportTile(
-                icon: Icons.pie_chart_rounded,
-                title: 'Payment Methods',
-                subtitle: 'Breakdown of payment methods used',
-                color: DesignColors.accent,
-                onTap: () async {
-                  if (!await ensureFeature(
-                      context, ref, LicensedFeature.analytics)) {
-                    return;
-                  }
-                  if (!context.mounted) return;
-                  _showPaymentMethodsReport(context, ref);
-                },
-              )
-            ),
+                itemKey: 'reports-tile-payment-methods',
+                index: 3,
+                child: _ReportTile(
+                  icon: Icons.pie_chart_rounded,
+                  title: 'Payment Methods',
+                  subtitle: 'Breakdown of payment methods used',
+                  color: DesignColors.accent,
+                  onTap: () async {
+                    if (!await ensureFeature(
+                        context, ref, LicensedFeature.analytics)) {
+                      return;
+                    }
+                    if (!context.mounted) return;
+                    _showPaymentMethodsReport(context, ref);
+                  },
+                )),
             StaggeredItem(
-              itemKey: 'reports-tile-cashier',
-              index: 4,
-              child:
-              _ReportTile(
-                icon: Icons.person_rounded,
-                title: 'Cashier Performance',
-                subtitle: 'Sales by cashier',
-                color: DesignColors.accent,
-                onTap: () async {
-                  if (!await ensureFeature(
-                      context, ref, LicensedFeature.analytics)) {
-                    return;
-                  }
-                  if (!context.mounted) return;
-                  _showCashierReport(context, ref);
-                },
-              )
-            ),
+                itemKey: 'reports-tile-cashier',
+                index: 4,
+                child: _ReportTile(
+                  icon: Icons.person_rounded,
+                  title: 'Cashier Performance',
+                  subtitle: 'Sales by cashier',
+                  color: DesignColors.accent,
+                  onTap: () async {
+                    if (!await ensureFeature(
+                        context, ref, LicensedFeature.analytics)) {
+                      return;
+                    }
+                    if (!context.mounted) return;
+                    _showCashierReport(context, ref);
+                  },
+                )),
             StaggeredItem(
-              itemKey: 'reports-tile-category',
-              index: 5,
-              child:
-              _ReportTile(
-                icon: Icons.category_rounded,
-                title: 'Category Sales',
-                subtitle: 'Sales by product category',
-                color: DesignColors.info,
-                onTap: () async {
-                  if (!await ensureFeature(
-                      context, ref, LicensedFeature.analytics)) {
-                    return;
-                  }
-                  if (!context.mounted) return;
-                  _showCategorySalesReport(context, ref);
-                },
-              )
-            ),
+                itemKey: 'reports-tile-category',
+                index: 5,
+                child: _ReportTile(
+                  icon: Icons.category_rounded,
+                  title: 'Category Sales',
+                  subtitle: 'Sales by product category',
+                  color: DesignColors.info,
+                  onTap: () async {
+                    if (!await ensureFeature(
+                        context, ref, LicensedFeature.analytics)) {
+                      return;
+                    }
+                    if (!context.mounted) return;
+                    _showCategorySalesReport(context, ref);
+                  },
+                )),
             StaggeredItem(
-              itemKey: 'reports-tile-top-products',
-              index: 6,
-              child:
-              _ReportTile(
-                icon: Icons.star_rounded,
-                title: 'Top Products',
-                subtitle: 'Best selling products',
-                color: DesignColors.warning,
-                onTap: () async {
-                  if (!await ensureFeature(
-                      context, ref, LicensedFeature.analytics)) {
-                    return;
-                  }
-                  if (!context.mounted) return;
-                  _showTopProductsReport(context, ref);
-                },
-              )
-            ),
+                itemKey: 'reports-tile-top-products',
+                index: 6,
+                child: _ReportTile(
+                  icon: Icons.star_rounded,
+                  title: 'Top Products',
+                  subtitle: 'Best selling products',
+                  color: DesignColors.warning,
+                  onTap: () async {
+                    if (!await ensureFeature(
+                        context, ref, LicensedFeature.analytics)) {
+                      return;
+                    }
+                    if (!context.mounted) return;
+                    _showTopProductsReport(context, ref);
+                  },
+                )),
             StaggeredItem(
-              itemKey: 'reports-tile-inventory',
-              index: 7,
-              child:
-              _ReportTile(
-                icon: Icons.warehouse_rounded,
-                title: 'Inventory Report',
-                subtitle: 'Stock levels and movements',
-                color: DesignColors.success,
-                onTap: () => _showInventoryReport(context, ref),
-              )
-            ),
+                itemKey: 'reports-tile-inventory',
+                index: 7,
+                child: _ReportTile(
+                  icon: Icons.warehouse_rounded,
+                  title: 'Inventory Report',
+                  subtitle: 'Stock levels and movements',
+                  color: DesignColors.success,
+                  onTap: () => _showInventoryReport(context, ref),
+                )),
             StaggeredItem(
-              itemKey: 'reports-tile-customer',
-              index: 8,
-              child:
-              _ReportTile(
-                icon: Icons.people_rounded,
-                title: 'Customer Report',
-                subtitle: 'Customer purchases and loyalty',
-                color: DesignColors.brandLight,
-                onTap: () => _showCustomerReport(context, ref),
-              )
-            ),
+                itemKey: 'reports-tile-customer',
+                index: 8,
+                child: _ReportTile(
+                  icon: Icons.people_rounded,
+                  title: 'Customer Report',
+                  subtitle: 'Customer purchases and loyalty',
+                  color: DesignColors.brandLight,
+                  onTap: () => _showCustomerReport(context, ref),
+                )),
 
             const SizedBox(height: DesignSpacing.xl),
 
@@ -206,57 +195,52 @@ class ReportsScreen extends ConsumerWidget {
             const SizedBox(height: DesignSpacing.sm),
 
             StaggeredItem(
-              itemKey: 'reports-analytics-dashboard',
-              index: 9,
-              child:
-              _GlassCardTile(
-                icon: Icons.bar_chart_rounded,
-                title: 'Analytics Dashboard',
-                subtitle:
-                    'Comprehensive sales analytics with multiple chart types',
-                color: DesignColors.brand,
-                onTap: () async {
-                  if (!await ensureFeature(
-                      context, ref, LicensedFeature.analytics)) {
-                    return;
-                  }
-                  if (!context.mounted) return;
-                  context.push('/reports/analytics');
-                },
-              )
-            ),
+                itemKey: 'reports-analytics-dashboard',
+                index: 9,
+                child: _GlassCardTile(
+                  icon: Icons.bar_chart_rounded,
+                  title: 'Analytics Dashboard',
+                  subtitle:
+                      'Comprehensive sales analytics with multiple chart types',
+                  color: DesignColors.brand,
+                  onTap: () async {
+                    if (!await ensureFeature(
+                        context, ref, LicensedFeature.analytics)) {
+                      return;
+                    }
+                    if (!context.mounted) return;
+                    context.push('/reports/analytics');
+                  },
+                )),
             StaggeredItem(
-              itemKey: 'reports-inventory-forecast',
-              index: 10,
-              child:
-              _GlassCardTile(
-                icon: Icons.trending_up_rounded,
-                title: 'Inventory Forecast',
-                subtitle: 'Predictive inventory analytics and demand forecasting',
-                color: DesignColors.credit,
-                onTap: () => context.push('/reports/inventory-forecast'),
-              )
-            ),
+                itemKey: 'reports-inventory-forecast',
+                index: 10,
+                child: _GlassCardTile(
+                  icon: Icons.trending_up_rounded,
+                  title: 'Inventory Forecast',
+                  subtitle:
+                      'Predictive inventory analytics and demand forecasting',
+                  color: DesignColors.credit,
+                  onTap: () => context.push('/reports/inventory-forecast'),
+                )),
             StaggeredItem(
-              itemKey: 'reports-payment-analytics',
-              index: 11,
-              child:
-              _GlassCardTile(
-                icon: Icons.payments_rounded,
-                title: 'Payment Analytics',
-                subtitle:
-                    'Detailed payment method analysis and transaction trends',
-                color: DesignColors.accent,
-                onTap: () async {
-                  if (!await ensureFeature(
-                      context, ref, LicensedFeature.analytics)) {
-                    return;
-                  }
-                  if (!context.mounted) return;
-                  context.push('/payment-analytics');
-                },
-              )
-            ),
+                itemKey: 'reports-payment-analytics',
+                index: 11,
+                child: _GlassCardTile(
+                  icon: Icons.payments_rounded,
+                  title: 'Payment Analytics',
+                  subtitle:
+                      'Detailed payment method analysis and transaction trends',
+                  color: DesignColors.accent,
+                  onTap: () async {
+                    if (!await ensureFeature(
+                        context, ref, LicensedFeature.analytics)) {
+                      return;
+                    }
+                    if (!context.mounted) return;
+                    context.push('/payment-analytics');
+                  },
+                )),
 
             const SizedBox(height: DesignSpacing.xxl),
           ],
@@ -329,15 +313,18 @@ class ReportsScreen extends ConsumerWidget {
         final salesAsync = ref.watch(salesListProvider);
         final range = ref.watch(dateRangeProvider);
         return Padding(
-          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
+          padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: DesignSpacing.sm),
               Align(
                 alignment: Alignment.centerRight,
-                child:
-                    StatusBadge(label: range.label, icon: Icons.calendar_today_rounded, color: DesignColors.brand),
+                child: StatusBadge(
+                    label: range.label,
+                    icon: Icons.calendar_today_rounded,
+                    color: DesignColors.brand),
               ),
               const SizedBox(height: DesignSpacing.sm),
               // Report navigation tabs
@@ -370,7 +357,9 @@ class ReportsScreen extends ConsumerWidget {
                       );
                     }
                     final totalRevenue = sales.fold<double>(
-                        0, (a, s) => a + ((s['totalAmount'] as num?)?.toDouble() ?? 0));
+                        0,
+                        (a, s) =>
+                            a + ((s['totalAmount'] as num?)?.toDouble() ?? 0));
                     final isDark = Theme.of(ctx).brightness == Brightness.dark;
                     final titleColor = isDark
                         ? DesignColors.darkTextPrimary
@@ -408,9 +397,11 @@ class ReportsScreen extends ConsumerWidget {
                             itemBuilder: (ctx, i) {
                               final sale = sales[i];
                               final saleTotal =
-                                  (sale['totalAmount'] as num?)?.toDouble() ?? 0;
+                                  (sale['totalAmount'] as num?)?.toDouble() ??
+                                      0;
                               final saleCreatedAt = DateTime.tryParse(
-                                      sale['createdAt']?.toString() ?? '')?.toLocal() ??
+                                          sale['createdAt']?.toString() ?? '')
+                                      ?.toLocal() ??
                                   DateTime.now();
                               final saleRow = ListCard(
                                 leading: CircleAvatar(
@@ -469,15 +460,18 @@ class ReportsScreen extends ConsumerWidget {
         final dataAsync = ref.watch(paymentMethodProvider);
         final range = ref.watch(dateRangeProvider);
         return Padding(
-          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
+          padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: DesignSpacing.sm),
               Align(
                 alignment: Alignment.centerRight,
-                child:
-                    StatusBadge(label: range.label, icon: Icons.calendar_today_rounded, color: DesignColors.accent),
+                child: StatusBadge(
+                    label: range.label,
+                    icon: Icons.calendar_today_rounded,
+                    color: DesignColors.accent),
               ),
               const SizedBox(height: DesignSpacing.md),
               Expanded(
@@ -490,7 +484,9 @@ class ReportsScreen extends ConsumerWidget {
                       );
                     }
                     final total = data.fold<double>(
-                        0, (a, d) => a + ((d['totalAmount'] as num?)?.toDouble() ?? 0));
+                        0,
+                        (a, d) =>
+                            a + ((d['totalAmount'] as num?)?.toDouble() ?? 0));
                     final isDark = Theme.of(ctx).brightness == Brightness.dark;
                     final titleColor = isDark
                         ? DesignColors.darkTextPrimary
@@ -510,7 +506,8 @@ class ReportsScreen extends ConsumerWidget {
                           blur: 8,
                           tint: color.withValues(alpha: 0.06),
                           borderColor: color.withValues(alpha: 0.15),
-                          margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
+                          margin:
+                              const EdgeInsets.only(bottom: DesignSpacing.sm),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -538,7 +535,8 @@ class ReportsScreen extends ConsumerWidget {
                               ),
                               const SizedBox(height: DesignSpacing.sm),
                               ClipRRect(
-                                borderRadius: BorderRadius.circular(DesignSpacing.radiusXl - 2),
+                                borderRadius: BorderRadius.circular(
+                                    DesignSpacing.radiusXl - 2),
                                 child: LinearProgressIndicator(
                                   value: pct / 100,
                                   backgroundColor: color.withValues(alpha: 0.1),
@@ -586,15 +584,18 @@ class ReportsScreen extends ConsumerWidget {
         final dataAsync = ref.watch(cashierPerformanceProvider);
         final range = ref.watch(dateRangeProvider);
         return Padding(
-          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
+          padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: DesignSpacing.sm),
               Align(
                 alignment: Alignment.centerRight,
-                child:
-                    StatusBadge(label: range.label, icon: Icons.calendar_today_rounded, color: DesignColors.accent),
+                child: StatusBadge(
+                    label: range.label,
+                    icon: Icons.calendar_today_rounded,
+                    color: DesignColors.accent),
               ),
               const SizedBox(height: DesignSpacing.md),
               Expanded(
@@ -659,15 +660,18 @@ class ReportsScreen extends ConsumerWidget {
         final dataAsync = ref.watch(categorySalesProvider);
         final range = ref.watch(dateRangeProvider);
         return Padding(
-          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
+          padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: DesignSpacing.sm),
               Align(
                 alignment: Alignment.centerRight,
-                child:
-                    StatusBadge(label: range.label, icon: Icons.calendar_today_rounded, color: DesignColors.info),
+                child: StatusBadge(
+                    label: range.label,
+                    icon: Icons.calendar_today_rounded,
+                    color: DesignColors.info),
               ),
               const SizedBox(height: DesignSpacing.md),
               Expanded(
@@ -680,7 +684,9 @@ class ReportsScreen extends ConsumerWidget {
                       );
                     }
                     final total = data.fold<double>(
-                        0, (a, d) => a + ((d['totalRevenue'] as num?)?.toDouble() ?? 0));
+                        0,
+                        (a, d) =>
+                            a + ((d['totalRevenue'] as num?)?.toDouble() ?? 0));
                     final isDark = Theme.of(ctx).brightness == Brightness.dark;
                     final titleColor = isDark
                         ? DesignColors.darkTextPrimary
@@ -707,7 +713,8 @@ class ReportsScreen extends ConsumerWidget {
                           blur: 8,
                           tint: color.withValues(alpha: 0.06),
                           borderColor: color.withValues(alpha: 0.15),
-                          margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
+                          margin:
+                              const EdgeInsets.only(bottom: DesignSpacing.sm),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -728,7 +735,8 @@ class ReportsScreen extends ConsumerWidget {
                               ),
                               const SizedBox(height: DesignSpacing.sm),
                               ClipRRect(
-                                borderRadius: BorderRadius.circular(DesignSpacing.radiusXl - 2),
+                                borderRadius: BorderRadius.circular(
+                                    DesignSpacing.radiusXl - 2),
                                 child: LinearProgressIndicator(
                                   value: total > 0 ? revenue / total : 0,
                                   backgroundColor: color.withValues(alpha: 0.1),
@@ -776,14 +784,17 @@ class ReportsScreen extends ConsumerWidget {
         final dataAsync = ref.watch(topProductsProvider);
         final range = ref.watch(dateRangeProvider);
         return Padding(
-          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
+          padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Align(
                 alignment: Alignment.centerRight,
                 child: StatusBadge(
-                    label: range.label, icon: Icons.calendar_today_rounded, color: DesignColors.warning),
+                    label: range.label,
+                    icon: Icons.calendar_today_rounded,
+                    color: DesignColors.warning),
               ),
               const SizedBox(height: DesignSpacing.md),
               Expanded(
@@ -850,7 +861,8 @@ class ReportsScreen extends ConsumerWidget {
       child: Consumer(builder: (ctx, ref, _) {
         final dataAsync = ref.watch(inventoryReportProvider);
         return Padding(
-          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
+          padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -942,7 +954,8 @@ class ReportsScreen extends ConsumerWidget {
       child: Consumer(builder: (ctx, ref, _) {
         final db = getIt<AppDatabase>();
         return Padding(
-          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
+          padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1199,18 +1212,18 @@ class _GlassCardTile extends StatelessWidget {
                   Text(
                     title,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: color,
-                    ),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: color,
+                        ),
                   ),
                   const SizedBox(height: DesignSpacing.xs),
                   Text(
                     subtitle,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontSize: 13,
-                      color: secondaryColor,
-                    ),
+                          fontSize: 13,
+                          color: secondaryColor,
+                        ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1378,10 +1391,10 @@ class _DateRangeSelector extends ConsumerWidget {
                       : label
                   : label,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? DesignColors.accent : secondaryColor,
-              ),
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: selected ? DesignColors.accent : secondaryColor,
+                  ),
             ),
           ),
         ),
@@ -1425,10 +1438,10 @@ Widget _buildReportNavTab(
           child: Text(
             title,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontSize: 13,
-              fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-              color: isActive ? DesignColors.accent : secondaryColor,
-            ),
+                  fontSize: 13,
+                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                  color: isActive ? DesignColors.accent : secondaryColor,
+                ),
           ),
         ),
       ),

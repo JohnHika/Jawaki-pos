@@ -501,6 +501,14 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
   late final GeneratedColumn<String> description = GeneratedColumn<String>(
       'description', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _metadataMeta =
+      const VerificationMeta('metadata');
+  @override
+  late final GeneratedColumn<String> metadata = GeneratedColumn<String>(
+      'metadata', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('{}'));
   static const VerificationMeta _categoryIdMeta =
       const VerificationMeta('categoryId');
   @override
@@ -587,6 +595,7 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         sku,
         name,
         description,
+        metadata,
         categoryId,
         price,
         costPrice,
@@ -631,6 +640,10 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
           _descriptionMeta,
           description.isAcceptableOrUnknown(
               data['description']!, _descriptionMeta));
+    }
+    if (data.containsKey('metadata')) {
+      context.handle(_metadataMeta,
+          metadata.isAcceptableOrUnknown(data['metadata']!, _metadataMeta));
     }
     if (data.containsKey('category_id')) {
       context.handle(
@@ -707,6 +720,8 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
           .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
       description: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}description']),
+      metadata: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}metadata'])!,
       categoryId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}category_id'])!,
       price: attachedDatabase.typeMapping
@@ -743,6 +758,7 @@ class Product extends DataClass implements Insertable<Product> {
   final String sku;
   final String name;
   final String? description;
+  final String metadata;
   final String categoryId;
   final double price;
   final double? costPrice;
@@ -759,6 +775,7 @@ class Product extends DataClass implements Insertable<Product> {
       required this.sku,
       required this.name,
       this.description,
+      required this.metadata,
       required this.categoryId,
       required this.price,
       this.costPrice,
@@ -779,6 +796,7 @@ class Product extends DataClass implements Insertable<Product> {
     if (!nullToAbsent || description != null) {
       map['description'] = Variable<String>(description);
     }
+    map['metadata'] = Variable<String>(metadata);
     map['category_id'] = Variable<String>(categoryId);
     map['price'] = Variable<double>(price);
     if (!nullToAbsent || costPrice != null) {
@@ -805,6 +823,7 @@ class Product extends DataClass implements Insertable<Product> {
       description: description == null && nullToAbsent
           ? const Value.absent()
           : Value(description),
+      metadata: Value(metadata),
       categoryId: Value(categoryId),
       price: Value(price),
       costPrice: costPrice == null && nullToAbsent
@@ -831,6 +850,7 @@ class Product extends DataClass implements Insertable<Product> {
       sku: serializer.fromJson<String>(json['sku']),
       name: serializer.fromJson<String>(json['name']),
       description: serializer.fromJson<String?>(json['description']),
+      metadata: serializer.fromJson<String>(json['metadata']),
       categoryId: serializer.fromJson<String>(json['categoryId']),
       price: serializer.fromJson<double>(json['price']),
       costPrice: serializer.fromJson<double?>(json['costPrice']),
@@ -852,6 +872,7 @@ class Product extends DataClass implements Insertable<Product> {
       'sku': serializer.toJson<String>(sku),
       'name': serializer.toJson<String>(name),
       'description': serializer.toJson<String?>(description),
+      'metadata': serializer.toJson<String>(metadata),
       'categoryId': serializer.toJson<String>(categoryId),
       'price': serializer.toJson<double>(price),
       'costPrice': serializer.toJson<double?>(costPrice),
@@ -871,6 +892,7 @@ class Product extends DataClass implements Insertable<Product> {
           String? sku,
           String? name,
           Value<String?> description = const Value.absent(),
+          String? metadata,
           String? categoryId,
           double? price,
           Value<double?> costPrice = const Value.absent(),
@@ -887,6 +909,7 @@ class Product extends DataClass implements Insertable<Product> {
         sku: sku ?? this.sku,
         name: name ?? this.name,
         description: description.present ? description.value : this.description,
+        metadata: metadata ?? this.metadata,
         categoryId: categoryId ?? this.categoryId,
         price: price ?? this.price,
         costPrice: costPrice.present ? costPrice.value : this.costPrice,
@@ -906,6 +929,7 @@ class Product extends DataClass implements Insertable<Product> {
       name: data.name.present ? data.name.value : this.name,
       description:
           data.description.present ? data.description.value : this.description,
+      metadata: data.metadata.present ? data.metadata.value : this.metadata,
       categoryId:
           data.categoryId.present ? data.categoryId.value : this.categoryId,
       price: data.price.present ? data.price.value : this.price,
@@ -932,6 +956,7 @@ class Product extends DataClass implements Insertable<Product> {
           ..write('sku: $sku, ')
           ..write('name: $name, ')
           ..write('description: $description, ')
+          ..write('metadata: $metadata, ')
           ..write('categoryId: $categoryId, ')
           ..write('price: $price, ')
           ..write('costPrice: $costPrice, ')
@@ -953,6 +978,7 @@ class Product extends DataClass implements Insertable<Product> {
       sku,
       name,
       description,
+      metadata,
       categoryId,
       price,
       costPrice,
@@ -972,6 +998,7 @@ class Product extends DataClass implements Insertable<Product> {
           other.sku == this.sku &&
           other.name == this.name &&
           other.description == this.description &&
+          other.metadata == this.metadata &&
           other.categoryId == this.categoryId &&
           other.price == this.price &&
           other.costPrice == this.costPrice &&
@@ -990,6 +1017,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<String> sku;
   final Value<String> name;
   final Value<String?> description;
+  final Value<String> metadata;
   final Value<String> categoryId;
   final Value<double> price;
   final Value<double?> costPrice;
@@ -1007,6 +1035,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.sku = const Value.absent(),
     this.name = const Value.absent(),
     this.description = const Value.absent(),
+    this.metadata = const Value.absent(),
     this.categoryId = const Value.absent(),
     this.price = const Value.absent(),
     this.costPrice = const Value.absent(),
@@ -1025,6 +1054,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     required String sku,
     required String name,
     this.description = const Value.absent(),
+    this.metadata = const Value.absent(),
     required String categoryId,
     required double price,
     this.costPrice = const Value.absent(),
@@ -1049,6 +1079,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Expression<String>? sku,
     Expression<String>? name,
     Expression<String>? description,
+    Expression<String>? metadata,
     Expression<String>? categoryId,
     Expression<double>? price,
     Expression<double>? costPrice,
@@ -1067,6 +1098,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       if (sku != null) 'sku': sku,
       if (name != null) 'name': name,
       if (description != null) 'description': description,
+      if (metadata != null) 'metadata': metadata,
       if (categoryId != null) 'category_id': categoryId,
       if (price != null) 'price': price,
       if (costPrice != null) 'cost_price': costPrice,
@@ -1087,6 +1119,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       Value<String>? sku,
       Value<String>? name,
       Value<String?>? description,
+      Value<String>? metadata,
       Value<String>? categoryId,
       Value<double>? price,
       Value<double?>? costPrice,
@@ -1104,6 +1137,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       sku: sku ?? this.sku,
       name: name ?? this.name,
       description: description ?? this.description,
+      metadata: metadata ?? this.metadata,
       categoryId: categoryId ?? this.categoryId,
       price: price ?? this.price,
       costPrice: costPrice ?? this.costPrice,
@@ -1133,6 +1167,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     }
     if (description.present) {
       map['description'] = Variable<String>(description.value);
+    }
+    if (metadata.present) {
+      map['metadata'] = Variable<String>(metadata.value);
     }
     if (categoryId.present) {
       map['category_id'] = Variable<String>(categoryId.value);
@@ -1180,6 +1217,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
           ..write('sku: $sku, ')
           ..write('name: $name, ')
           ..write('description: $description, ')
+          ..write('metadata: $metadata, ')
           ..write('categoryId: $categoryId, ')
           ..write('price: $price, ')
           ..write('costPrice: $costPrice, ')
@@ -6357,6 +6395,7 @@ typedef $$ProductsTableCreateCompanionBuilder = ProductsCompanion Function({
   required String sku,
   required String name,
   Value<String?> description,
+  Value<String> metadata,
   required String categoryId,
   required double price,
   Value<double?> costPrice,
@@ -6375,6 +6414,7 @@ typedef $$ProductsTableUpdateCompanionBuilder = ProductsCompanion Function({
   Value<String> sku,
   Value<String> name,
   Value<String?> description,
+  Value<String> metadata,
   Value<String> categoryId,
   Value<double> price,
   Value<double?> costPrice,
@@ -6409,6 +6449,9 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<String> get description => $composableBuilder(
       column: $table.description, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get metadata => $composableBuilder(
+      column: $table.metadata, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get categoryId => $composableBuilder(
       column: $table.categoryId, builder: (column) => ColumnFilters(column));
@@ -6467,6 +6510,9 @@ class $$ProductsTableOrderingComposer
   ColumnOrderings<String> get description => $composableBuilder(
       column: $table.description, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get metadata => $composableBuilder(
+      column: $table.metadata, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get categoryId => $composableBuilder(
       column: $table.categoryId, builder: (column) => ColumnOrderings(column));
 
@@ -6523,6 +6569,9 @@ class $$ProductsTableAnnotationComposer
 
   GeneratedColumn<String> get description => $composableBuilder(
       column: $table.description, builder: (column) => column);
+
+  GeneratedColumn<String> get metadata =>
+      $composableBuilder(column: $table.metadata, builder: (column) => column);
 
   GeneratedColumn<String> get categoryId => $composableBuilder(
       column: $table.categoryId, builder: (column) => column);
@@ -6585,6 +6634,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             Value<String> sku = const Value.absent(),
             Value<String> name = const Value.absent(),
             Value<String?> description = const Value.absent(),
+            Value<String> metadata = const Value.absent(),
             Value<String> categoryId = const Value.absent(),
             Value<double> price = const Value.absent(),
             Value<double?> costPrice = const Value.absent(),
@@ -6603,6 +6653,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             sku: sku,
             name: name,
             description: description,
+            metadata: metadata,
             categoryId: categoryId,
             price: price,
             costPrice: costPrice,
@@ -6621,6 +6672,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             required String sku,
             required String name,
             Value<String?> description = const Value.absent(),
+            Value<String> metadata = const Value.absent(),
             required String categoryId,
             required double price,
             Value<double?> costPrice = const Value.absent(),
@@ -6639,6 +6691,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             sku: sku,
             name: name,
             description: description,
+            metadata: metadata,
             categoryId: categoryId,
             price: price,
             costPrice: costPrice,

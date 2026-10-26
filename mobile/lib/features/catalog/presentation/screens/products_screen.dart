@@ -9,6 +9,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/utils/api_message.dart';
+import '../../../../core/utils/business_layout_search.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../sales/presentation/providers/catalog_provider.dart'
     as catalog_cache;
@@ -34,6 +35,9 @@ final _catalogGridViewProvider = StateProvider<bool>((ref) => true);
 final _catalogSyncProvider =
     FutureProvider.family<void, String>((ref, userKey) async {
   await catalog_cache.syncCatalogCacheFromApi();
+  ref.invalidate(catalog_cache.filteredProductsProvider);
+  ref.invalidate(catalog_cache.favoriteProductsProvider);
+  ref.invalidate(catalog_cache.categoriesProvider);
 });
 
 // A StreamProvider (not a one-shot FutureProvider) so the displayed
@@ -48,6 +52,14 @@ final _productStockProvider = StreamProvider.family<double?, String>(
         .map((stock) => stock?.quantity);
   },
 );
+
+String _productStockQuantityLabel(double quantity) {
+  if (quantity % 1 == 0) return quantity.toStringAsFixed(0);
+  return quantity
+      .toStringAsFixed(3)
+      .replaceFirst(RegExp(r'0+$'), '')
+      .replaceFirst(RegExp(r'\.$'), '');
+}
 
 class ProductsScreen extends ConsumerWidget {
   const ProductsScreen({super.key});
@@ -76,7 +88,8 @@ class ProductsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: businessLayout.productsLabel,
+        title: businessLayout.actionLabel(
+            '/products', businessLayout.productsLabel),
         showBackButton: false,
         actions: [
           if (perms.canEditProducts)
@@ -255,6 +268,19 @@ class ProductsScreen extends ConsumerWidget {
                           isDark: isDark,
                         ),
                       ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: DesignSpacing.xs),
+                        child: _buildChip(
+                          context,
+                          label: 'Uncategorized',
+                          selected: selectedCategory == '',
+                          onTap: () => ref
+                              .read(_selectedCategoryFilterProvider.notifier)
+                              .state = selectedCategory == '' ? null : '',
+                          isDark: isDark,
+                        ),
+                      ),
                       ...activeCategories.map(
                         (cat) => Padding(
                           padding: const EdgeInsets.symmetric(
@@ -287,8 +313,8 @@ class ProductsScreen extends ConsumerWidget {
             // Product count
             productsAsync.when(
               data: (products) {
-                final filtered =
-                    _filterProducts(products, selectedCategory, searchQuery);
+                final filtered = _filterProducts(
+                    products, selectedCategory, searchQuery, businessLayout);
                 return Padding(
                   padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
                       DesignSpacing.xs, DesignSpacing.lg, DesignSpacing.xs + 2),
@@ -326,8 +352,8 @@ class ProductsScreen extends ConsumerWidget {
             Expanded(
               child: productsAsync.when(
                 data: (products) {
-                  final filtered =
-                      _filterProducts(products, selectedCategory, searchQuery);
+                  final filtered = _filterProducts(
+                      products, selectedCategory, searchQuery, businessLayout);
                   if (filtered.isEmpty) {
                     if (products.isEmpty &&
                         searchQuery.isEmpty &&
@@ -420,7 +446,7 @@ class ProductsScreen extends ConsumerWidget {
                               child: _ProductGridCard(
                                 product: product,
                                 categoryName: categoryMap[product.categoryId] ??
-                                    'Unknown',
+                                    'Uncategorized',
                                 onEdit: perms.canEditProducts
                                     ? () => _showAddEditProduct(context, ref,
                                         product: product)
@@ -446,7 +472,7 @@ class ProductsScreen extends ConsumerWidget {
                               child: _ProductListTile(
                                 product: product,
                                 categoryName: categoryMap[product.categoryId] ??
-                                    'Unknown',
+                                    'Uncategorized',
                                 onEdit: perms.canEditProducts
                                     ? () => _showAddEditProduct(context, ref,
                                         product: product)
@@ -596,8 +622,8 @@ class ProductsScreen extends ConsumerWidget {
     );
   }
 
-  List<Product> _filterProducts(
-      List<Product> products, String? categoryId, String query) {
+  List<Product> _filterProducts(List<Product> products, String? categoryId,
+      String query, BusinessLayoutConfig businessLayout) {
     var filtered = products.where((p) => p.isActive).toList();
     if (categoryId != null) {
       filtered = filtered.where((p) => p.categoryId == categoryId).toList();
@@ -605,9 +631,13 @@ class ProductsScreen extends ConsumerWidget {
     if (query.isNotEmpty) {
       final q = query.toLowerCase();
       filtered = filtered
-          .where((p) =>
-              p.name.toLowerCase().contains(q) ||
-              p.sku.toLowerCase().contains(q))
+          .where((product) => businessLayoutProductMatchesSearch(
+                name: product.name,
+                code: product.sku,
+                metadata: product.metadata,
+                layout: businessLayout,
+                query: q,
+              ))
           .toList();
     }
     filtered.sort((a, b) => a.name.compareTo(b.name));
@@ -653,6 +683,13 @@ class ProductsScreen extends ConsumerWidget {
       try {
         await getIt<ApiClient>().deleteProduct(product.id);
         await catalog_cache.deleteProductFromCache(product.id);
+        // The POS grid is a cached FutureProvider, so invalidate its snapshots
+        // as well as updating the live Products stream after a deletion.
+        if (context.mounted) {
+          ref.invalidate(catalog_cache.filteredProductsProvider);
+          ref.invalidate(catalog_cache.favoriteProductsProvider);
+          ref.invalidate(catalog_cache.categoriesProvider);
+        }
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -774,8 +811,28 @@ class _ProductGridCard extends ConsumerWidget {
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
     final border =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-    final stock = ref.watch(_productStockProvider(product.id)).valueOrNull;
-    final inStock = stock != null && stock > 0;
+    final stockAsync = ref.watch(_productStockProvider(product.id));
+    final stock = stockAsync.valueOrNull;
+    final stockStatus = !product.trackInventory
+        ? 'Not tracked'
+        : stockAsync.when(
+            data: (quantity) => quantity == null
+                ? 'No stock record'
+                : quantity > 0
+                    ? '${_productStockQuantityLabel(quantity)} left'
+                    : 'Out',
+            loading: () => 'Checking…',
+            error: (_, __) => 'Unavailable',
+          );
+    final stockStatusColor = !product.trackInventory
+        ? secondaryColor
+        : stockAsync.hasError
+            ? DesignColors.warning
+            : stockAsync.isLoading || stock == null
+                ? secondaryColor
+                : stock > 0
+                    ? DesignColors.success
+                    : DesignColors.error;
 
     return Material(
       color: Colors.transparent,
@@ -860,17 +917,13 @@ class _ProductGridCard extends ConsumerWidget {
                             ),
                           ),
                           Text(
-                            inStock
-                                ? '${stock.toStringAsFixed(0)} left'
-                                : 'Out',
+                            stockStatus,
                             style: Theme.of(context)
                                 .textTheme
                                 .labelSmall
                                 ?.copyWith(
                                   fontWeight: FontWeight.w700,
-                                  color: inStock
-                                      ? DesignColors.success
-                                      : DesignColors.error,
+                                  color: stockStatusColor,
                                 ),
                           ),
                         ],
@@ -914,12 +967,6 @@ class _ProductListTile extends ConsumerWidget {
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     final stockAsync = ref.watch(_productStockProvider(product.id));
-    final stock = stockAsync.valueOrNull;
-    final hasStock = stock != null && stock > 0;
-    final stockLabel = stock == null || stock % 1 == 0
-        ? stock?.toStringAsFixed(0) ?? ''
-        : stock.toStringAsFixed(3).replaceFirst(RegExp(r'0+$'), '');
-    final stockColor = hasStock ? DesignColors.success : DesignColors.error;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: DesignSpacing.md),
@@ -970,18 +1017,44 @@ class _ProductListTile extends ConsumerWidget {
                               ?.copyWith(color: tertiaryColor)),
                       const SizedBox(height: DesignSpacing.xs - 2),
                       stockAsync.when(
-                        data: (qty) => Text(
-                          hasStock
-                              ? '$stockLabel ${pluralizeUnit(product.unit, qty ?? 0)} in stock'
-                              : 'Out of stock',
-                          style:
-                              Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: stockColor,
-                                  ),
+                        data: (qty) {
+                          final message = !product.trackInventory
+                              ? 'Stock not tracked'
+                              : qty == null
+                                  ? 'Stock not recorded'
+                                  : qty > 0
+                                      ? '${_productStockQuantityLabel(qty)} ${pluralizeUnit(product.unit, qty)} in stock'
+                                      : 'Out of stock';
+                          final color = !product.trackInventory || qty == null
+                              ? tertiaryColor
+                              : qty > 0
+                                  ? DesignColors.success
+                                  : DesignColors.error;
+                          return Text(
+                            message,
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: color,
+                                ),
+                          );
+                        },
+                        loading: () => Text(
+                          'Checking stock…',
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(color: tertiaryColor),
                         ),
-                        loading: () => const SizedBox.shrink(),
-                        error: (_, __) => const SizedBox.shrink(),
+                        error: (_, __) => Text(
+                          'Stock unavailable',
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(color: DesignColors.warning),
+                        ),
                       ),
                     ],
                   ),

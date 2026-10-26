@@ -235,15 +235,36 @@ class SyncService {
     required Map<String, dynamic> data,
     required String deviceId,
     required String userId,
+    String? expectedTenantId,
     int maxRetries = 5,
+    bool syncImmediately = true,
   }) async {
+    final tenantId = expectedTenantId ?? _storage.getTenantId();
+    if (tenantId == null || tenantId.isEmpty) {
+      throw StateError('Sign in to a shop before queueing offline changes.');
+    }
+    if (_storage.getTenantId() != tenantId ||
+        (userId.isNotEmpty &&
+            _storage.getUser()?['id']?.toString() != userId)) {
+      throw StateError(
+          'The signed-in workspace changed before sync was queued.');
+    }
     final itemId = _uuid.v4();
+    final scopedData = <String, dynamic>{
+      ...data,
+      '_localTenantId': tenantId,
+    };
 
     // Read the sequence number and insert in one transaction so concurrent
     // queueSyncItem calls can't read the same MAX(sequence_number) and
     // collide on the next number (drift serializes transactions).
     await _database.transaction(() async {
       final sequenceNumber = await _database.getNextSyncSequenceNumber();
+      if (_storage.getTenantId() != tenantId ||
+          _database.activeTenantId != tenantId) {
+        throw StateError(
+            'The signed-in workspace changed before sync was queued.');
+      }
 
       await _database.addToSyncQueue(SyncQueueCompanion(
         id: Value(itemId),
@@ -251,7 +272,7 @@ class SyncService {
         recordId: Value(recordId),
         action: Value(action.name),
         eventType: Value(eventType.wireName),
-        payload: Value(jsonEncode(data)),
+        payload: Value(jsonEncode(scopedData)),
         deviceId: Value(deviceId),
         userId: Value(userId),
         sequenceNumber: Value(sequenceNumber),
@@ -262,7 +283,9 @@ class SyncService {
     });
 
     // Try to sync immediately if online
-    if (_connectivity.isOnline) {
+    if (syncImmediately &&
+        _storage.getTenantId() == tenantId &&
+        _connectivity.isOnline) {
       await syncPendingEvents();
     }
   }
@@ -275,14 +298,28 @@ class SyncService {
     required String reason,
     required String voidedById,
   }) async {
+    final expectedTenantId = _storage.getTenantId();
+    if (expectedTenantId == null || expectedTenantId.isEmpty) {
+      throw StateError('Sign in to the sale’s shop before syncing the void.');
+    }
     final sale = await _database.getPendingSaleById(saleId);
+    if (_storage.getTenantId() != expectedTenantId ||
+        _database.activeTenantId != expectedTenantId) {
+      throw StateError('The signed-in workspace changed before sync.');
+    }
     if (sale == null || sale.status != 'VOIDED') {
       throw StateError('The local sale must be voided before it can sync');
     }
 
     // For a sale voided before its first successful upload, create the
     // SALE_CREATED event first. The sweep serializes it ahead of this void.
-    await _recoverOrphanedUnsyncedSales();
+    await _recoverOrphanedUnsyncedSales(
+      expectedTenantId: expectedTenantId,
+    );
+    if (_storage.getTenantId() != expectedTenantId ||
+        _database.activeTenantId != expectedTenantId) {
+      throw StateError('The signed-in workspace changed before sync.');
+    }
 
     final priorVoids = await (_database.select(_database.syncQueue)
           ..where((q) =>
@@ -323,6 +360,7 @@ class SyncService {
       deviceId: _storage.getDeviceId() ??
           'recovered-${DateTime.now().millisecondsSinceEpoch}',
       userId: voidedById,
+      expectedTenantId: expectedTenantId,
     );
   }
 
@@ -392,11 +430,16 @@ class SyncService {
   Future<void> syncPendingEvents() async {
     if (_isSyncing) return;
 
+    final expectedTenantId = _storage.getTenantId();
+    if (expectedTenantId == null || expectedTenantId.isEmpty) return;
+
     final connectionStatus = _connectivity.isOnline
         ? ConnectionStatus.online
         : await _connectivity.checkCurrentStatus();
 
-    if (connectionStatus != ConnectionStatus.online) {
+    if (connectionStatus != ConnectionStatus.online ||
+        _storage.getTenantId() != expectedTenantId ||
+        _database.activeTenantId != expectedTenantId) {
       return;
     }
 
@@ -408,11 +451,22 @@ class SyncService {
       // row (app died between the sale insert and queueSyncItem, or a
       // terminally-failed item got aged out by cleanupSyncQueue). Without
       // this the sale row sits isSynced=0 forever.
-      await _recoverOrphanedUnsyncedSales();
+      await _recoverOrphanedUnsyncedSales(
+        expectedTenantId: expectedTenantId,
+      );
+      if (_storage.getTenantId() != expectedTenantId ||
+          _database.activeTenantId != expectedTenantId) {
+        return;
+      }
       final result = await BackgroundSyncService.processPendingQueue(
         database: _database,
         apiClient: _apiClient,
+        expectedTenantId: expectedTenantId,
       ).timeout(const Duration(seconds: 30));
+      if (_storage.getTenantId() != expectedTenantId ||
+          _database.activeTenantId != expectedTenantId) {
+        return;
+      }
 
       if (result.hasErrors) {
         _statusController.add(SyncStatus.error);
@@ -426,93 +480,154 @@ class SyncService {
     }
   }
 
-  /// Re-enqueues unsynced sales that have no live sync_queue entry.
+  /// Re-enqueues unsynced sales that have no sync_queue entry.
   ///
   /// A sale becomes orphaned when the app dies after the pending_sales row
-  /// is written but before queueSyncItem runs, or when its queue item goes
-  /// terminally failed and cleanupSyncQueue ages it out. Either way the
-  /// sale row sits isSynced=0 with nothing driving it to the server. This
-  /// sweep runs at the top of every sync cycle: any unsynced sale whose
-  /// recordId has no pending/conflict queue row gets a fresh queue item so
-  /// the normal push loop retries it. Existing live rows (pending with
-  /// retries left, or conflict awaiting resolution) are left untouched.
-  Future<void> _recoverOrphanedUnsyncedSales() async {
+  /// is written but before queueSyncItem runs, or if its queue row is removed.
+  /// A terminally failed row is retained and must be retried through the sync
+  /// controls; recreating it here would bypass its retry limit and repeat a
+  /// permanent validation failure on every sync cycle.
+  Future<void> _recoverOrphanedUnsyncedSales({String? expectedTenantId}) async {
     try {
+      final tenantId = expectedTenantId ?? _storage.getTenantId();
+      if (tenantId == null ||
+          _storage.getTenantId() != tenantId ||
+          _database.activeTenantId != tenantId) {
+        return;
+      }
       final unsyncedSales = await _database.getUnsyncedSales();
       if (unsyncedSales.isEmpty) return;
 
-      // Live = still pending or awaiting conflict resolution. Synced /
-      // failed / resolved rows no longer drive the push loop, so an
-      // unsynced sale behind only those is orphaned.
-      final liveQueueItems = await (_database.select(_database.syncQueue)
-            ..where((q) => q.status.isIn(['pending', 'conflict'])))
-          .get();
-      final liveSaleCreateIds = liveQueueItems
-          .where((q) => q.eventType == SyncEventType.saleCreated.wireName)
-          .map((q) => q.recordId)
-          .toSet();
+      // Include failed rows so recovery does not reset their retry cap. The
+      // Settings retry action can explicitly reopen them.
+      final unresolvedSaleCreateIds =
+          await _database.getUnresolvedSaleCreateSyncRecordIds();
 
       var reenqueued = 0;
       for (final sale in unsyncedSales) {
+        if (_storage.getTenantId() != tenantId ||
+            _database.activeTenantId != tenantId) {
+          break;
+        }
         // Electronic customer payments are committed by the provider-backed
         // checkout on the server. Replaying them through generic offline sale
         // sync is both rejected by the API and unsafe: the payment may
         // already have settled. The SALE_CREATED pull reconciles the local
         // receipt by its payment reference instead.
         if (sale.paymentMethod.toUpperCase() == 'MPESA') continue;
-        if (liveSaleCreateIds.contains(sale.id)) continue;
 
-        final sequenceNumber = await _database.getNextSyncSequenceNumber();
-        await _database.addToSyncQueue(SyncQueueCompanion(
-          id: Value(_uuid.v4()),
-          entityTable: const Value('sales'),
-          recordId: Value(sale.id),
-          action: const Value('create'),
-          eventType: const Value('SALE_CREATED'),
-          payload: Value(jsonEncode({
-            'offlineId': sale.id,
-            'receiptNumber': sale.receiptNumber,
-            'branchId': sale.branchId,
-            'subtotal': sale.subtotal,
-            'discountAmount': sale.discount,
-            'taxAmount': sale.tax,
-            'totalAmount': sale.total,
-            'paymentMethod': sale.paymentMethod,
-            'paymentReference': sale.paymentReference,
-            'customerId': sale.customerId,
-            'cashierId': sale.cashierId,
-            'userId': sale.cashierId,
-            // A void is sent as a later SALE_VOIDED event. Creating the row
-            // as VOIDED first would make the host restore-stock operation
-            // treat it as already voided and skip the return movement.
-            'status': sale.status == 'VOIDED' ? 'COMPLETED' : sale.status,
-            'createdAt': sale.createdAt.toIso8601String(),
-            'notes': sale.notes,
-            'items': (await _database.getSaleItems(sale.id))
-                .map((item) => {
-                      'productId': item.productId,
-                      'productName': item.productName,
-                      'sku': item.sku,
-                      'quantity': item.quantity,
-                      'unitPrice': item.unitPrice,
-                      'discount': item.discount,
-                      'total': item.total,
-                      'unit': item.unit,
-                      'quantityPerUnit': item.quantityPerUnit,
-                    })
-                .toList(),
-          })),
-          deviceId: Value(
-            _storage.getDeviceId() ??
-                'recovered-${DateTime.now().millisecondsSinceEpoch}',
+        // The app can save a customer locally even if the customer-create
+        // queue write was interrupted. Recover that dependency before a sale
+        // can be replayed; the server treats a repeated create with the same
+        // tenant/customer ID as idempotent.
+        final customerId = sale.customerId;
+        if (customerId != null && customerId.isNotEmpty) {
+          final customer = await _database.getCustomer(customerId);
+          if (_storage.getTenantId() != tenantId ||
+              _database.activeTenantId != tenantId) {
+            break;
+          }
+          if (customer != null) {
+            await _database.enqueueRecoveredCustomerIfMissing(
+              SyncQueueCompanion(
+                id: Value(_uuid.v4()),
+                entityTable: const Value('customers'),
+                recordId: Value(customerId),
+                action: const Value('create'),
+                eventType: const Value('CUSTOMER_CREATED'),
+                payload: Value(jsonEncode({
+                  '_localTenantId': tenantId,
+                  'id': customerId,
+                  'name': customer['name']?.toString() ?? '',
+                  'phone': customer['phone']?.toString(),
+                  'email': customer['email']?.toString(),
+                  'address': customer['location']?.toString(),
+                  'notes': customer['notes']?.toString(),
+                })),
+                deviceId: Value(
+                  _storage.getDeviceId() ??
+                      'recovered-${DateTime.now().millisecondsSinceEpoch}',
+                ),
+                userId: Value(sale.cashierId),
+                sequenceNumber: const Value(0),
+                createdAt: Value(DateTime.now()),
+                retryCount: const Value(0),
+                maxRetries: const Value(5),
+              ),
+              expectedTenantId: tenantId,
+            );
+          }
+        }
+        if (unresolvedSaleCreateIds.contains(sale.id)) continue;
+
+        final paymentFields = _recoveredSalePaymentFields(sale);
+        if (paymentFields == null) {
+          debugPrint(
+            '[SyncService] Could not safely recover payment details for sale ${sale.id}; keeping it local for review',
+          );
+          continue;
+        }
+
+        final saleItems = await _database.getSaleItems(sale.id);
+        if (_storage.getTenantId() != tenantId ||
+            _database.activeTenantId != tenantId) {
+          break;
+        }
+        final enqueued = await _database.enqueueRecoveredSaleIfMissing(
+          SyncQueueCompanion(
+            id: Value(_uuid.v4()),
+            entityTable: const Value('sales'),
+            recordId: Value(sale.id),
+            action: const Value('create'),
+            eventType: const Value('SALE_CREATED'),
+            payload: Value(jsonEncode({
+              '_localTenantId': tenantId,
+              'offlineId': sale.id,
+              'receiptNumber': sale.receiptNumber,
+              'branchId': sale.branchId,
+              'subtotal': sale.subtotal,
+              'discountAmount': sale.discount,
+              'taxAmount': sale.tax,
+              'totalAmount': sale.total,
+              'paymentMethod': sale.paymentMethod,
+              ...paymentFields,
+              'paymentReference': sale.paymentReference,
+              'customerId': sale.customerId,
+              'cashierId': sale.cashierId,
+              'userId': sale.cashierId,
+              // A void is sent as a later SALE_VOIDED event. Creating the row
+              // as VOIDED first would make the host restore-stock operation
+              // treat it as already voided and skip the return movement.
+              'status': sale.status == 'VOIDED' ? 'COMPLETED' : sale.status,
+              'createdAt': sale.createdAt.toIso8601String(),
+              'notes': sale.notes,
+              'items': saleItems
+                  .map((item) => {
+                        'productId': item.productId,
+                        'productName': item.productName,
+                        'sku': item.sku,
+                        'quantity': item.quantity,
+                        'unitPrice': item.unitPrice,
+                        'discount': item.discount,
+                        'total': item.total,
+                        'unit': item.unit,
+                        'quantityPerUnit': item.quantityPerUnit,
+                      })
+                  .toList(),
+            })),
+            deviceId: Value(
+              _storage.getDeviceId() ??
+                  'recovered-${DateTime.now().millisecondsSinceEpoch}',
+            ),
+            userId: Value(sale.cashierId),
+            sequenceNumber: const Value(0),
+            createdAt: Value(DateTime.now()),
+            retryCount: const Value(0),
+            maxRetries: const Value(5),
           ),
-          userId: Value(sale.cashierId),
-          sequenceNumber: Value(sequenceNumber),
-          createdAt: Value(DateTime.now()),
-          retryCount: const Value(0),
-          maxRetries: const Value(5),
-        ));
-        reenqueued++;
+          expectedTenantId: tenantId,
+        );
+        if (enqueued) reenqueued++;
       }
 
       if (reenqueued > 0) {
@@ -522,6 +637,69 @@ class SyncService {
     } catch (e) {
       // Recovery is best-effort — never let it break the normal sync cycle.
       debugPrint('[SyncService] Orphaned-sale recovery failed: $e');
+    }
+  }
+
+  /// Rebuilds the payment fields omitted from a recovered queue row using the
+  /// sale's durable local payment representation. Never infer a fully paid
+  /// credit sale or turn an invalid split into a paid sale.
+  Map<String, dynamic>? _recoveredSalePaymentFields(PendingSale sale) {
+    switch (sale.paymentMethod.toUpperCase()) {
+      case 'CREDIT':
+        return const {'paidAmount': 0.0};
+      case 'SPLIT':
+        try {
+          final decoded = jsonDecode(sale.paymentReference ?? '');
+          if (decoded is! List || decoded.length != 2) return null;
+          final tenders = <Map<String, dynamic>>[];
+          var cashCount = 0;
+          var creditCount = 0;
+          var totalCents = 0;
+          var cashCents = 0;
+          for (final row in decoded) {
+            if (row is! Map) return null;
+            final method = row['method']?.toString().toUpperCase();
+            final amountValue = row['amount'];
+            if (method != 'CASH' && method != 'CREDIT') return null;
+            if (amountValue is! num ||
+                !amountValue.toDouble().isFinite ||
+                amountValue <= 0) {
+              return null;
+            }
+            final cents = (amountValue.toDouble() * 100).round();
+            totalCents += cents;
+            if (method == 'CASH') {
+              cashCount++;
+              cashCents += cents;
+            } else {
+              creditCount++;
+            }
+            tenders.add({
+              'method': method,
+              'amount': cents / 100,
+              if (row['reference'] is String &&
+                  (row['reference'] as String).isNotEmpty)
+                'reference': row['reference'],
+            });
+          }
+          if (cashCount != 1 ||
+              creditCount != 1 ||
+              totalCents != (sale.total * 100).round()) {
+            return null;
+          }
+          return {
+            'paidAmount': cashCents / 100,
+            'tenders': tenders,
+          };
+        } catch (_) {
+          return null;
+        }
+      default:
+        // Cash is the only other payment method this generic offline path may
+        // safely replay. Unsupported electronic/manual methods are rejected by
+        // the backend and must not be relabelled as cash.
+        if (sale.paymentMethod.toUpperCase() != 'CASH') return null;
+        return {'paidAmount': sale.total};
     }
   }
 
@@ -743,6 +921,27 @@ class SyncService {
     return value == null ? null : double.tryParse(value.toString());
   }
 
+  String _encodeProductMetadata(Object? value) {
+    if (value is Map) {
+      try {
+        return jsonEncode(Map<String, dynamic>.from(value));
+      } catch (_) {
+        return '{}';
+      }
+    }
+    if (value is String && value.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is Map) {
+          return jsonEncode(Map<String, dynamic>.from(decoded));
+        }
+      } catch (_) {
+        // Older servers may return an empty or malformed metadata value.
+      }
+    }
+    return '{}';
+  }
+
   Future<void> _processServerEvent(
     Map<String, dynamic> event, {
     String? expectedTenantId,
@@ -783,22 +982,34 @@ class SyncService {
     final price = _parseNumber(data['price'] ?? data['basePrice']);
     if (productId == null || price == null) return;
 
-    String? categoryId = data['categoryId']?.toString();
+    final directCategoryId = data['categoryId']?.toString().trim();
     final rawCategories = data['categories'];
-    if (categoryId == null &&
-        rawCategories is List &&
-        rawCategories.isNotEmpty) {
-      final first = rawCategories.first;
-      if (first is Map) {
-        categoryId = first['categoryId']?.toString();
-        final category = first['category'];
-        if (categoryId == null && category is Map) {
-          categoryId = category['id']?.toString();
+    String? categoryId;
+    if (directCategoryId != null) {
+      categoryId = directCategoryId;
+    } else if (rawCategories is List) {
+      // Sync sends the complete category relation. An empty list means the
+      // merchant removed the category, so clear the cached value instead of
+      // retaining an old category or dropping an uncategorized product.
+      if (rawCategories.isEmpty) {
+        categoryId = '';
+      } else {
+        final first = rawCategories.first;
+        String? categoryFromRelation;
+        if (first is Map) {
+          categoryFromRelation = first['categoryId']?.toString();
+          final category = first['category'];
+          if (categoryFromRelation == null && category is Map) {
+            categoryFromRelation = category['id']?.toString();
+          }
         }
+        categoryId = categoryFromRelation;
       }
     }
-    categoryId ??= (await _database.getProduct(productId))?.categoryId;
-    if (categoryId == null) return;
+    // Some older/partial update payloads omit category data entirely. Preserve
+    // its existing assignment in that case; a complete empty relation above
+    // intentionally remains uncategorized.
+    categoryId ??= (await _database.getProduct(productId))?.categoryId ?? '';
 
     await _database.insertProducts([
       ProductsCompanion(
@@ -806,6 +1017,7 @@ class SyncService {
         sku: Value(data['sku']?.toString() ?? ''),
         name: Value(data['name']?.toString() ?? ''),
         description: Value(data['description']?.toString()),
+        metadata: Value(_encodeProductMetadata(data['metadata'])),
         categoryId: Value(categoryId),
         price: Value(price),
         costPrice: Value(_parseNumber(data['costPrice'])),
@@ -813,6 +1025,7 @@ class SyncService {
         imageUrl: Value((data['imageUrl'] ?? data['image'])?.toString()),
         isActive: Value(data['isActive'] ?? true),
         trackInventory: Value(data['trackInventory'] ?? true),
+        allowFractions: Value(data['allowFractions'] as bool? ?? false),
         minStock: Value((data['minStock'] as num?)?.toInt() ?? 0),
         createdAt: Value(createdAt),
         updatedAt: Value(updatedAt),

@@ -4,6 +4,7 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { getDayBoundsInTimezone, todayInTimezone } from '../common/operating-hours';
 import { CashFlowMode, CashEntryType } from './dto/cash-flow.dto';
 import { CashLedgerQueryDto } from './dto/cash-flow.dto';
+import { verifiedSalePaymentFilter } from '../sales/sale-payment-filter';
 
 interface RecordLedgerEntryParams {
   branchId: string;
@@ -182,6 +183,7 @@ export class CashFlowService {
           branchId,
           status: 'COMPLETED',
           createdAt: { gte: startOfDay, lt: endOfDay },
+          ...verifiedSalePaymentFilter(),
         },
         _sum: { totalAmount: true },
       });

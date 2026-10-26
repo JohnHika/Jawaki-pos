@@ -204,15 +204,29 @@ export function nowInTimezone(timezone: string): Date {
  * (the server's own UTC date) whenever "today" means "today for this
  * branch", not "today on the server".
  */
-export function todayInTimezone(timezone: string): string {
+export function dateInTimezone(at: Date, timezone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone || 'Africa/Nairobi',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).formatToParts(new Date());
+  }).formatToParts(at);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '01';
   return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+export function calendarDaysBetweenInTimezone(
+  from: Date,
+  to: Date,
+  timezone: string,
+): number {
+  const fromDate = Date.parse(`${dateInTimezone(from, timezone)}T00:00:00.000Z`);
+  const toDate = Date.parse(`${dateInTimezone(to, timezone)}T00:00:00.000Z`);
+  return Math.round((toDate - fromDate) / 86_400_000);
+}
+
+export function todayInTimezone(timezone: string): string {
+  return dateInTimezone(new Date(), timezone);
 }
 
 /**

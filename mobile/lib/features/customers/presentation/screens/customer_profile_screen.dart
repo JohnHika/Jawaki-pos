@@ -10,6 +10,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../sales/presentation/providers/cart_provider.dart';
 import '../../../finance/domain/bulk_allocation.dart';
 import '../../../../core/utils/format.dart';
@@ -42,12 +43,13 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
 
   String get _customerName {
     final name = _customer?['name']?.toString().trim() ?? '';
-    return name.isEmpty ? 'Customer' : name;
+    return name.isEmpty
+        ? ref.read(businessLayoutProvider).customerSingular
+        : name;
   }
 
-  String get _customerInitial => _customerName == 'Customer'
-      ? 'C'
-      : String.fromCharCode(_customerName.runes.first).toUpperCase();
+  String get _customerInitial =>
+      String.fromCharCode(_customerName.runes.first).toUpperCase();
 
   @override
   void initState() {
@@ -533,15 +535,17 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
     final border =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+    final businessLayout = ref.watch(businessLayoutProvider);
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Customer Profile',
+        title: '${businessLayout.customerSingular} profile',
         actions: [
           IconButton(
             icon: const Icon(Icons.shopping_cart_rounded,
                 color: DesignColors.accent),
-            tooltip: 'Start Sale with this customer',
+            tooltip:
+                'Start sale with this ${businessLayout.customerSingular.toLowerCase()}',
             onPressed: _customer == null
                 ? null
                 : () {

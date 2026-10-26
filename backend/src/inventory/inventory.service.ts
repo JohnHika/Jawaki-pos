@@ -28,6 +28,7 @@ import {
 import { Prisma, StockMovementType } from '@prisma/client';
 import { lockStockForUpdate } from '../common/stock-lock';
 import { applyPurchaseCost } from '../common/product-cost';
+import { verifiedSalePaymentFilter } from '../sales/sale-payment-filter';
 
 @Injectable()
 export class InventoryService {
@@ -910,7 +911,12 @@ export class InventoryService {
         by: ['productId'],
         where: {
           productId: { in: productIds },
-          sale: { branchId, status: 'COMPLETED', createdAt: { gte: windowStart } },
+          sale: {
+            branchId,
+            status: 'COMPLETED',
+            createdAt: { gte: windowStart },
+            ...verifiedSalePaymentFilter(),
+          },
         },
         _sum: { quantity: true },
       }),

@@ -135,13 +135,16 @@ class NotificationService {
 
     FirebaseMessaging.onMessage.listen(_showForegroundNotification);
     // Tapped while the app was in the background...
-    FirebaseMessaging.onMessageOpenedApp
-        .listen((message) => _emitOpen(Map<String, dynamic>.from(message.data)));
+    FirebaseMessaging.onMessageOpenedApp.listen(
+        (message) => _emitOpen(Map<String, dynamic>.from(message.data)));
     // ...or tapped to launch the app from a fully closed state.
     try {
       final initial = await FirebaseMessaging.instance.getInitialMessage();
       if (initial != null) {
-        _pendingOpen = Map<String, dynamic>.from(initial.data);
+        // Initialization now runs after the first frame. Emit directly when
+        // the app is already listening, or preserve the event for the cold
+        // start listener when initialization happened earlier.
+        _emitOpen(Map<String, dynamic>.from(initial.data));
       }
     } catch (_) {}
   }

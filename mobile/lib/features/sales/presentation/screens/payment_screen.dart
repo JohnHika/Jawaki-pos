@@ -9,6 +9,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/services/till_guard.dart';
 import '../../../accountability/data/till_guard_service.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../customers/presentation/widgets/add_customer_sheet.dart';
@@ -198,8 +199,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
     final paymentState = ref.watch(paymentProvider);
+    final businessLayout = ref.watch(businessLayoutProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final shopName = ref.watch(tenantIdentityProvider).companyName;
+    final canChangePaymentMethod =
+        paymentState.currentTransactionId == null && !paymentState.isProcessing;
 
     return Scaffold(
       appBar: AppBar(
@@ -327,7 +331,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               subtitle: 'Pay with cash',
               color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.cash,
-              onTap: () => setState(() => _selectedMethod = PaymentMethod.cash),
+              onTap: canChangePaymentMethod
+                  ? () => setState(() => _selectedMethod = PaymentMethod.cash)
+                  : null,
             ),
             const SizedBox(height: DesignSpacing.md - 2),
 
@@ -342,10 +348,13 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       : 'Requires a verified business payout account',
               color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.mpesa,
-              onTap: () => _selectMpesa(
-                cart.total,
-                hasPendingRequest: paymentState.currentTransactionId != null,
-              ),
+              onTap: paymentState.isProcessing
+                  ? null
+                  : () => _selectMpesa(
+                        cart.total,
+                        hasPendingRequest:
+                            paymentState.currentTransactionId != null,
+                      ),
             ),
             const SizedBox(height: DesignSpacing.md - 2),
 
@@ -359,23 +368,25 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               icon: Icons.account_balance_wallet_outlined,
               title: 'Add to Debt',
               subtitle: cart.customerId == null
-                  ? 'Choose or add a customer to continue'
-                  : 'Customer pays later',
+                  ? 'Choose or add a ${businessLayout.customerSingular.toLowerCase()} to continue'
+                  : '${businessLayout.customerSingular} pays later',
               color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.debt,
-              onTap: () async {
-                if (cart.customerId == null) {
-                  final customer = await _showCustomerPicker();
-                  if (customer == null || !mounted) return;
-                  ref.read(cartProvider.notifier).setCustomer(
-                        customer.id,
-                        customerName: customer.name,
-                      );
-                }
-                if (mounted) {
-                  setState(() => _selectedMethod = PaymentMethod.debt);
-                }
-              },
+              onTap: canChangePaymentMethod
+                  ? () async {
+                      if (cart.customerId == null) {
+                        final customer = await _showCustomerPicker();
+                        if (customer == null || !mounted) return;
+                        ref.read(cartProvider.notifier).setCustomer(
+                              customer.id,
+                              customerName: customer.name,
+                            );
+                      }
+                      if (mounted) {
+                        setState(() => _selectedMethod = PaymentMethod.debt);
+                      }
+                    }
+                  : null,
             ),
             const SizedBox(height: DesignSpacing.md - 2),
 
@@ -386,8 +397,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               subtitle: 'Part cash, part debt',
               color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.split,
-              onTap: () =>
-                  setState(() => _selectedMethod = PaymentMethod.split),
+              onTap: canChangePaymentMethod
+                  ? () => setState(() => _selectedMethod = PaymentMethod.split)
+                  : null,
             ),
 
             if (_selectedMethod == PaymentMethod.mpesa &&
@@ -416,7 +428,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'M-Pesa request for $shopName sent. Ask the customer to check the amount and approve it, then verify the result here. The phone prompt may show Paystack’s shared “Counterbase” label; Paystack does not let this integration display a different shop name on each prompt. After Paystack confirms the payment, it is allocated to $shopName’s verified payout route under Paystack’s settlement schedule.',
+                          'Request sent for $shopName. Ask the customer to approve it, then tap “Check M-Pesa Payment” below. Other methods stay locked until it is resolved. The phone may show Counterbase; settlement goes to $shopName’s verified payout account on Paystack’s schedule.',
                         ),
                       ],
                     ),
@@ -596,7 +608,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                     ),
                     const SizedBox(height: DesignSpacing.sm),
                     Text(
-                      'The phone prompt may show Paystack’s shared “Counterbase” label, not this shop’s name or bank account number. Paystack does not offer a per-shop label for these prompts. Confirm the shop and amount above before sending. Once Paystack verifies the payment, proceeds are allocated to $shopName’s payout route and paid out on Paystack’s settlement schedule.',
+                      'The phone prompt may show Counterbase as the Paystack collection account. Confirm the shop and amount shown above before sending. Once Paystack confirms the payment, it is routed to $shopName’s verified payout account, less Paystack’s fee, on Paystack’s settlement schedule.',
                       style: Theme.of(sheetContext)
                           .textTheme
                           .bodySmall
@@ -708,13 +720,17 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       cart.couponDiscount > 0 ? cart.coupon?.code : null;
 
   Future<_CustomerChoice?> _showCustomerPicker() {
+    final layout = ref.read(businessLayoutProvider);
     return showModalBottomSheet<_CustomerChoice>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (_) => const _CustomerPickerSheet(),
+      builder: (_) => _CustomerPickerSheet(
+        customerSingular: layout.customerSingular,
+        customersLabel: layout.customersLabel,
+      ),
     );
   }
 
@@ -1164,7 +1180,13 @@ class _CustomerChoice {
 }
 
 class _CustomerPickerSheet extends StatefulWidget {
-  const _CustomerPickerSheet();
+  const _CustomerPickerSheet({
+    required this.customerSingular,
+    required this.customersLabel,
+  });
+
+  final String customerSingular;
+  final String customersLabel;
 
   @override
   State<_CustomerPickerSheet> createState() => _CustomerPickerSheetState();
@@ -1217,8 +1239,11 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
   Future<void> _addCustomer() async {
     // The sale records today's credit after selection. Hiding the opening
     // balance control here prevents the same debt from being recorded twice.
-    final added =
-        await showAddCustomerSheet(context, allowInitialCredit: false);
+    final added = await showAddCustomerSheet(
+      context,
+      allowInitialCredit: false,
+      customerSingular: widget.customerSingular,
+    );
     if (added == null || !mounted) return;
     Navigator.of(context).pop(_CustomerChoice(id: added.id, name: added.name));
   }
@@ -1226,7 +1251,7 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
   void _choose(Map<String, dynamic> customer) {
     Navigator.of(context).pop(_CustomerChoice(
       id: customer['id'] as String,
-      name: customer['name'] as String? ?? 'Customer',
+      name: customer['name'] as String? ?? widget.customerSingular,
     ));
   }
 
@@ -1262,7 +1287,7 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
                     ?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: DesignSpacing.xs),
             Text(
-                'Choose an existing customer or add one. Your sale stays here.',
+                'Choose an existing ${widget.customersLabel.toLowerCase()} or add one. Your sale stays here.',
                 style: TextStyle(color: secondary)),
             const SizedBox(height: DesignSpacing.md),
             TextField(
@@ -1298,19 +1323,22 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
                   : _failed
                       ? EmptyState(
                           icon: Icons.error_outline_rounded,
-                          title: 'Could not read saved customers',
+                          title:
+                              'Could not read saved ${widget.customersLabel.toLowerCase()}',
                           subtitle:
-                              'The customer list on this device could not be opened. Try again or add a customer.',
+                              'The ${widget.customersLabel.toLowerCase()} list on this device could not be opened. Try again or add a ${widget.customerSingular.toLowerCase()}.',
                           actionLabel: 'Retry',
                           onAction: _loadCustomers,
                         )
                       : _customers.isEmpty
                           ? EmptyState(
                               icon: Icons.person_search_rounded,
-                              title: 'No matching customers',
+                              title:
+                                  'No matching ${widget.customersLabel.toLowerCase()}',
                               subtitle:
-                                  'Add this customer and continue the sale.',
-                              actionLabel: 'Add customer',
+                                  'Add this ${widget.customerSingular.toLowerCase()} and continue the sale.',
+                              actionLabel:
+                                  'Add ${widget.customerSingular.toLowerCase()}',
                               actionIcon: Icons.person_add_alt_1_rounded,
                               onAction: _addCustomer,
                             )
@@ -1320,8 +1348,8 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
                                   const SizedBox(height: DesignSpacing.xs),
                               itemBuilder: (context, index) {
                                 final customer = _customers[index];
-                                final name =
-                                    customer['name'] as String? ?? 'Customer';
+                                final name = customer['name'] as String? ??
+                                    widget.customerSingular;
                                 final phone =
                                     customer['phone'] as String? ?? '';
                                 final balance =
@@ -1372,7 +1400,8 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
               child: OutlinedButton.icon(
                 onPressed: _addCustomer,
                 icon: const Icon(Icons.person_add_alt_1_rounded),
-                label: const Text('Add a new customer'),
+                label:
+                    Text('Add a new ${widget.customerSingular.toLowerCase()}'),
               ),
             ),
           ],
@@ -1395,7 +1424,7 @@ class _PaymentMethodTile extends StatelessWidget {
   final String subtitle;
   final Color color;
   final bool isSelected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _PaymentMethodTile({
     required this.icon,
@@ -1410,86 +1439,91 @@ class _PaymentMethodTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return GlassCard(
-      onTap: onTap,
-      padding: const EdgeInsets.all(DesignSpacing.md + 2),
-      borderRadius: DesignSpacing.radiusMd + 2,
-      blur: isSelected ? 12 : 4,
-      tint: isSelected
-          ? color.withValues(alpha: 0.08)
-          : (isDark ? DesignColors.glassDark : DesignColors.glassWhite),
-      borderColor: isSelected
-          ? color.withValues(alpha: 0.4)
-          : (isDark ? DesignColors.glassDarkBorder : DesignColors.glassBorder),
-      boxShadow: isSelected
-          ? [
-              BoxShadow(
-                color: color.withValues(alpha: 0.15),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ]
-          : null,
-      child: Row(
-        children: [
-          Container(
-            width: DesignSpacing.xxl + 24,
-            height: DesignSpacing.xxl + 24,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-              border: Border.all(color: color.withValues(alpha: 0.2)),
-            ),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          const SizedBox(width: DesignSpacing.md + 2),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: DesignType.chatBody + 2,
-                    fontWeight: FontWeight.w600,
-                    color: isSelected
-                        ? color
-                        : (isDark
-                            ? DesignColors.darkTextPrimary
-                            : DesignColors.textPrimary),
-                  ),
+    return Opacity(
+      opacity: onTap == null ? 0.55 : 1,
+      child: GlassCard(
+        onTap: onTap,
+        padding: const EdgeInsets.all(DesignSpacing.md + 2),
+        borderRadius: DesignSpacing.radiusMd + 2,
+        blur: isSelected ? 12 : 4,
+        tint: isSelected
+            ? color.withValues(alpha: 0.08)
+            : (isDark ? DesignColors.glassDark : DesignColors.glassWhite),
+        borderColor: isSelected
+            ? color.withValues(alpha: 0.4)
+            : (isDark
+                ? DesignColors.glassDarkBorder
+                : DesignColors.glassBorder),
+        boxShadow: isSelected
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.15),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
-                const SizedBox(height: DesignSpacing.xs - 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: DesignType.chatBody - 1,
-                    color: isDark
-                        ? DesignColors.darkTextSecondary
-                        : DesignColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (isSelected)
+              ]
+            : null,
+        child: Row(
+          children: [
             Container(
-              padding: const EdgeInsets.all(4),
+              width: DesignSpacing.xxl + 24,
+              height: DesignSpacing.xxl + 24,
               decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.4),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                border: Border.all(color: color.withValues(alpha: 0.2)),
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(width: DesignSpacing.md + 2),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: DesignType.chatBody + 2,
+                      fontWeight: FontWeight.w600,
+                      color: isSelected
+                          ? color
+                          : (isDark
+                              ? DesignColors.darkTextPrimary
+                              : DesignColors.textPrimary),
+                    ),
+                  ),
+                  const SizedBox(height: DesignSpacing.xs - 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: DesignType.chatBody - 1,
+                      color: isDark
+                          ? DesignColors.darkTextSecondary
+                          : DesignColors.textSecondary,
+                    ),
                   ),
                 ],
               ),
-              child: const Icon(Icons.check_rounded,
-                  color: Colors.white, size: 18),
             ),
-        ],
+            if (isSelected)
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.4),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.check_rounded,
+                    color: Colors.white, size: 18),
+              ),
+          ],
+        ),
       ),
     );
   }

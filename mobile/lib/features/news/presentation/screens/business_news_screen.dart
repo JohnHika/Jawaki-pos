@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
@@ -58,7 +59,9 @@ class _BusinessNewsScreenState extends ConsumerState<BusinessNewsScreen> {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Business News',
+        title: ref
+            .watch(businessLayoutProvider)
+            .actionLabel('/news', 'Business News'),
         showBackButton: GoRouter.of(context).canPop(),
       ),
       body: RefreshIndicator(

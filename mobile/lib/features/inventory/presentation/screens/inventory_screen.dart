@@ -11,11 +11,16 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/auth/app_roles.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/utils/api_message.dart';
+import '../../../../core/utils/business_layout_search.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/utils/stock_quantity_display.dart';
 import '../../../sales/presentation/providers/catalog_provider.dart'
-    show syncCatalogCacheFromApi;
+    show
+        favoriteProductsProvider,
+        filteredProductsProvider,
+        syncCatalogCacheFromApi;
 import '../widgets/product_picker_dialog.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 
@@ -35,6 +40,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   List<Map<String, dynamic>> _inventoryItems = [];
   List<Map<String, dynamic>> _lowStockItems = [];
   bool _isLoading = true;
+  bool _isSyncingCatalog = true;
+  String? _dataLoadError;
+  String? _catalogSyncError;
+  String? get _inventoryDataError => _dataLoadError ?? _catalogSyncError;
   String _stockSearchQuery = '';
   String? _transferProductId;
   String? _transferToBranchId;
@@ -87,12 +96,44 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   }
 
   Future<void> _refreshCatalogCache() async {
+    if (!mounted) return;
+    setState(() => _isSyncingCatalog = true);
     try {
       await syncCatalogCacheFromApi();
-      if (mounted) await _loadData(showLoading: false);
+      if (!mounted) return;
+      setState(() {
+        _isSyncingCatalog = false;
+        _catalogSyncError = null;
+      });
+      ref.invalidate(filteredProductsProvider);
+      ref.invalidate(favoriteProductsProvider);
+      await _loadData(showLoading: false);
     } catch (e) {
       debugPrint('Inventory catalog refresh skipped: $e');
+      if (!mounted) return;
+      final hasCachedData =
+          _inventoryItems.isNotEmpty || _lowStockItems.isNotEmpty;
+      setState(() {
+        _isSyncingCatalog = false;
+        if (!hasCachedData) _isLoading = false;
+        _catalogSyncError = hasCachedData
+            ? 'Could not refresh the product catalog. Showing saved stock data.'
+            : 'Could not load the product catalog. Check your connection and retry.';
+      });
     }
+  }
+
+  Future<void> _retryInventoryLoad() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _dataLoadError = null;
+      _catalogSyncError = null;
+    });
+    await Future.wait([
+      _loadData(showLoading: false),
+      _refreshCatalogCache(),
+    ]);
   }
 
   Future<void> _loadData({bool showLoading = true}) async {
@@ -125,18 +166,36 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         _totalValue = totalValue;
         _lowStockItems = lowStockList;
         _inventoryItems = inventoryReport;
-        _isLoading = false;
+        _isLoading = _isSyncingCatalog &&
+            totalItems == 0 &&
+            lowStockList.isEmpty &&
+            inventoryReport.isEmpty;
+        _dataLoadError = null;
+        if (_catalogSyncError != null &&
+            (inventoryReport.isNotEmpty || lowStockList.isNotEmpty)) {
+          _catalogSyncError =
+              'Could not refresh the product catalog. Showing saved stock data.';
+        }
       });
     } catch (e) {
       debugPrint('Error loading inventory data: $e');
       if (mounted) {
-        setState(() => _isLoading = false);
-        showGlassSnackBar(
-          context,
-          'Failed to load inventory data',
-          icon: Icons.error_outline_rounded,
-          color: DesignColors.error,
-        );
+        final hasCachedData =
+            _inventoryItems.isNotEmpty || _lowStockItems.isNotEmpty;
+        setState(() {
+          _isLoading = false;
+          _dataLoadError = hasCachedData
+              ? 'Could not refresh stock data. Showing the last loaded figures.'
+              : 'Could not read saved stock data. Check your connection and try again.';
+        });
+        if (hasCachedData) {
+          showGlassSnackBar(
+            context,
+            'Could not refresh stock data. Showing the last loaded figures.',
+            icon: Icons.cloud_off_rounded,
+            color: DesignColors.warning,
+          );
+        }
       }
     }
   }
@@ -254,14 +313,20 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     return '${_formatUnitQty(quantity.toDouble())} ${pluralizeUnit(unit, quantity)} in stock · reorder below ${_formatUnitQty(minStock.toDouble())}';
   }
 
-  List<Map<String, dynamic>> get _filteredInventoryItems {
-    if (_stockSearchQuery.isEmpty) return _inventoryItems;
-    final q = _stockSearchQuery.toLowerCase();
+  List<Map<String, dynamic>> _filteredInventoryItemsFor(
+    BusinessLayoutConfig businessLayout,
+  ) {
+    if (_stockSearchQuery.trim().isEmpty) return _inventoryItems;
     return _inventoryItems.where((item) {
-      final name = (item['name'] as String? ?? '').toLowerCase();
-      final sku = (item['sku'] as String? ?? '').toLowerCase();
       final category = (item['categoryName'] as String? ?? '').toLowerCase();
-      return name.contains(q) || sku.contains(q) || category.contains(q);
+      return category.contains(_stockSearchQuery.trim().toLowerCase()) ||
+          businessLayoutProductMatchesSearch(
+            name: item['name'] as String? ?? '',
+            code: item['sku'] as String? ?? '',
+            metadata: item['metadata'],
+            layout: businessLayout,
+            query: _stockSearchQuery,
+          );
     }).toList();
   }
 
@@ -271,6 +336,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final permissions = RolePermissions(
       authService.currentUser?['permissions'] as List<dynamic>?,
     );
+    final businessLayout = ref.watch(businessLayoutProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
@@ -280,7 +346,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Inventory',
+        title: businessLayout.actionLabel('/inventory', 'Inventory'),
         showBackButton: false,
         actions: [
           if (permissions.canMakeSales || permissions.canManageStock)
@@ -304,7 +370,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           IconButton(
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh_rounded, size: 20),
-            onPressed: _loadData,
+            onPressed: _retryInventoryLoad,
           ),
         ],
       ),
@@ -327,7 +393,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     Expanded(
                       child: _InventoryMiniStat(
                         title: 'Items',
-                        value: _isLoading ? '...' : '$_totalItems',
+                        value: _isLoading
+                            ? '...'
+                            : _inventoryDataError != null &&
+                                    _inventoryItems.isEmpty
+                                ? '—'
+                                : '$_totalItems',
                         icon: Icons.inventory_2_rounded,
                         color: DesignColors.brand,
                       ),
@@ -336,7 +407,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     Expanded(
                       child: _InventoryMiniStat(
                         title: 'Low Stock',
-                        value: _isLoading ? '...' : '$_lowStockCount',
+                        value: _isLoading
+                            ? '...'
+                            : _inventoryDataError != null &&
+                                    _inventoryItems.isEmpty &&
+                                    _lowStockItems.isEmpty
+                                ? '—'
+                                : '$_lowStockCount',
                         icon: Icons.warning_amber_rounded,
                         color: DesignColors.warning,
                         trend: _lowStockCount > 0 ? 'Alerts' : null,
@@ -346,8 +423,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     Expanded(
                       child: _InventoryMiniStat(
                         title: 'Value',
-                        value:
-                            _isLoading ? '...' : _formatCurrency(_totalValue),
+                        value: _isLoading
+                            ? '...'
+                            : _inventoryDataError != null &&
+                                    _inventoryItems.isEmpty
+                                ? '—'
+                                : _formatCurrency(_totalValue),
                         icon: Icons.account_balance_wallet_rounded,
                         color: DesignColors.info,
                       ),
@@ -395,7 +476,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               Expanded(
                 child: TabBarView(
                   children: [
-                    _buildStockTab(context, permissions),
+                    _buildStockTab(context, permissions, businessLayout),
                     _buildLowStockTab(context, permissions),
                     if (canViewTransfers)
                       _buildTransfersTab(context, permissions),
@@ -421,12 +502,26 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Widget _buildStockTab(
     BuildContext context,
     RolePermissions permissions,
+    BusinessLayoutConfig businessLayout,
   ) {
     if (_isLoading) {
       return _buildLoadingList();
     }
 
-    final items = _filteredInventoryItems;
+    if (_inventoryItems.isEmpty &&
+        _lowStockItems.isEmpty &&
+        _inventoryDataError != null) {
+      return EmptyState(
+        icon: Icons.cloud_off_rounded,
+        title: 'Couldn’t load stock levels',
+        subtitle: _inventoryDataError!,
+        iconColor: DesignColors.error,
+        actionLabel: 'Retry',
+        onAction: _retryInventoryLoad,
+      );
+    }
+
+    final items = _filteredInventoryItemsFor(businessLayout);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
@@ -435,6 +530,17 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
     return Column(
       children: [
+        if (_inventoryDataError != null) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg,
+              DesignSpacing.sm,
+              DesignSpacing.lg,
+              0,
+            ),
+            child: _buildStaleDataNotice(),
+          ),
+        ],
         // Search bar
         Padding(
           padding: const EdgeInsets.fromLTRB(
@@ -453,7 +559,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             child: TextField(
               onChanged: (value) => setState(() => _stockSearchQuery = value),
               decoration: InputDecoration(
-                hintText: 'Search products, SKU, category...',
+                hintText: businessLayout.catalogSearchHint,
                 hintStyle: TextStyle(color: tertiaryColor),
                 prefixIcon:
                     Icon(Icons.search_rounded, color: tertiaryColor, size: 20),
@@ -469,7 +575,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         ),
         SectionHeader(
           title: 'Stock Levels',
-          subtitle: '${items.length} product${items.length == 1 ? '' : 's'}',
+          subtitle:
+              '${items.length} ${items.length == 1 ? businessLayout.productSingular : businessLayout.productsLabel}',
           icon: Icons.warehouse_rounded,
           trailing: items.isEmpty
               ? null
@@ -487,10 +594,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       : Icons.inventory_2_rounded,
                   title: _stockSearchQuery.isNotEmpty
                       ? 'No matches found'
-                      : 'No Products Yet',
+                      : 'No ${businessLayout.productsLabel} Yet',
                   subtitle: _stockSearchQuery.isNotEmpty
                       ? 'Try a different search term'
-                      : 'Products will appear here once added to inventory.',
+                      : '${businessLayout.productsLabel} will appear here once added to inventory.',
                 )
               : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(
@@ -751,6 +858,19 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       return _buildLoadingList();
     }
 
+    if (_inventoryItems.isEmpty &&
+        _lowStockItems.isEmpty &&
+        _inventoryDataError != null) {
+      return EmptyState(
+        icon: Icons.cloud_off_rounded,
+        title: 'Couldn’t load stock alerts',
+        subtitle: _inventoryDataError!,
+        iconColor: DesignColors.error,
+        actionLabel: 'Retry',
+        onAction: _retryInventoryLoad,
+      );
+    }
+
     // Severity is relative to each product's own reorder point (minStock),
     // not a hardcoded quantity cutoff — matches backend's shortfall logic.
     final critical = _lowStockItems
@@ -776,6 +896,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         DesignSpacing.massive + 4,
       ),
       children: [
+        if (_inventoryDataError != null) ...[
+          _buildStaleDataNotice(),
+          const SizedBox(height: DesignSpacing.sm),
+        ],
         SectionHeader(
           title: 'Low Stock Alerts',
           subtitle:
@@ -892,6 +1016,40 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           ],
         ],
       ],
+    );
+  }
+
+  Widget _buildStaleDataNotice() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondary =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: DesignColors.warning.withValues(alpha: .10),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        border: Border.all(color: DesignColors.warning.withValues(alpha: .35)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_off_rounded,
+              color: DesignColors.warning, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _inventoryDataError!,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: secondary),
+            ),
+          ),
+          TextButton(
+            onPressed: _retryInventoryLoad,
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
     );
   }
 

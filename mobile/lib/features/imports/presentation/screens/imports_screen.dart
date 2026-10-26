@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
@@ -33,7 +34,9 @@ class ImportsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Containers',
+        title: ref
+            .watch(businessLayoutProvider)
+            .actionLabel('/containers', 'Containers'),
         showBackButton: GoRouter.of(context).canPop(),
       ),
       floatingActionButton: perms.has('imports.manage')
@@ -80,7 +83,8 @@ class ImportsScreen extends ConsumerWidget {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
                       child: ListCard(
-                        leading: Icon(Icons.local_shipping_outlined, color: color),
+                        leading:
+                            Icon(Icons.local_shipping_outlined, color: color),
                         title: r.title,
                         subtitle: [
                           'Landed ${kesWhole(r.landedKes)}',
@@ -158,7 +162,8 @@ class _NewContainerSheetState extends State<_NewContainerSheet> {
       final json = await getIt<ApiClient>().createImport({
         'branchId': branchId,
         'title': _title.text.trim(),
-        if (_reference.text.trim().isNotEmpty) 'reference': _reference.text.trim(),
+        if (_reference.text.trim().isNotEmpty)
+          'reference': _reference.text.trim(),
         if (_origin.text.trim().isNotEmpty) 'origin': _origin.text.trim(),
         'currency': _currency,
         if (rate != null && rate > 0) 'fxRate': rate,
@@ -216,7 +221,14 @@ class _NewContainerSheetState extends State<_NewContainerSheet> {
               spacing: DesignSpacing.sm,
               runSpacing: DesignSpacing.sm,
               children: [
-                for (final c in const ['USD', 'CNY', 'AED', 'EUR', 'GBP', 'KES'])
+                for (final c in const [
+                  'USD',
+                  'CNY',
+                  'AED',
+                  'EUR',
+                  'GBP',
+                  'KES'
+                ])
                   ChoicePill(
                     label: c,
                     selected: _currency == c,

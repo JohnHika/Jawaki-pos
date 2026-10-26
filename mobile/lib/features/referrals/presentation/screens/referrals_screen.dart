@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
@@ -30,7 +31,9 @@ class ReferralsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Invite Shops',
+        title: ref
+            .watch(businessLayoutProvider)
+            .actionLabel('/referrals', 'Invite Shops'),
         showBackButton: GoRouter.of(context).canPop(),
       ),
       body: RefreshIndicator(
@@ -105,11 +108,15 @@ class ReferralsScreen extends ConsumerWidget {
                 Row(children: [
                   Expanded(
                       child: _Stat(
-                          label: 'Joined', value: '$rewarded', color: DesignColors.success)),
+                          label: 'Joined',
+                          value: '$rewarded',
+                          color: DesignColors.success)),
                   const SizedBox(width: DesignSpacing.md),
                   Expanded(
                       child: _Stat(
-                          label: 'Waiting', value: '$pending', color: DesignColors.warning)),
+                          label: 'Waiting',
+                          value: '$pending',
+                          color: DesignColors.warning)),
                   const SizedBox(width: DesignSpacing.md),
                   Expanded(
                       child: _Stat(

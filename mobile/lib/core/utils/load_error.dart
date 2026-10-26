@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import 'api_message.dart';
+
 /// Plain-language explanation for a failed screen load.
 ///
 /// Screens used to answer every failure with "Check your connection", which is
@@ -14,16 +16,7 @@ String loadErrorSubtitle(Object? error) {
       return 'Something went wrong on our side. Please try again in a moment.';
     }
 
-    final data = error.response?.data;
-    final rawMessage = data is Map ? data['message'] : null;
-    final message = rawMessage is List
-        ? rawMessage.map((part) => part.toString()).join(', ')
-        : rawMessage?.toString();
-    if (message != null && message.trim().isNotEmpty) return message.trim();
-    if (error.response == null) {
-      return 'Check your connection and try again.';
-    }
-    return 'That request couldn’t be completed. Please try again.';
+    return apiErrorMessage(error);
   }
   return 'Something went wrong. Please try again.';
 }

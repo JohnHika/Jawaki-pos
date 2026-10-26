@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -134,6 +136,7 @@ class UpdateCheckService extends ChangeNotifier {
   bool _isChecking = false;
   bool _isDownloading = false;
   bool _isInstalling = false;
+  bool _updateOperationInProgress = false;
   bool _requiresInstallerPermission = false;
   double? _downloadProgress;
   int? _downloadedBytes;
@@ -141,6 +144,7 @@ class UpdateCheckService extends ChangeNotifier {
   String? _errorMessage;
   String? _currentVersion;
   String? _downloadedApkPath;
+  String? _downloadedApkIdentity;
   AppUpdateInfo? _cachedUpdate;
   AppUpdateInfo? _requiredUpdate;
   AppUpdateInfo? _optionalUpdate;
@@ -605,7 +609,16 @@ class UpdateCheckService extends ChangeNotifier {
   }
 
   Future<void> _downloadAndInstall(AppUpdateInfo? update) async {
-    if (update == null) return;
+    if (update == null || _updateOperationInProgress) return;
+    _updateOperationInProgress = true;
+    try {
+      await _performDownloadAndInstall(update);
+    } finally {
+      _updateOperationInProgress = false;
+    }
+  }
+
+  Future<void> _performDownloadAndInstall(AppUpdateInfo update) async {
     if (update.apkUrl.trim().isEmpty) {
       _errorMessage = 'No APK download URL is configured for this update.';
       notifyListeners();
@@ -633,8 +646,11 @@ class UpdateCheckService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final file = await _downloadApk(update);
+      final updateIdentity = _updateIdentity(update);
+      final file = await _reuseDownloadedApk(updateIdentity) ??
+          await _downloadApk(update);
       _downloadedApkPath = file.path;
+      _downloadedApkIdentity = updateIdentity;
       _isDownloading = false;
       _isInstalling = true;
       notifyListeners();
@@ -723,7 +739,16 @@ class UpdateCheckService extends ChangeNotifier {
     final tempDir = await getTemporaryDirectory();
     final safeVersion =
         update.displayVersion.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-    final filePath = p.join(tempDir.path, 'pos-update-$safeVersion.apk');
+    final urlHash = sha256
+        .convert(utf8.encode(update.apkUrl.trim()))
+        .toString()
+        .substring(0, 16);
+    final buildSuffix =
+        update.buildNumber == null ? '' : '-${update.buildNumber}';
+    final filePath = p.join(
+      tempDir.path,
+      'pos-update-$safeVersion$buildSuffix-$urlHash.apk',
+    );
 
     final downloader = Dio(
       BaseOptions(
@@ -803,6 +828,24 @@ class UpdateCheckService extends ChangeNotifier {
     }
     throw lastError ?? StateError('No update download source is available');
   }
+
+  Future<File?> _reuseDownloadedApk(String updateIdentity) async {
+    final path = _downloadedApkPath;
+    if (path == null || _downloadedApkIdentity != updateIdentity) return null;
+
+    final file = File(path);
+    try {
+      if (await file.exists() && await file.length() > 0) return file;
+    } catch (_) {
+      // A removed or unreadable cached APK falls through to a fresh download.
+    }
+    _downloadedApkPath = null;
+    _downloadedApkIdentity = null;
+    return null;
+  }
+
+  String _updateIdentity(AppUpdateInfo update) =>
+      '${update.latestVersion}|${update.buildNumber ?? ''}|${update.apkUrl.trim()}';
 
   Future<String?> _githubFallbackUrlForUpdate(AppUpdateInfo update) async {
     final githubUpdate = await _getLatestGitHubPackagesUpdate();

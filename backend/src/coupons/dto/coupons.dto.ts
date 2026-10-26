@@ -9,6 +9,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
@@ -89,7 +90,9 @@ export class CreateCouponDto {
 
   @ApiPropertyOptional({ nullable: true, description: 'Restrict the code to one customer' })
   @IsOptional()
-  @IsUUID('4')
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(80)
   customerId?: string | null;
 
   @ApiPropertyOptional({ type: [String], description: 'Only these products are discounted. Empty = whole sale.' })
@@ -195,7 +198,9 @@ export class CheckCouponDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(80)
   customerId?: string;
 
   @ApiProperty({ type: [CheckCouponLineDto] })

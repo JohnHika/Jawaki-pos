@@ -97,8 +97,13 @@ class BackgroundSyncService {
     await storageService.initialize();
     final database = AppDatabase(storageService);
     final connectivityService = ConnectivityService();
+    final expectedTenantId = storageService.getTenantId();
 
     try {
+      if (expectedTenantId == null || expectedTenantId.isEmpty) {
+        debugPrint('[BackgroundSync] No active workspace, skipping sync');
+        return false;
+      }
       final connectionStatus = await connectivityService.checkCurrentStatus();
       if (connectionStatus != ConnectionStatus.online) {
         debugPrint('[BackgroundSync] Device is offline, skipping sync');
@@ -130,6 +135,7 @@ class BackgroundSyncService {
       final result = await processPendingQueue(
         database: database,
         apiClient: apiClient,
+        expectedTenantId: expectedTenantId,
       );
 
       debugPrint(
@@ -159,7 +165,16 @@ class BackgroundSyncService {
   static Future<SyncQueueProcessResult> processPendingQueue({
     required AppDatabase database,
     required ApiClient apiClient,
+    required String expectedTenantId,
   }) async {
+    if (database.activeTenantId != expectedTenantId) {
+      return const SyncQueueProcessResult(
+        processedCount: 0,
+        successCount: 0,
+        failureCount: 0,
+        conflictCount: 0,
+      );
+    }
     final pendingItems = await database.getPendingSyncQueue();
 
     if (pendingItems.isEmpty) {
@@ -171,6 +186,21 @@ class BackgroundSyncService {
       );
     }
 
+    // Customers referenced by offline sales must exist on the server first.
+    // Recovered customer events can have a newer queue sequence than an older
+    // sale, so process customer creates ahead of other events and hold their
+    // dependent sales until the create is confirmed.
+    pendingItems.sort((a, b) {
+      final aPriority = a.eventType == 'CUSTOMER_CREATED' ? 0 : 1;
+      final bPriority = b.eventType == 'CUSTOMER_CREATED' ? 0 : 1;
+      final priorityOrder = aPriority.compareTo(bPriority);
+      return priorityOrder != 0
+          ? priorityOrder
+          : a.sequenceNumber.compareTo(b.sequenceNumber);
+    });
+    final customersAwaitingCreate =
+        await database.getUnresolvedCustomerCreateSyncRecordIds();
+
     debugPrint(
         '[BackgroundSync] Processing ${pendingItems.length} pending items');
 
@@ -179,10 +209,30 @@ class BackgroundSyncService {
     var conflictCount = 0;
 
     for (final item in pendingItems) {
+      if (database.activeTenantId != expectedTenantId) break;
+
+      if (item.eventType == 'SALE_CREATED') {
+        try {
+          final payload = jsonDecode(item.payload) as Map<String, dynamic>;
+          final customerId = payload['customerId']?.toString();
+          if (customerId != null &&
+              customerId.isNotEmpty &&
+              customersAwaitingCreate.contains(customerId)) {
+            debugPrint(
+              '[BackgroundSync] Waiting to sync sale ${item.recordId} until customer $customerId is available',
+            );
+            continue;
+          }
+        } catch (_) {
+          // The event will reach the normal payload validation path below.
+        }
+      }
+
       try {
         final response = await apiClient.pushSyncEvents({
           'events': [_buildSyncEventPayload(item)],
-        });
+        }, expectedTenantId: expectedTenantId);
+        if (database.activeTenantId != expectedTenantId) break;
 
         final results = response['results'] as List<dynamic>?;
         final firstResult = results != null && results.isNotEmpty
@@ -215,6 +265,9 @@ class BackgroundSyncService {
             item,
             receiptNumber: firstResult['receiptNumber']?.toString(),
           );
+          if (item.eventType == 'CUSTOMER_CREATED') {
+            customersAwaitingCreate.remove(item.recordId);
+          }
           successCount++;
           debugPrint(
               '[BackgroundSync] ✓ Synced: ${item.entityTable}/${item.action}');
@@ -243,6 +296,7 @@ class BackgroundSyncService {
           );
         }
       } on DioException catch (e) {
+        if (database.activeTenantId != expectedTenantId) break;
         final errorMessage = _describeDioException(e);
 
         if (_isConflictException(e)) {
@@ -264,6 +318,7 @@ class BackgroundSyncService {
           '[BackgroundSync] ✗ Failed: ${item.entityTable}/${item.action} - $errorMessage',
         );
       } catch (e) {
+        if (database.activeTenantId != expectedTenantId) break;
         final errorMessage = 'Error: $e';
         await database.markSyncQueueFailed(item.id, errorMessage);
         failureCount++;
@@ -277,7 +332,9 @@ class BackgroundSyncService {
     }
 
     return SyncQueueProcessResult(
-      processedCount: pendingItems.length,
+      // A tenant switch can stop the loop before every row was attempted.
+      // Report only outcomes that were actually handled in this session.
+      processedCount: successCount + failureCount + conflictCount,
       successCount: successCount,
       failureCount: failureCount,
       conflictCount: conflictCount,
@@ -450,21 +507,48 @@ class _BackgroundAuthInterceptor extends Interceptor {
 
   _BackgroundAuthInterceptor(this._storage, this._dio);
 
+  bool _matchesExpectedTenant(RequestOptions options) {
+    final expectedTenantId = options.extra['expectedTenantId']?.toString();
+    return expectedTenantId == null ||
+        expectedTenantId == _storage.getTenantId();
+  }
+
+  DioException _sessionChanged(RequestOptions options) => DioException(
+        requestOptions: options,
+        type: DioExceptionType.cancel,
+        message: 'The signed-in workspace changed during sync.',
+      );
+
+  @override
+  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    if (!_matchesExpectedTenant(options)) {
+      return handler.reject(_sessionChanged(options));
+    }
+    handler.next(options);
+  }
+
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
+    if (!_matchesExpectedTenant(err.requestOptions)) {
+      return handler.next(err);
+    }
     if (err.response?.statusCode != 401) {
       return handler.next(err);
     }
 
     try {
-      _refreshFuture ??= _refresh();
+      final expectedTenantId =
+          err.requestOptions.extra['expectedTenantId']?.toString();
+      _refreshFuture ??= _refresh(expectedTenantId);
       final newAccessToken = await _refreshFuture;
       _refreshFuture = null;
-      if (newAccessToken == null) {
+      if (newAccessToken == null ||
+          !_matchesExpectedTenant(err.requestOptions)) {
         return handler.next(err);
       }
 
       final opts = err.requestOptions;
+      if (!_matchesExpectedTenant(opts)) return handler.next(err);
       opts.headers['Authorization'] = 'Bearer $newAccessToken';
       final response = await _dio.fetch(opts);
       return handler.resolve(response);
@@ -474,9 +558,17 @@ class _BackgroundAuthInterceptor extends Interceptor {
     }
   }
 
-  Future<String?> _refresh() async {
+  Future<String?> _refresh(String? expectedTenantId) async {
+    if (expectedTenantId != null &&
+        _storage.getTenantId() != expectedTenantId) {
+      return null;
+    }
     final refreshToken = await _storage.getRefreshToken();
     if (refreshToken == null) return null;
+    if (expectedTenantId != null &&
+        _storage.getTenantId() != expectedTenantId) {
+      return null;
+    }
 
     // A fresh Dio() (unlike _dio) inherits no timeouts at all — without
     // setting them explicitly here, a stalled connection would leave this
@@ -491,10 +583,19 @@ class _BackgroundAuthInterceptor extends Interceptor {
       'refreshToken': refreshToken,
     });
 
+    if (expectedTenantId != null &&
+        _storage.getTenantId() != expectedTenantId) {
+      return null;
+    }
+
     final newAccessToken = response.data['accessToken'] as String?;
     if (newAccessToken == null) return null;
 
     await _storage.saveAccessToken(newAccessToken);
+    if (expectedTenantId != null &&
+        _storage.getTenantId() != expectedTenantId) {
+      return null;
+    }
     _dio.options.headers['Authorization'] = 'Bearer $newAccessToken';
 
     final newRefreshToken = response.data['refreshToken'] as String?;

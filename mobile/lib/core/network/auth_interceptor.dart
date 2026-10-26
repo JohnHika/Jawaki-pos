@@ -17,8 +17,25 @@ class AuthInterceptor extends Interceptor {
 
   AuthInterceptor(this._authService, this._dio);
 
+  bool _matchesExpectedTenant(RequestOptions options) {
+    final expectedTenantId = options.extra['expectedTenantId']?.toString();
+    return expectedTenantId == null ||
+        expectedTenantId == _authService.tenantId;
+  }
+
+  DioException _sessionChanged(RequestOptions options) => DioException(
+        requestOptions: options,
+        type: DioExceptionType.cancel,
+        message: 'The signed-in workspace changed during sync.',
+      );
+
   @override
-  void onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
+  void onRequest(
+      RequestOptions options, RequestInterceptorHandler handler) async {
+    if (!_matchesExpectedTenant(options)) {
+      return handler.reject(_sessionChanged(options));
+    }
+
     // Skip auth for public auth endpoints; logout still needs the bearer token.
     final noAuthPaths = ['/auth/login', '/auth/register', '/auth/refresh'];
     if (noAuthPaths.any((path) => options.path.contains(path))) {
@@ -29,12 +46,18 @@ class AuthInterceptor extends Interceptor {
     // storage if the in-memory token was cleared (e.g. after lock/unlock).
     try {
       final token = await _authService.getAccessTokenWithFallback();
+      if (!_matchesExpectedTenant(options)) {
+        return handler.reject(_sessionChanged(options));
+      }
       if (token != null) {
         options.headers['Authorization'] = 'Bearer $token';
       }
     } catch (_) {
       // If reading the token fails (e.g. secure storage locked), continue
       // without it and let the backend return 401 if auth is required.
+    }
+    if (!_matchesExpectedTenant(options)) {
+      return handler.reject(_sessionChanged(options));
     }
 
     // Add device ID if available
@@ -48,6 +71,10 @@ class AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
+    if (!_matchesExpectedTenant(err.requestOptions)) {
+      return handler.next(err);
+    }
+
     // Don't retry logout or login endpoints
     // /auth/refresh must be here too: it travels through this same Dio, so its
     // own 401 would re-enter this handler and wait on the very refresh it is
@@ -72,12 +99,22 @@ class AuthInterceptor extends Interceptor {
     const maxRefreshAttempts = 3;
     for (var attempt = 0; attempt < maxRefreshAttempts; attempt++) {
       try {
-        _refreshFuture ??= _authService.refreshTokens().whenComplete(() {
+        final expectedTenantId =
+            err.requestOptions.extra['expectedTenantId']?.toString();
+        _refreshFuture ??= _authService
+            .refreshTokens(expectedTenantId: expectedTenantId)
+            .whenComplete(() {
           _refreshFuture = null;
         });
         await _refreshFuture;
+        if (!_matchesExpectedTenant(err.requestOptions)) {
+          return handler.next(err);
+        }
         break; // Refresh succeeded.
       } catch (e) {
+        if (!_matchesExpectedTenant(err.requestOptions)) {
+          return handler.next(err);
+        }
         final refreshStatus = e is DioException ? e.response?.statusCode : null;
 
         // Server explicitly rejected the refresh token → session is dead.
@@ -104,6 +141,7 @@ class AuthInterceptor extends Interceptor {
     // Refresh succeeded — retry the original request with the new token.
     try {
       final opts = err.requestOptions;
+      if (!_matchesExpectedTenant(opts)) return handler.next(err);
       opts.headers['Authorization'] = 'Bearer ${_authService.accessToken}';
       final response = await _dio.fetch(opts);
       return handler.resolve(response);

@@ -6,15 +6,14 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/services/app_icon_service.dart';
 import '../../../../core/theme/design_system.dart';
 
-/// Settings control for the living app icon: an opt-in that lets the launcher
-/// icon reflect how the shop is doing (a streak, products out of stock, a
-/// record day).
+/// Settings control for the living app icon: it lets the launcher icon reflect
+/// how the shop is doing (a streak, products out of stock, a record day).
 ///
-/// Everything it reads stays on this phone. It is off by default because
-/// Android can only swap between icons bundled in the app, and some launchers
-/// drop the home-screen shortcut when the icon is swapped; "Add to home
-/// screen" puts it back with one tap. The swap itself waits until the app is
-/// in the background, because doing it while the app is open closes the app.
+/// It is on by default and can be turned off here. Everything it reads stays on
+/// this phone. Android can only swap between icons bundled in the app, and some
+/// launchers drop the home-screen shortcut when the icon is swapped; "Add to
+/// home screen" puts it back with one tap. The swap itself waits until the app
+/// is in the background, because doing it while the app is open closes the app.
 class LivingIconCard extends StatefulWidget {
   const LivingIconCard({super.key, this.service});
 
@@ -159,7 +158,8 @@ class _LivingIconCardState extends State<LivingIconCard> {
           const SizedBox(height: DesignSpacing.sm),
           Text(
             'This is worked out on your phone from your own sales and stock; '
-            'nothing is sent anywhere. The icon changes at most once a day. '
+            'nothing is sent anywhere. The icon changes at most once every '
+            '20 hours. '
             'On some phones the home-screen shortcut disappears when it '
             'changes, so use Add to home screen to put it back.',
             style: theme.textTheme.bodySmall?.copyWith(color: muted, height: 1.35),

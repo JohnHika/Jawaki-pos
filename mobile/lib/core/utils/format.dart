@@ -20,8 +20,18 @@ String formatMoney(
   bool decimals = false,
 }) {
   final v = value ?? 0;
-  final formatted = decimals ? _moneyGrouped2.format(v) : _moneyGrouped.format(v);
+  final formatted =
+      decimals ? _moneyGrouped2.format(v) : _moneyGrouped.format(v);
   return '$symbol$formatted';
+}
+
+/// Round a monetary amount to the currency's two minor-unit digits, matching
+/// the backend's sale and tax calculations. The small epsilon avoids binary
+/// floating-point values such as 1.005 landing just below the half-cent.
+double roundCurrency(num value) {
+  final amount = value.toDouble();
+  if (!amount.isFinite) return amount;
+  return (amount * 100 + 1e-9).roundToDouble() / 100;
 }
 
 /// "1 transaction" / "3 transactions". [count] may be a num or numeric string.

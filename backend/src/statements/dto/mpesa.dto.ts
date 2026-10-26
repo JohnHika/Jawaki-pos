@@ -5,6 +5,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsDateString,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -57,7 +58,9 @@ export class MpesaItemDto {
 export class ApplyMpesaItemDto extends MpesaItemDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID('4')
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(80)
   customerId?: string;
 
   @ApiPropertyOptional()

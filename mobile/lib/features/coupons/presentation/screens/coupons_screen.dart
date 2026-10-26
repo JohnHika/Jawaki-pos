@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/services/export_document_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
@@ -34,7 +35,9 @@ class CouponsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Coupons',
+        title: ref
+            .watch(businessLayoutProvider)
+            .actionLabel('/coupons', 'Coupons'),
         showBackButton: GoRouter.of(context).canPop(),
       ),
       floatingActionButton: canManage
@@ -127,7 +130,8 @@ class _ReportCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Last ${report.days} days',
-                style: TextStyle(color: secondary, fontWeight: FontWeight.w600)),
+                style:
+                    TextStyle(color: secondary, fontWeight: FontWeight.w600)),
             const SizedBox(height: 4),
             Text(
               report.uses == 0
@@ -217,7 +221,9 @@ class _CouponEditorState extends State<_CouponEditor> {
         text: c?.perCustomerLimit == null ? '' : '${c!.perCustomerLimit}');
     _percent = c?.isPercent ?? true;
     _active = c?.isActive ?? true;
-    if (c != null) _validDays = null; // keep the existing end date unless changed
+    if (c != null) {
+      _validDays = null; // keep the existing end date unless changed
+    }
   }
 
   @override
@@ -250,7 +256,10 @@ class _CouponEditorState extends State<_CouponEditor> {
     final api = getIt<ApiClient>();
     final expires = _validDays == null
         ? null
-        : DateTime.now().add(Duration(days: _validDays!)).toUtc().toIso8601String();
+        : DateTime.now()
+            .add(Duration(days: _validDays!))
+            .toUtc()
+            .toIso8601String();
     try {
       if (_isEdit) {
         await api.updateCoupon(widget.existing!.id, {
@@ -268,7 +277,8 @@ class _CouponEditorState extends State<_CouponEditor> {
           'value': value,
           if (_num(_minSpend) != null) 'minSpend': _num(_minSpend),
           if (_int(_usageLimit) != null) 'usageLimit': _int(_usageLimit),
-          if (_int(_perCustomer) != null) 'perCustomerLimit': _int(_perCustomer),
+          if (_int(_perCustomer) != null)
+            'perCustomerLimit': _int(_perCustomer),
           if (_validDays != null && _validDays! > 0) 'expiresAt': expires,
         });
       }
@@ -354,7 +364,8 @@ class _CouponEditorState extends State<_CouponEditor> {
             ],
             TextField(
               controller: _minSpend,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               decoration: kitFieldDecoration(context,
                   label: 'Minimum spend (optional)', prefixText: 'KES '),
             ),
@@ -401,7 +412,8 @@ class _CouponEditorState extends State<_CouponEditor> {
                 activeThumbColor: DesignColors.accent,
                 onChanged: (v) => setState(() => _active = v),
                 title: const Text('Switched on'),
-                subtitle: const Text('Turn it off to stop it working at the till.'),
+                subtitle:
+                    const Text('Turn it off to stop it working at the till.'),
               ),
             ],
             if (_error != null) ...[
@@ -412,7 +424,9 @@ class _CouponEditorState extends State<_CouponEditor> {
             ],
             const SizedBox(height: DesignSpacing.lg),
             GradientButton(
-              label: _busy ? 'Saving...' : (_isEdit ? 'Save changes' : 'Create coupon'),
+              label: _busy
+                  ? 'Saving...'
+                  : (_isEdit ? 'Save changes' : 'Create coupon'),
               icon: Icons.check_rounded,
               onPressed: _busy ? null : _save,
             ),
@@ -444,7 +458,9 @@ class _CouponEditorState extends State<_CouponEditor> {
               TextButton(
                 onPressed: _busy ? null : _delete,
                 child: Text(
-                    c!.usedCount == 0 ? 'Delete coupon' : 'Delete (switches off, keeps history)',
+                    c!.usedCount == 0
+                        ? 'Delete coupon'
+                        : 'Delete (switches off, keeps history)',
                     style: const TextStyle(color: DesignColors.error)),
               ),
             ],

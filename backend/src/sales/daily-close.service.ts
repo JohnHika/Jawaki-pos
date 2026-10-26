@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { SalesService } from './sales.service';
@@ -38,64 +38,129 @@ export class DailyCloseService {
     const branch = await this.prisma.branch.findFirst({ where: { id: branchId, tenantId } });
     if (!branch) throw new NotFoundException('Branch not found');
 
-    const date = this.normalizeDate(dto.date, branch.timezone ?? 'Africa/Nairobi');
+    const timezone = branch.timezone ?? 'Africa/Nairobi';
+    const businessDay = todayInTimezone(timezone);
+    const date = this.normalizeDate(dto.date ?? businessDay, timezone);
     const dateStr = date.toISOString().split('T')[0];
+    if (dateStr !== businessDay) {
+      throw new BadRequestException(
+        'End of day can only be closed for the current business day. Historical cash counts cannot be reconciled against today’s till balance.',
+      );
+    }
 
     // Full sales + payment-method picture for the day.
     const summary = await this.salesService.getDailySummary(branchId, dateStr, tenantId);
 
-    // Book the cash count as a reconciliation (also corrects the ledger for
-    // any discrepancy in RUNNING_BALANCE mode). This is the source of the
-    // expected-vs-counted figures we snapshot into the close.
-    const reconciliation = await this.reconciliationService.createReconciliation(
-      userId,
-      tenantId,
-      branchId,
-      { countedCash: dto.countedCash, notes: dto.notes },
-    );
+    // Commit the till adjustment and the Z-report as one operation. The
+    // branch lock also serializes concurrent close taps so retries can reuse
+    // the first reconciliation instead of creating duplicate ledger history.
+    const result = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${branchId}))`;
 
-    const data = {
-      branchId,
-      date,
-      totalSales: summary.totalSales,
-      totalTransactions: summary.totalTransactions,
-      cashSales: summary.cashSales,
-      mpesaSales: summary.mpesaSales,
-      cardSales: summary.cardSales,
-      creditSales: summary.creditSales,
-      outstandingBalance: summary.outstandingBalance,
-      totalTax: summary.totalTax,
-      totalDiscount: summary.totalDiscount,
-      expectedCash: reconciliation.expectedCash,
-      countedCash: reconciliation.countedCash,
-      cashDiscrepancy: reconciliation.discrepancy,
-      reconciliationId: reconciliation.id,
-      notes: dto.notes,
-      closedById: userId,
-      closedAt: new Date(),
-    };
+      const existingClose = await tx.dailyClose.findUnique({
+        where: { branchId_date: { branchId, date } },
+      });
 
-    // Idempotent per branch-day: re-closing updates the snapshot.
-    const close = await this.prisma.dailyClose.upsert({
-      where: { branchId_date: { branchId, date } },
-      create: data,
-      update: data,
+      let reconciliationResult:
+        | Awaited<ReturnType<CashReconciliationService['createReconciliationInTransaction']>>
+        | null = null;
+      let reconciliationCreated = false;
+
+      // A network retry or an unchanged re-close should be idempotent across
+      // both the Z-report and the cash ledger, not just the upsert below.
+      if (
+        existingClose?.reconciliationId &&
+        Number(existingClose.countedCash) === dto.countedCash
+      ) {
+        const previous = await tx.cashReconciliation.findFirst({
+          where: {
+            id: existingClose.reconciliationId,
+            branchId,
+          },
+        });
+        if (previous) {
+          const laterCashMovement = await tx.cashLedgerEntry.findFirst({
+            where: { branchId, createdAt: { gt: previous.createdAt } },
+            select: { id: true },
+          });
+          if (!laterCashMovement) {
+            reconciliationResult = {
+              reconciliation: previous,
+              expectedCash: Number(previous.expectedCash),
+              discrepancy: Number(previous.discrepancy),
+            };
+          }
+        }
+      }
+
+      if (!reconciliationResult) {
+        reconciliationResult = await this.reconciliationService
+          .createReconciliationInTransaction(tx, userId, tenantId, branchId, {
+            countedCash: dto.countedCash,
+            notes: dto.notes,
+          });
+        reconciliationCreated = true;
+      }
+
+      const reconciliation = reconciliationResult.reconciliation;
+      const data = {
+        branchId,
+        date,
+        totalSales: summary.totalSales,
+        totalTransactions: summary.totalTransactions,
+        cashSales: summary.cashSales,
+        mpesaSales: summary.mpesaSales,
+        cardSales: summary.cardSales,
+        creditSales: summary.creditSales,
+        outstandingBalance: summary.outstandingBalance,
+        totalTax: summary.totalTax,
+        totalDiscount: summary.totalDiscount,
+        expectedCash: reconciliation.expectedCash,
+        countedCash: reconciliation.countedCash,
+        cashDiscrepancy: reconciliation.discrepancy,
+        reconciliationId: reconciliation.id,
+        notes: dto.notes,
+        closedById: userId,
+        closedAt: new Date(),
+      };
+
+      const close = await tx.dailyClose.upsert({
+        where: { branchId_date: { branchId, date } },
+        create: data,
+        update: data,
+      });
+
+      return {
+        close,
+        reconciliationResult,
+        reconciliationCreated,
+        wasReclosed: existingClose != null,
+      };
     });
+
+    if (result.reconciliationCreated) {
+      await this.reconciliationService.recordReconciliationEffects(
+        userId,
+        tenantId,
+        branchId,
+        result.reconciliationResult,
+      );
+    }
 
     await this.auditService.record({
       userId,
-      action: 'CREATE',
+      action: result.wasReclosed ? 'UPDATE' : 'CREATE',
       entityType: 'daily_close',
-      entityId: close.id,
+      entityId: result.close.id,
       newValues: {
         date: dateStr,
         totalSales: summary.totalSales,
         countedCash: dto.countedCash,
-        discrepancy: reconciliation.discrepancy,
+        discrepancy: result.reconciliationResult.discrepancy,
       },
     });
 
-    return this.format(close);
+    return this.format(result.close);
   }
 
   /** The close for a specific day (or today) — null if not yet closed. Lets

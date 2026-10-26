@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/widgets/app_markdown.dart';
 import '../../../../core/services/export_document_service.dart';
 import '../../../../core/services/voice_input_service.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/providers/tenant_provider.dart';
@@ -442,7 +443,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Axon AI',
+        title: ref.watch(businessLayoutProvider).actionLabel('/ai', 'Axon AI'),
         showBackButton: false,
         actions: [
           IconButton(
@@ -692,7 +693,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     final secondary = context.themed(DesignColors.darkTextSecondary);
     final firstName = ref.watch(tenantIdentityProvider).userFirstName;
     final hour = DateTime.now().hour;
-    final period = hour < 12 ? 'morning' : (hour < 17 ? 'afternoon' : 'evening');
+    final period =
+        hour < 12 ? 'morning' : (hour < 17 ? 'afternoon' : 'evening');
 
     AiSkillCommand skill(String command) =>
         aiSkillCommands.firstWhere((c) => c.command == command);
@@ -747,8 +749,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     ];
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(
-          DesignSpacing.lg, DesignSpacing.xl, DesignSpacing.lg, DesignSpacing.lg),
+      padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.xl,
+          DesignSpacing.lg, DesignSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -797,7 +799,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                 ).animateEntrance(
                   context,
                   delay: DesignAnimation.fast,
-                  effects: () => [const FadeEffect(duration: DesignAnimation.fast)],
+                  effects: () =>
+                      [const FadeEffect(duration: DesignAnimation.fast)],
                 ),
               ),
             ],
@@ -848,7 +851,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
             children: [
               for (final cmd in quickAsks)
                 ActionChip(
-                  avatar: Icon(cmd.icon, size: 16, color: DesignColors.accentDark),
+                  avatar:
+                      Icon(cmd.icon, size: 16, color: DesignColors.accentDark),
                   label: Text(cmd.label),
                   onPressed: () => _sendMessage(cmd.prompt),
                 ),
@@ -1995,7 +1999,8 @@ class _AiHubCard extends StatelessWidget {
                     height: 38,
                     decoration: BoxDecoration(
                       color: DesignColors.accent.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
                     ),
                     child: Icon(action.icon,
                         size: 20, color: DesignColors.accentDark),

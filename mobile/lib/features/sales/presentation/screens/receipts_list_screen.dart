@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
@@ -146,7 +147,9 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Receipts',
+        title: ref
+            .watch(businessLayoutProvider)
+            .actionLabel('/receipts', 'Receipts'),
         actions: [
           IconButton(
             icon: const Icon(Icons.filter_list_rounded),
@@ -228,8 +231,7 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                                 padding: EdgeInsets.symmetric(
                                     vertical: DesignSpacing.xl),
                                 child: Center(
-                                  child: Text(
-                                      'No receipts match your search.',
+                                  child: Text('No receipts match your search.',
                                       key: ValueKey('receipt-search-empty')),
                                 ),
                               ),
@@ -278,9 +280,8 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
       scrollable: true,
       child: Builder(builder: (context) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
-        final tertiaryColor = isDark
-            ? DesignColors.darkTextTertiary
-            : DesignColors.textTertiary;
+        final tertiaryColor =
+            isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           child: Column(
@@ -324,7 +325,8 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: DesignSpacing.md - 2),
@@ -447,5 +449,4 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
       ),
     );
   }
-
 }

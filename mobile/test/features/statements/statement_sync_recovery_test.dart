@@ -13,7 +13,7 @@ void main() {
       );
 
   group('statementNeedsCustomerSync', () {
-    test('recovers legacy IDs rejected by older API validation', () {
+    test('does not sync-retry legacy IDs rejected by older API validation', () {
       expect(
         statementNeedsCustomerSync(responseError(
           400,
@@ -21,11 +21,11 @@ void main() {
             'message': ['customerId must be a UUID']
           },
         )),
-        isTrue,
+        isFalse,
       );
     });
 
-    test('recovers when a gateway nests the UUID validation message', () {
+    test('does not sync-retry a nested UUID validation message', () {
       expect(
         statementNeedsCustomerSync(responseError(
           400,
@@ -35,7 +35,7 @@ void main() {
             },
           },
         )),
-        isTrue,
+        isFalse,
       );
     });
 

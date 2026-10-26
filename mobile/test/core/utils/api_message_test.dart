@@ -44,7 +44,7 @@ void main() {
           },
         },
       )),
-      'This customer record needs to sync before a statement can be sent. Reconnect and try again.',
+      'The statement service needs an update before it can handle this customer record. Try again after the server is updated.',
     );
   });
 

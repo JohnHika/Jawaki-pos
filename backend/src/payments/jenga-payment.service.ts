@@ -224,6 +224,9 @@ export class JengaPaymentService {
       !forceQuery &&
       ["failed", "cancelled", "canceled", "needs_review"].includes(transaction.status)
     ) {
+      if (["failed", "cancelled", "canceled"].includes(transaction.status)) {
+        await this.releaseFailedSubscriptionRenewal(transaction, reference);
+      }
       return this.statusResponse(transaction);
     }
     this.assertConfigured();
@@ -277,6 +280,7 @@ export class JengaPaymentService {
                   : {},
       });
       if (completed) await this.settleSubscriptionRenewal(updated, reference);
+      if (failed) await this.releaseFailedSubscriptionRenewal(updated, reference);
       return this.statusResponse(updated);
     } catch (error) {
       this.logger.warn(
@@ -299,6 +303,32 @@ export class JengaPaymentService {
         `AXONSUB settlement failed for ${reference}: ${this.safeError(settleError)}`,
       );
     }
+  }
+
+  /**
+   * A verified terminal M-Pesa result releases the invoice reservation so
+   * the merchant can retry through Paystack. A pending/unknown provider
+   * response keeps the reservation and prevents a second charge.
+   */
+  private async releaseFailedSubscriptionRenewal(
+    transaction: { accountReference?: string | null },
+    checkoutRequestId: string,
+  ) {
+    const invoiceReference = transaction.accountReference ?? "";
+    if (!invoiceReference.startsWith("AXONSUB-")) return;
+    await this.prisma.subscriptionInvoice.updateMany({
+      where: {
+        mpesaCheckoutId: checkoutRequestId,
+        reference: invoiceReference,
+        provider: "JENGA_STK",
+        status: { in: ["PENDING", "PENDING_CONFIRMATION"] },
+      },
+      data: {
+        provider: null,
+        reference: null,
+        mpesaCheckoutId: null,
+      },
+    });
   }
 
   private statusResponse(transaction: any) {

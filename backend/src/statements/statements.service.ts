@@ -12,6 +12,7 @@ import { Prisma, StatementLink } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import pdfMake = require('pdfmake');
 import { PrismaService } from '../common/prisma/prisma.service';
+import { calendarDaysBetweenInTimezone } from '../common/operating-hours';
 import { publicApiBase } from '../common/public-api-url';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -40,9 +41,13 @@ function notFound(message: string): HttpException {
   return new HttpException({ statusCode: 404, message, error: 'Not Found' }, HttpStatus.NOT_FOUND);
 }
 
-export function overdueDaysFor(dueDate: Date | null, now: Date): number {
-  if (!dueDate || dueDate.getTime() >= now.getTime()) return 0;
-  return Math.max(1, Math.floor((now.getTime() - dueDate.getTime()) / DAY_MS));
+export function overdueDaysFor(
+  dueDate: Date | null,
+  now: Date,
+  timezone = 'Africa/Nairobi',
+): number {
+  if (!dueDate) return 0;
+  return Math.max(0, calendarDaysBetweenInTimezone(dueDate, now, timezone));
 }
 
 @Injectable()
@@ -145,6 +150,7 @@ export class StatementsService {
           orderBy: { createdAt: 'asc' },
           take: 100,
           include: {
+            branch: { select: { timezone: true } },
             sale: {
               select: {
                 receiptNumber: true,
@@ -172,7 +178,7 @@ export class StatementsService {
           paid: Math.round((original - outstanding) * 100) / 100,
           outstanding,
           dueDate: row.dueDate,
-          overdueDays: overdueDaysFor(row.dueDate, now),
+          overdueDays: overdueDaysFor(row.dueDate, now, row.branch.timezone || 'Africa/Nairobi'),
         };
       });
       payments = paid.map((p) => ({
@@ -187,6 +193,7 @@ export class StatementsService {
           where: { tenantId, debtorId: target.debtorId, status: { in: ['OPEN', 'PARTIAL'] } },
           orderBy: { createdAt: 'asc' },
           take: 100,
+          include: { branch: { select: { timezone: true } } },
         }),
         this.prisma.peerReceivablePayment.findMany({
           where: { tenantId, receivable: { debtorId: target.debtorId } },
@@ -205,7 +212,7 @@ export class StatementsService {
           paid: Math.round((original - outstanding) * 100) / 100,
           outstanding,
           dueDate: row.dueDate,
-          overdueDays: overdueDaysFor(row.dueDate, now),
+          overdueDays: overdueDaysFor(row.dueDate, now, row.branch.timezone || 'Africa/Nairobi'),
         };
       });
       payments = paid.map((p) => ({

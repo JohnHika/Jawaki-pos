@@ -49,7 +49,12 @@ export class PaystackBillingService {
         'An M-Pesa renewal request is being confirmed. Check its status before starting another payment.',
       );
     }
-    if (invoice.provider === 'JENGA_STK' && invoice.mpesaCheckoutId) {
+    if (invoice.provider === 'JENGA_STK') {
+      if (!invoice.mpesaCheckoutId) {
+        throw new ConflictException(
+          'An M-Pesa renewal is reserved but its status reference is unavailable. Refresh the invoice before retrying.',
+        );
+      }
       const stkPayment = await this.prisma.mpesaTransaction.findUnique({
         where: { checkoutRequestId: invoice.mpesaCheckoutId },
         select: { status: true },
@@ -98,6 +103,7 @@ export class PaystackBillingService {
         provider: 'PAYSTACK_INITIALIZING',
         reference,
         authorizationUrl: null,
+        mpesaCheckoutId: null,
       },
     });
     if (reservation.count !== 1) {

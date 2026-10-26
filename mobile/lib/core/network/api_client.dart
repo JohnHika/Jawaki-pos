@@ -408,6 +408,17 @@ class ApiClient {
     return response.data as Map<String, dynamic>;
   }
 
+  /// Refresh a Jenga M-Pesa status for a tenant-owned subscription invoice.
+  /// GET /api/v1/billing/mpesa/verify/:invoiceId
+  Future<Map<String, dynamic>> verifyMpesaSubscriptionPayment(
+    String invoiceId,
+  ) async {
+    final response = await _dio.get(
+      '/billing/mpesa/verify/${Uri.encodeComponent(invoiceId)}',
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> updateCurrentTenant({
     String? name,
     String? logo,
@@ -424,6 +435,11 @@ class ApiClient {
       if (showTaxOnReceipt != null) 'showTaxOnReceipt': showTaxOnReceipt,
       if (settings != null) 'settings': settings,
     });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getCurrentTenant() async {
+    final response = await _dio.get('/branches/tenants/current');
     return response.data as Map<String, dynamic>;
   }
 
@@ -716,6 +732,7 @@ class ApiClient {
   Future<List<dynamic>> getAllProducts({
     String? branchId,
     int limit = 500,
+    Future<void> Function(List<dynamic> items)? onPageFetched,
   }) async {
     if (limit < 1 || limit > 500) {
       throw ArgumentError.value(limit, 'limit', 'Must be between 1 and 500.');
@@ -731,6 +748,7 @@ class ApiClient {
     if (firstItems is! List) {
       throw const FormatException('The product list response was invalid.');
     }
+    await onPageFetched?.call(firstItems);
 
     final allItems = <dynamic>[...firstItems];
     final reportedPages = firstPage['totalPages'];
@@ -755,6 +773,7 @@ class ApiClient {
               'A product catalog page was invalid.',
             );
           }
+          await onPageFetched?.call(pageItems);
           allItems.addAll(pageItems);
         }
       }
@@ -776,6 +795,7 @@ class ApiClient {
       if (pageItems is! List) {
         throw const FormatException('A product catalog page was invalid.');
       }
+      await onPageFetched?.call(pageItems);
       allItems.addAll(pageItems);
       if (pageItems.length < limit) return allItems;
     }
@@ -815,6 +835,8 @@ class ApiClient {
     int? minStock,
     double? minPrice,
     bool allowFractions = false,
+    bool? trackInventory,
+    Map<String, dynamic>? metadata,
   }) async {
     final response = await _dio.post('/catalog/products', data: {
       'name': name,
@@ -828,7 +850,9 @@ class ApiClient {
       if (pricingTiers != null) 'pricingTiers': pricingTiers,
       if (minStock != null) 'minStock': minStock,
       if (minPrice != null) 'minPrice': minPrice,
+      if (metadata != null) 'metadata': metadata,
       'allowFractions': allowFractions,
+      if (trackInventory != null) 'trackInventory': trackInventory,
     });
     return response.data as Map<String, dynamic>;
   }
@@ -849,17 +873,21 @@ class ApiClient {
     bool clearMinPrice = false,
     bool clearImage = false,
     bool? allowFractions,
+    bool? trackInventory,
+    Map<String, dynamic>? metadata,
   }) async {
     final response = await _dio.patch('/catalog/products/$id', data: {
       if (name != null) 'name': name,
       if (sku != null && sku.trim().isNotEmpty) 'sku': sku.trim(),
       if (basePrice != null) 'basePrice': basePrice,
       if (categoryIds != null) 'categoryIds': categoryIds,
+      if (metadata != null) 'metadata': metadata,
       if (description != null) 'description': description,
       if (unit != null) 'unit': unit,
       if (pricingTiers != null) 'pricingTiers': pricingTiers,
       if (minStock != null) 'minStock': minStock,
       if (allowFractions != null) 'allowFractions': allowFractions,
+      if (trackInventory != null) 'trackInventory': trackInventory,
       if (clearMinPrice)
         'minPrice': null
       else if (minPrice != null)
@@ -939,11 +967,6 @@ class ApiClient {
     final response =
         await _dio.post('/sales/$saleId/void', data: {'reason': reason});
     return response.data as Map<String, dynamic>;
-  }
-
-  Future<Map<String, dynamic>> getDailySummary() async {
-    final response = await _dio.get('/sales/daily-summary');
-    return response.data;
   }
 
   // Inventory endpoints
@@ -1106,8 +1129,19 @@ class ApiClient {
   }
 
   // Sync endpoints
-  Future<Map<String, dynamic>> pushSyncEvents(Map<String, dynamic> data) async {
-    final response = await _dio.post('/sync/push', data: data);
+  Future<Map<String, dynamic>> pushSyncEvents(
+    Map<String, dynamic> data, {
+    String? expectedTenantId,
+  }) async {
+    final response = await _dio.post(
+      '/sync/push',
+      data: data,
+      options: Options(
+        extra: {
+          if (expectedTenantId != null) 'expectedTenantId': expectedTenantId,
+        },
+      ),
+    );
     return response.data;
   }
 
@@ -1614,6 +1648,23 @@ class ApiClient {
   }
 
   // ── End-of-day close (Z-report + cash count) ──
+
+  /// Today's sales summary using the branch timezone on the server.
+  /// This avoids trusting a device clock/timezone for the business-day cutover.
+  Future<Map<String, dynamic>> getSalesTodaySummary(String branchId,
+      {Duration? requestTimeout}) async {
+    final response = await _dio.get(
+      '/sales/summary/$branchId',
+      options: requestTimeout == null
+          ? null
+          : Options(
+              connectTimeout: requestTimeout,
+              receiveTimeout: requestTimeout,
+              extra: const {'networkRetryMaxRetries': 0},
+            ),
+    );
+    return response.data as Map<String, dynamic>;
+  }
 
   /// The day's sales summary for a branch (total, transactions, payment
   /// split) — shown before closing so the user reviews the figures.

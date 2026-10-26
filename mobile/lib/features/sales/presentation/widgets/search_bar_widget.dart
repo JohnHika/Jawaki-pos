@@ -88,7 +88,7 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
           controller: _controller,
           focusNode: _focusNode,
           decoration: InputDecoration(
-            hintText: businessLayout.preset.posSearchHint,
+            hintText: businessLayout.posSearchHint,
             hintStyle: TextStyle(
               color: isDark
                   ? DesignColors.darkTextTertiary

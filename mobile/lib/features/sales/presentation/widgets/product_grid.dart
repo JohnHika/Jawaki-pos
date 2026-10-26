@@ -7,42 +7,27 @@ import '../../../../core/services/pricing_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../../core/utils/stock_quantity_display.dart';
+import '../../../../core/utils/api_message.dart';
+import '../../../../core/utils/business_layout_search.dart';
 import '../providers/catalog_provider.dart';
 import '../providers/cart_provider.dart';
 import '../../../../core/utils/format.dart';
+import '../../../../core/providers/business_layout_provider.dart';
+import '../../../accountability/data/till_guard_service.dart';
 
 class ProductGrid extends ConsumerWidget {
-  static String _getUserFriendlyErrorMessage(dynamic error) {
-    final errorString = error.toString().toLowerCase();
-
-    if (errorString.contains('network') ||
-        errorString.contains('socket') ||
-        errorString.contains('connection')) {
-      return 'Please check your internet connection and try again';
-    } else if (errorString.contains('timeout')) {
-      return 'Request timed out. Please try again.';
-    } else if (errorString.contains('format') ||
-        errorString.contains('parse')) {
-      return 'Data format error. We\'re working to fix this.';
-    } else if (errorString.contains('auth') ||
-        errorString.contains('permission') ||
-        errorString.contains('unauthorized')) {
-      return 'Authentication required. Please log in again.';
-    } else if (error is Exception) {
-      return 'An unexpected error occurred. Please try again.';
-    }
-
-    return 'Unable to load products. Please try again.';
-  }
-
   const ProductGrid({
     super.key,
+    this.productsOverride,
     this.catalogRefreshing = false,
     this.catalogSyncFailed = false,
     this.isOffline = false,
     this.onRetryCatalog,
   });
 
+  /// When supplied, renders an already-selected catalog subset such as the
+  /// cashier's favorites instead of querying the full catalog again.
+  final List<Map<String, dynamic>>? productsOverride;
   final bool catalogRefreshing;
   final bool catalogSyncFailed;
   final bool isOffline;
@@ -50,33 +35,69 @@ class ProductGrid extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final categoryId = ref.watch(selectedCategoryProvider);
+    final businessLayout = ref.watch(businessLayoutProvider);
+    final catalogName = businessLayout.productsLabel.toLowerCase();
+    final categoryId = businessLayout.effectiveShowPosCategories
+        ? ref.watch(selectedCategoryProvider)
+        : null;
     final searchQuery = ref.watch(searchQueryProvider);
     final normalizedSearchQuery = searchQuery.trim();
-    final productsAsync = ref.watch(
-      filteredProductsProvider(
-        FilterParams(
-          categoryId: categoryId,
-          searchQuery:
-              normalizedSearchQuery.isEmpty ? null : normalizedSearchQuery,
-        ),
-      ),
-    );
+    final visibleProducts = productsOverride == null
+        ? ref.watch(
+            filteredProductsProvider(
+              FilterParams(
+                categoryId: categoryId,
+                searchQuery: normalizedSearchQuery.isEmpty
+                    ? null
+                    : normalizedSearchQuery,
+              ),
+            ),
+          )
+        : AsyncData<List<Map<String, dynamic>>>(
+            productsOverride!.where((product) {
+              return businessLayoutProductMatchesSearch(
+                name: product['name'] as String? ?? '',
+                code: product['sku'] as String? ?? '',
+                metadata: product['metadata'],
+                layout: businessLayout,
+                query: normalizedSearchQuery,
+              );
+            }).toList(growable: false),
+          );
 
-    return productsAsync.when(
+    return visibleProducts.when(
       data: (products) {
         if (products.isEmpty) {
-          if (catalogRefreshing) return _loadingGrid(context);
+          if (catalogRefreshing) {
+            return _loadingGrid(
+              context,
+              listMode: businessLayout.effectivePosProductView == 'list',
+            );
+          }
           final hasActiveFilter =
               categoryId != null || normalizedSearchQuery.isNotEmpty;
+          if (hasActiveFilter && (catalogSyncFailed || isOffline)) {
+            return EmptyState(
+              icon: Icons.cloud_off_rounded,
+              title: 'No match in saved $catalogName',
+              subtitle: isOffline
+                  ? 'Reconnect to check for newer items in your shop catalog.'
+                  : 'The catalog could not refresh, so newer items may be missing.',
+              actionLabel: !isOffline && onRetryCatalog != null
+                  ? 'Refresh catalog'
+                  : null,
+              iconColor: DesignColors.warning,
+              onAction: !isOffline ? onRetryCatalog : null,
+            );
+          }
           if (!hasActiveFilter && (catalogSyncFailed || isOffline)) {
             return EmptyState(
               icon: isOffline
                   ? Icons.cloud_off_rounded
                   : Icons.inventory_2_outlined,
               title: isOffline
-                  ? 'No products saved on this device'
-                  : 'Couldn’t load your products',
+                  ? 'No $catalogName saved on this device'
+                  : 'Couldn’t load your $catalogName',
               subtitle: isOffline
                   ? 'Reconnect to load your shop catalog, then try again.'
                   : 'Check your connection and retry the catalog refresh.',
@@ -85,7 +106,7 @@ class ProductGrid extends ConsumerWidget {
               onAction: onRetryCatalog,
             );
           }
-          return const _EmptyState();
+          return _EmptyState(catalogName: catalogName);
         }
         // Photos make tall cards worthwhile; without them the empty image block
         // just wastes space, so use shorter cards and fit ~50% more per screen.
@@ -95,33 +116,72 @@ class ProductGrid extends ConsumerWidget {
         // the text at 130%).
         final textScale = MediaQuery.textScalerOf(context).scale(1.0);
         final growth = 1 + (textScale - 1).clamp(0.0, 1.0) * 1.5;
-        return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount:
-                productGridColumns(MediaQuery.sizeOf(context).width),
-            childAspectRatio: (hasPhotos ? 0.78 : 1.12) / growth,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
+        if (businessLayout.effectivePosProductView == 'list') {
+          return _withCatalogStatus(
+            context,
+            ListView.separated(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+              itemCount: products.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) => CascadeScale(
+                index: index,
+                step: const Duration(milliseconds: 8),
+                duration: const Duration(milliseconds: 180),
+                maxAnimated: 8,
+                child: SizedBox(
+                  height: (104 * growth).toDouble(),
+                  child: _ProductCard(
+                    product: products[index],
+                    compact: true,
+                    listMode: true,
+                  ),
+                ),
+              ),
+            ),
+            catalogName: catalogName,
+            showStaleNotice: catalogSyncFailed,
+            isOffline: isOffline,
+            onRetry: onRetryCatalog,
+          );
+        }
+        return _withCatalogStatus(
+          context,
+          GridView.builder(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount:
+                  productGridColumns(MediaQuery.sizeOf(context).width),
+              childAspectRatio: (hasPhotos ? 0.78 : 1.12) / growth,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+            ),
+            itemCount: products.length,
+            // Keep the POS cards responsive: a short entrance animation adds
+            // polish without holding the first visible products behind a long
+            // stagger.
+            itemBuilder: (context, index) => CascadeScale(
+              index: index,
+              step: const Duration(milliseconds: 8),
+              duration: const Duration(milliseconds: 180),
+              maxAnimated: 8,
+              child:
+                  _ProductCard(product: products[index], compact: !hasPhotos),
+            ),
           ),
-          itemCount: products.length,
-          // Keep the POS cards responsive: a short entrance animation adds
-          // polish without holding the first visible products behind a long
-          // stagger.
-          itemBuilder: (context, index) => CascadeScale(
-            index: index,
-            step: const Duration(milliseconds: 8),
-            duration: const Duration(milliseconds: 180),
-            maxAnimated: 8,
-            child: _ProductCard(product: products[index], compact: !hasPhotos),
-          ),
+          catalogName: catalogName,
+          showStaleNotice: catalogSyncFailed,
+          isOffline: isOffline,
+          onRetry: onRetryCatalog,
         );
       },
-      loading: () => _loadingGrid(context),
+      loading: () => _loadingGrid(
+        context,
+        listMode: businessLayout.effectivePosProductView == 'list',
+      ),
       error: (error, _) => EmptyState(
         icon: Icons.error_outline_rounded,
-        title: 'Failed to load products',
-        subtitle: _getUserFriendlyErrorMessage(error),
+        title: 'Failed to load $catalogName',
+        subtitle: apiErrorMessage(error),
         actionLabel: 'Retry',
         iconColor: DesignColors.error,
         onAction: () {
@@ -138,27 +198,122 @@ class ProductGrid extends ConsumerWidget {
     );
   }
 
-  Widget _loadingGrid(BuildContext context) => GridView.builder(
-        padding: const EdgeInsets.all(12),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: productGridColumns(MediaQuery.sizeOf(context).width),
-          childAspectRatio: 0.78,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
+  Widget _withCatalogStatus(
+    BuildContext context,
+    Widget productBrowser, {
+    required String catalogName,
+    required bool showStaleNotice,
+    required bool isOffline,
+    required VoidCallback? onRetry,
+  }) {
+    if (!showStaleNotice) return productBrowser;
+    return Column(
+      children: [
+        Container(
+          margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+          decoration: BoxDecoration(
+            color: DesignColors.warning.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: DesignColors.warning.withValues(alpha: 0.24),
+            ),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.cloud_off_rounded,
+                  color: DesignColors.warning, size: 19),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  isOffline
+                      ? 'Showing saved $catalogName. It may be out of date.'
+                      : 'Couldn’t refresh $catalogName. Showing saved items.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: DesignColors.warning,
+                        fontWeight: FontWeight.w600,
+                        height: 1.25,
+                      ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Refresh catalog',
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded,
+                    color: DesignColors.warning),
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
         ),
+        Expanded(child: productBrowser),
+      ],
+    );
+  }
+
+  Widget _loadingGrid(BuildContext context, {required bool listMode}) {
+    if (listMode) {
+      return ListView.separated(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
         itemCount: 6,
-        itemBuilder: (context, index) => const ProductCardShimmer(),
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (context, index) => const SizedBox(
+          height: 104,
+          child: GlassCard(
+            padding: EdgeInsets.all(10),
+            borderRadius: 15,
+            child: Row(
+              children: [
+                ShimmerWidget.circular(size: 64),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ShimmerWidget(
+                          width: double.infinity, height: 13, borderRadius: 6),
+                      SizedBox(height: 8),
+                      ShimmerWidget(width: 92, height: 10, borderRadius: 5),
+                      SizedBox(height: 8),
+                      ShimmerWidget(width: 142, height: 13, borderRadius: 6),
+                    ],
+                  ),
+                ),
+                SizedBox(width: 8),
+                ShimmerWidget.circular(size: 42),
+              ],
+            ),
+          ),
+        ),
       );
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.all(12),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: productGridColumns(MediaQuery.sizeOf(context).width),
+        childAspectRatio: 0.78,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+      ),
+      itemCount: 6,
+      itemBuilder: (context, index) => const ProductCardShimmer(),
+    );
+  }
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+  const _EmptyState({required this.catalogName});
+
+  final String catalogName;
 
   @override
   Widget build(BuildContext context) {
-    return const EmptyState(
+    return EmptyState(
       icon: Icons.inventory_2_outlined,
-      title: 'No products found',
+      title: 'No $catalogName found',
       subtitle: 'Try adjusting your search or category filter',
     );
   }
@@ -170,7 +325,13 @@ class _ProductCard extends ConsumerWidget {
   /// No product has a photo: give the text block most of the card so two-line
   /// names, price and stock always fit.
   final bool compact;
-  const _ProductCard({required this.product, this.compact = false});
+  const _ProductCard({
+    required this.product,
+    this.compact = false,
+    this.listMode = false,
+  });
+
+  final bool listMode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -178,10 +339,28 @@ class _ProductCard extends ConsumerWidget {
     final cartState = ref.watch(cartProvider);
     final productId = product['id'] as String;
     final productName = product['name'] as String;
+    final productCode = product['sku'] as String? ?? '';
     final price = (product['price'] as num).toDouble();
     final imageUrl = product['imageUrl'] as String?;
     final unit = product['unit'] as String? ?? 'piece';
     final stock = (product['stock'] as num?)?.toDouble() ?? 0;
+    final businessLayout = ref.watch(businessLayoutProvider);
+    final favoriteProductIds = ref.watch(favoritesProvider);
+    final isFavorite = favoriteProductIds.contains(productId);
+    final rawMetadata = product['metadata'];
+    final rawIndustryFields =
+        rawMetadata is Map ? rawMetadata['industryFields'] : null;
+    final industryFields = rawIndustryFields is Map
+        ? rawIndustryFields
+        : const <dynamic, dynamic>{};
+    String? detailPreview;
+    for (final field in businessLayout.effectiveProductFields) {
+      final value = industryFields[field.key]?.toString().trim();
+      if (value != null && value.isNotEmpty) {
+        detailPreview = '${field.label}: $value';
+        break;
+      }
+    }
     final trackInventory = product['trackInventory'] as bool? ?? true;
     final isOutOfStock = trackInventory && stock <= 0;
     final quantityInCart = cartState.items
@@ -195,6 +374,176 @@ class _ProductCard extends ConsumerWidget {
             lineInCart.first.saleQuantity ??
                 lineInCart.first.quantity.toDouble(),
           );
+
+    if (listMode) {
+      return GlassCard(
+        onTap: () => _addToCart(context, ref),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        borderRadius: 15,
+        tint: isDark
+            ? DesignColors.glassDark
+            : (quantityInCart > 0
+                ? DesignColors.accent.withValues(alpha: 0.04)
+                : DesignColors.glassWhite),
+        borderColor: quantityInCart > 0
+            ? DesignColors.accent.withValues(alpha: 0.3)
+            : (isDark
+                ? DesignColors.glassDarkBorder
+                : DesignColors.glassBorder),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                width: 64,
+                height: 64,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    imageUrl != null
+                        ? CachedNetworkImage(
+                            imageUrl: imageUrl,
+                            fit: BoxFit.cover,
+                            placeholder: (_, __) =>
+                                _ImagePlaceholder(name: productName),
+                            errorWidget: (_, __, ___) =>
+                                _ImagePlaceholder(name: productName),
+                          )
+                        : _ImagePlaceholder(name: productName),
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: Material(
+                        color: Colors.black.withValues(alpha: .38),
+                        shape: const CircleBorder(),
+                        child: IconButton(
+                          tooltip: isFavorite
+                              ? 'Remove from favorites'
+                              : 'Add to favorites',
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 32,
+                            height: 32,
+                          ),
+                          padding: EdgeInsets.zero,
+                          onPressed: () => _toggleFavorite(context, ref),
+                          icon: Icon(
+                            isFavorite
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                            size: 17,
+                            color:
+                                isFavorite ? DesignColors.accent : Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    productName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.15,
+                      fontWeight: FontWeight.w700,
+                      color: isDark
+                          ? DesignColors.darkTextPrimary
+                          : DesignColors.textPrimary,
+                    ),
+                  ),
+                  if (productCode.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      '${businessLayout.productCodeLabel.replaceAll(' (optional)', '')}: $productCode',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: isDark
+                            ? DesignColors.darkTextTertiary
+                            : DesignColors.textTertiary,
+                      ),
+                    ),
+                  ],
+                  if (detailPreview != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      detailPreview,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: isDark
+                            ? DesignColors.darkTextTertiary
+                            : DesignColors.textTertiary,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Text(
+                        formatMoney(price),
+                        style: DesignType.numeric(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: DesignColors.accent,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          isOutOfStock
+                              ? 'Out of stock'
+                              : trackInventory
+                                  ? '${_ProductCard._formatCount(stock)} ${pluralizeUnit(unit, stock)}'
+                                  : 'Untracked',
+                          maxLines: 1,
+                          textAlign: TextAlign.end,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: isOutOfStock
+                                ? DesignColors.error
+                                : (isDark
+                                    ? DesignColors.darkTextTertiary
+                                    : DesignColors.textTertiary),
+                            fontWeight: isOutOfStock
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (!isOutOfStock) ...[
+              const SizedBox(width: 6),
+              _QuickAddControl(
+                productName: productName,
+                quantityLabel: quantityLabel,
+                inCart: quantityInCart > 0,
+                onAdd: () => _quickAdd(context, ref),
+                onMore: () => _step(context, ref, 1),
+                onLess: () => _step(context, ref, -1),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
 
     return GlassCard(
       onTap: () => _addToCart(context, ref),
@@ -282,6 +631,31 @@ class _ProductCard extends ConsumerWidget {
                       onLess: () => _step(context, ref, -1),
                     ),
                   ),
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Material(
+                    color: Colors.black.withValues(alpha: .38),
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      tooltip: isFavorite
+                          ? 'Remove from favorites'
+                          : 'Add to favorites',
+                      visualDensity: VisualDensity.compact,
+                      constraints:
+                          const BoxConstraints.tightFor(width: 36, height: 36),
+                      padding: EdgeInsets.zero,
+                      onPressed: () => _toggleFavorite(context, ref),
+                      icon: Icon(
+                        isFavorite
+                            ? Icons.favorite_rounded
+                            : Icons.favorite_border_rounded,
+                        size: 19,
+                        color: isFavorite ? DesignColors.accent : Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -307,6 +681,20 @@ class _ProductCard extends ConsumerWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (detailPreview != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      detailPreview,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: isDark
+                            ? DesignColors.darkTextTertiary
+                            : DesignColors.textTertiary,
+                      ),
+                    ),
+                  ],
                   const Spacer(),
                   Row(
                     children: [
@@ -343,6 +731,27 @@ class _ProductCard extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _toggleFavorite(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    try {
+      await ref
+          .read(favoritesProvider.notifier)
+          .toggle(product['id'] as String);
+      ref.invalidate(favoriteProductsProvider);
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      showGlassSnackBar(
+        context,
+        'Could not update favorites. Try again.',
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
+      );
+    }
   }
 
   /// Adds one base unit straight to the cart, no sheet.
@@ -399,7 +808,7 @@ class _ProductCard extends ConsumerWidget {
           .replaceFirst(RegExp(r'0+$'), '')
           .replaceFirst(RegExp(r'\.$'), '');
 
-  void _addToCart(BuildContext context, WidgetRef ref) {
+  Future<void> _addToCart(BuildContext context, WidgetRef ref) async {
     final productId = product['id'] as String;
     final productName = product['name'] as String;
     final sku = product['sku'] as String? ?? '';
@@ -409,6 +818,8 @@ class _ProductCard extends ConsumerWidget {
     final stock = (product['stock'] as num?)?.toDouble() ?? 0;
     final trackInventory = product['trackInventory'] as bool? ?? true;
     final tiers = PricingService.getAllPricingTiers(product);
+    final canOverridePrice = await TillGuardService.instance.canOverridePrice();
+    if (!context.mounted) return;
 
     if (trackInventory && stock <= 0) {
       _showStockBlocked(context, productName, stock);
@@ -440,10 +851,15 @@ class _ProductCard extends ConsumerWidget {
         availableStock: trackInventory ? stock : null,
         currentQuantity: currentQty,
         existingItem: existingItem,
+        canOverridePrice: canOverridePrice,
         onConfirm: (qty, tier, overridePrice) async {
           final conversion = tier.quantityPerUnit ?? 1;
           final baseQty = qty * conversion;
-          final unitPrice = (overridePrice ?? tier.price) / conversion;
+          // The API stores per-base-unit prices to 8 decimals so bulk-tier
+          // totals such as KES 100 / 3 units remain exact to the cent.
+          final unitPrice = double.parse(
+            ((overridePrice ?? tier.price) / conversion).toStringAsFixed(8),
+          );
           final result = existingItem != null
               ? await ref.read(cartProvider.notifier).updateQuantity(
                     productId,
@@ -671,6 +1087,7 @@ class _QuantitySheet extends StatefulWidget {
   final double currentQuantity;
   final bool allowFractions;
   final CartItem? existingItem;
+  final bool canOverridePrice;
   // overridePrice is null unless the cashier explicitly used the price
   // override control — always the price for one of [tier]'s unit, same
   // basis as UnitPriceInfo.price, never the product's stored catalog price.
@@ -690,6 +1107,7 @@ class _QuantitySheet extends StatefulWidget {
     required this.availableStock,
     required this.currentQuantity,
     required this.existingItem,
+    required this.canOverridePrice,
     required this.onConfirm,
   });
 
@@ -1276,7 +1694,9 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                           : InkWell(
                               borderRadius:
                                   BorderRadius.circular(DesignSpacing.radiusSm),
-                              onTap: _beginPriceEditing,
+                              onTap: widget.canOverridePrice
+                                  ? _beginPriceEditing
+                                  : null,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                     vertical: 10, horizontal: 8),
@@ -1297,14 +1717,16 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                                             : FontWeight.normal,
                                       ),
                                     ),
-                                    const SizedBox(width: 4),
-                                    Icon(
-                                      Icons.edit_rounded,
-                                      size: 14,
-                                      color: isDark
-                                          ? DesignColors.darkTextTertiary
-                                          : DesignColors.textTertiary,
-                                    ),
+                                    if (widget.canOverridePrice) ...[
+                                      const SizedBox(width: 4),
+                                      Icon(
+                                        Icons.edit_rounded,
+                                        size: 14,
+                                        color: isDark
+                                            ? DesignColors.darkTextTertiary
+                                            : DesignColors.textTertiary,
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),

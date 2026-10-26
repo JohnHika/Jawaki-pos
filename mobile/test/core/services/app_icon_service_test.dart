@@ -135,13 +135,17 @@ void main() {
 
     int switches() => calls.where((c) => c.method == 'setIcon').length;
 
-    test('is off by default and leaves the everyday icon alone', () async {
-      signals = _s(record: true);
-      final svc = service();
-      expect(await svc.isEnabled(), isFalse);
-      expect(await svc.refresh(), AppIconVariant.standard);
-      expect(switches(), 0);
-    });
+    test(
+      'is on by default and follows the shop on the next background',
+      () async {
+        signals = _s(record: true);
+        final svc = service();
+        expect(await svc.isEnabled(), isTrue);
+        expect(await svc.refresh(), AppIconVariant.gold);
+        expect(active, 'gold');
+        expect(switches(), 1);
+      },
+    );
 
     test('turning it on does not touch the icon while the app is open', () async {
       signals = _s(streak: 4);

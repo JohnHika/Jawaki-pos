@@ -93,6 +93,7 @@ class _SubscriptionBillingScreenState
   bool _isChangingPlan = false;
   String? _error;
   String? _paystackInvoiceBusyId;
+  final Map<String, String> _mpesaInvoiceStatuses = {};
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri>? _paystackLinkSubscription;
 
@@ -989,11 +990,35 @@ class _SubscriptionBillingScreenState
 
   Widget _buildRenewalPaymentAction() {
     if (_isLoadingEntitlement || _isLoadingInvoices) {
-      return _buildBillingNotice('Checking whether a subscription payment is due…');
+      return _buildBillingNotice(
+          'Checking whether a subscription payment is due…');
     }
 
     final entitlement = _entitlement;
     if (entitlement == null) return _buildPayWithMpesaButton();
+    final openInvoice = _openInvoiceForPayment();
+    final provider = openInvoice?['provider']?.toString().toUpperCase();
+    if (provider == 'JENGA_STK_INITIALIZING') {
+      return _buildInvoicePreparationNotice(
+        'The M-Pesa renewal request is being prepared. Refresh in a moment before starting another payment.',
+      );
+    }
+    if (provider == 'JENGA_STK' &&
+        openInvoice?['mpesaCheckoutId']?.toString().isNotEmpty == true) {
+      return _buildPendingMpesaRenewal(openInvoice!);
+    }
+    if (provider == 'JENGA_STK') {
+      return _buildInvoicePreparationNotice(
+        'An M-Pesa renewal is reserved but its status reference is unavailable. Refresh the invoice before retrying.',
+      );
+    }
+    if (provider == 'PAYSTACK_INITIALIZING' ||
+        (provider == 'PAYSTACK' &&
+            openInvoice?['authorizationUrl']?.toString().isNotEmpty != true)) {
+      return _buildInvoicePreparationNotice(
+        'Paystack checkout is being prepared. Refresh in a moment before trying again.',
+      );
+    }
     final hasOpenInvoice = _invoices.any((rawInvoice) {
       final invoice = Map<String, dynamic>.from(rawInvoice as Map);
       return invoice['status']?.toString().toUpperCase() != 'PAID';
@@ -1025,6 +1050,114 @@ class _SubscriptionBillingScreenState
       );
     }
     return _buildPayWithMpesaButton();
+  }
+
+  Map<String, dynamic>? _openInvoiceForPayment() {
+    for (final rawInvoice in _invoices) {
+      final invoice = Map<String, dynamic>.from(rawInvoice as Map);
+      if (invoice['status']?.toString().toUpperCase() != 'PAID') {
+        return invoice;
+      }
+    }
+    return null;
+  }
+
+  Widget _buildInvoicePreparationNotice(String message) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildBillingNotice(message),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: _loadData,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Refresh status'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPendingMpesaRenewal(Map<String, dynamic> invoice) {
+    final invoiceId = invoice['id']?.toString() ?? '';
+    final busy = invoiceId.isNotEmpty && _paystackInvoiceBusyId == invoiceId;
+    final needsReview = _mpesaInvoiceStatuses[invoiceId] == 'NEEDS_REVIEW';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildBillingNotice(needsReview
+            ? 'The provider reported an amount mismatch. This invoice is held for review; contact support before retrying.'
+            : 'An M-Pesa renewal prompt is still being confirmed. Approve it on the billing phone, then check its status here.'),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: invoiceId.isEmpty ||
+                    _paystackInvoiceBusyId != null ||
+                    needsReview
+                ? null
+                : () => _checkMpesaRenewalStatus(invoiceId),
+            icon: busy
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded, size: 18),
+            label: Text(busy ? 'Checking…' : 'Check M-Pesa status'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _checkMpesaRenewalStatus(String invoiceId) async {
+    if (_paystackInvoiceBusyId != null) return;
+    setState(() => _paystackInvoiceBusyId = invoiceId);
+    try {
+      final result = await _apiClient.verifyMpesaSubscriptionPayment(invoiceId);
+      if (!mounted) return;
+      final invoiceStatus =
+          result['invoiceStatus']?.toString().toUpperCase() ?? '';
+      final paymentStatus = result['status']?.toString().toUpperCase() ?? '';
+      setState(() {
+        if (invoiceStatus == 'PAID' ||
+            ['FAILED', 'CANCELLED', 'CANCELED'].contains(paymentStatus)) {
+          _mpesaInvoiceStatuses.remove(invoiceId);
+        } else {
+          _mpesaInvoiceStatuses[invoiceId] = paymentStatus;
+        }
+      });
+      if (invoiceStatus == 'PAID') {
+        ref.read(entitlementRefreshTickProvider.notifier).state++;
+        await _loadData();
+        if (mounted) {
+          _showPaymentMessage('Monthly subscription payment confirmed.');
+        }
+      } else {
+        await _loadInvoices();
+        if (!mounted) return;
+        if (['FAILED', 'CANCELLED', 'CANCELED'].contains(paymentStatus)) {
+          _showPaymentMessage(
+            'The M-Pesa request did not complete. The invoice is still due; you can continue with Paystack.',
+            isError: true,
+          );
+        } else if (paymentStatus == 'NEEDS_REVIEW') {
+          _showPaymentMessage(
+            'The provider reported a payment amount mismatch. The invoice is on hold; contact support before retrying.',
+            isError: true,
+          );
+        } else {
+          _showPaymentMessage(
+            'M-Pesa is still processing. Approve the prompt, then check again.',
+          );
+        }
+      }
+    } catch (error) {
+      if (mounted) _showPaymentMessage(_friendlyError(error), isError: true);
+    } finally {
+      if (mounted) setState(() => _paystackInvoiceBusyId = null);
+    }
   }
 
   Future<void> _startPaystackInvoicePayment() async {
@@ -1213,6 +1346,8 @@ class _SubscriptionBillingScreenState
     final reference =
         invoice['reference'] as String? ?? invoice['mpesaReference'] as String?;
     final provider = invoice['provider']?.toString().toUpperCase() ?? '';
+    final invoiceId = invoice['id']?.toString() ?? '';
+    final mpesaCheckoutId = invoice['mpesaCheckoutId']?.toString() ?? '';
 
     return Container(
       margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
@@ -1281,6 +1416,27 @@ class _SubscriptionBillingScreenState
                         : () => _verifyPaystackPayment(reference),
                     icon: const Icon(Icons.refresh_rounded, size: 15),
                     label: const Text('Check payment'),
+                    style: TextButton.styleFrom(
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: DesignSpacing.xs,
+                        vertical: DesignSpacing.xs,
+                      ),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ],
+                if (status.toUpperCase() != 'PAID' &&
+                    provider == 'JENGA_STK' &&
+                    mpesaCheckoutId.isNotEmpty &&
+                    invoiceId.isNotEmpty) ...[
+                  const SizedBox(height: DesignSpacing.xs),
+                  TextButton.icon(
+                    onPressed: _paystackInvoiceBusyId == null
+                        ? () => _checkMpesaRenewalStatus(invoiceId)
+                        : null,
+                    icon: const Icon(Icons.refresh_rounded, size: 15),
+                    label: const Text('Check M-Pesa status'),
                     style: TextButton.styleFrom(
                       minimumSize: Size.zero,
                       padding: const EdgeInsets.symmetric(
@@ -1617,7 +1773,8 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
 
   Future<void> _save() async {
     if (_autoRenew && !_acceptedAutoRenewal) {
-      setState(() => _error = 'Accept the Auto-Renew Authorization before enabling it.');
+      setState(() =>
+          _error = 'Accept the Auto-Renew Authorization before enabling it.');
       return;
     }
     setState(() {
@@ -1628,9 +1785,8 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
       final updated = await getIt<ApiClient>().updateBillingSettings(
         autoRenewEnabled: _autoRenew,
         billingPhone: _phoneController.text.trim(),
-        autoRenewAuthorizationVersion: _autoRenew
-            ? policyVersion('AUTO_RENEWAL_AUTHORIZATION')
-            : null,
+        autoRenewAuthorizationVersion:
+            _autoRenew ? policyVersion('AUTO_RENEWAL_AUTHORIZATION') : null,
       );
       widget.onSaved(updated);
       if (!mounted) return;

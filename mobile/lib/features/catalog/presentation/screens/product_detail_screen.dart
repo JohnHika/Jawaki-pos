@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/utils/stock_quantity_display.dart';
 import '../widgets/add_edit_product_sheet.dart';
 import '../../../../core/utils/format.dart';
@@ -56,7 +58,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           setState(() {
             _product = product;
             _pricingTiers = tiers;
-            _categoryName = categoryMap[product.categoryId] ?? 'Unknown';
+            _categoryName = categoryMap[product.categoryId] ?? 'Uncategorized';
             _isLoading = false;
           });
         }
@@ -75,13 +77,14 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   Future<void> _editProduct() async {
     final product = _product;
     if (product == null) return;
+    final entityLabel = ref.read(businessLayoutProvider).productSingular;
 
     await GlassBottomSheet.show(
       context,
-      title: 'Edit Product',
+      title: 'Edit $entityLabel',
       initialSize: 0.85,
       maxSize: 0.95,
-      child: AddEditProductSheet(product: product),
+      child: AddEditProductSheet(product: product, entityLabel: entityLabel),
     );
     // The sheet syncs the catalog cache and pops itself on success; reload
     // this screen's copy so any changes show immediately.
@@ -90,15 +93,17 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final businessLayout = ref.watch(businessLayoutProvider);
+    final entityLabel = businessLayout.productSingular;
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Product Details',
+        title: '$entityLabel Details',
         showLogo: false,
         actions: [
           if (_product != null)
             IconButton(
               icon: const Icon(Icons.edit_outlined, size: 20),
-              tooltip: 'Edit product',
+              tooltip: 'Edit ${entityLabel.toLowerCase()}',
               onPressed: _editProduct,
             ),
         ],
@@ -108,12 +113,13 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         child: _isLoading
             ? _buildLoading()
             : _product == null
-                ? const EmptyState(
+                ? EmptyState(
                     icon: Icons.inventory_2_outlined,
-                    title: 'Product not found',
-                    subtitle: 'The product you are looking for does not exist.',
+                    title: '$entityLabel not found',
+                    subtitle:
+                        'The ${entityLabel.toLowerCase()} you are looking for does not exist.',
                   )
-                : _buildContent(context),
+                : _buildContent(context, businessLayout),
       ),
     );
   }
@@ -129,8 +135,24 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     );
   }
 
-  Widget _buildContent(BuildContext context) {
+  Widget _buildContent(
+      BuildContext context, BusinessLayoutConfig businessLayout) {
     final product = _product!;
+    final productMetadata = _decodeProductMetadata(product.metadata);
+    final rawIndustryFields = productMetadata['industryFields'];
+    final industryFields = rawIndustryFields is Map
+        ? Map<String, dynamic>.from(rawIndustryFields)
+        : const <String, dynamic>{};
+    final visibleProductDetails = businessLayout.effectiveProductFields
+        .where((field) =>
+            industryFields[field.key]?.toString().trim().isNotEmpty == true)
+        .map((field) => MapEntry(
+              field.label,
+              industryFields[field.key].toString().trim(),
+            ))
+        .toList(growable: false);
+    final codeLabel =
+        businessLayout.productCodeLabel.replaceAll(' (optional)', '');
     final theme = Theme.of(context);
     final stockPresentation = buildStockQuantityPresentation(
       baseQuantity: _stock?.quantity ?? 0,
@@ -231,7 +253,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                               ),
                               const SizedBox(width: DesignSpacing.sm),
                               Text(
-                                'SKU: ${product.sku}',
+                                '$codeLabel: ${product.sku}',
                                 style: theme.textTheme.bodySmall
                                     ?.copyWith(color: tertiaryColor),
                               ),
@@ -321,12 +343,15 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         Container(
           margin: const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
           padding: const EdgeInsets.all(DesignSpacing.lg),
-          decoration:
-              BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
+          decoration: BoxDecoration(
+            color: surface,
+            border: Border.all(color: border),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+          ),
           child: Text(
             product.description?.isNotEmpty == true
                 ? product.description!
-                : 'No description provided for this product.',
+                : 'No description provided for this ${businessLayout.productSingular.toLowerCase()}.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: product.description?.isNotEmpty == true
                   ? titleColor
@@ -346,11 +371,14 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         Container(
           margin: const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
           padding: const EdgeInsets.symmetric(vertical: DesignSpacing.xs),
-          decoration:
-              BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
+          decoration: BoxDecoration(
+            color: surface,
+            border: Border.all(color: border),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+          ),
           child: Column(
             children: [
-              _detailRow(Icons.qr_code_rounded, 'SKU', product.sku,
+              _detailRow(Icons.qr_code_rounded, codeLabel, product.sku,
                   secondaryColor, titleColor),
               _divider(border),
               _detailRow(Icons.category_outlined, 'Category', _categoryName,
@@ -358,6 +386,16 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               _divider(border),
               _detailRow(Icons.straighten_rounded, 'Unit', product.unit,
                   secondaryColor, titleColor),
+              for (final entry in visibleProductDetails) ...[
+                _divider(border),
+                _detailRow(
+                  Icons.tune_rounded,
+                  entry.key,
+                  entry.value,
+                  secondaryColor,
+                  titleColor,
+                ),
+              ],
               _divider(border),
               _detailRow(
                 Icons.inventory_2_rounded,
@@ -386,7 +424,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                   Icons.inventory_2_outlined,
                   '${tier.unit[0].toUpperCase()}${tier.unit.substring(1)} Pricing',
                   '${tier.unit} (${tier.quantityPerUnit} ${product.unit}) — '
-                  '${formatMoney(tier.price)}',
+                      '${formatMoney(tier.price)}',
                   secondaryColor,
                   titleColor,
                 ),
@@ -437,6 +475,16 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         const SizedBox(height: DesignSpacing.xxxl),
       ],
     );
+  }
+
+  Map<String, dynamic> _decodeProductMetadata(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {
+      // Invalid legacy cache values should not break the product screen.
+    }
+    return const {};
   }
 
   Widget _buildProductPlaceholder(Color tertiaryColor) {

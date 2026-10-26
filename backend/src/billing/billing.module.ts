@@ -12,6 +12,7 @@ import { PaystackBillingService } from './paystack-billing.service';
 import { PaystackWebhookController } from './paystack-webhook.controller';
 import { MerchantPaymentsModule } from '../merchant-payments/merchant-payments.module';
 import { LegalPolicyModule } from '../legal/legal-policy.module';
+import { ThrottlerProvidersModule } from '../common/throttler/throttler-providers.module';
 
 /**
  * Recurring subscription billing (provider checkout, renewal settings,
@@ -38,7 +39,7 @@ import { LegalPolicyModule } from '../legal/legal-policy.module';
  *    the Jenga-backed PaymentsModule into their DI graphs.
  */
 @Module({
-  imports: [PaymentsModule, SubscriptionModule, AiBillingModule, TenantActivationModule, MerchantPaymentsModule, LegalPolicyModule],
+  imports: [PaymentsModule, SubscriptionModule, AiBillingModule, TenantActivationModule, MerchantPaymentsModule, LegalPolicyModule, ThrottlerProvidersModule],
   controllers: [BillingController, PaystackWebhookController],
   providers: [
     RecurringBillingService,

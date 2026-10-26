@@ -12,7 +12,10 @@ class _FakeApi extends ApiClient {
   final Map<String, dynamic> response;
 
   @override
-  Future<Map<String, dynamic>> pushSyncEvents(Map<String, dynamic> data) async =>
+  Future<Map<String, dynamic>> pushSyncEvents(
+    Map<String, dynamic> data, {
+    String? expectedTenantId,
+  }) async =>
       response;
 }
 
@@ -67,6 +70,7 @@ void main() {
           }
         ],
       }),
+      expectedTenantId: 'tenant-1',
     );
 
     expect(result.successCount, 1);
@@ -121,6 +125,7 @@ void main() {
           {'eventId': 'event-2', 'success': true, 'serverId': 'server-sale-2'}
         ],
       }),
+      expectedTenantId: 'tenant-1',
     );
 
     final sale = await (database.select(database.pendingSales)

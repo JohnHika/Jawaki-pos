@@ -75,6 +75,7 @@ import '../services/auth_service.dart';
 import '../services/storage_service.dart';
 import '../di/injection.dart';
 import '../auth/app_roles.dart';
+import '../providers/business_layout_provider.dart';
 import '../theme/design_system.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -95,11 +96,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final permissions = RolePermissions(
         authService.currentUser?['permissions'] as List<dynamic>?,
       );
+      final startPath = businessLayoutFromUser(authService.currentUser)
+          .homePathFor(permissions);
       initialLocation = permissions.canSeeDashboard
-          ? permissions.homePath
-          : (storageService.hasSeenStaffTour()
-              ? permissions.homePath
-              : '/staff-tour');
+          ? startPath
+          : (storageService.hasSeenStaffTour() ? startPath : '/staff-tour');
     }
   } else if (authService.isLocked) {
     // Session exists but is soft-locked (backgrounded past the auto-lock
@@ -162,14 +163,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return '/company-choice';
       }
 
-      if (authService.requiresTenantActivation && !isActivationRoute && !isLegalRoute) {
+      if (authService.requiresTenantActivation &&
+          !isActivationRoute &&
+          !isLegalRoute) {
         return '/activation';
       }
 
       if (!authService.requiresTenantActivation && isActivationRoute) {
-        return RolePermissions(
-          authService.currentUser?['permissions'] as List<dynamic>?,
-        ).homePath;
+        return _preferredHomePath(authService.currentUser);
       }
 
       // If logged in and on setup/login page, go to main app — unless this
@@ -182,11 +183,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         final permissions = RolePermissions(
           authService.currentUser?['permissions'] as List<dynamic>?,
         );
+        final homePath = businessLayoutFromUser(authService.currentUser)
+            .homePathFor(permissions);
         return permissions.canSeeDashboard
-            ? permissions.homePath
-            : (storageService.hasSeenStaffTour()
-                ? permissions.homePath
-                : '/staff-tour');
+            ? homePath
+            : (storageService.hasSeenStaffTour() ? homePath : '/staff-tour');
       }
 
       // Role-based route guards
@@ -197,12 +198,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
         if ((path == '/' || path == '/cart' || path == '/payment') &&
             !perms.canMakeSales) {
-          return perms.homePath;
+          return businessLayoutFromUser(authService.currentUser)
+              .homePathFor(perms);
         }
         if (path.startsWith('/receipt/') &&
             !perms.canMakeSales &&
             !perms.has('sales.view')) {
-          return perms.homePath;
+          return businessLayoutFromUser(authService.currentUser)
+              .homePathFor(perms);
         }
 
         if ((path == '/customers' || path.startsWith('/customers/')) &&
@@ -310,8 +313,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             !perms.has('imports.view')) {
           return '/';
         }
-        if (path == '/shop-alerts' &&
-            !perms.has('accountability.view')) {
+        if (path == '/shop-alerts' && !perms.has('accountability.view')) {
           return '/';
         }
         if (path == '/shop-alerts/rules' &&
@@ -342,8 +344,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             !perms.canInviteStaff) {
           return '/';
         }
-        if ((path == '/users/roles' ||
-                path.startsWith('/users/roles/')) &&
+        if ((path == '/users/roles' || path.startsWith('/users/roles/')) &&
             !perms.canManageRoles) {
           return '/users';
         }
@@ -555,8 +556,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: ':productId',
                 name: 'product-detail',
-                pageBuilder: (context, state) =>
-                    PageTransition.slideInPage(
+                pageBuilder: (context, state) => PageTransition.slideInPage(
                   ProductDetailScreen(
                     productId: state.pathParameters['productId']!,
                   ),
@@ -662,8 +662,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: ':customerId',
                 name: 'customer-profile',
-                pageBuilder: (context, state) =>
-                    PageTransition.slideInPage(
+                pageBuilder: (context, state) => PageTransition.slideInPage(
                   CustomerProfileScreen(
                     customerId: state.pathParameters['customerId']!,
                   ),
@@ -929,6 +928,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ),
   );
 });
+
+String _preferredHomePath(Map<String, dynamic>? user) {
+  final permissions = RolePermissions(user?['permissions'] as List<dynamic>?);
+  return businessLayoutFromUser(user).homePathFor(permissions);
+}
 
 // Helper class to convert Stream to Listenable for GoRouter
 class GoRouterRefreshStream extends ChangeNotifier {

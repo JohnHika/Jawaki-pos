@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:local_auth/local_auth.dart';
@@ -36,6 +37,7 @@ class AuthService implements LifecycleLockAuth {
   Map<String, dynamic>? _currentUser;
   String? _accessToken;
   DateTime? _backgroundedAt;
+  DateTime? _lastTenantSettingsRefreshAt;
 
   // ── Quick-unlock PIN throttle ──
   // Exponential backoff after consecutive wrong quick-unlock PINs, so a
@@ -95,6 +97,7 @@ class AuthService implements LifecycleLockAuth {
     }
     return _accessToken;
   }
+
   @override
   bool get isAuthenticated => _currentStatus == AuthStatus.authenticated;
   @override
@@ -368,7 +371,8 @@ class AuthService implements LifecycleLockAuth {
       // further failure escalates from where it left off).
       return null;
     }
-    final seconds = remaining.inSeconds + (remaining.inMilliseconds > 0 ? 1 : 0);
+    final seconds =
+        remaining.inSeconds + (remaining.inMilliseconds > 0 ? 1 : 0);
     final plural = seconds == 1 ? '' : 's';
     return 'Too many incorrect PIN attempts. '
         'Try again in $seconds second$plural.';
@@ -379,18 +383,15 @@ class AuthService implements LifecycleLockAuth {
   /// the threshold is crossed, schedules the exponential backoff deadline.
   Future<void> _registerPinFailure() async {
     final persisted = _storage.getPinUnlockFailureCount();
-    _pinUnlockFailures = (_pinUnlockFailures > persisted
-            ? _pinUnlockFailures
-            : persisted) +
-        1;
+    _pinUnlockFailures =
+        (_pinUnlockFailures > persisted ? _pinUnlockFailures : persisted) + 1;
     await _storage.setPinUnlockFailureCount(_pinUnlockFailures);
 
     final overBy = _pinUnlockFailures - _pinThrottleThreshold;
     if (overBy < 0) return; // under threshold: no wait imposed yet
 
-    final exponent = overBy > _pinThrottleMaxExponent
-        ? _pinThrottleMaxExponent
-        : overBy;
+    final exponent =
+        overBy > _pinThrottleMaxExponent ? _pinThrottleMaxExponent : overBy;
     final seconds = (_pinThrottleBaseSeconds << exponent).clamp(
       _pinThrottleBaseSeconds,
       _pinThrottleMaxSeconds,
@@ -409,20 +410,35 @@ class AuthService implements LifecycleLockAuth {
     await _storage.setPinUnlockLockoutUntil(null);
   }
 
-  Future<void> refreshTokens() async {
+  Future<void> refreshTokens({String? expectedTenantId}) async {
+    if (expectedTenantId != null && tenantId != expectedTenantId) {
+      throw StateError('The signed-in workspace changed during sync.');
+    }
     final refreshToken = await _storage.getRefreshToken();
     if (refreshToken == null) {
       throw Exception('No refresh token available');
+    }
+    if (expectedTenantId != null && tenantId != expectedTenantId) {
+      throw StateError('The signed-in workspace changed during sync.');
     }
 
     final response = await _apiClient
         .refreshToken(refreshToken)
         .timeout(const Duration(seconds: 30));
 
+    // A queued sync can outlive logout or a sign-in to another shop. Never
+    // let its late refresh response replace the next workspace's credentials.
+    if (expectedTenantId != null && tenantId != expectedTenantId) {
+      throw StateError('The signed-in workspace changed during sync.');
+    }
+
     _accessToken = response['accessToken'];
     await _storage.saveAccessToken(_accessToken!);
 
     if (response['refreshToken'] != null) {
+      if (expectedTenantId != null && tenantId != expectedTenantId) {
+        throw StateError('The signed-in workspace changed during sync.');
+      }
       await _storage.saveRefreshToken(response['refreshToken']);
     }
   }
@@ -500,6 +516,60 @@ class AuthService implements LifecycleLockAuth {
       );
     } catch (_) {
       // Fail soft — stale permissions are better than crashing app resume.
+    }
+  }
+
+  /// Refresh shared shop identity and settings when the app returns to the
+  /// foreground. This lets layout and terminology changes made on another
+  /// device reach the current session without forcing staff to sign in again.
+  Future<void> refreshTenantSettings() async {
+    if (_currentUser == null || !isAuthenticated) return;
+    final now = DateTime.now();
+    final lastRefresh = _lastTenantSettingsRefreshAt;
+    if (lastRefresh != null && now.difference(lastRefresh).inSeconds < 60) {
+      return;
+    }
+    // Set before the request to coalesce rapid resume events. A failed request
+    // clears the timestamp so the next resume can retry immediately.
+    _lastTenantSettingsRefreshAt = now;
+
+    final rawTenant = _currentUser!['tenant'];
+    final currentTenant = rawTenant is Map
+        ? Map<String, dynamic>.from(rawTenant)
+        : <String, dynamic>{};
+    final tenantId =
+        (currentTenant['id'] ?? _currentUser!['tenantId'])?.toString();
+    if (tenantId == null || tenantId.isEmpty) return;
+
+    try {
+      final latestTenant = await _apiClient.getCurrentTenant();
+      if (!isAuthenticated || _currentUser == null) return;
+      if (latestTenant['id']?.toString() != tenantId) return;
+
+      final settingsChanged = jsonEncode(currentTenant['settings'] ?? {}) !=
+          jsonEncode(latestTenant['settings'] ?? {});
+      final identityChanged = currentTenant['name'] != latestTenant['name'] ||
+          currentTenant['slug'] != latestTenant['slug'] ||
+          currentTenant['logo'] != latestTenant['logo'] ||
+          currentTenant['logoPublicId'] != latestTenant['logoPublicId'];
+      if (!settingsChanged && !identityChanged) return;
+
+      await updateTenantSession({
+        for (final key in const [
+          'id',
+          'name',
+          'slug',
+          'logo',
+          'logoPublicId',
+          'settings',
+          'isActive',
+        ])
+          if (latestTenant.containsKey(key)) key: latestTenant[key],
+      });
+      _authStatusController.add(AuthStatus.authenticated);
+    } catch (_) {
+      _lastTenantSettingsRefreshAt = null;
+      // Keep the last known shop settings when the device is offline.
     }
   }
 

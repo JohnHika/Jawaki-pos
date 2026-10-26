@@ -317,11 +317,11 @@ export class RecurringBillingService {
   private async fireRenewalCharge(
     tenant: {
       id: string;
-      plan: string;
       billingPhone: string | null;
     },
     invoice: {
       id: string;
+      plan: string;
       amount: Prisma.Decimal;
       renewalSequence: number;
       provider?: string | null;
@@ -329,7 +329,10 @@ export class RecurringBillingService {
       mpesaCheckoutId?: string | null;
     },
   ): Promise<boolean> {
-    const plan = PLAN_PRICING[tenant.plan];
+    // The invoice is authoritative. During trial-to-paid conversion the
+    // tenant row intentionally remains on TRIAL until the provider confirms
+    // payment, while the invoice carries the selected paid plan.
+    const plan = PLAN_PRICING[invoice.plan];
     if (!plan) return false;
 
     const amount = Number(invoice.amount);

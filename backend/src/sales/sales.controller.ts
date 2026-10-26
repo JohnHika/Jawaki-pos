@@ -9,6 +9,7 @@ import {
   Request,
   HttpCode,
   HttpStatus,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -74,6 +75,18 @@ export class SalesController {
     @Body() dto: ReconcileOfflineSalesDto,
   ) {
     return this.salesService.reconcileOfflineSales(req.user.tenantId, dto);
+  }
+
+  @Get('summary/:branchId')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('reporting.sales_summary')
+  @ApiOperation({ summary: 'Get the current business-day sales summary for a branch' })
+  @ApiResponse({ status: 200, description: 'Current business-day summary', type: DailySummaryDto })
+  async getTodayDailySummary(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Request() req: any,
+  ) {
+    return this.salesService.getTodayDailySummary(branchId, req.user.tenantId);
   }
 
   @Get('summary/:branchId/:date')

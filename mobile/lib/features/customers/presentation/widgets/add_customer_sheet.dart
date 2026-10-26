@@ -28,20 +28,29 @@ class AddedCustomer {
 Future<AddedCustomer?> showAddCustomerSheet(
   BuildContext context, {
   bool allowInitialCredit = true,
+  String customerSingular = 'Customer',
 }) {
   return GlassBottomSheet.show<AddedCustomer>(
     context,
-    title: 'Add Customer',
+    title: 'Add $customerSingular',
     initialSize: 0.9,
     maxSize: 0.95,
-    child: AddCustomerForm(allowInitialCredit: allowInitialCredit),
+    child: AddCustomerForm(
+      allowInitialCredit: allowInitialCredit,
+      customerSingular: customerSingular,
+    ),
   );
 }
 
 class AddCustomerForm extends StatefulWidget {
-  const AddCustomerForm({super.key, this.allowInitialCredit = true});
+  const AddCustomerForm({
+    super.key,
+    this.allowInitialCredit = true,
+    this.customerSingular = 'Customer',
+  });
 
   final bool allowInitialCredit;
+  final String customerSingular;
 
   @override
   State<AddCustomerForm> createState() => _AddCustomerFormState();
@@ -160,7 +169,8 @@ class _AddCustomerFormState extends State<AddCustomerForm> {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = 'Could not save this customer. Please try again.';
+        _error =
+            'Could not save this ${widget.customerSingular.toLowerCase()}. Please try again.';
       });
     }
   }
@@ -196,13 +206,12 @@ class _AddCustomerFormState extends State<AddCustomerForm> {
                     textInputAction: TextInputAction.next,
                     decoration: kitFieldDecoration(
                       context,
-                      label: 'Customer or shop name',
+                      label: '${widget.customerSingular} or shop name',
                       hint: 'e.g. Wanjiru Mini Mart',
                       prefixIcon: Icons.storefront_outlined,
                     ),
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Enter a name'
-                        : null,
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Enter a name' : null,
                   ),
                   const SizedBox(height: 18),
                   TextFormField(
@@ -233,8 +242,9 @@ class _AddCustomerFormState extends State<AddCustomerForm> {
                   TextFormField(
                     controller: _location,
                     textCapitalization: TextCapitalization.words,
-                    textInputAction:
-                        _showNotes ? TextInputAction.next : TextInputAction.done,
+                    textInputAction: _showNotes
+                        ? TextInputAction.next
+                        : TextInputAction.done,
                     decoration: kitFieldDecoration(
                       context,
                       label: 'Shop location (optional)',
@@ -270,129 +280,133 @@ class _AddCustomerFormState extends State<AddCustomerForm> {
                   // do not owe anything yet.
                   if (widget.allowInitialCredit)
                     Material(
-                    color: panel,
-                    clipBehavior: Clip.antiAlias,
-                    shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusMd),
-                      side: BorderSide(color: border),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SwitchListTile(
-                          key: const ValueKey('credit-switch'),
-                          value: _onCredit,
-                          onChanged: (v) => setState(() {
-                            _onCredit = v;
-                            _error = null;
-                          }),
-                          activeThumbColor: Colors.white,
-                          activeTrackColor: DesignColors.accent,
-                          contentPadding:
-                              const EdgeInsets.symmetric(horizontal: 14),
-                          secondary: Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: DesignColors.accent.withValues(alpha: 0.12),
-                              borderRadius:
-                                  BorderRadius.circular(DesignSpacing.radiusSm),
+                      color: panel,
+                      clipBehavior: Clip.antiAlias,
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
+                        side: BorderSide(color: border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SwitchListTile(
+                            key: const ValueKey('credit-switch'),
+                            value: _onCredit,
+                            onChanged: (v) => setState(() {
+                              _onCredit = v;
+                              _error = null;
+                            }),
+                            activeThumbColor: Colors.white,
+                            activeTrackColor: DesignColors.accent,
+                            contentPadding:
+                                const EdgeInsets.symmetric(horizontal: 14),
+                            secondary: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color:
+                                    DesignColors.accent.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(
+                                    DesignSpacing.radiusSm),
+                              ),
+                              child: const Icon(Icons.credit_score_rounded,
+                                  color: DesignColors.accent, size: 20),
                             ),
-                            child: const Icon(Icons.credit_score_rounded,
-                                color: DesignColors.accent, size: 20),
-                          ),
-                          title: Text(
-                            'Taking stock on credit',
-                            style: TextStyle(
-                              color: title,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
+                            title: Text(
+                              'Taking stock on credit',
+                              style: TextStyle(
+                                color: title,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
+                            ),
+                            subtitle: Text(
+                              'Record what they owe and when it is due',
+                              style:
+                                  TextStyle(color: secondary, fontSize: 12.5),
                             ),
                           ),
-                          subtitle: Text(
-                            'Record what they owe and when it is due',
-                            style: TextStyle(color: secondary, fontSize: 12.5),
-                          ),
-                        ),
-                        if (_onCredit)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(14, 10, 14, 16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                TextFormField(
-                                  controller: _creditAmount,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                          decimal: true),
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.allow(
-                                        RegExp(r'[0-9.,]')),
-                                  ],
-                                  style: DesignType.numeric(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w800,
-                                    color: title,
-                                  ),
-                                  decoration: kitFieldDecoration(
-                                    context,
-                                    label: 'Amount owed',
-                                    hint: '0',
-                                    prefixText: 'KES  ',
-                                  ),
-                                  validator: (v) {
-                                    if (!_onCredit) return null;
-                                    final amount = double.tryParse(
-                                            (v ?? '').trim().replaceAll(',', '')) ??
-                                        0;
-                                    if (amount <= 0) {
-                                      return 'Enter the amount they owe';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                                const SizedBox(height: 16),
-                                const FormLabel('First payment due'),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    for (final (label, date) in _dueShortcuts)
-                                      ChoicePill(
-                                        label: label,
-                                        selected: _sameDay(_dueDate, date),
-                                        onTap: () => setState(() {
-                                          _dueDate = date;
-                                          _error = null;
-                                        }),
-                                      ),
-                                    ChoicePill(
-                                      label: 'Pick a date',
-                                      icon: Icons.event_outlined,
-                                      selected: _dueDate != null &&
-                                          !_dueShortcuts.any(
-                                              (s) => _sameDay(_dueDate, s.$2)),
-                                      onTap: _pickDate,
-                                    ),
-                                  ],
-                                ),
-                                if (_dueDate != null) ...[
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    'Due ${dateFormat.format(_dueDate!)}',
-                                    style: TextStyle(
+                          if (_onCredit)
+                            Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(14, 10, 14, 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  TextFormField(
+                                    controller: _creditAmount,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                            decimal: true),
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.allow(
+                                          RegExp(r'[0-9.,]')),
+                                    ],
+                                    style: DesignType.numeric(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
                                       color: title,
-                                      fontWeight: FontWeight.w700,
                                     ),
+                                    decoration: kitFieldDecoration(
+                                      context,
+                                      label: 'Amount owed',
+                                      hint: '0',
+                                      prefixText: 'KES  ',
+                                    ),
+                                    validator: (v) {
+                                      if (!_onCredit) return null;
+                                      final amount = double.tryParse((v ?? '')
+                                              .trim()
+                                              .replaceAll(',', '')) ??
+                                          0;
+                                      if (amount <= 0) {
+                                        return 'Enter the amount they owe';
+                                      }
+                                      return null;
+                                    },
                                   ),
+                                  const SizedBox(height: 16),
+                                  const FormLabel('First payment due'),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      for (final (label, date) in _dueShortcuts)
+                                        ChoicePill(
+                                          label: label,
+                                          selected: _sameDay(_dueDate, date),
+                                          onTap: () => setState(() {
+                                            _dueDate = date;
+                                            _error = null;
+                                          }),
+                                        ),
+                                      ChoicePill(
+                                        label: 'Pick a date',
+                                        icon: Icons.event_outlined,
+                                        selected: _dueDate != null &&
+                                            !_dueShortcuts.any((s) =>
+                                                _sameDay(_dueDate, s.$2)),
+                                        onTap: _pickDate,
+                                      ),
+                                    ],
+                                  ),
+                                  if (_dueDate != null) ...[
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      'Due ${dateFormat.format(_dueDate!)}',
+                                      style: TextStyle(
+                                        color: title,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
                                 ],
-                              ],
+                              ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
                   if (_error != null) ...[
                     const SizedBox(height: 14),
                     Container(
@@ -419,7 +433,7 @@ class _AddCustomerFormState extends State<AddCustomerForm> {
         ),
         PinnedActionBar(
           child: GradientButton(
-            label: 'Save Customer',
+            label: 'Save ${widget.customerSingular}',
             icon: Icons.check_rounded,
             isLoading: _saving,
             height: 52,

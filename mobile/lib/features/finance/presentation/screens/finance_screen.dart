@@ -13,6 +13,7 @@ import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/receipt_vision_service.dart';
 import '../../../../core/services/supplier_receipt_ocr_service.dart';
 import '../../../../core/providers/tenant_provider.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/utils/api_message.dart';
@@ -72,11 +73,12 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final hub = ref.watch(financeHubProvider);
     final controller = ref.read(financeHubProvider.notifier);
     final permissions = ref.watch(permissionsProvider);
+    final businessLayout = ref.watch(businessLayoutProvider);
     final snapshot = hub.snapshot;
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Finance',
+        title: businessLayout.actionLabel('/finance', 'Finance'),
         showBackButton: false,
         actions: <Widget>[
           if (permissions.canViewCashFlow)

@@ -70,6 +70,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   String? _loadError;
   String? _historyLoadError;
   bool _customerNeedsSync = false;
+  bool _statementServiceNeedsUpdate = false;
   bool _automaticCustomerSyncAttempted = false;
   bool _loading = true;
   bool _busy = false;
@@ -103,6 +104,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
     setState(() {
       _loading = true;
       _loadError = null;
+      _statementServiceNeedsUpdate = false;
     });
     // Statement history is useful, but it must not hold the balance preview
     // or the send actions hostage when that secondary request is unavailable.
@@ -123,13 +125,14 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
       setState(() {
         _loading = false;
         _customerNeedsSync = customerNeedsSync;
+        _statementServiceNeedsUpdate = statementServiceNeedsUpdate(e);
         _loadError = customerNeedsSync
             ? 'This customer or their latest sale has not synced yet.'
             : apiErrorMessage(e);
       });
-      // Older API deployments rejected legacy customer IDs before the sync
-      // endpoint could create the customer. Repair that once automatically so
-      // staff do not have to discover and press a secondary retry action.
+      // Only a customer-specific 404 can be repaired by flushing queued data.
+      // UUID validation and missing-route errors need a server update; retrying
+      // customer sync cannot make those API contracts compatible.
       if (customerNeedsSync && !_automaticCustomerSyncAttempted) {
         _automaticCustomerSyncAttempted = true;
         await _syncCustomerAndRetry();
@@ -224,6 +227,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
       setState(() {
         _loading = false;
         _customerNeedsSync = customerNeedsSync;
+        _statementServiceNeedsUpdate = statementServiceNeedsUpdate(e);
         _loadError = customerNeedsSync
             ? 'This customer record has not reached the workspace yet. Sync the customer and try again.'
             : e is StateError
@@ -389,7 +393,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (_loadError != null)
-              _customerNeedsSync
+              _statementServiceNeedsUpdate
                   ? Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(DesignSpacing.md),
@@ -398,21 +402,45 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
                         borderRadius:
                             BorderRadius.circular(DesignSpacing.radiusMd),
                       ),
-                      child: Column(
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(_loadError!,
-                              style: Theme.of(context).textTheme.bodyMedium),
-                          const SizedBox(height: DesignSpacing.sm),
-                          FilledButton.icon(
-                            onPressed: _loading ? null : _syncCustomerAndRetry,
-                            icon: const Icon(Icons.sync_rounded),
-                            label: const Text('Sync and try again'),
+                          const Icon(Icons.system_update_alt_rounded,
+                              color: DesignColors.warning),
+                          const SizedBox(width: DesignSpacing.sm),
+                          Expanded(
+                            child: Text(_loadError!,
+                                style: Theme.of(context).textTheme.bodyMedium),
                           ),
                         ],
                       ),
                     )
-                  : InlineRetryNotice(message: _loadError!, onRetry: _load)
+                  : _customerNeedsSync
+                      ? Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(DesignSpacing.md),
+                          decoration: BoxDecoration(
+                            color: DesignColors.warning.withValues(alpha: 0.12),
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusMd),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(_loadError!,
+                                  style:
+                                      Theme.of(context).textTheme.bodyMedium),
+                              const SizedBox(height: DesignSpacing.sm),
+                              FilledButton.icon(
+                                onPressed:
+                                    _loading ? null : _syncCustomerAndRetry,
+                                icon: const Icon(Icons.sync_rounded),
+                                label: const Text('Sync and try again'),
+                              ),
+                            ],
+                          ),
+                        )
+                      : InlineRetryNotice(message: _loadError!, onRetry: _load)
             else if (preview != null) ...[
               GlassCard(
                 padding: const EdgeInsets.all(DesignSpacing.md),

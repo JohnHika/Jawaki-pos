@@ -5,30 +5,37 @@ import 'package:dio/dio.dart';
 /// Turns an API failure into a sentence a shop owner can act on.
 String apiErrorMessage(Object error) {
   if (error is DioException) {
+    final status = error.response?.statusCode;
     final data = error.response?.data;
     final message = _messageFromPayload(data);
     if (message.isNotEmpty) {
-      final validationMessage = _friendlyValidationMessage(message);
-      if (validationMessage != null) return validationMessage;
       // Old API deployments returned Express/Nest's raw route miss to the
       // app, exposing paths like "Cannot POST /api/v1/mpesa/parse".
       if (RegExp(r'^Cannot (?:GET|POST|PUT|PATCH|DELETE) /api/v\d+/')
           .hasMatch(message)) {
-        return 'This feature is temporarily unavailable. Update Counterbase and try again.';
+        return 'This feature is unavailable right now. Please try again later.';
       }
-      return message;
+      final validationMessage = _friendlyValidationMessage(message);
+      if (validationMessage != null) return validationMessage;
     }
-    final status = error.response?.statusCode;
     if (status == 401) return 'Your session expired. Sign in again.';
     if (status == 403) return "You don't have permission to do that.";
-    if (status == 404) return 'That was not found.';
     if (status == 429) return 'Too many requests. Wait a moment and try again.';
     if (status != null && status >= 500) {
       return 'Server error. Please try again in a moment.';
     }
+    if (message.isNotEmpty) {
+      if (status == 404 &&
+          RegExp(r'^not found\.?$', caseSensitive: false).hasMatch(message)) {
+        return 'That could not be found. Refresh and try again.';
+      }
+      if (_isSafeExceptionMessage(message)) return message;
+    }
+    if (status == 404) return 'That could not be found. Refresh and try again.';
     if (error.type == DioExceptionType.connectionError ||
         error.type == DioExceptionType.connectionTimeout ||
-        error.type == DioExceptionType.receiveTimeout) {
+        error.type == DioExceptionType.receiveTimeout ||
+        error.type == DioExceptionType.sendTimeout) {
       return "Couldn't reach the server. Check your internet and try again.";
     }
   }
@@ -55,7 +62,7 @@ bool _isSafeExceptionMessage(String message) {
 String? _friendlyValidationMessage(String message) {
   if (RegExp(r'\bcustomerid\s+must\s+be\s+a\s+uuid\b', caseSensitive: false)
       .hasMatch(message)) {
-    return 'This customer record needs to sync before a statement can be sent. Reconnect and try again.';
+    return 'Statement sharing needs a service update before it can accept this customer record. Try again after the update is applied.';
   }
   return null;
 }

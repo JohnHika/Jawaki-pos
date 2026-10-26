@@ -3,7 +3,12 @@ import { AccountabilityService } from '../accountability/accountability.service'
 import { PrismaService } from '../common/prisma/prisma.service';
 import { SaleStatus } from '@prisma/client';
 import { ReportFilterDto, ReportPeriod } from '../reporting/dto/reporting.dto';
-import { getDayBoundsInTimezone, nowInTimezone } from '../common/operating-hours';
+import {
+  calendarDaysBetweenInTimezone,
+  getDayBoundsInTimezone,
+  nowInTimezone,
+} from '../common/operating-hours';
+import { verifiedSalePaymentFilter } from '../sales/sale-payment-filter';
 
 export interface CustomerCreateInput {
   name: string;
@@ -105,21 +110,25 @@ export class CustomersService {
     }
     const open = await this.prisma.retailReceivable.findMany({
       where: { tenantId, customerId: id, status: { in: ['OPEN', 'PARTIAL'] } },
-      select: { outstandingAmount: true, dueDate: true },
+      select: {
+        outstandingAmount: true,
+        dueDate: true,
+        branch: { select: { timezone: true } },
+      },
     });
-    const now = Date.now();
+    const now = new Date();
     let outstanding = 0;
     let overdueAmount = 0;
     let oldestOverdueDays = 0;
     for (const r of open) {
       const amount = Number(r.outstandingAmount);
       outstanding += amount;
-      if (r.dueDate && r.dueDate.getTime() < now) {
+      const overdueDays = r.dueDate
+        ? calendarDaysBetweenInTimezone(r.dueDate, now, r.branch.timezone || 'Africa/Nairobi')
+        : 0;
+      if (overdueDays > 0) {
         overdueAmount += amount;
-        oldestOverdueDays = Math.max(
-          oldestOverdueDays,
-          Math.floor((now - r.dueDate.getTime()) / 86_400_000),
-        );
+        oldestOverdueDays = Math.max(oldestOverdueDays, overdueDays);
       }
     }
     const settings = this.accountability
@@ -336,6 +345,7 @@ export class CustomersService {
         status: SaleStatus.COMPLETED,
         customerId: { not: null },
         createdAt: { gte: start, lte: end },
+        ...verifiedSalePaymentFilter(),
       },
       _sum: { totalAmount: true },
       _count: { id: true },
@@ -407,6 +417,7 @@ export class CustomersService {
         branch: { tenantId },
         status: SaleStatus.COMPLETED,
         customerId: { in: customers.map((c) => c.id) },
+        ...verifiedSalePaymentFilter(),
       },
       _max: { createdAt: true },
       _sum: { totalAmount: true },
@@ -500,6 +511,7 @@ export class CustomersService {
         branch: { tenantId },
         customerId,
         status: SaleStatus.COMPLETED,
+        ...verifiedSalePaymentFilter(),
       },
       _sum: { totalAmount: true },
       _count: { id: true },
@@ -510,6 +522,7 @@ export class CustomersService {
       where: {
         branch: { tenantId },
         customerId,
+        ...verifiedSalePaymentFilter(),
       },
       include: {
         _count: { select: { items: true } },

@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { LegacyUserRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { calendarDaysBetweenInTimezone } from '../common/operating-hours';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -300,19 +301,25 @@ export class AccountabilityService {
 
     const open = await this.prisma.retailReceivable.findMany({
       where: { tenantId, customerId, status: { in: ['OPEN', 'PARTIAL'] } },
-      select: { outstandingAmount: true, dueDate: true },
+      select: {
+        outstandingAmount: true,
+        dueDate: true,
+        branch: { select: { timezone: true } },
+      },
     });
-    const now = Date.now();
+    const now = new Date();
     let outstanding = 0;
     let oldestOverdueDays = 0;
     for (const r of open) {
       outstanding += Number(r.outstandingAmount);
-      if (r.dueDate && r.dueDate.getTime() < now) {
-        oldestOverdueDays = Math.max(
-          oldestOverdueDays,
-          Math.floor((now - r.dueDate.getTime()) / 86_400_000),
-        );
-      }
+      const overdueDays = r.dueDate
+        ? calendarDaysBetweenInTimezone(
+            r.dueDate,
+            now,
+            r.branch.timezone || 'Africa/Nairobi',
+          )
+        : 0;
+      oldestOverdueDays = Math.max(oldestOverdueDays, overdueDays);
     }
     return {
       customer: {

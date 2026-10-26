@@ -14,6 +14,7 @@ import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/utils/api_message.dart';
+import '../../../../core/utils/format.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import 'cart_provider.dart';
 
@@ -324,6 +325,14 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       }
 
       final receiptNumber = verified['receiptNumber']?.toString() ?? reference;
+      final verifiedAmount = (verified['amount'] as num?)?.toDouble() ?? amount;
+      final quotedSubtotal = items.fold<double>(
+        0,
+        (sum, item) => sum + item.total,
+      );
+      final verifiedTax = roundCurrency(
+        verifiedAmount - (quotedSubtotal - discountAmount),
+      );
       var localSale = await _database.getPendingSaleById(saleId);
       localSale ??= await _database.getMerchantMpesaSaleByReference(reference);
       if (!_isCurrentSession(sessionGeneration)) return null;
@@ -334,8 +343,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           receiptNumber: receiptNumber,
           items: items,
           paymentMethod: 'MPESA',
-          total: amount,
+          total: verifiedAmount,
           discountAmount: discountAmount,
+          taxAmountOverride: verifiedTax,
           paymentReference: reference,
           customerId: customerId,
         );
@@ -552,17 +562,21 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     required String paymentMethod,
     required double total,
     double discountAmount = 0,
+    double? taxAmountOverride,
     double customerBalanceDelta = 0,
     String? paymentReference,
     String? customerId,
   }) async {
     final subtotal = items.fold<double>(0, (sum, item) => sum + item.total);
-    // Same tax computation the cart uses (AuthService.taxRatePercent, an
-    // admin-configured rate, default 0). The previous hardcoded 16% recorded
-    // tax the business never charged on offline sales: receipts printed a
-    // wrong tax line and subtotal + tax ≠ total.
-    final tax =
-        (subtotal - discountAmount) * (_authService.taxRatePercent / 100);
+    // Cash, credit and split receipts use the business rate shown in the cart.
+    // Verified M-Pesa passes tax derived from the server-confirmed charge
+    // amount, so a settings change while the customer approves the prompt
+    // cannot make the local receipt disagree with the settled sale.
+    final tax = taxAmountOverride == null
+        ? roundCurrency(
+            (subtotal - discountAmount) * (_authService.taxRatePercent / 100),
+          )
+        : roundCurrency(taxAmountOverride);
 
     // Create pending sale in local database
     await _database.createPendingSale(
@@ -613,58 +627,26 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     _SaleExtras extras = const _SaleExtras(),
   ]) async {
     final sessionGeneration = _sessionGeneration;
-    if (!_connectivity.isOnline) {
-      await _tryQueueSaleForSync(
-        saleId,
-        items,
-        paymentMethod,
-        paidAmount,
-        paymentReference,
-        tenders,
-        customerId,
-        extras,
-      );
+    // The sale and stock deduction are already committed locally. Persist its
+    // outbox event before returning, then let the normal sync worker upload it
+    // without holding checkout on API timeouts or unrelated queued events.
+    await _tryQueueSaleForSync(
+      saleId,
+      items,
+      paymentMethod,
+      paidAmount,
+      paymentReference,
+      tenders,
+      customerId,
+      extras,
+    );
+    if (!_isCurrentSession(sessionGeneration) || !_connectivity.isOnline)
       return;
-    }
 
-    try {
-      final serverReceiptNumber = await _syncSaleToServer(
-        saleId,
-        items,
-        paymentMethod,
-        paidAmount,
-        paymentReference,
-        tenders,
-        customerId,
-        extras,
-      );
-      if (!_isCurrentSession(sessionGeneration)) return;
-      await _database.markSaleAsSynced(saleId);
-      // The server numbers every sale itself. Adopt that number locally so the
-      // receipt, dashboard, Receipts list and Sales Report all show one ID.
-      if (serverReceiptNumber != null && serverReceiptNumber.isNotEmpty) {
-        await _database.updateSaleReceiptNumber(saleId, serverReceiptNumber);
-      }
-      if (!_isCurrentSession(sessionGeneration)) return;
-      // Refresh canonical stock after a successful online sale. A failed pull
-      // is non-fatal: the queued/periodic sync will retry it later.
-      // This can paginate through many remote changes. The sale and its
-      // canonical receipt are already committed, so it must not hold the
-      // cashier on the payment screen after the sale succeeded.
-      unawaited(_syncService.pullChanges());
-    } catch (_) {
-      if (!_isCurrentSession(sessionGeneration)) return;
-      await _tryQueueSaleForSync(
-        saleId,
-        items,
-        paymentMethod,
-        paidAmount,
-        paymentReference,
-        tenders,
-        customerId,
-        extras,
-      );
-    }
+    // The outbox is durable now. A server delay or outage must not block the
+    // cashier from seeing the locally saved receipt; the periodic worker will
+    // retry if this background attempt fails.
+    unawaited(_syncService.syncPendingEvents());
   }
 
   /// A local sale is committed before this sync attempt. If both network sync
@@ -697,57 +679,6 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     }
   }
 
-  Future<String?> _syncSaleToServer(
-    String saleId,
-    List<CartItem> items,
-    String paymentMethod,
-    double paidAmount, [
-    String? paymentReference,
-    List<PaymentTender>? tenders,
-    String? customerId,
-    _SaleExtras extras = const _SaleExtras(),
-  ]) async {
-    final branchId = _authService.branchId;
-    // branchId is a required field on the server (CreateSaleDto.branchId).
-    // Without it every POST /sales 400s, the sale is silently re-queued,
-    // and server-side stock never decrements. Never send a knowingly
-    // invalid request — let the caller's catch queue it for a later retry
-    // once a branch is resolved.
-    if (branchId == null) {
-      throw StateError('Cannot sync sale: no branch selected');
-    }
-
-    final created = await _apiClient.createSale({
-      'offlineId': saleId,
-      'branchId': branchId,
-      if (_authService.deviceId != null) 'deviceId': _authService.deviceId,
-      if (customerId != null) 'customerId': customerId,
-      'items': items
-          .map((i) => {
-                'productId': i.productId,
-                'quantity': i.quantity,
-                'unitPrice': i.unitPrice,
-                'discount': i.discount,
-                if (i.saleUnit != null) 'unit': i.saleUnit,
-                if (i.unitConversionFactor != null)
-                  'quantityPerUnit': i.unitConversionFactor,
-              })
-          .toList(),
-      'paymentMethod': paymentMethod,
-      if (extras.discountAmount > 0) 'discountAmount': extras.discountAmount,
-      if (extras.couponCode != null) 'couponCode': extras.couponCode,
-      // The server's sale schema has no paymentReference or cashierId (the
-      // cashier comes from the signed-in token). Sending them made every
-      // direct upload fail with 400 and fall back to the slow queue.
-      'paidAmount': paidAmount,
-      if (tenders != null) 'tenders': tenders.map((t) => t.toJson()).toList(),
-    });
-    // The API wraps payloads as {success, data}; older responses are bare.
-    final payload = created['data'] is Map ? created['data'] as Map : created;
-    final number = payload['receiptNumber'];
-    return number is String ? number : null;
-  }
-
   Future<void> _queueSaleForSync(
     String saleId,
     List<CartItem> items,
@@ -770,27 +701,44 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         if (_authService.branchId != null) 'branchId': _authService.branchId,
         if (_authService.deviceId != null) 'deviceId': _authService.deviceId,
         if (customerId != null) 'customerId': customerId,
-        'items': items.map((i) => i.toJson()).toList(),
+        // Match the live sales DTO shape. CartItem.toJson is optimized for
+        // local persistence and uses saleUnit/unitConversionFactor, while the
+        // sync handler expects unit/quantityPerUnit just like createSale.
+        'items': items
+            .map((item) => {
+                  'productId': item.productId,
+                  'quantity': item.quantity,
+                  'unitPrice': item.unitPrice,
+                  'discount': item.discount,
+                  if (item.saleUnit != null) 'unit': item.saleUnit,
+                  if (item.unitConversionFactor != null)
+                    'quantityPerUnit': item.unitConversionFactor,
+                })
+            .toList(),
         'paymentMethod': paymentMethod,
         'paymentReference': paymentReference,
         if (extras.discountAmount > 0) 'discountAmount': extras.discountAmount,
         if (extras.couponCode != null) 'couponCode': extras.couponCode,
         'paidAmount': paidAmount,
+        // Offline sales must retain the tax rate the cashier saw in the cart;
+        // a settings change before sync must not rewrite an already-paid sale.
+        'taxRatePercentSnapshot': _authService.taxRatePercent,
         'cashierId': _authService.userId,
         if (tenders != null) 'tenders': tenders.map((t) => t.toJson()).toList(),
       },
       deviceId: _authService.deviceId!,
       userId: _authService.userId ?? '',
+      syncImmediately: false,
     );
   }
 
   Future<Map<String, dynamic>?> _pollMerchantMpesaStatus(
       String reference) async {
-    // Give the STK prompt a moment to reach the handset, then return control
-    // to the cashier. A long 60-second wait kept the only checkout button
-    // disabled; the same button safely checks this reference again without
-    // starting a second charge.
-    await Future<void>.delayed(const Duration(seconds: 2));
+    // Paystack recommends waiting at least 10 seconds before checking an
+    // asynchronous M-Pesa charge. A long 60-second wait kept the only checkout
+    // button disabled; this brief wait respects the provider window, then lets
+    // the cashier safely check this same reference again without a new charge.
+    await Future<void>.delayed(const Duration(seconds: 10));
     try {
       final status = await _apiClient.getMerchantMpesaStatus(reference);
       if (['COMPLETED', 'FAILED', 'NEEDS_REVIEW'].contains(status['status'])) {

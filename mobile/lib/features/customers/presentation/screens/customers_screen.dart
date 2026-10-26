@@ -9,6 +9,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/utils/format.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../finance/domain/finance_models.dart';
 import '../widgets/add_customer_sheet.dart';
@@ -141,11 +142,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   List<Map<String, dynamic>> _applyDebtFilter(
       List<Map<String, dynamic>> customers) {
     if (!_showDebtOnly) return customers;
-    return customers
-        .where((c) => ((c['balance'] as num?) ?? 0) > 0)
-        .toList()
-      ..sort((a, b) => ((b['balance'] as num?) ?? 0)
-          .compareTo((a['balance'] as num?) ?? 0));
+    return customers.where((c) => ((c['balance'] as num?) ?? 0) > 0).toList()
+      ..sort((a, b) =>
+          ((b['balance'] as num?) ?? 0).compareTo((a['balance'] as num?) ?? 0));
   }
 
   Future<void> _loadCustomers({String? query}) async {
@@ -207,7 +206,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   }
 
   Future<void> _showAddCustomerSheet() async {
-    final customer = await showAddCustomerSheet(context);
+    final customer = await showAddCustomerSheet(
+      context,
+      customerSingular: ref.read(businessLayoutProvider).customerSingular,
+    );
     if (customer == null || !mounted) return;
     _loadCustomers();
     showGlassSnackBar(
@@ -230,15 +232,18 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final border =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+    final businessLayout = ref.watch(businessLayoutProvider);
+    final customerSingular = businessLayout.customerSingular.toLowerCase();
+    final customersLabel = businessLayout.customersLabel.toLowerCase();
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Customers',
+        title: businessLayout.actionLabel('/customers', 'Customers'),
         showBackButton: false,
         actions: [
           IconButton(
             icon: const Icon(Icons.person_add_rounded, size: 20),
-            tooltip: 'Add Customer',
+            tooltip: 'Add ${businessLayout.customerSingular}',
             onPressed: _showAddCustomerSheet,
           ),
         ],
@@ -255,8 +260,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   color: Colors.transparent,
                   borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   child: InkWell(
-                    borderRadius:
-                        BorderRadius.circular(DesignSpacing.radiusMd),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     onTap: () {
                       setState(() => _showDebtOnly = true);
                       _loadCustomers();
@@ -279,10 +283,13 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                           Expanded(
                             child: Text(
                               '${_overdueInstallments.length} overdue payment${_overdueInstallments.length == 1 ? '' : 's'} — follow up today',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: DesignColors.error,
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: DesignColors.error,
+                                  ),
                             ),
                           ),
                           const Icon(Icons.chevron_right_rounded,
@@ -300,7 +307,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                 controller: _searchController,
                 style: TextStyle(color: titleColor),
                 decoration: InputDecoration(
-                  hintText: 'Search customers...',
+                  hintText: 'Search $customersLabel...',
                   hintStyle: TextStyle(color: tertiaryColor),
                   filled: true,
                   fillColor: surface,
@@ -320,7 +327,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         const BorderSide(color: DesignColors.brand, width: 1.5),
                   ),
                   suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(tooltip: 'Clear search', 
+                      ? IconButton(
+                          tooltip: 'Clear search',
                           icon:
                               Icon(Icons.clear, size: 18, color: tertiaryColor),
                           onPressed: () {
@@ -341,7 +349,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
               child: Row(
                 children: [
                   ChoiceChip(
-                    label: const Text('All customers'),
+                    label: Text('All $customersLabel'),
                     visualDensity: VisualDensity.compact,
                     labelStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurface),
@@ -378,7 +386,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   : _loadError != null
                       ? EmptyState(
                           icon: Icons.cloud_off_rounded,
-                          title: 'Couldn\'t load customers',
+                          title: 'Couldn\'t load $customersLabel',
                           subtitle: _loadError!,
                           iconColor: DesignColors.error,
                           actionLabel: 'Retry',
@@ -390,13 +398,14 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                               icon: Icons.people_outlined,
                               title: _showDebtOnly
                                   ? 'No customers owe money'
-                                  : 'No Customers Yet',
+                                  : 'No ${businessLayout.customersLabel} yet',
                               subtitle: _showDebtOnly
                                   ? 'Everyone is paid up'
-                                  : 'Add your first customer to get started',
+                                  : 'Add your first $customerSingular to get started',
                               actionIcon: Icons.person_add_alt_1_rounded,
-                              actionLabel:
-                                  _showDebtOnly ? null : 'Add Customer',
+                              actionLabel: _showDebtOnly
+                                  ? null
+                                  : 'Add ${businessLayout.customerSingular}',
                               onAction:
                                   _showDebtOnly ? null : _showAddCustomerSheet,
                             )
@@ -410,125 +419,164 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                   final c = _customers[index];
                                   final balance =
                                       (c['balance'] as num?)?.toDouble() ?? 0;
-                                  return UnfoldIn(delay: Duration(milliseconds: 40 * (index < 8 ? index : 8)), child: Padding(
-                                    padding: const EdgeInsets.only(bottom: 8),
-                                    child: Material(
-                                      color: Colors.transparent,
-                                      borderRadius: BorderRadius.circular(
-                                          DesignSpacing.radiusMd),
-                                      child: InkWell(
-                                        borderRadius: BorderRadius.circular(
-                                            DesignSpacing.radiusMd),
-                                        onTap: () => context
-                                            .push('/customers/${c['id']}'),
-                                        child: Container(
-                                          padding: const EdgeInsets.all(14),
-                                          decoration: BoxDecoration(
-                                            color: surface,
+                                  return UnfoldIn(
+                                      delay: Duration(
+                                          milliseconds:
+                                              40 * (index < 8 ? index : 8)),
+                                      child: Padding(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 8),
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          borderRadius: BorderRadius.circular(
+                                              DesignSpacing.radiusMd),
+                                          child: InkWell(
                                             borderRadius: BorderRadius.circular(
                                                 DesignSpacing.radiusMd),
-                                            border: Border.all(
-                                              color: balance > 0
-                                                  ? DesignColors.error
-                                                      .withValues(alpha: 0.35)
-                                                  : border,
-                                            ),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              CircleAvatar(
-                                                backgroundColor: DesignColors
-                                                    .brand
-                                                    .withValues(alpha: 0.15),
-                                                child: Text(
-                                                  (c['name'] as String? ??
-                                                          '?')[0]
-                                                      .toUpperCase(),
-                                                  style: const TextStyle(
-                                                      color: DesignColors.brand,
-                                                      fontWeight:
-                                                          FontWeight.bold),
+                                            onTap: () => context
+                                                .push('/customers/${c['id']}'),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(14),
+                                              decoration: BoxDecoration(
+                                                color: surface,
+                                                borderRadius:
+                                                    BorderRadius.circular(
+                                                        DesignSpacing.radiusMd),
+                                                border: Border.all(
+                                                  color: balance > 0
+                                                      ? DesignColors.error
+                                                          .withValues(
+                                                              alpha: 0.35)
+                                                      : border,
                                                 ),
                                               ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(c['name'] ?? '',
-                                                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                                            fontWeight:
-                                                            FontWeight.w600,
-                                                            color: titleColor,
-                                                        )),
-                                                    if ((c['phone'] ?? '')
-                                                        .toString()
-                                                        .isNotEmpty)
-                                                      Text(c['phone'],
-                                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                                              color:
-                                                              secondaryColor,
-                                                          )),
-                                                    if ((c['location'] ?? '')
-                                                        .toString()
-                                                        .isNotEmpty)
-                                                      Row(
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        children: [
-                                                          Icon(
-                                                              Icons
-                                                                  .location_on_outlined,
-                                                              size: 11,
-                                                              color:
-                                                                  tertiaryColor),
-                                                          const SizedBox(
-                                                              width: 2),
-                                                          Text(c['location'],
-                                                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                                                  color:
-                                                                  tertiaryColor,
-                                                              )),
-                                                        ],
-                                                      ),
-                                                  ],
-                                                ),
-                                              ),
-                                              Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.end,
+                                              child: Row(
                                                 children: [
-                                                  if (balance > 0)
-                                                    Text(
-                                                        'Owes ${formatMoney(balance)}',
-                                                        style: DesignType.numeric(
-                                                            color: DesignColors
-                                                            .error,
-                                                            fontWeight: FontWeight.w700,
-                                                        ))
-                                                  else
-                                                    Text(
-                                                        'KES ${(c['totalSpent'] as num?)?.toStringAsFixed(0) ?? '0'}',
-                                                        style: DesignType.numeric(
-                                                            color: DesignColors
-                                                            .brand,
-                                                            fontWeight: FontWeight.w700,
-                                                        )),
-                                                  Text(
-                                                      '${c['totalPurchases'] ?? 0} purchases',
-                                                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                                          color:
-                                                          tertiaryColor,
-                                                      )),
+                                                  CircleAvatar(
+                                                    backgroundColor:
+                                                        DesignColors.brand
+                                                            .withValues(
+                                                                alpha: 0.15),
+                                                    child: Text(
+                                                      (c['name'] as String? ??
+                                                              '?')[0]
+                                                          .toUpperCase(),
+                                                      style: const TextStyle(
+                                                          color: DesignColors
+                                                              .brand,
+                                                          fontWeight:
+                                                              FontWeight.bold),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 12),
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        Text(c['name'] ?? '',
+                                                            style: Theme.of(
+                                                                    context)
+                                                                .textTheme
+                                                                .bodyMedium
+                                                                ?.copyWith(
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w600,
+                                                                  color:
+                                                                      titleColor,
+                                                                )),
+                                                        if ((c['phone'] ?? '')
+                                                            .toString()
+                                                            .isNotEmpty)
+                                                          Text(c['phone'],
+                                                              style: Theme.of(
+                                                                      context)
+                                                                  .textTheme
+                                                                  .bodySmall
+                                                                  ?.copyWith(
+                                                                    color:
+                                                                        secondaryColor,
+                                                                  )),
+                                                        if ((c['location'] ??
+                                                                '')
+                                                            .toString()
+                                                            .isNotEmpty)
+                                                          Row(
+                                                            mainAxisSize:
+                                                                MainAxisSize
+                                                                    .min,
+                                                            children: [
+                                                              Icon(
+                                                                  Icons
+                                                                      .location_on_outlined,
+                                                                  size: 11,
+                                                                  color:
+                                                                      tertiaryColor),
+                                                              const SizedBox(
+                                                                  width: 2),
+                                                              Text(
+                                                                  c['location'],
+                                                                  style: Theme.of(
+                                                                          context)
+                                                                      .textTheme
+                                                                      .labelSmall
+                                                                      ?.copyWith(
+                                                                        color:
+                                                                            tertiaryColor,
+                                                                      )),
+                                                            ],
+                                                          ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment.end,
+                                                    children: [
+                                                      if (balance > 0)
+                                                        Text(
+                                                            'Owes ${formatMoney(balance)}',
+                                                            style: DesignType
+                                                                .numeric(
+                                                              color:
+                                                                  DesignColors
+                                                                      .error,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                            ))
+                                                      else
+                                                        Text(
+                                                            'KES ${(c['totalSpent'] as num?)?.toStringAsFixed(0) ?? '0'}',
+                                                            style: DesignType
+                                                                .numeric(
+                                                              color:
+                                                                  DesignColors
+                                                                      .brand,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                            )),
+                                                      Text(
+                                                          '${c['totalPurchases'] ?? 0} purchases',
+                                                          style:
+                                                              Theme.of(context)
+                                                                  .textTheme
+                                                                  .labelSmall
+                                                                  ?.copyWith(
+                                                                    color:
+                                                                        tertiaryColor,
+                                                                  )),
+                                                    ],
+                                                  ),
                                                 ],
                                               ),
-                                            ],
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ),
-                                  ));
+                                      ));
                                 },
                               ),
                             ),

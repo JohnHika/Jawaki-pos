@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/storage_service.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/widgets/coach_mark_overlay.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../sales/presentation/screens/pos_screen.dart';
@@ -51,7 +52,8 @@ class _StaffTourScreenState extends ConsumerState<StaffTourScreen> {
       CoachMarkStep(
         targetKey: HomeNavKeys.more,
         title: 'Everything else lives here',
-        description: 'Tap "More" any time to find Inventory, Reports, Settings, and more.',
+        description:
+            'Tap "More" any time to find Inventory, Reports, Settings, and more.',
       ),
       if (perms.canSeeInventory)
         CoachMarkStep(
@@ -70,7 +72,8 @@ class _StaffTourScreenState extends ConsumerState<StaffTourScreen> {
       CoachMarkStep(
         targetKey: HomeNavKeys.moreSheetSettings,
         title: 'Your account & preferences',
-        description: 'Change your PIN, adjust notifications, and find help here.',
+        description:
+            'Change your PIN, adjust notifications, and find help here.',
         beforeShow: openSheet,
         onLeave: () {
           HomeNavKeys.moreSheetOpenRequest.value = false;
@@ -86,7 +89,11 @@ class _StaffTourScreenState extends ConsumerState<StaffTourScreen> {
     // Skipping from inside a sheet step used to leave the More sheet open.
     HomeNavKeys.moreSheetOpenRequest.value = false;
     getIt<StorageService>().setHasSeenStaffTour(true);
-    if (mounted) context.go('/');
+    if (mounted) {
+      final permissions = ref.read(permissionsProvider);
+      final layout = ref.read(businessLayoutProvider);
+      context.go(layout.homePathFor(permissions));
+    }
   }
 
   @override

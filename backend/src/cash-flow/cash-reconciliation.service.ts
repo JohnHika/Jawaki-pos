@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { AccountabilityService } from '../accountability/accountability.service';
 import { AuditService } from '../audit/audit.service';
@@ -24,73 +25,110 @@ export class CashReconciliationService {
    * would otherwise silently overstate available cash forever.
    */
   async createReconciliation(userId: string, tenantId: string, branchId: string, dto: CreateReconciliationDto) {
-    const result = await this.prisma.$transaction(async (tx) => {
-      // Use the same branch lock as every cash-ledger append. This serializes
-      // the expected-cash read against simultaneous sales, payouts, and other
-      // reconciliations, so a stale read cannot double-book a discrepancy.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${branchId}))`;
+    const result = await this.prisma.$transaction((tx) =>
+      this.createReconciliationInTransaction(tx, userId, tenantId, branchId, dto),
+    );
+    await this.recordReconciliationEffects(
+      userId,
+      tenantId,
+      branchId,
+      result,
+    );
+    return this.formatReconciliation(result.reconciliation);
+  }
 
-      const branch = await tx.branch.findFirst({
-        where: { id: branchId, tenantId },
-      });
-      if (!branch) throw new NotFoundException('Branch not found');
+  /**
+   * Adds a reconciliation and its ledger correction to the caller's
+   * transaction. End-of-day uses this to commit the cash adjustment and the
+   * Z-report snapshot together, so a failed close cannot leave an orphaned
+   * reconciliation behind.
+   */
+  async createReconciliationInTransaction(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    tenantId: string,
+    branchId: string,
+    dto: CreateReconciliationDto,
+  ) {
+    // Use the same branch lock as every cash-ledger append. This serializes
+    // the expected-cash read against simultaneous sales, payouts, and other
+    // reconciliations, so a stale read cannot double-book a discrepancy.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${branchId}))`;
 
-      const { mode, expectedPhysicalCash } = await this.cashFlowService.getAvailableCash(branchId, tx);
-      const expectedCash = expectedPhysicalCash;
-      const discrepancy = dto.countedCash - expectedCash;
-
-      const lastReconciliation = await tx.cashReconciliation.findFirst({
-        where: { branchId },
-        orderBy: { periodEnd: 'desc' },
-      });
-      const periodStart = lastReconciliation?.periodEnd ?? this.startOfToday(branch.timezone);
-
-      const reconciliation = await tx.cashReconciliation.create({
-        data: {
-          branchId,
-          expectedCash,
-          countedCash: dto.countedCash,
-          discrepancy,
-          cashMode: mode,
-          periodStart,
-          notes: dto.notes,
-          countedById: userId,
-        },
-      });
-
-      // Keep the observation and any forward correction atomic. A failed
-      // ledger append must not leave a reconciliation that was never applied.
-      if (Math.abs(discrepancy) > 0.01) {
-        await this.cashFlowService.recordEntry({
-          branchId,
-          type: CashEntryType.MANUAL_ADJUSTMENT,
-          amount: discrepancy,
-          referenceType: 'cash_reconciliation',
-          referenceId: reconciliation.id,
-          note:
-            discrepancy > 0
-              ? `Reconciliation overage of ${discrepancy.toFixed(2)}`
-              : `Reconciliation shortfall of ${Math.abs(discrepancy).toFixed(2)}`,
-          createdById: userId,
-          tx,
-        });
-      }
-
-      return { reconciliation, expectedCash, discrepancy };
+    const branch = await tx.branch.findFirst({
+      where: { id: branchId, tenantId },
     });
-    const { reconciliation, expectedCash, discrepancy } = result;
+    if (!branch) throw new NotFoundException('Branch not found');
 
+    const { mode, expectedPhysicalCash } = await this.cashFlowService.getAvailableCash(branchId, tx);
+    const expectedCash = expectedPhysicalCash;
+    const discrepancy = dto.countedCash - expectedCash;
+
+    const lastReconciliation = await tx.cashReconciliation.findFirst({
+      where: { branchId },
+      orderBy: { periodEnd: 'desc' },
+    });
+    const periodStart = lastReconciliation?.periodEnd ?? this.startOfToday(branch.timezone);
+
+    const reconciliation = await tx.cashReconciliation.create({
+      data: {
+        branchId,
+        expectedCash,
+        countedCash: dto.countedCash,
+        discrepancy,
+        cashMode: mode,
+        periodStart,
+        notes: dto.notes,
+        countedById: userId,
+      },
+    });
+
+    // Keep the observation and any forward correction atomic. A failed
+    // ledger append must not leave a reconciliation that was never applied.
+    if (Math.abs(discrepancy) > 0.01) {
+      await this.cashFlowService.recordEntry({
+        branchId,
+        type: CashEntryType.MANUAL_ADJUSTMENT,
+        amount: discrepancy,
+        referenceType: 'cash_reconciliation',
+        referenceId: reconciliation.id,
+        note:
+          discrepancy > 0
+            ? `Reconciliation overage of ${discrepancy.toFixed(2)}`
+            : `Reconciliation shortfall of ${Math.abs(discrepancy).toFixed(2)}`,
+        createdById: userId,
+        tx,
+      });
+    }
+
+    return { reconciliation, expectedCash, discrepancy };
+  }
+
+  /** Persist audit and alerts after the reconciliation transaction commits. */
+  async recordReconciliationEffects(
+    userId: string,
+    tenantId: string,
+    branchId: string,
+    result: {
+      reconciliation: { id: string; countedCash: Prisma.Decimal | number };
+      expectedCash: number;
+      discrepancy: number;
+    },
+  ) {
+    const { reconciliation, expectedCash, discrepancy } = result;
     await this.auditService.record({
       userId,
       action: 'CREATE',
       entityType: 'cash_reconciliation',
       entityId: reconciliation.id,
-      newValues: { expectedCash, countedCash: dto.countedCash, discrepancy },
+      newValues: {
+        expectedCash,
+        countedCash: Number(reconciliation.countedCash),
+        discrepancy,
+      },
     });
 
     await this.alertOnDiscrepancy(tenantId, branchId, userId, discrepancy, reconciliation.id);
-
-    return this.formatReconciliation(reconciliation);
   }
 
   /** A till that does not balance is the most direct sign of missing money. */

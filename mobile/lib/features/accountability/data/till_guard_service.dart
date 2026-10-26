@@ -43,6 +43,19 @@ class TillGuardService {
 
   Future<void> clear() => _cache.clear();
 
+  /// Reads the cashier's cached permission before exposing price editing.
+  /// Stale rules refresh in the background. A missing snapshot fails closed;
+  /// online sales are checked again by the server at checkout.
+  Future<bool> canOverridePrice() async {
+    await _cache.load();
+    if (_cache.isStale) {
+      // Do not hold the product sheet open while the network refreshes.
+      // ignore: unawaited_futures
+      refreshIfStale();
+    }
+    return _cache.current?.canOverridePrice ?? false;
+  }
+
   /// Checks a sale. Returns true when it may go ahead (possibly after the
   /// cashier confirms) and false when the sale must be changed first.
   Future<bool> review(

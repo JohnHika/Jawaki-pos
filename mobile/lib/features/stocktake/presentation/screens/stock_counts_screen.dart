@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
@@ -25,7 +26,9 @@ class StockCountsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Stock Counts',
+        title: ref
+            .watch(businessLayoutProvider)
+            .actionLabel('/stock-counts', 'Stock Counts'),
         showBackButton: GoRouter.of(context).canPop(),
       ),
       floatingActionButton: perms.has('inventory.stocktake.create')
@@ -202,8 +205,8 @@ class _StartCountSheetState extends State<_StartCountSheet> {
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
-              child:
-                  Text(_error!, style: const TextStyle(color: DesignColors.error)),
+              child: Text(_error!,
+                  style: const TextStyle(color: DesignColors.error)),
             ),
           const SizedBox(height: DesignSpacing.sm),
           GradientButton(

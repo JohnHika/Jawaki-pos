@@ -24,6 +24,8 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  static const int _maxVisiblePrimaryItems = 4;
+
   List<_NavItem> _latestMoreItems = const [];
   bool _isMoreSheetOpen = false;
 
@@ -122,14 +124,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       items.add(_NavItem(
           icon: Icons.inventory_2_outlined,
           activeIcon: Icons.inventory_2_rounded,
-          label: businessLayout.preset.productsLabel,
+          label: businessLayout.actionLabel(
+              '/products', businessLayout.productsLabel),
           path: '/products'));
     }
     if (perms.canSeeInventory) {
       items.add(_NavItem(
           icon: Icons.warehouse_outlined,
           activeIcon: Icons.warehouse_rounded,
-          label: 'Inventory',
+          label: businessLayout.actionLabel('/inventory', 'Inventory'),
           path: '/inventory'));
     } else if (perms.canMakeSales || perms.canManageStock) {
       // Sellers may request stock without permission to browse the inventory
@@ -253,15 +256,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: 'Trade Partners',
           path: '/partners'));
     }
-    if (businessLayout.priorityPaths.isEmpty) return items;
-    final itemsByPath = {for (final item in items) item.path: item};
-    final prioritizedPaths =
-        businessLayout.priorityPaths.where(itemsByPath.containsKey).toSet();
-    return [
-      for (final path in businessLayout.priorityPaths)
-        if (itemsByPath.containsKey(path)) itemsByPath[path]!,
-      ...items.where((item) => !prioritizedPaths.contains(item.path)),
-    ];
+    items.removeWhere((item) => !businessLayout.isActionVisible(
+          item.path == '/inventory/request-stock' ? '/inventory' : item.path,
+        ));
+    late final List<_NavItem> orderedItems;
+    if (businessLayout.priorityPaths.isEmpty) {
+      orderedItems = [...items];
+    } else {
+      final itemsByPath = {for (final item in items) item.path: item};
+      final prioritizedPaths =
+          businessLayout.priorityPaths.where(itemsByPath.containsKey).toSet();
+      orderedItems = [
+        for (final path in businessLayout.priorityPaths)
+          if (itemsByPath.containsKey(path)) itemsByPath[path]!,
+        ...items.where((item) => !prioritizedPaths.contains(item.path)),
+      ];
+    }
+    // A shop may pin several areas ahead of AI. Keep their order in front,
+    // but reserve the last visible primary slot for AI so the custom layout
+    // never hides a core destination inside More.
+    final aiIndex = orderedItems.indexWhere((item) => item.path == '/ai');
+    if (aiIndex >= _maxVisiblePrimaryItems &&
+        orderedItems.length >= _maxVisiblePrimaryItems) {
+      final aiItem = orderedItems.removeAt(aiIndex);
+      orderedItems.insert(_maxVisiblePrimaryItems - 1, aiItem);
+    }
+    return orderedItems
+        .map((item) => item.withLabel(
+              businessLayout.actionLabel(item.path, item.label),
+            ))
+        .toList(growable: false);
   }
 
   /// Finds which nav item matches the router's current location, so the
@@ -442,16 +466,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final perms = ref.watch(permissionsProvider);
     final businessLayout = ref.watch(businessLayoutProvider);
     final allNavItems = _buildNavItems(perms, businessLayout);
-    const maxVisible = 4;
-    final hasMore = allNavItems.length > maxVisible;
-    final visibleNavItems =
-        hasMore ? allNavItems.take(maxVisible).toList() : allNavItems;
-    final moreItems =
-        hasMore ? allNavItems.skip(maxVisible).toList() : <_NavItem>[];
+    final hasMore = allNavItems.length > _maxVisiblePrimaryItems;
+    final visibleNavItems = hasMore
+        ? allNavItems.take(_maxVisiblePrimaryItems).toList()
+        : allNavItems;
+    final moreItems = hasMore
+        ? allNavItems.skip(_maxVisiblePrimaryItems).toList()
+        : <_NavItem>[];
     _latestMoreItems = moreItems;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentIndex = _resolveCurrentIndex(allNavItems);
-    final homePath = perms.homePath;
+    final homePath = businessLayout.homePathFor(perms);
     final atHome = GoRouterState.of(context).uri.path == homePath;
 
     // Tabs are reached with context.go, so the stack holds a single page and
@@ -582,7 +607,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               activeIcon: Icons.apps_rounded,
                               label: 'More',
                               path: ''),
-                          isSelected: currentIndex >= maxVisible,
+                          isSelected: currentIndex >= _maxVisiblePrimaryItems,
                           isPrimary: false,
                           onTap: () {
                             HapticService().selection();
@@ -610,6 +635,13 @@ class _NavItem {
       required this.activeIcon,
       required this.label,
       required this.path});
+
+  _NavItem withLabel(String value) => _NavItem(
+        icon: icon,
+        activeIcon: activeIcon,
+        label: value,
+        path: path,
+      );
 }
 
 class _NavItemWidget extends ConsumerWidget {

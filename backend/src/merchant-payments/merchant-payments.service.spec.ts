@@ -58,7 +58,13 @@ describe('MerchantPaymentsService', () => {
       })),
       verifyTransaction: jest.fn(),
     };
-    const sales: any = { createSale: jest.fn().mockResolvedValue({ id: 'sale-1', receiptNumber: 'RCP-1' }) };
+    const sales: any = {
+      quoteMerchantMpesaSale: jest.fn(async (_userId, _tenantId, saleInput) => ({
+        amount: 500,
+        sale: saleInput,
+      })),
+      createSale: jest.fn().mockResolvedValue({ id: 'sale-1', receiptNumber: 'RCP-1' }),
+    };
     const finance: any = {
       recordRetailPayment: jest.fn().mockResolvedValue({ id: 'retail-payment-1' }),
       recordPeerPayment: jest.fn().mockResolvedValue({ id: 'peer-payment-1' }),

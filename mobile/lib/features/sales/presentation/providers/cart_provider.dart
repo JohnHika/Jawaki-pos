@@ -9,6 +9,7 @@ import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/services/coupon_rules.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/utils/api_message.dart';
+import 'package:axon_pos/core/utils/format.dart';
 
 import '../../../auth/presentation/providers/auth_provider.dart';
 
@@ -179,8 +180,10 @@ class CartState {
 
   /// Tax rate is a business-level setting an admin configures in Settings
   /// (defaults to 0 — no tax — until they set one), not a fixed assumption.
-  double get tax => taxableAmount * (getIt<AuthService>().taxRatePercent / 100);
-  double get total => taxableAmount + tax;
+  double get tax => roundCurrency(
+        taxableAmount * (getIt<AuthService>().taxRatePercent / 100),
+      );
+  double get total => roundCurrency(taxableAmount + tax);
 
   CartState copyWith({
     List<CartItem>? items,
@@ -782,7 +785,8 @@ class CartNotifier extends StateNotifier<CartState> {
 
     final current = state.items[index];
     final currentStepQuantity = _quantityBeforeStepping(current);
-    final wanted = _quantityAtSupportedPrecision(currentStepQuantity + deltaValue);
+    final wanted =
+        _quantityAtSupportedPrecision(currentStepQuantity + deltaValue);
     if (wanted > 0 && wanted % 1 != 0 && !current.allowFractions) {
       return const CartMutationResult(
         success: false,

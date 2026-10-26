@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/load_error.dart';
@@ -135,11 +136,14 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
           : status == 'NEEDS_REVIEW'
               ? 'Payment needs review. Give support reference $reference.'
               : 'Payment status: $status · $reference';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not check payment yet. Try again when online.')),
+          const SnackBar(
+              content:
+                  Text('Could not check payment yet. Try again when online.')),
         );
       }
     }
@@ -222,8 +226,9 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
     if (!_cloudTotalsAvailable) {
       return _todaysSales.fold<double>(0.0, (sum, sale) => sum + sale.total);
     }
-    return _serverTotal + _localSalesMissingFromServer.fold<double>(
-        0, (sum, sale) => sum + sale.total);
+    return _serverTotal +
+        _localSalesMissingFromServer.fold<double>(
+            0, (sum, sale) => sum + sale.total);
   }
 
   int get _todaysTransactionCount => _cloudTotalsAvailable
@@ -232,9 +237,10 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final businessLayout = ref.watch(businessLayoutProvider);
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Payments',
+        title: businessLayout.actionLabel('/payments', 'Payments'),
         showBackButton: false,
         actions: [
           IconButton(
@@ -258,7 +264,11 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
               onRefresh: _loadData,
               child: PageContainer(
                 withScroll: true,
-                padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.lg, DesignSpacing.lg, DesignSpacing.xxl + DesignSpacing.lg),
+                padding: const EdgeInsets.fromLTRB(
+                    DesignSpacing.lg,
+                    DesignSpacing.lg,
+                    DesignSpacing.lg,
+                    DesignSpacing.xxl + DesignSpacing.lg),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -271,81 +281,91 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
 
                     // Today's summary
                     StaggeredItem(
-                      itemKey: 'payments-takings',
-                      child:
-                      GlassCard(
-                        padding: const EdgeInsets.all(DesignSpacing.xl),
-                        borderRadius: DesignSpacing.radiusLg,
-                        blur: 12,
-                        gradient: const LinearGradient(
-                          colors: [DesignColors.brand, DesignColors.brandDark],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(DesignSpacing.sm),
-                                  decoration: BoxDecoration(
-                                    color: DesignColors.textOnBrand.withValues(alpha: 0.2),
-                                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd - 2),
+                        itemKey: 'payments-takings',
+                        child: GlassCard(
+                          padding: const EdgeInsets.all(DesignSpacing.xl),
+                          borderRadius: DesignSpacing.radiusLg,
+                          blur: 12,
+                          gradient: const LinearGradient(
+                            colors: [
+                              DesignColors.brand,
+                              DesignColors.brandDark
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding:
+                                        const EdgeInsets.all(DesignSpacing.sm),
+                                    decoration: BoxDecoration(
+                                      color: DesignColors.textOnBrand
+                                          .withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(
+                                          DesignSpacing.radiusMd - 2),
+                                    ),
+                                    child: const Icon(Icons.today_rounded,
+                                        color: DesignColors.textOnBrand,
+                                        size: 24),
                                   ),
-                                  child: const Icon(Icons.today_rounded,
-                                      color: DesignColors.textOnBrand, size: 24),
-                                ),
-                                const SizedBox(width: DesignSpacing.md),
+                                  const SizedBox(width: DesignSpacing.md),
+                                  Text(
+                                    "Today's Takings",
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          color: DesignColors.textOnBrand,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                              if (_cloudTotalsAvailable &&
+                                  !_canReconcileLocalSales &&
+                                  _todaysSales
+                                      .any((sale) => !sale.isSynced)) ...[
+                                const SizedBox(height: DesignSpacing.sm),
                                 Text(
-                                  "Today's Takings",
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: DesignColors.textOnBrand,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  'Offline sales are waiting to sync.',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                        color: DesignColors.textOnBrand
+                                            .withValues(alpha: 0.8),
+                                      ),
                                 ),
                               ],
-                            ),
-                            if (_cloudTotalsAvailable &&
-                                !_canReconcileLocalSales &&
-                                _todaysSales.any((sale) => !sale.isSynced)) ...[
-                              const SizedBox(height: DesignSpacing.sm),
-                              Text(
-                                'Offline sales are waiting to sync.',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                      color: DesignColors.textOnBrand
-                                          .withValues(alpha: 0.8),
-                                    ),
+                              const SizedBox(height: DesignSpacing.xl),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceAround,
+                                children: [
+                                  _buildGlassStatItem(
+                                    label: 'Total Sales',
+                                    value: _isLoading
+                                        ? '...'
+                                        : 'KES ${NumberFormat('#,##0').format(_todaysTotal)}',
+                                    icon: Icons.point_of_sale_rounded,
+                                  ),
+                                  _buildGlassStatItem(
+                                    label: 'Transactions',
+                                    value: _isLoading
+                                        ? '...'
+                                        : '$_todaysTransactionCount',
+                                    icon: Icons.receipt_rounded,
+                                  ),
+                                ],
                               ),
                             ],
-                            const SizedBox(height: DesignSpacing.xl),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
-                              children: [
-                                _buildGlassStatItem(
-                                  label: 'Total Sales',
-                                  value: _isLoading
-                                      ? '...'
-                                      : 'KES ${NumberFormat('#,##0').format(_todaysTotal)}',
-                                  icon: Icons.point_of_sale_rounded,
-                                ),
-                                _buildGlassStatItem(
-                                  label: 'Transactions',
-                                  value: _isLoading
-                                      ? '...'
-                                      : '$_todaysTransactionCount',
-                                  icon: Icons.receipt_rounded,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      )
-                    ),
+                          ),
+                        )),
 
                     const SizedBox(height: DesignSpacing.xxl),
 
@@ -357,64 +377,64 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                     const SizedBox(height: DesignSpacing.sm),
 
                     StaggeredItem(
-                      itemKey: 'payments-quick-receipts',
-                      index: 1,
-                      child:
-                      Row(
-                        children: [
-                          Expanded(
-                            child: QuickActionTile(
-                              icon: Icons.receipt_long_rounded,
-                              label: 'Receipts',
-                              subtitle: 'View & share',
-                              color: DesignColors.info,
-                              onTap: () => context.push('/receipts'),
+                        itemKey: 'payments-quick-receipts',
+                        index: 1,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: QuickActionTile(
+                                icon: Icons.receipt_long_rounded,
+                                label: 'Receipts',
+                                subtitle: 'View & share',
+                                color: DesignColors.info,
+                                onTap: () => context.push('/receipts'),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: DesignSpacing.md),
-                          Expanded(
-                            child: QuickActionTile(
-                              icon: Icons.analytics_rounded,
-                              label: 'Analytics',
-                              subtitle: 'Payment breakdown',
-                              color: DesignColors.brand,
-                              onTap: () => context.push('/payment-analytics'),
+                            const SizedBox(width: DesignSpacing.md),
+                            Expanded(
+                              child: QuickActionTile(
+                                icon: Icons.analytics_rounded,
+                                label: 'Analytics',
+                                subtitle: 'Payment breakdown',
+                                color: DesignColors.brand,
+                                onTap: () => context.push('/payment-analytics'),
+                              ),
                             ),
-                          ),
-                        ],
-                      )
-                    ),
+                          ],
+                        )),
                     const SizedBox(height: DesignSpacing.md),
                     StaggeredItem(
-                      itemKey: 'payments-quick-credit',
-                      index: 2,
-                      child:
-                      Row(
-                        children: [
-                          Expanded(
-                            child: QuickActionTile(
-                              icon: Icons.credit_score_rounded,
-                              label: 'Customer Credit',
-                              subtitle: 'Installments & balances',
-                              color: DesignColors.warning,
-                              onTap: () => context.go('/customers'),
+                        itemKey: 'payments-quick-credit',
+                        index: 2,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: QuickActionTile(
+                                icon: Icons.credit_score_rounded,
+                                label: 'Customer Credit',
+                                subtitle: 'Installments & balances',
+                                color: DesignColors.warning,
+                                onTap: () => context.go('/customers'),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: DesignSpacing.md),
-                          Expanded(
-                            child: QuickActionTile(
-                              icon: Icons.point_of_sale_rounded,
-                              label: 'New Sale',
-                              subtitle: 'Start a checkout',
-                              color: DesignColors.success,
-                              onTap: () => context.go('/'),
+                            const SizedBox(width: DesignSpacing.md),
+                            Expanded(
+                              child: QuickActionTile(
+                                icon: Icons.point_of_sale_rounded,
+                                label: 'New Sale',
+                                subtitle: 'Start a checkout',
+                                color: DesignColors.success,
+                                onTap: () => context.go('/'),
+                              ),
                             ),
-                          ),
-                        ],
-                      )
-                    ),
+                          ],
+                        )),
 
-                    if (ref.watch(currentUserProvider)?['role']?.toString().toUpperCase() == 'ADMIN') ...[
+                    if (ref
+                            .watch(currentUserProvider)?['role']
+                            ?.toString()
+                            .toUpperCase() ==
+                        'ADMIN') ...[
                       const SizedBox(height: DesignSpacing.md),
                       QuickActionTile(
                         icon: Icons.account_balance_rounded,
@@ -426,23 +446,33 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                     ],
 
                     if (_merchantCharges.any((row) =>
-                        row['status'] == 'PENDING' || row['status'] == 'NEEDS_REVIEW' || row['status'] == 'SETTLING')) ...[
+                        row['status'] == 'PENDING' ||
+                        row['status'] == 'NEEDS_REVIEW' ||
+                        row['status'] == 'SETTLING')) ...[
                       const SizedBox(height: DesignSpacing.xxl),
                       const SectionHeader(
                         title: 'Payments to check',
-                        subtitle: 'Review these before requesting another M-Pesa payment',
+                        subtitle:
+                            'Review these before requesting another M-Pesa payment',
                         icon: Icons.pending_actions_rounded,
                       ),
                       const SizedBox(height: DesignSpacing.sm),
-                      ..._merchantCharges.where((row) =>
-                          row['status'] == 'PENDING' || row['status'] == 'NEEDS_REVIEW' || row['status'] == 'SETTLING')
+                      ..._merchantCharges
+                          .where((row) =>
+                              row['status'] == 'PENDING' ||
+                              row['status'] == 'NEEDS_REVIEW' ||
+                              row['status'] == 'SETTLING')
                           .map((row) {
                         final reference = row['reference']?.toString() ?? '';
-                        return Card(child: ListTile(
-                          title: Text('KES ${row['amount']} · ${row['status']}'),
+                        return Card(
+                            child: ListTile(
+                          title:
+                              Text('KES ${row['amount']} · ${row['status']}'),
                           subtitle: Text(reference),
                           trailing: TextButton(
-                            onPressed: reference.isEmpty ? null : () => _checkMerchantCharge(reference),
+                            onPressed: reference.isEmpty
+                                ? null
+                                : () => _checkMerchantCharge(reference),
                             child: const Text('Check'),
                           ),
                         ));
@@ -494,32 +524,30 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                     ),
                     const SizedBox(height: DesignSpacing.sm),
                     const StaggeredItem(
-                      itemKey: 'payments-methods',
-                      index: 3,
-                      child:
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _PaymentMethodBadge(
-                            method: 'Cash',
-                            icon: Icons.payments_outlined,
-                          ),
-                          _PaymentMethodBadge(
-                            method: 'M-Pesa',
-                            icon: Icons.phone_android_rounded,
-                          ),
-                          _PaymentMethodBadge(
-                            method: 'Customer debt',
-                            icon: Icons.credit_score_outlined,
-                          ),
-                          _PaymentMethodBadge(
-                            method: 'Cash + debt split',
-                            icon: Icons.call_split_rounded,
-                          ),
-                        ],
-                      )
-                    ),
+                        itemKey: 'payments-methods',
+                        index: 3,
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _PaymentMethodBadge(
+                              method: 'Cash',
+                              icon: Icons.payments_outlined,
+                            ),
+                            _PaymentMethodBadge(
+                              method: 'M-Pesa',
+                              icon: Icons.phone_android_rounded,
+                            ),
+                            _PaymentMethodBadge(
+                              method: 'Customer debt',
+                              icon: Icons.credit_score_outlined,
+                            ),
+                            _PaymentMethodBadge(
+                              method: 'Cash + debt split',
+                              icon: Icons.call_split_rounded,
+                            ),
+                          ],
+                        )),
 
                     const SizedBox(height: DesignSpacing.xxl),
                   ],
@@ -548,18 +576,18 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
         Text(
           value,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: DesignColors.textOnBrand,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
+                color: DesignColors.textOnBrand,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
         ),
         const SizedBox(height: DesignSpacing.xs),
         Text(
           label,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: DesignColors.textOnBrand.withValues(alpha: 0.8),
-            fontSize: 12,
-          ),
+                color: DesignColors.textOnBrand.withValues(alpha: 0.8),
+                fontSize: 12,
+              ),
         ),
       ],
     );
@@ -576,12 +604,16 @@ class _PaymentMethodBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.md, vertical: DesignSpacing.md - 3),
+      padding: const EdgeInsets.symmetric(
+          horizontal: DesignSpacing.md, vertical: DesignSpacing.md - 3),
       decoration: BoxDecoration(
-        color: isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceMuted,
+        color: isDark
+            ? DesignColors.darkSurfaceElevated
+            : DesignColors.surfaceMuted,
         borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         border: Border.all(
-            color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+            color:
+                isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -595,12 +627,12 @@ class _PaymentMethodBadge extends StatelessWidget {
           Text(
             method,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: isDark
-                  ? DesignColors.darkTextPrimary
-                  : DesignColors.textPrimary,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
+                  color: isDark
+                      ? DesignColors.darkTextPrimary
+                      : DesignColors.textPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
           ),
         ],
       ),

@@ -133,94 +133,82 @@ Map<String, dynamic> _normalizeRemoteReceipt(Map<String, dynamic> response) {
   };
 }
 
-// Receipt provider — reads the local sale first. The sale, its items, and
-// the customer all already exist locally the instant a sale is completed
-// (written by PaymentNotifier), so the receipt loads instantly and offline
-// instead of depending on a server round-trip that hasn't happened yet (or
-// hitting the wrong endpoint with a local id). Falls back to the remote
-// sale by ID only if the local row is genuinely missing.
-final receiptProvider =
-    FutureProvider.family<Map<String, dynamic>, String>((ref, saleId) async {
+// Receipt data comes from the local sale first, including offline sales. A
+// live row watcher also updates the temporary receipt number and sync badge
+// once the background outbox receives the server's canonical result.
+final receiptProvider = StreamProvider.autoDispose
+    .family<Map<String, dynamic>, String>((ref, saleId) async* {
   final database = getIt<AppDatabase>();
   final sale = await database.getPendingSaleById(saleId);
 
-  if (sale != null) {
-    final auth = getIt<AuthService>();
-    final permissions = RolePermissions(
-      auth.currentUser?['permissions'] as List<dynamic>?,
-    );
-    final isOwnSale = sale.cashierId == auth.userId;
+  if (sale == null) {
+    // A remote sale from another device has no local row to watch.
+    yield _normalizeRemoteReceipt(await getIt<ApiClient>().getSale(saleId));
+    return;
+  }
 
-    if (!permissions.canMakeSales && !permissions.has('sales.view')) {
-      throw StateError('Your account cannot view sales receipts.');
+  final auth = getIt<AuthService>();
+  final permissions = RolePermissions(
+    auth.currentUser?['permissions'] as List<dynamic>?,
+  );
+  final isOwnSale = sale.cashierId == auth.userId;
+
+  if (!permissions.canMakeSales && !permissions.has('sales.view')) {
+    throw StateError('Your account cannot view sales receipts.');
+  }
+
+  if (!permissions.has('sales.view_all') && !isOwnSale) {
+    if (sale.isSynced && permissions.has('sales.view')) {
+      yield _normalizeRemoteReceipt(await getIt<ApiClient>().getSale(saleId));
+      return;
     }
+    throw StateError('You can only view receipts for sales you recorded.');
+  }
 
-    if (!permissions.has('sales.view_all') && !isOwnSale) {
-      if (sale.isSynced && permissions.has('sales.view')) {
-        return _normalizeRemoteReceipt(
-            await getIt<ApiClient>().getSale(saleId));
-      }
-      throw StateError('You can only view receipts for sales you recorded.');
-    }
-
+  await for (final currentSale in database.watchPendingSaleById(saleId)) {
+    if (currentSale == null) return;
     final items = await database.getSaleItems(saleId);
+    final customer = currentSale.customerId == null
+        ? null
+        : await database.getCustomer(currentSale.customerId!);
 
-    Map<String, dynamic>? customer;
-    if (sale.customerId != null) {
-      customer = await database.getCustomer(sale.customerId!);
-    }
-
-    return {
-      'id': sale.id,
-      'receiptNumber': sale.receiptNumber,
-      'subtotal': sale.subtotal,
-      'discount': sale.discount,
-      'tax': sale.tax,
-      'total': sale.total,
-      'paymentMethod': sale.paymentMethod,
-      'paymentReference': sale.paymentReference,
-      'createdAt': sale.createdAt.toIso8601String(),
+    yield {
+      'id': currentSale.id,
+      'receiptNumber': currentSale.receiptNumber,
+      'subtotal': currentSale.subtotal,
+      'discount': currentSale.discount,
+      'tax': currentSale.tax,
+      'total': currentSale.total,
+      'paymentMethod': currentSale.paymentMethod,
+      'paymentReference': currentSale.paymentReference,
+      'createdAt': currentSale.createdAt.toIso8601String(),
       'branchName': receiptHeaderName(auth.currentUser),
       'cashierName': auth.currentUser?['name'],
       'customerName': customer?['name'],
       'customerPhone': customer?['phone'],
-      'status': sale.status,
+      'status': currentSale.status,
       // Keep cloud delivery state visible on the receipt so a device-only
       // sale cannot be mistaken for one already synced across the workspace.
-      'isSynced': sale.isSynced,
-      'voidReason': sale.voidReason,
-      'voidedAt': sale.voidedAt?.toIso8601String(),
-      // Amount still owed on a credit sale, if the payment metadata carries
-      // it (shown as "Balance owed" on the receipt).
-      'outstandingBalance': _extractOutstanding(sale),
-      // Split-payment breakdown (method + amount per tender), or null.
-      'paymentTenders': _extractTenders(sale),
+      'isSynced': currentSale.isSynced,
+      'voidReason': currentSale.voidReason,
+      'voidedAt': currentSale.voidedAt?.toIso8601String(),
+      'outstandingBalance': _extractOutstanding(currentSale),
+      'paymentTenders': _extractTenders(currentSale),
       'items': items
-          .map((i) => {
-                'productName': i.productName,
-                'name': i.productName,
-                'sku': i.sku,
-                'quantity': i.quantity,
-                'unitPrice': i.unitPrice,
-                'price': i.unitPrice,
-                'total': i.total,
-                'unit': i.unit,
-                'quantityPerUnit': i.quantityPerUnit,
+          .map((item) => {
+                'productName': item.productName,
+                'name': item.productName,
+                'sku': item.sku,
+                'quantity': item.quantity,
+                'unitPrice': item.unitPrice,
+                'price': item.unitPrice,
+                'total': item.total,
+                'unit': item.unit,
+                'quantityPerUnit': item.quantityPerUnit,
               })
           .toList(),
     };
   }
-
-  // Local row missing (e.g. viewing an old sale from another device) — fetch
-  // by sale ID, then adapt the API shape to the same receipt model above.
-  final apiClient = getIt<ApiClient>();
-  return _normalizeRemoteReceipt(await apiClient.getSale(saleId));
-});
-
-// Daily summary provider
-final dailySummaryProvider = FutureProvider<Map<String, dynamic>>((ref) async {
-  final apiClient = getIt<ApiClient>();
-  return await apiClient.getDailySummary();
 });
 
 // Daily Profit & Loss provider (with expense integration)

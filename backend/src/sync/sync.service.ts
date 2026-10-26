@@ -1,10 +1,20 @@
-import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../common/prisma/prisma.service';
-import { RedisService } from '../common/redis/redis.service';
-import { SalesService } from '../sales/sales.service';
-import { InventoryService } from '../inventory/inventory.service';
-import { SuppliersService } from '../suppliers/suppliers.service';
-import { SyncEventStatus, SyncEventType as PrismaSyncEventType } from '@prisma/client';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from "@nestjs/common";
+import { PrismaService } from "../common/prisma/prisma.service";
+import { RedisService } from "../common/redis/redis.service";
+import { SalesService } from "../sales/sales.service";
+import { InventoryService } from "../inventory/inventory.service";
+import { SuppliersService } from "../suppliers/suppliers.service";
+import {
+  SyncEventStatus,
+  SyncEventType as PrismaSyncEventType,
+} from "@prisma/client";
 import {
   SyncEventDto,
   SyncEventType,
@@ -15,7 +25,7 @@ import {
   PullSyncResponseDto,
   SyncStatusDto,
   ConflictResolutionDto,
-} from './dto/sync.dto';
+} from "./dto/sync.dto";
 
 type PullCursor = {
   timestamp: Date;
@@ -23,6 +33,11 @@ type PullCursor = {
   eventType?: string;
   entityId?: string;
   composite: boolean;
+};
+
+type SyncActor = {
+  userId: string;
+  permissions: string[];
 };
 
 @Injectable()
@@ -45,6 +60,7 @@ export class SyncService {
     deviceUuid: string | undefined,
     branchId: string,
     dto: PushSyncEventsDto,
+    actor: SyncActor,
   ): Promise<PushSyncResponseDto> {
     const results: SyncResultDto[] = [];
     let successCount = 0;
@@ -54,9 +70,13 @@ export class SyncService {
     const deviceRecordId = device?.id;
 
     if (!normalizedDeviceUuid) {
-      this.logger.warn('Sync request received without device UUID; device-level sync tracking will be skipped.');
+      this.logger.warn(
+        "Sync request received without device UUID; device-level sync tracking will be skipped.",
+      );
     } else if (!deviceRecordId) {
-      this.logger.warn(`Sync request received for unregistered device UUID ${normalizedDeviceUuid}; device-level sync tracking will be skipped.`);
+      this.logger.warn(
+        `Sync request received for unregistered device UUID ${normalizedDeviceUuid}; device-level sync tracking will be skipped.`,
+      );
     }
 
     // Sort events by sequence number if provided
@@ -66,6 +86,8 @@ export class SyncService {
 
     for (const event of sortedEvents) {
       try {
+        this.assertEventPermission(event.eventType, actor);
+
         // Check if event was already processed (idempotency)
         const existingEvent = deviceRecordId
           ? await this.prisma.syncEvent.findUnique({
@@ -78,10 +100,13 @@ export class SyncService {
             })
           : null;
 
-        if (existingEvent) {
+        if (
+          existingEvent?.status === SyncEventStatus.PROCESSED ||
+          existingEvent?.status === SyncEventStatus.COMPLETED
+        ) {
           // Event already processed, return success with existing data
           let replayReceiptNumber: string | undefined;
-          if (existingEvent.entityType === 'Sale' && existingEvent.entityId) {
+          if (existingEvent.entityType === "Sale" && existingEvent.entityId) {
             const sale = await this.prisma.sale.findUnique({
               where: { id: existingEvent.entityId },
               select: { receiptNumber: true },
@@ -98,20 +123,38 @@ export class SyncService {
           successCount++;
           continue;
         }
+        if (existingEvent && existingEvent.status !== SyncEventStatus.FAILED) {
+          results.push({
+            eventId: event.eventId,
+            success: false,
+            error: `This sync event is ${existingEvent.status.toLowerCase()} and is not ready to retry.`,
+          });
+          failureCount++;
+          continue;
+        }
 
         // Process the event based on type
-        const result = await this.processEvent(event, branchId, normalizedDeviceUuid || '');
-        
-        // Get userId from payload or use default
-        const userId = event.payload.cashierId || event.payload.createdById || event.payload.userId || '';
+        const result = await this.processEvent(
+          event,
+          branchId,
+          normalizedDeviceUuid || "",
+          actor.userId,
+        );
 
         if (deviceRecordId) {
-          // Record the sync event when the device is registered
-          await this.prisma.syncEvent.create({
-            data: {
+          // Keep the original device event ID when retrying so the unique key
+          // and the domain operation remain idempotent across retries.
+          await this.prisma.syncEvent.upsert({
+            where: {
+              deviceId_eventId: {
+                deviceId: deviceRecordId,
+                eventId: event.eventId,
+              },
+            },
+            create: {
               deviceId: deviceRecordId,
               branchId,
-              userId,
+              userId: actor.userId,
               eventId: event.eventId,
               eventType: event.eventType as unknown as PrismaSyncEventType,
               payload: event.payload,
@@ -120,6 +163,18 @@ export class SyncService {
               status: SyncEventStatus.PROCESSED,
               processedAt: new Date(),
               deviceTimestamp: new Date(event.createdAt),
+            },
+            update: {
+              branchId,
+              userId: actor.userId,
+              eventType: event.eventType as unknown as PrismaSyncEventType,
+              payload: event.payload,
+              entityId: result.serverId,
+              entityType: this.getEntityType(event.eventType),
+              status: SyncEventStatus.PROCESSED,
+              processedAt: new Date(),
+              error: null,
+              errorMessage: null,
             },
           });
         }
@@ -134,21 +189,37 @@ export class SyncService {
         successCount++;
       } catch (error) {
         this.logger.error(`Failed to process event ${event.eventId}:`, error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown sync processing error';
-        
-        // Get userId from payload or use default
-        const errorUserId = event.payload.cashierId || event.payload.createdById || event.payload.userId || '';
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "Unknown sync processing error";
+
+        // A permission denial is not a failed business operation. Do not store
+        // or increment retry state for an event the authenticated user cannot
+        // perform; the event payload itself is untrusted input.
+        if (error instanceof ForbiddenException) {
+          results.push({
+            eventId: event.eventId,
+            success: false,
+            error: errorMessage,
+          });
+          failureCount++;
+          continue;
+        }
 
         if (deviceRecordId) {
           // Record failed event for retry using eventId for uniqueness
           await this.prisma.syncEvent.upsert({
             where: {
-              deviceId_eventId: { deviceId: deviceRecordId, eventId: event.eventId }
+              deviceId_eventId: {
+                deviceId: deviceRecordId,
+                eventId: event.eventId,
+              },
             },
             create: {
               deviceId: deviceRecordId,
               branchId,
-              userId: errorUserId,
+              userId: actor.userId,
               eventId: event.eventId,
               eventType: event.eventType as unknown as PrismaSyncEventType,
               payload: event.payload,
@@ -158,6 +229,7 @@ export class SyncService {
               deviceTimestamp: new Date(event.createdAt),
             },
             update: {
+              userId: actor.userId,
               status: SyncEventStatus.FAILED,
               errorMessage,
               retryCount: { increment: 1 },
@@ -175,7 +247,7 @@ export class SyncService {
     }
 
     // Update device last sync timestamp
-    await this.updateDeviceSyncStatus(normalizedDeviceUuid, 'push');
+    await this.updateDeviceSyncStatus(normalizedDeviceUuid, "push");
 
     return {
       results,
@@ -197,10 +269,10 @@ export class SyncService {
       };
     }
 
-    if (rawCursor.startsWith('v1|')) {
-      const parts = rawCursor.split('|');
+    if (rawCursor.startsWith("v1|")) {
+      const parts = rawCursor.split("|");
       if (parts.length !== 5) {
-        throw new BadRequestException('Invalid sync cursor');
+        throw new BadRequestException("Invalid sync cursor");
       }
 
       const cutoff = new Date(parts[1]);
@@ -210,7 +282,7 @@ export class SyncService {
         Number.isNaN(timestamp.getTime()) ||
         timestamp > cutoff
       ) {
-        throw new BadRequestException('Invalid sync cursor');
+        throw new BadRequestException("Invalid sync cursor");
       }
 
       let eventType: string;
@@ -219,14 +291,14 @@ export class SyncService {
         eventType = decodeURIComponent(parts[3]);
         entityId = decodeURIComponent(parts[4]);
       } catch {
-        throw new BadRequestException('Invalid sync cursor');
+        throw new BadRequestException("Invalid sync cursor");
       }
       if (
         !Object.values(SyncEventType).includes(eventType as SyncEventType) ||
         entityId.length === 0 ||
         entityId.length > 200
       ) {
-        throw new BadRequestException('Invalid sync cursor');
+        throw new BadRequestException("Invalid sync cursor");
       }
 
       return {
@@ -240,7 +312,7 @@ export class SyncService {
 
     const timestamp = new Date(rawCursor);
     if (Number.isNaN(timestamp.getTime())) {
-      throw new BadRequestException('Invalid sync timestamp');
+      throw new BadRequestException("Invalid sync timestamp");
     }
 
     return {
@@ -251,7 +323,7 @@ export class SyncService {
   }
 
   private buildCursorWhere(
-    timestampField: 'createdAt' | 'updatedAt',
+    timestampField: "createdAt" | "updatedAt",
     eventType: SyncEventType,
     cursor: PullCursor,
   ): any[] {
@@ -280,12 +352,12 @@ export class SyncService {
     event: { timestamp: Date; eventType: SyncEventType; entityId: string },
   ): string {
     return [
-      'v1',
+      "v1",
       cutoff.toISOString(),
       event.timestamp.toISOString(),
       encodeURIComponent(event.eventType),
       encodeURIComponent(event.entityId),
-    ].join('|');
+    ].join("|");
   }
 
   async pullEvents(
@@ -303,13 +375,15 @@ export class SyncService {
     // Build query for changed entities
     const events: any[] = [];
 
-
     // Pull product updates
-    if (!dto.eventTypes || dto.eventTypes.includes(SyncEventType.PRODUCT_UPDATED)) {
+    if (
+      !dto.eventTypes ||
+      dto.eventTypes.includes(SyncEventType.PRODUCT_UPDATED)
+    ) {
       const products = await this.prisma.product.findMany({
         where: {
           OR: this.buildCursorWhere(
-            'updatedAt',
+            "updatedAt",
             SyncEventType.PRODUCT_UPDATED,
             cursor,
           ),
@@ -324,10 +398,10 @@ export class SyncService {
           stock: {
             where: { branchId },
           },
-          pricingTiers: { orderBy: { sortOrder: 'asc' } },
+          pricingTiers: { orderBy: { sortOrder: "asc" } },
         },
         take: limit + 1,
-        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
       });
 
       events.push(
@@ -341,18 +415,21 @@ export class SyncService {
     }
 
     // Pull category updates
-    if (!dto.eventTypes || dto.eventTypes.includes(SyncEventType.CATEGORY_UPDATED)) {
+    if (
+      !dto.eventTypes ||
+      dto.eventTypes.includes(SyncEventType.CATEGORY_UPDATED)
+    ) {
       const categories = await this.prisma.category.findMany({
         where: {
           OR: this.buildCursorWhere(
-            'updatedAt',
+            "updatedAt",
             SyncEventType.CATEGORY_UPDATED,
             cursor,
           ),
           tenantId: await this.getTenantIdForBranch(branchId),
         },
         take: limit + 1,
-        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
       });
 
       events.push(
@@ -366,12 +443,15 @@ export class SyncService {
     }
 
     // Pull price override updates
-    if (!dto.eventTypes || dto.eventTypes.includes(SyncEventType.PRICE_OVERRIDE_UPDATED)) {
+    if (
+      !dto.eventTypes ||
+      dto.eventTypes.includes(SyncEventType.PRICE_OVERRIDE_UPDATED)
+    ) {
       const priceOverrides = await this.prisma.branchPriceOverride.findMany({
         where: {
           branchId,
           OR: this.buildCursorWhere(
-            'updatedAt',
+            "updatedAt",
             SyncEventType.PRICE_OVERRIDE_UPDATED,
             cursor,
           ),
@@ -380,7 +460,7 @@ export class SyncService {
           product: true,
         },
         take: limit + 1,
-        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
       });
 
       events.push(
@@ -400,7 +480,7 @@ export class SyncService {
       where: {
         branchId,
         OR: this.buildCursorWhere(
-          'createdAt',
+          "createdAt",
           SyncEventType.STOCK_ADJUSTED,
           cursor,
         ),
@@ -416,7 +496,7 @@ export class SyncService {
         },
       },
       take: limit + 1,
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
 
     events.push(
@@ -432,12 +512,15 @@ export class SyncService {
     );
 
     // Pull sales (push-only gap fix: Device B never saw sales made on Device A)
-    if (!dto.eventTypes || dto.eventTypes.includes(SyncEventType.SALE_CREATED)) {
+    if (
+      !dto.eventTypes ||
+      dto.eventTypes.includes(SyncEventType.SALE_CREATED)
+    ) {
       const sales = await this.prisma.sale.findMany({
         where: {
           branchId,
           OR: this.buildCursorWhere(
-            'createdAt',
+            "createdAt",
             SyncEventType.SALE_CREATED,
             cursor,
           ),
@@ -450,7 +533,7 @@ export class SyncService {
           },
         },
         take: limit + 1,
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });
 
       events.push(
@@ -464,19 +547,22 @@ export class SyncService {
     }
 
     // Pull customer updates
-    if (!dto.eventTypes || dto.eventTypes.includes(SyncEventType.CUSTOMER_UPDATED)) {
+    if (
+      !dto.eventTypes ||
+      dto.eventTypes.includes(SyncEventType.CUSTOMER_UPDATED)
+    ) {
       const customerTenantId = await this.getTenantIdForBranch(branchId);
       const customers = await this.prisma.customer.findMany({
         where: {
           tenantId: customerTenantId,
           OR: this.buildCursorWhere(
-            'updatedAt',
+            "updatedAt",
             SyncEventType.CUSTOMER_UPDATED,
             cursor,
           ),
         },
         take: limit + 1,
-        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
       });
 
       events.push(
@@ -501,18 +587,19 @@ export class SyncService {
     const limitedEvents = events.slice(0, limit);
 
     // Update device last sync timestamp
-    await this.updateDeviceSyncStatus(deviceUuid, 'pull');
+    await this.updateDeviceSyncStatus(deviceUuid, "pull");
 
     return {
       events: limitedEvents,
       hasMore: events.length > limit,
       serverTimestamp: syncCutoff,
-      nextCursor: limitedEvents.length > 0
-        ? this.encodePullCursor(
-            syncCutoff,
-            limitedEvents[limitedEvents.length - 1],
-          )
-        : undefined,
+      nextCursor:
+        limitedEvents.length > 0
+          ? this.encodePullCursor(
+              syncCutoff,
+              limitedEvents[limitedEvents.length - 1],
+            )
+          : undefined,
     };
   }
 
@@ -523,7 +610,7 @@ export class SyncService {
     const normalizedDeviceUuid = this.normalizeDeviceUuid(deviceUuid);
     if (!normalizedDeviceUuid) {
       return {
-        deviceId: '',
+        deviceId: "",
         lastPushAt: new Date(0),
         lastPullAt: new Date(0),
         pendingEvents: 0,
@@ -554,7 +641,9 @@ export class SyncService {
     });
 
     // Check if device is online (pinged in last 5 minutes)
-    const lastPing = await this.redis.get(`device:ping:${normalizedDeviceUuid}`);
+    const lastPing = await this.redis.get(
+      `device:ping:${normalizedDeviceUuid}`,
+    );
     const isOnline = lastPing
       ? Date.now() - parseInt(lastPing) < 5 * 60 * 1000
       : false;
@@ -587,45 +676,47 @@ export class SyncService {
           results.push({
             eventId: conflict.eventId,
             success: false,
-            error: 'Event not found',
+            error: "Event not found",
           });
           continue;
         }
 
         switch (conflict.resolution) {
-          case 'SERVER_WINS':
+          case "SERVER_WINS":
             // Mark event as resolved, server data takes precedence
             await this.prisma.syncEvent.update({
               where: { id: conflict.eventId },
               data: {
                 status: SyncEventStatus.RESOLVED,
-                resolution: 'SERVER_WINS',
+                resolution: "SERVER_WINS",
               },
             });
             break;
 
-          case 'CLIENT_WINS':
+          case "CLIENT_WINS":
             // Reprocess the event with client data
             await this.prisma.syncEvent.update({
               where: { id: conflict.eventId },
               data: {
                 status: SyncEventStatus.PENDING,
-                resolution: 'CLIENT_WINS',
+                resolution: "CLIENT_WINS",
               },
             });
             // Re-queue for processing
             break;
 
-          case 'MERGE':
+          case "MERGE":
             if (!conflict.mergedPayload) {
-              throw new BadRequestException('Merged payload required for MERGE resolution');
+              throw new BadRequestException(
+                "Merged payload required for MERGE resolution",
+              );
             }
             // Update event with merged data
             await this.prisma.syncEvent.update({
               where: { id: conflict.eventId },
               data: {
                 status: SyncEventStatus.PENDING,
-                resolution: 'MERGE',
+                resolution: "MERGE",
                 payload: conflict.mergedPayload,
               },
             });
@@ -655,11 +746,17 @@ export class SyncService {
   async registerHeartbeat(deviceUuid: string | undefined): Promise<void> {
     const normalizedDeviceUuid = this.normalizeDeviceUuid(deviceUuid);
     if (!normalizedDeviceUuid) {
-      this.logger.warn('Skipping heartbeat registration because the request has no device UUID.');
+      this.logger.warn(
+        "Skipping heartbeat registration because the request has no device UUID.",
+      );
       return;
     }
 
-    await this.redis.set(`device:ping:${normalizedDeviceUuid}`, Date.now().toString(), 600);
+    await this.redis.set(
+      `device:ping:${normalizedDeviceUuid}`,
+      Date.now().toString(),
+      600,
+    );
 
     const result = await this.prisma.device.updateMany({
       where: { deviceUuid: normalizedDeviceUuid },
@@ -667,7 +764,9 @@ export class SyncService {
     });
 
     if (result.count === 0) {
-      this.logger.warn(`Heartbeat received for unregistered device UUID ${normalizedDeviceUuid}.`);
+      this.logger.warn(
+        `Heartbeat received for unregistered device UUID ${normalizedDeviceUuid}.`,
+      );
     }
   }
 
@@ -686,16 +785,20 @@ export class SyncService {
         status: SyncEventStatus.FAILED,
         retryCount: { lt: 5 }, // Max 5 retries
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: "asc" },
     });
   }
 
   /**
    * Retry failed events
    */
-  async retryFailedEvents(deviceUuid: string | undefined, branchId: string): Promise<PushSyncResponseDto> {
+  async retryFailedEvents(
+    deviceUuid: string | undefined,
+    branchId: string,
+    actor: SyncActor,
+  ): Promise<PushSyncResponseDto> {
     const failedEvents = await this.getFailedEvents(deviceUuid);
-    
+
     if (failedEvents.length === 0) {
       return {
         results: [],
@@ -706,14 +809,14 @@ export class SyncService {
     }
 
     const events: SyncEventDto[] = failedEvents.map((e) => ({
-      eventId: e.id,
+      eventId: e.eventId,
       eventType: e.eventType as SyncEventType,
       payload: e.payload as Record<string, any>,
-      deviceId: this.normalizeDeviceUuid(deviceUuid) || '',
-      createdAt: e.createdAt.toISOString(),
+      deviceId: this.normalizeDeviceUuid(deviceUuid) || "",
+      createdAt: e.deviceTimestamp.toISOString(),
     }));
 
-    return this.pushEvents(deviceUuid, branchId, { events });
+    return this.pushEvents(deviceUuid, branchId, { events }, actor);
   }
 
   // Private helper methods
@@ -722,38 +825,76 @@ export class SyncService {
     event: SyncEventDto,
     branchId: string,
     deviceId: string,
+    authenticatedUserId?: string,
   ): Promise<{ serverId: string; receiptNumber?: string }> {
     const payload = event.payload;
     const tenantId = await this.getTenantIdForBranch(branchId);
-    const userId = payload.cashierId || payload.createdById || payload.voidedById || payload.refundedById || payload.adjustedById || '';
+    // The event payload comes from an offline device and is not an identity
+    // source. Production push/retry paths always supply the JWT-authenticated
+    // user; the fallback remains for internal legacy callers only.
+    const userId =
+      authenticatedUserId ||
+      payload.cashierId ||
+      payload.createdById ||
+      payload.voidedById ||
+      payload.refundedById ||
+      payload.adjustedById ||
+      "";
 
     switch (event.eventType) {
       case SyncEventType.SALE_CREATED:
-        const sale = await this.salesService.createSale(userId, tenantId, {
-          branchId,
-          items: payload.items,
-          customerId: payload.customerId,
-          paymentMethod: payload.paymentMethod,
-          discountAmount: payload.discount || payload.discountAmount,
-          couponCode: typeof payload.couponCode === 'string' ? payload.couponCode : undefined,
-          paidAmount: payload.paidAmount || payload.totalAmount || 0,
-          tenders: payload.tenders,
-          notes: payload.notes,
-          offlineId: payload.offlineId || payload.id || event.eventId,
-        }, { offlineReconciliation: true });
+        const paymentMethod = String(payload.paymentMethod ?? "").toUpperCase();
+        let splitTenders = payload.tenders;
+        if (paymentMethod === "SPLIT" && !Array.isArray(splitTenders)) {
+          try {
+            const parsed = JSON.parse(payload.paymentReference ?? "");
+            splitTenders = Array.isArray(parsed) ? parsed : undefined;
+          } catch {
+            splitTenders = undefined;
+          }
+        }
+        const sale = await this.salesService.createSale(
+          userId,
+          tenantId,
+          {
+            branchId,
+            items: payload.items,
+            customerId: payload.customerId,
+            paymentMethod: payload.paymentMethod,
+            discountAmount: payload.discount || payload.discountAmount,
+            couponCode:
+              typeof payload.couponCode === "string"
+                ? payload.couponCode
+                : undefined,
+            // Zero is meaningful for CREDIT: using `||` here replaced it with
+            // the full sale total and silently erased the customer's balance.
+            paidAmount:
+              payload.paidAmount ??
+              (paymentMethod === "CREDIT" ? 0 : (payload.totalAmount ?? 0)),
+            tenders: splitTenders,
+            notes: payload.notes,
+            offlineId: payload.offlineId || payload.id || event.eventId,
+          },
+          {
+            offlineReconciliation: true,
+            taxRatePercentSnapshot: payload.taxRatePercentSnapshot,
+          },
+        );
         return { serverId: sale.id, receiptNumber: sale.receiptNumber };
 
       case SyncEventType.SALE_VOIDED:
         const localSaleId = payload.saleId?.toString().trim();
         if (!localSaleId) {
-          throw new BadRequestException('Sale void event is missing its sale id');
+          throw new BadRequestException(
+            "Sale void event is missing its sale id",
+          );
         }
         // Offline devices identify receipts with their local sale UUID. The
         // server creates a separate Sale.id, so resolve by either identity
         // after the preceding SALE_CREATED event has been accepted. A verified
         // Paystack sale uses its transaction reference as the local receipt id.
-        const paystackReference = localSaleId.startsWith('paystack-')
-          ? localSaleId.slice('paystack-'.length)
+        const paystackReference = localSaleId.startsWith("paystack-")
+          ? localSaleId.slice("paystack-".length)
           : null;
         const saleToVoid = await this.prisma.sale.findFirst({
           where: {
@@ -769,10 +910,11 @@ export class SyncService {
           },
           select: { id: true },
         });
-        if (!saleToVoid) throw new NotFoundException('Sale not found for void event');
+        if (!saleToVoid)
+          throw new NotFoundException("Sale not found for void event");
         await this.salesService.voidSale(
           saleToVoid.id,
-          payload.voidedById,
+          userId,
           tenantId,
           payload.reason,
         );
@@ -790,33 +932,43 @@ export class SyncService {
         await this.inventoryService.adjustStock(userId, tenantId, {
           branchId,
           type: payload.type,
-          items: payload.items || [{ productId: payload.productId, quantity: payload.quantity }],
+          items: payload.items || [
+            { productId: payload.productId, quantity: payload.quantity },
+          ],
           notes: payload.reason || payload.notes,
         });
         return { serverId: event.eventId };
 
       case SyncEventType.STOCK_TRANSFER_CREATED:
-        const transfer = await this.inventoryService.createTransfer(userId, tenantId, {
-          fromBranchId: branchId,
-          toBranchId: payload.toBranchId,
-          items: payload.items,
-          notes: payload.notes,
-        });
+        const transfer = await this.inventoryService.createTransfer(
+          userId,
+          tenantId,
+          {
+            fromBranchId: branchId,
+            toBranchId: payload.toBranchId,
+            items: payload.items,
+            notes: payload.notes,
+          },
+        );
         return { serverId: transfer.id };
 
       case SyncEventType.SUPPLIER_INVOICE_CREATED:
-        const invoice = await this.suppliersService.createInvoice(userId, tenantId, {
-          branchId,
-          supplierName: payload.supplierName,
-          supplierPhone: payload.supplierPhone,
-          invoiceNumber: payload.invoiceNumber,
-          receiptImageUrl: payload.receiptImageUrl,
-          items: payload.items,
-          paidAmount: payload.paidAmount,
-          fundingSource: payload.fundingSource,
-          dueDate: payload.dueDate,
-          offlineId: event.eventId,
-        });
+        const invoice = await this.suppliersService.createInvoice(
+          userId,
+          tenantId,
+          {
+            branchId,
+            supplierName: payload.supplierName,
+            supplierPhone: payload.supplierPhone,
+            invoiceNumber: payload.invoiceNumber,
+            receiptImageUrl: payload.receiptImageUrl,
+            items: payload.items,
+            paidAmount: payload.paidAmount,
+            fundingSource: payload.fundingSource,
+            dueDate: payload.dueDate,
+            offlineId: event.eventId,
+          },
+        );
         return { serverId: invoice.id };
 
       case SyncEventType.SUPPLIER_PAYMENT_RECORDED:
@@ -868,7 +1020,9 @@ export class SyncService {
           },
         });
         if (updatedCustomer.count === 0) {
-          throw new NotFoundException(`Customer ${payload.id} not found for this tenant`);
+          throw new NotFoundException(
+            `Customer ${payload.id} not found for this tenant`,
+          );
         }
         return { serverId: payload.id };
 
@@ -879,30 +1033,67 @@ export class SyncService {
 
   private getEntityType(eventType: SyncEventType): string {
     const mapping: Record<SyncEventType, string> = {
-      [SyncEventType.SALE_CREATED]: 'Sale',
-      [SyncEventType.SALE_VOIDED]: 'Sale',
-      [SyncEventType.REFUND_CREATED]: 'Refund',
-      [SyncEventType.STOCK_ADJUSTED]: 'StockMovement',
-      [SyncEventType.STOCK_TRANSFER_CREATED]: 'StockTransfer',
-      [SyncEventType.PRODUCT_UPDATED]: 'Product',
-      [SyncEventType.CATEGORY_UPDATED]: 'Category',
-      [SyncEventType.PRICE_OVERRIDE_UPDATED]: 'BranchProductPrice',
-      [SyncEventType.USER_UPDATED]: 'User',
-      [SyncEventType.SUPPLIER_INVOICE_CREATED]: 'SupplierInvoice',
-      [SyncEventType.SUPPLIER_PAYMENT_RECORDED]: 'SupplierPayment',
-      [SyncEventType.CUSTOMER_CREATED]: 'Customer',
-      [SyncEventType.CUSTOMER_UPDATED]: 'Customer',
+      [SyncEventType.SALE_CREATED]: "Sale",
+      [SyncEventType.SALE_VOIDED]: "Sale",
+      [SyncEventType.REFUND_CREATED]: "Refund",
+      [SyncEventType.STOCK_ADJUSTED]: "StockMovement",
+      [SyncEventType.STOCK_TRANSFER_CREATED]: "StockTransfer",
+      [SyncEventType.PRODUCT_UPDATED]: "Product",
+      [SyncEventType.CATEGORY_UPDATED]: "Category",
+      [SyncEventType.PRICE_OVERRIDE_UPDATED]: "BranchProductPrice",
+      [SyncEventType.USER_UPDATED]: "User",
+      [SyncEventType.SUPPLIER_INVOICE_CREATED]: "SupplierInvoice",
+      [SyncEventType.SUPPLIER_PAYMENT_RECORDED]: "SupplierPayment",
+      [SyncEventType.CUSTOMER_CREATED]: "Customer",
+      [SyncEventType.CUSTOMER_UPDATED]: "Customer",
     };
-    return mapping[eventType] || 'Unknown';
+    return mapping[eventType] || "Unknown";
+  }
+
+  private assertEventPermission(
+    eventType: SyncEventType,
+    actor: SyncActor,
+  ): void {
+    const requiredPermission: Partial<Record<SyncEventType, string>> = {
+      [SyncEventType.SALE_CREATED]: "sales.create",
+      [SyncEventType.SALE_VOIDED]: "sales.void",
+      [SyncEventType.REFUND_CREATED]: "sales.refund",
+      [SyncEventType.STOCK_ADJUSTED]: "inventory.stock.adjust",
+      [SyncEventType.STOCK_TRANSFER_CREATED]: "inventory.transfers.create",
+      [SyncEventType.PRODUCT_UPDATED]: "products.update",
+      [SyncEventType.CATEGORY_UPDATED]: "categories.update",
+      [SyncEventType.PRICE_OVERRIDE_UPDATED]: "pricing.set",
+      [SyncEventType.USER_UPDATED]: "users.update",
+      [SyncEventType.SUPPLIER_INVOICE_CREATED]: "suppliers.invoices_create",
+      [SyncEventType.SUPPLIER_PAYMENT_RECORDED]: "suppliers.payments_record",
+      [SyncEventType.CUSTOMER_CREATED]: "customers.create",
+      [SyncEventType.CUSTOMER_UPDATED]: "customers.update",
+    };
+    const required = requiredPermission[eventType];
+
+    if (!required) {
+      throw new BadRequestException(
+        `Unsupported sync event type: ${eventType}`,
+      );
+    }
+    if (
+      !actor.userId ||
+      !Array.isArray(actor.permissions) ||
+      !actor.permissions.includes(required)
+    ) {
+      throw new ForbiddenException(`Missing permission: ${required}`);
+    }
   }
 
   private async updateDeviceSyncStatus(
     deviceUuid: string | undefined,
-    type: 'push' | 'pull',
+    type: "push" | "pull",
   ): Promise<void> {
     const normalizedDeviceUuid = this.normalizeDeviceUuid(deviceUuid);
     if (!normalizedDeviceUuid) {
-      this.logger.warn(`Skipping ${type} sync status update because the request has no device UUID.`);
+      this.logger.warn(
+        `Skipping ${type} sync status update because the request has no device UUID.`,
+      );
       return;
     }
 
@@ -915,12 +1106,14 @@ export class SyncService {
     });
 
     if (result.count === 0) {
-      this.logger.warn(`Skipping ${type} sync status update because device UUID ${normalizedDeviceUuid} is not registered.`);
+      this.logger.warn(
+        `Skipping ${type} sync status update because device UUID ${normalizedDeviceUuid} is not registered.`,
+      );
     }
   }
 
   private normalizeDeviceUuid(deviceUuid: string | undefined): string | null {
-    if (typeof deviceUuid !== 'string') {
+    if (typeof deviceUuid !== "string") {
       return null;
     }
 
@@ -945,6 +1138,6 @@ export class SyncService {
       where: { id: branchId },
       select: { tenantId: true },
     });
-    return branch?.tenantId || '';
+    return branch?.tenantId || "";
   }
 }

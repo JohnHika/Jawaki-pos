@@ -16,6 +16,7 @@ import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/theme/share_format_sheet.dart';
 import '../../../../core/services/export_document_service.dart';
 import '../../../../core/providers/tenant_provider.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../ai/presentation/screens/ai_chat_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -103,10 +104,9 @@ Map<String, dynamic> mergeDashboardSummary(
   Map<String, dynamic> local,
   Map<String, dynamic> serverSales,
 ) {
-  final hasUnsyncedCounters =
-      local.containsKey('unsyncedTransactionCount') &&
-          local.containsKey('unsyncedRevenue') &&
-          local.containsKey('unsyncedItemsSold');
+  final hasUnsyncedCounters = local.containsKey('unsyncedTransactionCount') &&
+      local.containsKey('unsyncedRevenue') &&
+      local.containsKey('unsyncedItemsSold');
 
   num pick(String localKey, String serverKey, num unsynced) {
     final localValue = (local[localKey] as num?) ?? 0;
@@ -127,11 +127,10 @@ Map<String, dynamic> mergeDashboardSummary(
     (local['unsyncedRevenue'] as num?) ?? 0,
   );
   final serverAverage = serverSales['averageTicket'];
-  final avgTicket = hasUnsyncedCounters &&
-          serverAverage is num &&
-          transactionCount > 0
-      ? totalRevenue / transactionCount
-      : pick('avgTicket', 'averageTicket', 0);
+  final avgTicket =
+      hasUnsyncedCounters && serverAverage is num && transactionCount > 0
+          ? totalRevenue / transactionCount
+          : pick('avgTicket', 'averageTicket', 0);
 
   return {
     'transactionCount': transactionCount,
@@ -278,9 +277,80 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final summaryAsync = ref.watch(_dashboardSummaryProvider);
     final salesAsync = ref.watch(_recentSalesProvider);
     final identity = ref.watch(tenantIdentityProvider);
+    final businessLayout = ref.watch(businessLayoutProvider);
+    final showDailyFigures =
+        businessLayout.showsDashboardSection('summary_metrics');
+    final showEndOfDay = businessLayout.showsDashboardSection('end_of_day');
+    final showBusinessBrief = businessLayout.showsDashboardSection('ai_brief');
+    final showCostAndProfit =
+        businessLayout.showsDashboardSection('cost_profit');
+    final showRecentSales =
+        businessLayout.showsDashboardSection('recent_sales');
+    final needsSummary =
+        showDailyFigures || showBusinessBrief || showCostAndProfit;
+    List<Widget> overviewCards(Map<String, dynamic> summary) {
+      final cards = <Widget>[];
+      void addCard(Widget card) => cards.add(card);
+
+      if (showDailyFigures) {
+        addCard(_buildSummaryGrid(context, summary, businessLayout));
+      }
+      if (showBusinessBrief) {
+        addCard(_buildAiBrief(context, ref, summary));
+      }
+      if (showCostAndProfit) {
+        addCard(_buildCostAndProfitCard(context, ref, summary));
+      }
+      return cards;
+    }
+
+    final overviewContent = summaryAsync.when<List<Widget>>(
+      data: overviewCards,
+      loading: () => needsSummary
+          ? [
+              if (showDailyFigures)
+                _buildSummaryGrid(
+                  context,
+                  const {
+                    'transactionCount': 0,
+                    'totalRevenue': 0.0,
+                    'avgTicket': 0.0,
+                    'itemsSold': 0,
+                  },
+                  businessLayout,
+                )
+              else
+                const Padding(
+                  padding: EdgeInsets.all(DesignSpacing.md),
+                  child: Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                ),
+            ]
+          : const [],
+      error: (_, __) => needsSummary
+          ? [
+              Padding(
+                padding: const EdgeInsets.all(DesignSpacing.xl),
+                child: EmptyState(
+                  icon: Icons.error_outline_rounded,
+                  title: 'Couldn\'t load summary',
+                  subtitle: 'Check your connection and try again.',
+                  iconColor: DesignColors.error,
+                  actionLabel: 'Retry',
+                  onAction: () => ref.invalidate(_dashboardSummaryProvider),
+                ),
+              ),
+            ]
+          : const [],
+    );
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Dashboard',
+        title: businessLayout.actionLabel('/dashboard', 'Dashboard'),
         showBackButton: false,
         showLogo: false,
         leading: Padding(
@@ -400,7 +470,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               ),
               const SizedBox(height: DesignSpacing.xl),
 
-              if (ref.watch(permissionsProvider).has('news.view')) ...[
+              if (ref.watch(permissionsProvider).has('news.view') &&
+                  businessLayout.isActionVisible('/news')) ...[
                 _BusinessNewsEntryCard(
                   onOpen: () => context.push('/news'),
                 ),
@@ -422,200 +493,184 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               // additionally gated on the Admin role so a store manager who
               // was individually granted the permission still doesn't see
               // it duplicated here — only Finance stays their route).
-              if (ref.watch(permissionsProvider).isAdmin) ...[
+              if (ref.watch(permissionsProvider).isAdmin && showEndOfDay) ...[
                 _buildEndOfDayCard(context, ref),
                 const SizedBox(height: DesignSpacing.xl),
               ],
 
-              // Summary Cards - Using Wrap+LayoutBuilder to prevent overflow in Column
-              summaryAsync.when(
-                data: (summary) => Column(
-                  children: [
-                    _buildSummaryGrid(context, summary),
-                    const SizedBox(height: DesignSpacing.md),
-                    _buildAiBrief(context, ref, summary),
-                    const SizedBox(height: DesignSpacing.md),
-                    _buildCostAndProfitCard(context, ref, summary),
-                  ],
-                ),
-                loading: () => _buildSummaryGrid(context, {
-                  'transactionCount': 0,
-                  'totalRevenue': 0.0,
-                  'avgTicket': 0.0,
-                  'itemsSold': 0,
-                }),
-                error: (e, _) => Padding(
-                  padding: const EdgeInsets.all(DesignSpacing.xl),
-                  child: EmptyState(
-                    icon: Icons.error_outline_rounded,
-                    title: 'Couldn\'t load summary',
-                    subtitle: 'Check your connection and try again.',
-                    iconColor: DesignColors.error,
-                    actionLabel: 'Retry',
-                    onAction: () => ref.invalidate(_dashboardSummaryProvider),
+              if (overviewContent.isNotEmpty) ...[
+                for (var index = 0;
+                    index < overviewContent.length;
+                    index++) ...[
+                  if (index > 0) const SizedBox(height: DesignSpacing.md),
+                  overviewContent[index],
+                ],
+              ],
+
+              if (showRecentSales) ...[
+                const SizedBox(height: DesignSpacing.sm),
+                SectionHeader(
+                  icon: Icons.receipt_long_rounded,
+                  title: 'Recent Sales',
+                  subtitle: 'Today\'s transactions',
+                  trailing: Text(
+                    'Last 10',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? DesignColors.darkTextTertiary
+                              : DesignColors.textTertiary,
+                        ),
                   ),
                 ),
-              ),
-
-              const SizedBox(height: DesignSpacing.sm),
-
-              // Recent Sales Section
-              SectionHeader(
-                icon: Icons.receipt_long_rounded,
-                title: 'Recent Sales',
-                subtitle: 'Today\'s transactions',
-                trailing: Text(
-                  'Last 10',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? DesignColors.darkTextTertiary
-                            : DesignColors.textTertiary,
+                salesAsync.when(
+                  data: (sales) {
+                    if (sales.isEmpty) {
+                      return const EmptyState(
+                        icon: Icons.receipt_long_rounded,
+                        title: 'No sales today yet',
+                        subtitle: 'Start selling to see transactions here',
+                      );
+                    }
+                    final isDark =
+                        Theme.of(context).brightness == Brightness.dark;
+                    final divider = isDark
+                        ? DesignColors.darkBorder
+                        : DesignColors.surfaceBorder;
+                    return Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: divider),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusXl),
                       ),
-                ),
-              ),
-
-              salesAsync.when(
-                data: (sales) {
-                  if (sales.isEmpty) {
-                    return const EmptyState(
-                      icon: Icons.receipt_long_rounded,
-                      title: 'No sales today yet',
-                      subtitle: 'Start selling to see transactions here',
-                    );
-                  }
-                  final isDark =
-                      Theme.of(context).brightness == Brightness.dark;
-                  final divider = isDark
-                      ? DesignColors.darkBorder
-                      : DesignColors.surfaceBorder;
-                  return Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: divider),
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusXl),
-                    ),
-                    child: Column(
-                      children:
-                          sales.take(10).toList().asMap().entries.map((entry) {
-                        final isLast = entry.key == sales.take(10).length - 1;
-                        final sale = entry.value;
-                        return Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () => context.push('/receipt/${sale.id}'),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 13,
-                              ),
-                              decoration: BoxDecoration(
-                                border: isLast
-                                    ? null
-                                    : Border(
-                                        bottom: BorderSide(color: divider)),
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 38,
-                                    height: 38,
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(
-                                      color: DesignColors.accent
-                                          .withValues(alpha: 0.10),
-                                      shape: BoxShape.circle,
+                      child: Column(
+                        children: sales
+                            .take(10)
+                            .toList()
+                            .asMap()
+                            .entries
+                            .map((entry) {
+                          final isLast = entry.key == sales.take(10).length - 1;
+                          final sale = entry.value;
+                          return Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () => context.push('/receipt/${sale.id}'),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 13,
+                                ),
+                                decoration: BoxDecoration(
+                                  border: isLast
+                                      ? null
+                                      : Border(
+                                          bottom: BorderSide(color: divider)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 38,
+                                      height: 38,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: DesignColors.accent
+                                            .withValues(alpha: 0.10),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.receipt_long_rounded,
+                                        size: 18,
+                                        color: DesignColors.accent,
+                                      ),
                                     ),
-                                    child: const Icon(
-                                      Icons.receipt_long_rounded,
-                                      size: 18,
-                                      color: DesignColors.accent,
+                                    const SizedBox(width: DesignSpacing.md),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            sale.receiptNumber,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.copyWith(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: isDark
+                                                      ? DesignColors
+                                                          .darkTextPrimary
+                                                      : DesignColors
+                                                          .textPrimary,
+                                                ),
+                                          ),
+                                          const SizedBox(
+                                              height: DesignSpacing.xs - 1),
+                                          Text(
+                                            '${sale.paymentMethod.toUpperCase()}  ·  ${_timeFmt.format(sale.createdAt)}',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall
+                                                ?.copyWith(
+                                                  color: isDark
+                                                      ? DesignColors
+                                                          .darkTextTertiary
+                                                      : DesignColors
+                                                          .textTertiary,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: DesignSpacing.md),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          sale.receiptNumber,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodyMedium
-                                              ?.copyWith(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w700,
-                                                color: isDark
-                                                    ? DesignColors
-                                                        .darkTextPrimary
-                                                    : DesignColors.textPrimary,
-                                              ),
-                                        ),
-                                        const SizedBox(
-                                            height: DesignSpacing.xs - 1),
-                                        Text(
-                                          '${sale.paymentMethod.toUpperCase()}  ·  ${_timeFmt.format(sale.createdAt)}',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .labelSmall
-                                              ?.copyWith(
-                                                color: isDark
-                                                    ? DesignColors
-                                                        .darkTextTertiary
-                                                    : DesignColors.textTertiary,
-                                              ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: DesignSpacing.md),
-                                  // A fixed ceiling (not Flexible): two flexible
-                                  // children split the row in half, which left the
-                                  // amount floating mid-row on wide screens.
-                                  ConstrainedBox(
-                                    constraints:
-                                        const BoxConstraints(maxWidth: 130),
-                                    child: FittedBox(
-                                      alignment: Alignment.centerRight,
-                                      fit: BoxFit.scaleDown,
-                                      child: Text(
-                                        _currencyFmt.format(sale.total),
-                                        style: DesignType.numeric(
-                                          fontSize: 15,
-                                          color: isDark
-                                              ? DesignColors.darkTextPrimary
-                                              : DesignColors.textPrimary,
+                                    const SizedBox(width: DesignSpacing.md),
+                                    // A fixed ceiling (not Flexible): two flexible
+                                    // children split the row in half, which left the
+                                    // amount floating mid-row on wide screens.
+                                    ConstrainedBox(
+                                      constraints:
+                                          const BoxConstraints(maxWidth: 130),
+                                      child: FittedBox(
+                                        alignment: Alignment.centerRight,
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          _currencyFmt.format(sale.total),
+                                          style: DesignType.numeric(
+                                            fontSize: 15,
+                                            color: isDark
+                                                ? DesignColors.darkTextPrimary
+                                                : DesignColors.textPrimary,
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        );
-                      }).toList(),
+                          );
+                        }).toList(),
+                      ),
+                    );
+                  },
+                  loading: () => const Padding(
+                    padding: EdgeInsets.all(DesignSpacing.xl),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                  error: (e, _) => Padding(
+                    padding: const EdgeInsets.all(DesignSpacing.xl),
+                    child: EmptyState(
+                      icon: Icons.error_outline_rounded,
+                      title: 'Couldn\'t load recent sales',
+                      subtitle: 'Check your connection and try again.',
+                      iconColor: DesignColors.error,
+                      actionLabel: 'Retry',
+                      onAction: () => ref.invalidate(_recentSalesProvider),
                     ),
-                  );
-                },
-                loading: () => const Padding(
-                  padding: EdgeInsets.all(DesignSpacing.xl),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-                error: (e, _) => Padding(
-                  padding: const EdgeInsets.all(DesignSpacing.xl),
-                  child: EmptyState(
-                    icon: Icons.error_outline_rounded,
-                    title: 'Couldn\'t load recent sales',
-                    subtitle: 'Check your connection and try again.',
-                    iconColor: DesignColors.error,
-                    actionLabel: 'Retry',
-                    onAction: () => ref.invalidate(_recentSalesProvider),
                   ),
                 ),
-              ),
+              ],
               const SizedBox(height: DesignSpacing.xl),
             ],
           ),
@@ -624,82 +679,84 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
   }
 
-  Widget _buildSummaryGrid(BuildContext context, Map<String, dynamic> summary) {
+  Widget _buildSummaryGrid(
+    BuildContext context,
+    Map<String, dynamic> summary,
+    BusinessLayoutConfig businessLayout,
+  ) {
+    Widget metricCard(String id, int index) {
+      return switch (id) {
+        'revenue' => StaggeredItem(
+            itemKey: 'dash-metric-revenue',
+            index: index,
+            child: FlashOnChange(
+              trigger: summary['totalRevenue'],
+              radius: 20,
+              child: MetricCard(
+                title: "Today's Revenue",
+                value: _currencyFmt.format(summary['totalRevenue'] ?? 0),
+                icon: Icons.trending_up_rounded,
+                color: DesignColors.success,
+              ),
+            ),
+          ),
+        'transactions' => StaggeredItem(
+            itemKey: 'dash-metric-transactions',
+            index: index,
+            child: FlipIn(
+              delay: const Duration(milliseconds: 160),
+              child: MetricCard(
+                title: 'Transactions',
+                value: '${summary['transactionCount'] ?? 0}',
+                icon: Icons.receipt_long_rounded,
+                color: DesignColors.brand,
+              ),
+            ),
+          ),
+        'avgTicket' => StaggeredItem(
+            itemKey: 'dash-metric-avg-ticket',
+            index: index,
+            child: SwingIn(
+              angle: 0.12,
+              delay: const Duration(milliseconds: 240),
+              child: MetricCard(
+                title: 'Avg. Ticket',
+                value: _currencyFmt.format(summary['avgTicket'] ?? 0),
+                icon: Icons.shopping_cart_rounded,
+                color: DesignColors.info,
+              ),
+            ),
+          ),
+        'itemsSold' => StaggeredItem(
+            itemKey: 'dash-metric-items-sold',
+            index: index,
+            child: ZoomSettle(
+              delay: const Duration(milliseconds: 320),
+              child: MetricCard(
+                title: 'Items Sold',
+                value: '${summary['itemsSold'] ?? 0}',
+                icon: Icons.inventory_2_rounded,
+                color: DesignColors.accent,
+              ),
+            ),
+          ),
+        _ => const SizedBox.shrink(),
+      };
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Calculate card width to fit 2 per row with proper spacing
         final cardWidth = (constraints.maxWidth - DesignSpacing.md) / 2;
-
         return Wrap(
           spacing: DesignSpacing.md,
           runSpacing: DesignSpacing.md,
           children: [
-            // Today's Revenue
-            SizedBox(
-              width: cardWidth,
-              child: StaggeredItem(
-                itemKey: 'dash-metric-revenue',
-                index: 0,
-                child: FlashOnChange(
-                    trigger: summary['totalRevenue'],
-                    radius: 20,
-                    child: MetricCard(
-                      title: "Today's Revenue",
-                      value: _currencyFmt.format(summary['totalRevenue'] ?? 0),
-                      icon: Icons.trending_up_rounded,
-                      color: DesignColors.success,
-                    )),
+            for (final entry
+                in businessLayout.effectiveDashboardMetrics.asMap().entries)
+              SizedBox(
+                width: cardWidth,
+                child: metricCard(entry.value, entry.key),
               ),
-            ),
-            // Transactions
-            SizedBox(
-              width: cardWidth,
-              child: StaggeredItem(
-                itemKey: 'dash-metric-transactions',
-                index: 1,
-                child: FlipIn(
-                    delay: const Duration(milliseconds: 160),
-                    child: MetricCard(
-                      title: 'Transactions',
-                      value: '${summary['transactionCount'] ?? 0}',
-                      icon: Icons.receipt_long_rounded,
-                      color: DesignColors.brand,
-                    )),
-              ),
-            ),
-            // Avg. Ticket
-            SizedBox(
-              width: cardWidth,
-              child: StaggeredItem(
-                itemKey: 'dash-metric-avg-ticket',
-                index: 2,
-                child: SwingIn(
-                    angle: 0.12,
-                    delay: const Duration(milliseconds: 240),
-                    child: MetricCard(
-                      title: 'Avg. Ticket',
-                      value: _currencyFmt.format(summary['avgTicket'] ?? 0),
-                      icon: Icons.shopping_cart_rounded,
-                      color: DesignColors.info,
-                    )),
-              ),
-            ),
-            // Items Sold
-            SizedBox(
-              width: cardWidth,
-              child: StaggeredItem(
-                itemKey: 'dash-metric-items-sold',
-                index: 3,
-                child: ZoomSettle(
-                    delay: const Duration(milliseconds: 320),
-                    child: MetricCard(
-                      title: 'Items Sold',
-                      value: '${summary['itemsSold'] ?? 0}',
-                      icon: Icons.inventory_2_rounded,
-                      color: DesignColors.accent,
-                    )),
-              ),
-            ),
           ],
         );
       },

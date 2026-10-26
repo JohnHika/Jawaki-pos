@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,6 +12,8 @@ import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/api_message.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../providers/cart_provider.dart';
 import '../providers/catalog_provider.dart';
@@ -29,37 +33,23 @@ class POSScreen extends ConsumerStatefulWidget {
 }
 
 class _POSScreenState extends ConsumerState<POSScreen> {
-  static String _getUserFriendlyErrorMessage(dynamic error) {
-    final errorString = error.toString().toLowerCase();
-
-    if (errorString.contains('network') ||
-        errorString.contains('socket') ||
-        errorString.contains('connection')) {
-      return 'Please check your internet connection and try again';
-    } else if (errorString.contains('timeout')) {
-      return 'Request timed out. Please try again.';
-    } else if (errorString.contains('format') ||
-        errorString.contains('parse')) {
-      return 'Data format error. We\'re working to fix this.';
-    } else if (errorString.contains('auth') ||
-        errorString.contains('permission') ||
-        errorString.contains('unauthorized')) {
-      return 'Authentication required. Please log in again.';
-    } else if (error is Exception) {
-      return 'An unexpected error occurred. Please try again.';
-    }
-
-    return 'Unable to complete request. Please try again.';
-  }
-
   bool _showFavorites = false;
   bool _catalogRefreshing = true;
   bool _catalogSyncStarted = false;
   bool _catalogSyncFailed = false;
+  bool _isOffline = false;
+  StreamSubscription<ConnectionStatus>? _connectivitySubscription;
 
   @override
   void initState() {
     super.initState();
+    final connectivity = getIt<ConnectivityService>();
+    _isOffline = connectivity.currentStatus == ConnectionStatus.offline;
+    _connectivitySubscription = connectivity.statusStream.listen((status) {
+      if (!mounted) return;
+      final isOffline = status == ConnectionStatus.offline;
+      if (_isOffline != isOffline) setState(() => _isOffline = isOffline);
+    });
     // Filters belong to one POS visit. A previous query (for example
     // "tessi") must not silently filter a newly mounted product grid.
     ref.read(searchQueryProvider.notifier).state = '';
@@ -79,6 +69,12 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     Future.microtask(_refreshCatalog);
   }
 
+  @override
+  void dispose() {
+    unawaited(_connectivitySubscription?.cancel());
+    super.dispose();
+  }
+
   Future<void> _refreshCatalog() async {
     if (!mounted || _catalogSyncStarted) return;
     setState(() {
@@ -89,7 +85,15 @@ class _POSScreenState extends ConsumerState<POSScreen> {
 
     var failed = false;
     try {
-      await syncCatalogCacheFromApi();
+      await syncCatalogCacheFromApi(onProductsCached: () {
+        if (!mounted) return;
+        // First catalog pages are committed with their prices and reconciled
+        // stock while later pages continue downloading. Refresh the visible
+        // POS query now so a new device can start selling before the full
+        // catalog sync has to finish.
+        ref.invalidate(filteredProductsProvider);
+        ref.invalidate(favoriteProductsProvider);
+      });
     } catch (_) {
       failed = true;
     }
@@ -109,128 +113,87 @@ class _POSScreenState extends ConsumerState<POSScreen> {
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
     final parkedSales = ref.watch(parkedSalesProvider);
+    final businessLayout = ref.watch(businessLayoutProvider);
+    ref.listen<BusinessLayoutConfig>(businessLayoutProvider, (_, next) {
+      if (!next.effectiveShowPosCategories &&
+          ref.read(selectedCategoryProvider) != null) {
+        ref.read(selectedCategoryProvider.notifier).state = null;
+      }
+      if (!next.effectiveShowPosFavorites && _showFavorites && mounted) {
+        setState(() => _showFavorites = false);
+      }
+    });
+    final showFavorites =
+        businessLayout.effectiveShowPosFavorites && _showFavorites;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final connectivity = getIt<ConnectivityService>();
+    final posQuickActionWidgets = businessLayout.effectivePosQuickActions
+        .map((id) => _buildPosQuickAction(
+              context,
+              id,
+              businessLayout: businessLayout,
+              cart: cart,
+              parkedSales: parkedSales,
+              showFavorites: showFavorites,
+              isDark: isDark,
+            ))
+        .whereType<Widget>()
+        .toList(growable: false);
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'POS',
+        title: businessLayout.actionLabel('/', 'POS'),
         showBackButton: false,
         actions: [
-          _topAction(Icons.person_add_alt_1_rounded, 'Customer',
-              () => _showCustomerDialog(context), isDark),
-          _topAction(
-              _showFavorites
-                  ? Icons.favorite_rounded
-                  : Icons.favorite_border_rounded,
-              'Favorites', () {
-            setState(() {
-              _showFavorites = !_showFavorites;
-              if (_showFavorites) {
-                ref.read(selectedCategoryProvider.notifier).state = null;
-              }
-            });
-          }, isDark, active: _showFavorites),
-          if (parkedSales.isNotEmpty)
-            _topAction(
-                Icons.inventory_2_outlined,
-                'Held (${parkedSales.length})',
-                () => _showParkedSalesSheet(context),
-                isDark),
-          if (cart.items.isNotEmpty)
-            _topAction(Icons.pause_rounded, 'Hold Sale',
-                () => _parkCurrentSale(context), isDark),
-          Stack(
-            children: [
-              _topAction(Icons.shopping_cart_outlined, 'Cart',
-                  () => context.push('/cart'), isDark),
-              if (cart.itemCount > 0)
-                Positioned(
-                  right: 2,
-                  top: 0,
-                  child: BumpOnChange(
-                    trigger: cart.itemCount,
-                    scale: 1.45,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      constraints:
-                          const BoxConstraints(minWidth: 15, minHeight: 15),
-                      decoration: const BoxDecoration(
-                        color: DesignColors.accent,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        '${cart.itemCount}',
-                        style: const TextStyle(
-                          color: Colors.black,
-                          fontSize: 8,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          ...posQuickActionWidgets,
           const SizedBox(width: DesignSpacing.xs),
         ],
       ),
       body: Column(
         children: [
           // ── Compact Top Bar ──
-          StreamBuilder<ConnectionStatus>(
-            stream: connectivity.statusStream,
-            initialData: connectivity.currentStatus,
-            builder: (context, snap) {
-              final isOffline = snap.data == ConnectionStatus.offline;
-              if (isOffline) {
-                return Container(
-                  width: double.infinity,
-                  // Sits below the AppBar, which already consumes the top
-                  // system inset - re-adding the status-bar padding here
-                  // double-padded the banner, so no manual top inset (and no
-                  // SafeArea) is needed.
-                  padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: DesignColors.warning.withValues(alpha: 0.12),
-                    border: Border(
-                        bottom: BorderSide(
-                            color:
-                                DesignColors.warning.withValues(alpha: 0.2))),
+          if (_isOffline)
+            Container(
+              width: double.infinity,
+              // Sits below the AppBar, which already consumes the top system
+              // inset, so no extra status-bar padding is needed.
+              padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
+              decoration: BoxDecoration(
+                color: DesignColors.warning.withValues(alpha: 0.12),
+                border: Border(
+                  bottom: BorderSide(
+                    color: DesignColors.warning.withValues(alpha: 0.2),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: DesignSpacing.xs,
-                        height: DesignSpacing.xs,
-                        decoration: BoxDecoration(
-                          color: DesignColors.warning,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                                color:
-                                    DesignColors.warning.withValues(alpha: 0.6),
-                                blurRadius: DesignSpacing.xs)
-                          ],
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: DesignSpacing.xs,
+                    height: DesignSpacing.xs,
+                    decoration: BoxDecoration(
+                      color: DesignColors.warning,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: DesignColors.warning.withValues(alpha: 0.6),
+                          blurRadius: DesignSpacing.xs,
                         ),
-                      ),
-                      const SizedBox(width: DesignSpacing.sm - 2),
-                      const Text(
-                        'Offline Mode — sales will sync when reconnected',
-                        style: TextStyle(
-                            fontSize: DesignType.chatMeta,
-                            fontWeight: FontWeight.w600,
-                            color: DesignColors.warning),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                );
-              }
-              return const SizedBox.shrink();
-            },
-          ),
+                  const SizedBox(width: DesignSpacing.sm - 2),
+                  const Text(
+                    'Offline Mode — sales will sync when reconnected',
+                    style: TextStyle(
+                      fontSize: DesignType.chatMeta,
+                      fontWeight: FontWeight.w600,
+                      color: DesignColors.warning,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           // ── Main top bar (simplified) ──
           if (cart.customerName != null)
             Container(
@@ -255,8 +218,8 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       ),
                     ),
                   ),
-                  const Text('Customer selected',
-                      style: TextStyle(
+                  Text('${businessLayout.customerSingular} selected',
+                      style: const TextStyle(
                           fontSize: 10,
                           color: DesignColors.success,
                           fontWeight: FontWeight.w600)),
@@ -283,7 +246,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _showFavorites ? 'Favorites' : 'Sell',
+                        showFavorites ? 'Favorites' : 'Sell',
                         style: TextStyle(
                           fontSize: DesignType.chatBody + 1,
                           fontWeight: FontWeight.w800,
@@ -293,9 +256,9 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                         ),
                       ),
                       Text(
-                        _showFavorites
-                            ? 'Saved products'
-                            : 'Choose products to start a sale',
+                        showFavorites
+                            ? 'Saved ${businessLayout.productsLabel.toLowerCase()}'
+                            : 'Choose ${businessLayout.productsLabel.toLowerCase()} to start a sale',
                         style: TextStyle(
                           fontSize: 10,
                           color: isDark
@@ -340,9 +303,10 @@ class _POSScreenState extends ConsumerState<POSScreen> {
           ),
           // ── Body ──
           const SearchBarWidget(),
-          if (!_showFavorites) const CategoryChips(),
+          if (!showFavorites && businessLayout.effectiveShowPosCategories)
+            const CategoryChips(),
           Expanded(
-            child: _showFavorites
+            child: showFavorites
                 ? Consumer(
                     builder: (context, ref, child) {
                       final favorites = ref.watch(favoriteProductsProvider);
@@ -352,14 +316,14 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                 icon: Icons.favorite_border_rounded,
                                 title: 'No favorites',
                                 subtitle: 'Tap heart on products to add')
-                            : const ProductGrid(),
+                            : ProductGrid(productsOverride: products),
                         loading: () => const Center(
                             child: CircularProgressIndicator(
                                 color: DesignColors.accent)),
                         error: (e, _) => EmptyState(
                           icon: Icons.error_outline_rounded,
                           title: 'Error loading favorites',
-                          subtitle: _getUserFriendlyErrorMessage(e),
+                          subtitle: apiErrorMessage(e),
                           iconColor: DesignColors.error,
                           actionLabel: 'Retry',
                           onAction: () => ref.refresh(favoriteProductsProvider),
@@ -370,8 +334,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 : ProductGrid(
                     catalogRefreshing: _catalogRefreshing,
                     catalogSyncFailed: _catalogSyncFailed,
-                    isOffline:
-                        connectivity.currentStatus == ConnectionStatus.offline,
+                    isOffline: _isOffline,
                     onRetryCatalog: _refreshCatalog,
                   ),
           ),
@@ -410,8 +373,101 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     );
   }
 
+  Widget? _buildPosQuickAction(
+    BuildContext context,
+    String id, {
+    required BusinessLayoutConfig businessLayout,
+    required CartState cart,
+    required List<ParkedSale> parkedSales,
+    required bool showFavorites,
+    required bool isDark,
+  }) {
+    switch (id) {
+      case 'customer':
+        if (!businessLayout.effectiveShowPosCustomer) return null;
+        return _topAction(
+          Icons.person_add_alt_1_rounded,
+          businessLayout.customerSingular,
+          () => _showCustomerDialog(context),
+          isDark,
+        );
+      case 'favorites':
+        if (!businessLayout.effectiveShowPosFavorites) return null;
+        return _topAction(
+          showFavorites
+              ? Icons.favorite_rounded
+              : Icons.favorite_border_rounded,
+          'Favorites',
+          () {
+            setState(() {
+              _showFavorites = !_showFavorites;
+              if (_showFavorites) {
+                ref.read(selectedCategoryProvider.notifier).state = null;
+              }
+            });
+          },
+          isDark,
+          active: showFavorites,
+        );
+      case 'held_sales':
+        if (parkedSales.isEmpty) return null;
+        return _topAction(
+          Icons.inventory_2_outlined,
+          'Held (${parkedSales.length})',
+          () => _showParkedSalesSheet(context),
+          isDark,
+        );
+      case 'hold_sale':
+        if (cart.items.isEmpty) return null;
+        return _topAction(
+          Icons.pause_rounded,
+          'Hold Sale',
+          () => _parkCurrentSale(context),
+          isDark,
+        );
+      case 'cart':
+        return Stack(
+          children: [
+            _topAction(Icons.shopping_cart_outlined, 'Cart',
+                () => context.push('/cart'), isDark),
+            if (cart.itemCount > 0)
+              Positioned(
+                right: 2,
+                top: 0,
+                child: BumpOnChange(
+                  trigger: cart.itemCount,
+                  scale: 1.45,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    constraints:
+                        const BoxConstraints(minWidth: 15, minHeight: 15),
+                    decoration: const BoxDecoration(
+                      color: DesignColors.accent,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '${cart.itemCount}',
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      default:
+        return null;
+    }
+  }
+
   void _showCustomerDialog(BuildContext context) {
     final cart = ref.read(cartProvider);
+    final businessLayout = ref.read(businessLayoutProvider);
+    final customerSingular = businessLayout.customerSingular;
     final nameCtrl = TextEditingController(text: cart.customerName ?? '');
     final phoneCtrl = TextEditingController();
     final db = getIt<AppDatabase>();
@@ -440,7 +496,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
               children: [
                 const SizedBox(height: DesignSpacing.sm),
                 Text(
-                  'Search an existing customer or create a new one',
+                  'Search ${businessLayout.customersLabel.toLowerCase()} or create a new ${customerSingular.toLowerCase()}',
                   style: TextStyle(
                       fontSize: DesignType.chatBody - 1, color: secondaryColor),
                 ),
@@ -450,7 +506,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                   autofocus: true,
                   textCapitalization: TextCapitalization.words,
                   decoration: InputDecoration(
-                    labelText: 'Customer or shop name',
+                    labelText: '$customerSingular or shop name',
                     hintText: 'Start typing a name',
                     prefixIcon:
                         const Icon(Icons.person_outline_rounded, size: 20),
@@ -536,7 +592,8 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                 .setCustomer(null, customerName: null);
                             Navigator.pop(ctx);
                           },
-                          child: const Text('Clear customer'))),
+                          child:
+                              Text('Clear ${customerSingular.toLowerCase()}'))),
                   const SizedBox(width: DesignSpacing.md - 2),
                   Expanded(
                       flex: 2,

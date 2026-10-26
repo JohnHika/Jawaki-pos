@@ -33,6 +33,7 @@ class Products extends Table {
   TextColumn get sku => text()();
   TextColumn get name => text()();
   TextColumn get description => text().nullable()();
+  TextColumn get metadata => text().withDefault(const Constant('{}'))();
   TextColumn get categoryId => text()();
   RealColumn get price => real()();
   RealColumn get costPrice => real().nullable()();
@@ -276,6 +277,10 @@ class AppDatabase extends _$AppDatabase {
     return tenantId == null || tenantId.isEmpty ? null : tenantId;
   }
 
+  /// Active workspace identity for callers that need to pin an async sync
+  /// batch to the session that selected its local records.
+  String? get activeTenantId => _customerTenantId;
+
   String _requireCustomerTenantId() {
     final tenantId = _customerTenantId;
     if (tenantId == null) {
@@ -377,7 +382,7 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   int get schemaVersion =>
-      14; // v14: fractional POS quantities and product setting
+      15; // v15: offline cache for industry-specific product details
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -536,6 +541,17 @@ class AppDatabase extends _$AppDatabase {
             ).getSingleOrNull();
             if (productTable != null) {
               await m.addColumn(products, products.allowFractions);
+            }
+          }
+          if (from >= 9 && from < 15) {
+            // Products are a rebuildable API cache, but retain the catalog
+            // during this additive upgrade and make metadata available offline.
+            final productTable = await customSelect(
+              "SELECT name FROM sqlite_master "
+              "WHERE type = 'table' AND name = 'products'",
+            ).getSingleOrNull();
+            if (productTable != null) {
+              await m.addColumn(products, products.metadata);
             }
           }
         },
@@ -701,7 +717,10 @@ class AppDatabase extends _$AppDatabase {
   Future<List<Product>> searchProducts(String query) {
     return (select(
       products,
-    )..where((p) => p.name.like('%$query%') | p.sku.like('%$query%')))
+    )..where((p) =>
+            p.name.like('%$query%') |
+            p.sku.like('%$query%') |
+            p.metadata.like('%$query%')))
         .get();
   }
 
@@ -716,7 +735,8 @@ class AppDatabase extends _$AppDatabase {
           ..where((product) =>
               product.isActive.equals(true) &
               (product.name.like('%$normalized%') |
-                  product.sku.like('%$normalized%')))
+                  product.sku.like('%$normalized%') |
+                  product.metadata.like('%$normalized%')))
           ..orderBy([(product) => OrderingTerm.asc(product.name)])
           ..limit(safeLimit))
         .watch();
@@ -727,6 +747,83 @@ class AppDatabase extends _$AppDatabase {
   Future<void> insertProducts(List<ProductsCompanion> items) async {
     await batch((batch) {
       batch.insertAllOnConflictUpdate(products, items);
+    });
+  }
+
+  /// Publishes one remote catalog page locally while the remaining pages are
+  /// still downloading. The page's products, pricing tiers and stock commit
+  /// together so the POS never sees a product without its current sale data.
+  /// Unsynced local sales are subtracted before stock is exposed to checkout.
+  Future<void> cacheCatalogPage({
+    required List<ProductsCompanion> items,
+    required List<ProductPricingTiersCompanion> tierItems,
+    required List<LocalStockCompanion> stockItems,
+    required String? branchId,
+  }) async {
+    final productIds = items
+        .map((item) => item.id.value)
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (productIds.isEmpty) return;
+
+    await transaction(() async {
+      await batch((batch) {
+        batch.insertAllOnConflictUpdate(products, items);
+      });
+
+      await (delete(productPricingTiers)
+            ..where((tier) => tier.productId.isIn(productIds)))
+          .go();
+      if (tierItems.isNotEmpty) {
+        await batch((batch) {
+          batch.insertAllOnConflictUpdate(productPricingTiers, tierItems);
+        });
+      }
+
+      if (branchId == null ||
+          stockItems.isEmpty ||
+          _customerTenantId == null ||
+          !_activeBranchIds().contains(branchId)) {
+        return;
+      }
+
+      final pendingSalesForBranch = await (select(pendingSales)
+            ..where((sale) =>
+                sale.branchId.equals(branchId) &
+                sale.status.equals('COMPLETED') &
+                sale.isSynced.equals(false)))
+          .get();
+      final pendingSaleIds =
+          pendingSalesForBranch.map((sale) => sale.id).toList();
+      final pendingQuantityByProduct = <String, double>{};
+      if (pendingSaleIds.isNotEmpty) {
+        final pendingItems = await (select(pendingSaleItems)
+              ..where((item) =>
+                  item.saleId.isIn(pendingSaleIds) &
+                  item.productId.isIn(productIds)))
+            .get();
+        for (final item in pendingItems) {
+          pendingQuantityByProduct.update(
+            item.productId,
+            (quantity) => quantity + item.quantity,
+            ifAbsent: () => item.quantity,
+          );
+        }
+      }
+
+      final now = DateTime.now();
+      final reconciledStock = stockItems.map((item) {
+        final productId = item.productId.value;
+        return item.copyWith(
+          quantity: Value(
+              item.quantity.value - (pendingQuantityByProduct[productId] ?? 0)),
+          updatedAt: Value(now),
+        );
+      }).toList(growable: false);
+      await batch((batch) {
+        batch.insertAllOnConflictUpdate(localStock, reconciledStock);
+      });
     });
   }
 
@@ -932,6 +1029,111 @@ class AppDatabase extends _$AppDatabase {
           ..orderBy([(e) => OrderingTerm.asc(e.sequenceNumber)]))
         .get();
     return items.where(_syncItemBelongsToActiveTenant).toList();
+  }
+
+  /// IDs with an existing sale-create queue row in this workspace. Terminally
+  /// failed rows remain here so orphan recovery does not bypass the retry cap
+  /// by generating a new event on every sync cycle.
+  Future<Set<String>> getUnresolvedSaleCreateSyncRecordIds() async {
+    final items = await (select(syncQueue)
+          ..where((item) =>
+              item.eventType.equals('SALE_CREATED') &
+              item.status.isIn(['pending', 'conflict', 'failed'])))
+        .get();
+    return items
+        .where(_syncItemBelongsToActiveTenant)
+        .map((item) => item.recordId)
+        .toSet();
+  }
+
+  /// Customer creates that are not confirmed remotely yet. A failed create
+  /// must also block dependent sales until a user retries or resolves it.
+  Future<Set<String>> getUnresolvedCustomerCreateSyncRecordIds() async {
+    final items = await (select(syncQueue)
+          ..where((item) =>
+              item.eventType.equals('CUSTOMER_CREATED') &
+              item.status.isIn(['pending', 'conflict', 'failed'])))
+        .get();
+    return items
+        .where(_syncItemBelongsToActiveTenant)
+        .map((item) => item.recordId)
+        .toSet();
+  }
+
+  /// Atomically recover a missing customer-create event before replaying an
+  /// offline sale that refers to the customer. Replaying an already-synced
+  /// create is safe on the server, but avoiding it while the event row exists
+  /// keeps the queue small.
+  Future<bool> enqueueRecoveredCustomerIfMissing(
+    SyncQueueCompanion item, {
+    required String expectedTenantId,
+  }) async {
+    if (!item.recordId.present ||
+        !item.eventType.present ||
+        item.eventType.value != 'CUSTOMER_CREATED') {
+      throw ArgumentError(
+        'Recovery queue items must be CUSTOMER_CREATED events.',
+      );
+    }
+    if (_customerTenantId != expectedTenantId) return false;
+
+    return transaction(() async {
+      if (_customerTenantId != expectedTenantId) return false;
+      final existing = await (select(syncQueue)
+            ..where((queue) =>
+                queue.recordId.equals(item.recordId.value) &
+                queue.eventType.equals('CUSTOMER_CREATED')))
+          .get();
+      if (existing.any((event) =>
+              _syncItemBelongsToActiveTenant(event) &&
+              ['pending', 'conflict', 'failed', 'synced', 'resolved']
+                  .contains(event.status)) ||
+          _customerTenantId != expectedTenantId) {
+        return false;
+      }
+
+      final sequenceNumber = await getNextSyncSequenceNumber();
+      await into(syncQueue).insert(
+        item.copyWith(sequenceNumber: Value(sequenceNumber)),
+      );
+      return true;
+    });
+  }
+
+  /// Atomically recover one orphaned sale. Foreground sync and Android's
+  /// background worker can run at the same time, so checking for a live row
+  /// before enqueueing in the service would allow both workers to create a
+  /// separate SALE_CREATED event for the same sale.
+  Future<bool> enqueueRecoveredSaleIfMissing(
+    SyncQueueCompanion item, {
+    required String expectedTenantId,
+  }) async {
+    if (!item.recordId.present ||
+        !item.eventType.present ||
+        item.eventType.value != 'SALE_CREATED') {
+      throw ArgumentError('Recovery queue items must be SALE_CREATED events.');
+    }
+    if (_customerTenantId != expectedTenantId) return false;
+
+    return transaction(() async {
+      if (_customerTenantId != expectedTenantId) return false;
+      final existing = await (select(syncQueue)
+            ..where((queue) =>
+                queue.recordId.equals(item.recordId.value) &
+                queue.eventType.equals('SALE_CREATED') &
+                queue.status.isIn(['pending', 'conflict', 'failed'])))
+          .get();
+      if (existing.any(_syncItemBelongsToActiveTenant) ||
+          _customerTenantId != expectedTenantId) {
+        return false;
+      }
+
+      final sequenceNumber = await getNextSyncSequenceNumber();
+      await into(syncQueue).insert(
+        item.copyWith(sequenceNumber: Value(sequenceNumber)),
+      );
+      return true;
+    });
   }
 
   Future<void> markSyncEventProcessed(String id) {
@@ -1746,6 +1948,19 @@ class AppDatabase extends _$AppDatabase {
         .getSingleOrNull();
   }
 
+  /// Watches one receipt so a locally printed receipt can update when its
+  /// cloud sync replaces the temporary receipt number or confirms delivery.
+  Stream<PendingSale?> watchPendingSaleById(String saleId) {
+    final branchIds = _activeBranchIds();
+    if (_customerTenantId == null || branchIds.isEmpty) {
+      return Stream.value(null);
+    }
+    return (select(pendingSales)
+          ..where(
+              (sale) => sale.id.equals(saleId) & sale.branchId.isIn(branchIds)))
+        .watchSingleOrNull();
+  }
+
   /// Finds a locally cached, provider-verified M-Pesa sale by its immutable
   /// payment reference. The server uses `paystack-<reference>` as its
   /// offline id, while older app builds used a random local sale id.
@@ -2012,7 +2227,7 @@ class AppDatabase extends _$AppDatabase {
   Future<List<Map<String, dynamic>>> getInventoryReport() async {
     final branchId = _storage.getBranchId();
     final result = await customSelect(
-      'SELECT p.id, p.name, p.sku, p.price, p.cost_price, p.unit, '
+      'SELECT p.id, p.name, p.sku, p.metadata, p.price, p.cost_price, p.unit, '
       'COALESCE(ls.quantity, 0) as stock, p.min_stock as min_stock, '
       'ls.display_unit, ls.display_quantity_per_unit, '
       'ls.last_received_quantity, ls.last_received_at, '
@@ -2031,6 +2246,7 @@ class AppDatabase extends _$AppDatabase {
             'id': r.read<String>('id'),
             'name': r.read<String>('name'),
             'sku': r.read<String>('sku'),
+            'metadata': r.read<String>('metadata'),
             'price': r.read<double>('price'),
             'costPrice': r.readNullable<double>('cost_price') ?? 0.0,
             'stock': r.read<double>('stock'),
@@ -2758,12 +2974,10 @@ class AppDatabase extends _$AppDatabase {
       'SELECT ci.*, c.name as customer_name, c.phone as customer_phone '
       'FROM customer_installments ci '
       'JOIN customers c ON c.id = ci.customer_id AND c.tenant_id = ci.tenant_id '
-      'WHERE ci.tenant_id = ? AND ci.status = \'pending\' AND ci.due_date < ? '
+      'WHERE ci.tenant_id = ? AND ci.status = \'pending\' '
+      'AND date(ci.due_date) < date(\'now\', \'localtime\') '
       'ORDER BY ci.due_date ASC',
-      variables: [
-        Variable.withString(tenantId),
-        Variable.withString(DateTime.now().toIso8601String()),
-      ],
+      variables: [Variable.withString(tenantId)],
     ).get();
     return result
         .map(
@@ -3272,7 +3486,7 @@ class AppDatabase extends _$AppDatabase {
           WHERE si3.supplier_id = s.id
             AND si3.status != 'paid'
             AND si3.due_date IS NOT NULL
-            AND si3.due_date < datetime('now')) as overdue_count
+            AND date(si3.due_date) < date('now', 'localtime')) as overdue_count
       FROM suppliers s
       WHERE s.is_active = 1 AND s.tenant_id = ?
       GROUP BY s.id

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/format.dart';
 
@@ -84,6 +85,8 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final businessLayout = ref.watch(businessLayoutProvider);
+    final entityLabel = businessLayout.productSingular;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final viewInsets = MediaQuery.viewInsetsOf(context);
     final safePadding = MediaQuery.paddingOf(context);
@@ -115,7 +118,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
               const SizedBox(width: 14),
               Expanded(
                 child: Text(
-                  'Select Product',
+                  'Select $entityLabel',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
@@ -159,7 +162,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                   : DesignColors.textPrimary,
             ),
             decoration: InputDecoration(
-              hintText: 'Search by name or SKU...',
+              hintText: businessLayout.catalogSearchHint,
               hintStyle: TextStyle(
                 color: isDark
                     ? DesignColors.darkTextTertiary
@@ -214,7 +217,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
             child: Row(
               children: [
                 Text(
-                  '${_filteredProducts.length} product${_filteredProducts.length != 1 ? 's' : ''} found',
+                  '${_filteredProducts.length} ${_filteredProducts.length == 1 ? entityLabel.toLowerCase() : businessLayout.productsLabel.toLowerCase()} found',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark
@@ -252,8 +255,8 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                       ? EmptyState(
                           icon: Icons.inventory_2_outlined,
                           title: _searchController.text.isEmpty
-                              ? 'No products available'
-                              : 'No products found',
+                              ? 'No ${businessLayout.productsLabel.toLowerCase()} available'
+                              : 'No ${businessLayout.productsLabel.toLowerCase()} found',
                           subtitle: _searchController.text.isNotEmpty
                               ? 'Try a different search term'
                               : null,
@@ -339,7 +342,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                                           Row(
                                             children: [
                                               Text(
-                                                'SKU: ${product.sku}',
+                                                '${businessLayout.productCodeLabel.replaceAll(' (optional)', '')}: ${product.sku}',
                                                 style: TextStyle(
                                                   fontSize: 11,
                                                   color: isDark

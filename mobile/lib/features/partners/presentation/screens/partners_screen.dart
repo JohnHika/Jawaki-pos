@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/storage_service.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
@@ -26,7 +27,10 @@ class PartnersScreen extends ConsumerWidget {
       // A tab-style destination from More, but also opened on top of the stack
       // from a notification — then it needs a way back.
       appBar: BrandedAppBar(
-          title: 'Trade Partners', showBackButton: GoRouter.of(context).canPop()),
+          title: ref
+              .watch(businessLayoutProvider)
+              .actionLabel('/partners', 'Trade Partners'),
+          showBackButton: GoRouter.of(context).canPop()),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showConnectSheet(context, ref),
         backgroundColor: DesignColors.accent,
@@ -38,8 +42,8 @@ class PartnersScreen extends ConsumerWidget {
         onRefresh: controller.refresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.md,
-              DesignSpacing.lg, 120),
+          padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg, DesignSpacing.md, DesignSpacing.lg, 120),
           children: [
             _MyCodeCard(slug: slug),
             const SizedBox(height: DesignSpacing.lg),
@@ -96,9 +100,8 @@ class PartnersScreen extends ConsumerWidget {
       showDragHandle: true,
       backgroundColor: context.themed(DesignColors.darkSurface),
       builder: (sheetContext) => _ConnectSheet(
-        onSubmit: (code, message) => ref
-            .read(partnersProvider.notifier)
-            .connect(code, message: message),
+        onSubmit: (code, message) =>
+            ref.read(partnersProvider.notifier).connect(code, message: message),
       ),
     );
   }
@@ -162,7 +165,8 @@ class _MyCodeCard extends StatelessWidget {
           if (slug.isNotEmpty)
             IconButton(
               tooltip: 'Copy code',
-              icon: const Icon(Icons.copy_rounded, color: DesignColors.accentDark),
+              icon: const Icon(Icons.copy_rounded,
+                  color: DesignColors.accentDark),
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: slug));
                 showGlassSnackBar(
@@ -360,8 +364,7 @@ class _PartnerTile extends StatelessWidget {
           ),
           if (partner.unreadCount > 0)
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: DesignColors.accent,
                 borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
@@ -467,8 +470,8 @@ class _RequestCardState extends State<_RequestCard> {
                 child: OutlinedButton(
                   onPressed: _busy
                       ? null
-                      : () => _run(
-                          () => widget.controller.decline(p.id), 'Request declined'),
+                      : () => _run(() => widget.controller.decline(p.id),
+                          'Request declined'),
                   child: const Text('Decline'),
                 ),
               ),

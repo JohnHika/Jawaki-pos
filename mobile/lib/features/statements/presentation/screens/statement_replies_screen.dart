@@ -4,10 +4,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/statement_models.dart';
+import '../../domain/statement_sync_recovery.dart';
 import '../providers/statement_provider.dart';
 
 /// Customer responses to a statement link. A customer's "I have paid" claim
@@ -21,30 +23,42 @@ class StatementRepliesScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Debt Replies',
+        title: ref
+            .watch(businessLayoutProvider)
+            .actionLabel('/statements/replies', 'Debt Replies'),
         showBackButton: GoRouter.of(context).canPop(),
       ),
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(statementClaimsProvider),
         child: claims.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(DesignSpacing.lg),
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: DesignSpacing.xl),
-                child: EmptyState(
-                  icon: Icons.mark_chat_read_outlined,
-                  title: "Couldn't load customer replies",
-                  subtitle: apiErrorMessage(e),
-                  iconColor: DesignColors.warning,
-                  actionLabel: 'Try again',
-                  onAction: () => ref.invalidate(statementClaimsProvider),
+          error: (e, _) {
+            final serviceNeedsUpdate = statementServiceNeedsUpdate(e);
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(DesignSpacing.lg),
+              children: [
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: DesignSpacing.xl),
+                  child: EmptyState(
+                    icon: Icons.mark_chat_read_outlined,
+                    title: serviceNeedsUpdate
+                        ? 'Debt replies need a service update'
+                        : "Couldn't load customer replies",
+                    subtitle: serviceNeedsUpdate
+                        ? 'The Counterbase service connected to this app does not support debt replies yet. Update the service, then pull down to refresh.'
+                        : apiErrorMessage(e),
+                    iconColor: DesignColors.warning,
+                    actionLabel: serviceNeedsUpdate ? null : 'Try again',
+                    onAction: serviceNeedsUpdate
+                        ? null
+                        : () => ref.invalidate(statementClaimsProvider),
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            );
+          },
           data: (rows) => rows.isEmpty
               ? ListView(
                   physics: const AlwaysScrollableScrollPhysics(),

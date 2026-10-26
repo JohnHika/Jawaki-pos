@@ -91,7 +91,7 @@ describe('overdueDaysFor', () => {
   it('counts whole days past due, at least one', () => {
     expect(overdueDaysFor(null, now)).toBe(0);
     expect(overdueDaysFor(new Date('2026-10-30T00:00:00Z'), now)).toBe(0);
-    expect(overdueDaysFor(new Date('2026-10-24T06:00:00Z'), now)).toBe(1);
+    expect(overdueDaysFor(new Date('2026-10-24T06:00:00Z'), now)).toBe(0);
     expect(overdueDaysFor(new Date('2026-10-14T12:00:00Z'), now)).toBe(10);
   });
 });

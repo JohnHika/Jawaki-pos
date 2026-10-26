@@ -8,7 +8,10 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
+import '../../../sales/presentation/providers/catalog_provider.dart'
+    as catalog_cache;
 
 /// Enhanced Batch Receive Screen with Multi-Unit Support
 /// Supervisors can receive stock in cartons/boxes and auto-convert to pieces
@@ -296,8 +299,11 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
         lastReceivedQuantity: receivedQuantity,
         lastReceivedAt: DateTime.now(),
       );
-
       if (!mounted) return;
+      // POS product cards hold a cached snapshot of stock metadata. Refresh
+      // it after a receipt so the till reflects the new quantity immediately.
+      ref.invalidate(catalog_cache.filteredProductsProvider);
+      ref.invalidate(catalog_cache.favoriteProductsProvider);
 
       final createdBatches = (result['batches'] as List?) ?? const [];
       final batchNumbers = createdBatches
@@ -353,50 +359,17 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
   /// Short, user-readable error message. Never dumps the raw DioException
   /// text into the snackbar.
   String _userFacingError(Object error) {
-    if (error is DioException) {
-      final status = error.response?.statusCode;
-      final data = error.response?.data;
-      final serverMessage = data is Map && data['message'] != null
-          ? data['message'].toString()
-          : null;
-
-      switch (status) {
-        case 400:
-          return serverMessage ?? 'Check the entered details and try again.';
-        case 401:
-          return 'Session expired. Please log in again.';
-        case 403:
-          return 'You do not have permission to receive stock.';
-        case 404:
-          return serverMessage ?? 'Product or branch not found.';
-        case 409:
-          return 'Batch number conflict. Please try again.';
-        case 422:
-          return serverMessage ?? 'Some values are invalid. Please review.';
-      }
-
-      if (status != null && status >= 500) {
-        return 'Server error. Please try again in a moment.';
-      }
-
-      switch (error.type) {
-        case DioExceptionType.connectionTimeout:
-        case DioExceptionType.receiveTimeout:
-        case DioExceptionType.sendTimeout:
-          return 'Connection timed out. Check your network.';
-        case DioExceptionType.connectionError:
-          return 'No internet connection.';
-        default:
-          break;
-      }
+    if (error is DioException && error.response?.statusCode == 409) {
+      return 'Batch number conflict. Please try again.';
     }
 
-    final message = error.toString();
+    final message =
+        error is StateError ? error.message.toString() : error.toString();
     if (message.contains('Missing branch ID') ||
         message.contains('product ID')) {
       return 'Missing product or branch information.';
     }
-    return 'Could not receive stock. Please try again.';
+    return apiErrorMessage(error);
   }
 
   /// Shared field decoration so every TextFormField in this form picks up

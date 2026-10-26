@@ -27,6 +27,7 @@ import '../../../../core/services/export_document_service.dart';
 import '../../../../core/widgets/release_notes.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/providers/tenant_provider.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/utils/format.dart';
@@ -115,9 +116,21 @@ class SettingsScreen extends ConsumerWidget {
             SettingsEntry(
               id: 'business-layout',
               icon: Icons.tune_rounded,
-              title: 'Business layout',
-              subtitle: 'Adapt Counterbase for your kind of shop',
-              keywords: const ['industry', 'bookshop', 'kamukunji', 'shortcuts', 'customize'],
+              title: 'Layout actions',
+              subtitle: 'Shape Counterbase around your shop and daily work',
+              keywords: const [
+                'layout action',
+                'industry',
+                'bookshop',
+                'kamukunji',
+                'wholesale',
+                'shortcuts',
+                'customize',
+                'show',
+                'hide',
+                'work areas',
+                'navigation',
+              ],
               onTap: () => context.push('/settings/business-layout'),
             ),
           if (isBillingAdmin || perms.has('users.create'))
@@ -126,9 +139,14 @@ class SettingsScreen extends ConsumerWidget {
               icon: Icons.checklist_rounded,
               title: 'Workspace setup',
               subtitle: 'Review business, branch, team, catalog and payouts',
-              keywords: const ['onboarding', 'checklist', 'setup', 'first sale'],
-              onTap: () => context.push('/owner-welcome',
-                  extra: identity.companyName),
+              keywords: const [
+                'onboarding',
+                'checklist',
+                'setup',
+                'first sale'
+              ],
+              onTap: () =>
+                  context.push('/owner-welcome', extra: identity.companyName),
             ),
           if (isBillingAdmin)
             SettingsEntry(
@@ -205,8 +223,15 @@ class SettingsScreen extends ConsumerWidget {
               id: 'merchant-payouts',
               icon: Icons.account_balance_rounded,
               title: 'Customer payments & payouts',
-              subtitle: 'Manage the bank account for sales and debt collections',
-              keywords: const ['bank', 'payout', 'settlement', 'paystack', 'mpesa'],
+              subtitle:
+                  'Manage the bank account for sales and debt collections',
+              keywords: const [
+                'bank',
+                'payout',
+                'settlement',
+                'paystack',
+                'mpesa'
+              ],
               onTap: () => context.push('/payments/setup'),
             ),
           if (isBillingAdmin)
@@ -265,7 +290,8 @@ class SettingsScreen extends ConsumerWidget {
               id: 'printers',
               icon: Icons.print_rounded,
               title: 'Receipts & printers',
-              subtitle: 'Connect a Bluetooth printer and set how receipts print',
+              subtitle:
+                  'Connect a Bluetooth printer and set how receipts print',
               keywords: const ['printer', 'bluetooth', 'paper', 'print'],
               onTap: () => _showPrinterSettings(context),
             ),
@@ -382,7 +408,13 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.policy_outlined,
             title: 'Legal & policies',
             subtitle: 'Terms, privacy, billing, and payment policies',
-            keywords: const ['terms', 'privacy', 'policy', 'billing', 'payments'],
+            keywords: const [
+              'terms',
+              'privacy',
+              'policy',
+              'billing',
+              'payments'
+            ],
             onTap: () => context.push('/legal'),
           ),
           SettingsEntry(
@@ -443,7 +475,12 @@ class SettingsScreen extends ConsumerWidget {
     ];
 
     return Scaffold(
-      appBar: const BrandedAppBar(title: 'Settings', showBackButton: false),
+      appBar: BrandedAppBar(
+        title: ref
+            .watch(businessLayoutProvider)
+            .actionLabel('/settings', 'Settings'),
+        showBackButton: false,
+      ),
       body: SettingsSectionList(
         header: SettingsProfileHeader(
           name: (user?['name'] ?? user?['email'] ?? 'User').toString(),
@@ -459,7 +496,6 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
   }
-
 
   void _showLogoutDialog(BuildContext context, WidgetRef ref,
       {bool allDevices = false}) async {
@@ -549,7 +585,8 @@ class SettingsScreen extends ConsumerWidget {
                       onPressed: () {
                         syncService.retryFailedItems();
                         Navigator.pop(context);
-                        showGlassSnackBar(context, 'Trying failed items again...',
+                        showGlassSnackBar(
+                            context, 'Trying failed items again...',
                             icon: Icons.refresh_rounded,
                             color: DesignColors.warning);
                       },
@@ -633,64 +670,66 @@ class SettingsScreen extends ConsumerWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-          GroupedCard(
-            margin: EdgeInsets.zero,
-            children: [
-              SettingsRow(
-                icon: Icons.light_mode_rounded,
-                iconColor:
-                    currentMode == ThemeMode.light ? DesignColors.accent : null,
-                title: 'Light',
-                showChevron: false,
-                trailing: currentMode == ThemeMode.light
-                    ? const Icon(Icons.check_circle_rounded,
-                        color: DesignColors.accent)
-                    : null,
-                onTap: () {
-                  ref
-                      .read(themeModeProvider.notifier)
-                      .setThemeMode(ThemeMode.light);
-                  Navigator.pop(ctx);
-                },
-              ),
-              SettingsRow(
-                icon: Icons.dark_mode_rounded,
-                iconColor:
-                    currentMode == ThemeMode.dark ? DesignColors.accent : null,
-                title: 'Dark',
-                showChevron: false,
-                trailing: currentMode == ThemeMode.dark
-                    ? const Icon(Icons.check_circle_rounded,
-                        color: DesignColors.accent)
-                    : null,
-                onTap: () {
-                  ref
-                      .read(themeModeProvider.notifier)
-                      .setThemeMode(ThemeMode.dark);
-                  Navigator.pop(ctx);
-                },
-              ),
-              SettingsRow(
-                icon: Icons.phone_android_rounded,
-                iconColor: currentMode == ThemeMode.system
-                    ? DesignColors.accent
-                    : null,
-                title: 'Match my phone',
-                showChevron: false,
-                subtitle: "Uses your phone's light or dark setting",
-                trailing: currentMode == ThemeMode.system
-                    ? const Icon(Icons.check_circle_rounded,
-                        color: DesignColors.accent)
-                    : null,
-                onTap: () {
-                  ref
-                      .read(themeModeProvider.notifier)
-                      .setThemeMode(ThemeMode.system);
-                  Navigator.pop(ctx);
-                },
-              ),
-            ],
-          ),
+                  GroupedCard(
+                    margin: EdgeInsets.zero,
+                    children: [
+                      SettingsRow(
+                        icon: Icons.light_mode_rounded,
+                        iconColor: currentMode == ThemeMode.light
+                            ? DesignColors.accent
+                            : null,
+                        title: 'Light',
+                        showChevron: false,
+                        trailing: currentMode == ThemeMode.light
+                            ? const Icon(Icons.check_circle_rounded,
+                                color: DesignColors.accent)
+                            : null,
+                        onTap: () {
+                          ref
+                              .read(themeModeProvider.notifier)
+                              .setThemeMode(ThemeMode.light);
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                      SettingsRow(
+                        icon: Icons.dark_mode_rounded,
+                        iconColor: currentMode == ThemeMode.dark
+                            ? DesignColors.accent
+                            : null,
+                        title: 'Dark',
+                        showChevron: false,
+                        trailing: currentMode == ThemeMode.dark
+                            ? const Icon(Icons.check_circle_rounded,
+                                color: DesignColors.accent)
+                            : null,
+                        onTap: () {
+                          ref
+                              .read(themeModeProvider.notifier)
+                              .setThemeMode(ThemeMode.dark);
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                      SettingsRow(
+                        icon: Icons.phone_android_rounded,
+                        iconColor: currentMode == ThemeMode.system
+                            ? DesignColors.accent
+                            : null,
+                        title: 'Match my phone',
+                        showChevron: false,
+                        subtitle: "Uses your phone's light or dark setting",
+                        trailing: currentMode == ThemeMode.system
+                            ? const Icon(Icons.check_circle_rounded,
+                                color: DesignColors.accent)
+                            : null,
+                        onTap: () {
+                          ref
+                              .read(themeModeProvider.notifier)
+                              .setThemeMode(ThemeMode.system);
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: DesignSpacing.lg),
                   const LivingIconCard(),
                 ],
@@ -723,7 +762,9 @@ class SettingsScreen extends ConsumerWidget {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => SettingsDialog(
-          title: hasExistingPin ? 'Change quick-unlock PIN' : 'Set quick-unlock PIN',
+          title: hasExistingPin
+              ? 'Change quick-unlock PIN'
+              : 'Set quick-unlock PIN',
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -733,9 +774,10 @@ class SettingsScreen extends ConsumerWidget {
                     ? 'Choose 4–6 digits. Enter your current PIN first to confirm it is you.'
                     : 'Choose 4–6 digits. You will use this PIN to open the app on this phone and to sign in quickly.',
                 style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(dialogContext).brightness == Brightness.dark
-                          ? DesignColors.darkTextSecondary
-                          : DesignColors.textSecondary,
+                      color:
+                          Theme.of(dialogContext).brightness == Brightness.dark
+                              ? DesignColors.darkTextSecondary
+                              : DesignColors.textSecondary,
                       height: 1.35,
                     ),
               ),
@@ -824,21 +866,26 @@ class SettingsScreen extends ConsumerWidget {
 
                       if (hasExistingPin) {
                         if (!validPin.hasMatch(currentPin)) {
-                          setDialogState(() => error = 'Enter your current 4–6 digit PIN');
+                          setDialogState(
+                              () => error = 'Enter your current 4–6 digit PIN');
                           return;
                         }
-                        final isCorrect = await storage.verifyLocalPin(currentPin);
+                        final isCorrect =
+                            await storage.verifyLocalPin(currentPin);
                         if (!isCorrect) {
-                          setDialogState(() => error = 'That current PIN is not correct');
+                          setDialogState(
+                              () => error = 'That current PIN is not correct');
                           return;
                         }
                       }
                       if (!validPin.hasMatch(newPin)) {
-                        setDialogState(() => error = 'Your PIN must be 4–6 digits, numbers only');
+                        setDialogState(() => error =
+                            'Your PIN must be 4–6 digits, numbers only');
                         return;
                       }
                       if (newPin != confirmPin) {
-                        setDialogState(() => error = 'The two PINs do not match');
+                        setDialogState(
+                            () => error = 'The two PINs do not match');
                         return;
                       }
 
@@ -868,7 +915,8 @@ class SettingsScreen extends ConsumerWidget {
                         if (!dialogContext.mounted) return;
                         setDialogState(() {
                           isSaving = false;
-                          error = 'Could not update your PIN. Please try again.';
+                          error =
+                              'Could not update your PIN. Please try again.';
                         });
                       }
                     },
@@ -1052,16 +1100,23 @@ class SettingsScreen extends ConsumerWidget {
               const SettingsGroupLabel('Contact'),
               GroupedCard(
                 children: [
-                  const SettingsRow(
+                  SettingsRow(
                     icon: Icons.email_outlined,
                     title: 'Email us',
                     subtitle: 'support@archeaxon.com',
+                    onTap: () => _openSupportContact(
+                      context,
+                      Uri(scheme: 'mailto', path: 'support@archeaxon.com'),
+                    ),
                   ),
                   SettingsRow(
                     icon: Icons.phone_outlined,
                     title: 'Call us',
                     subtitle: '0742126582',
-                    onTap: () {},
+                    onTap: () => _openSupportContact(
+                      context,
+                      Uri(scheme: 'tel', path: '0742126582'),
+                    ),
                   ),
                 ],
               ),
@@ -1093,6 +1148,21 @@ class SettingsScreen extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+
+  Future<void> _openSupportContact(BuildContext context, Uri uri) async {
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (opened || !context.mounted) return;
+    } catch (_) {
+      if (!context.mounted) return;
+    }
+    showGlassSnackBar(
+      context,
+      'No app could open this contact. You can use ${uri.path} directly.',
+      icon: Icons.info_outline_rounded,
+      color: DesignColors.warning,
     );
   }
 
@@ -1661,13 +1731,12 @@ class SettingsScreen extends ConsumerWidget {
         expand: false,
         initialChildSize: 0.6,
         maxChildSize: 0.9,
-        builder: (context, scrollController) =>
-            _BranchManagementSheet(
-              scrollController: scrollController,
-              canCreate: canCreate,
-              canUpdate: canUpdate,
-              canDelete: canDelete,
-            ),
+        builder: (context, scrollController) => _BranchManagementSheet(
+          scrollController: scrollController,
+          canCreate: canCreate,
+          canUpdate: canUpdate,
+          canDelete: canDelete,
+        ),
       ),
     );
   }
@@ -2005,7 +2074,8 @@ class SettingsScreen extends ConsumerWidget {
                                           'System',
                                       time: entry['createdAt'] != null
                                           ? _formatDateTime(DateTime.parse(
-                                              entry['createdAt'] as String).toLocal())
+                                                  entry['createdAt'] as String)
+                                              .toLocal())
                                           : '',
                                     ))
                                 .toList(),
@@ -2168,8 +2238,7 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
       if (mounted) setState(() => _isDesignatedPrinter = value);
     } catch (e) {
       if (mounted) {
-        showGlassSnackBar(
-            context,
+        showGlassSnackBar(context,
             'Could not update the till printer setting. ${apiErrorMessage(e)}',
             icon: Icons.error_outline_rounded, color: DesignColors.error);
       }
@@ -2217,8 +2286,8 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
       }
     } catch (e) {
       if (mounted) {
-        showGlassSnackBar(context,
-            'Could not scan for printers. ${apiErrorMessage(e)}',
+        showGlassSnackBar(
+            context, 'Could not scan for printers. ${apiErrorMessage(e)}',
             icon: Icons.error_outline_rounded, color: DesignColors.error);
       }
     } finally {
@@ -2246,8 +2315,8 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
       }
     } catch (e) {
       if (mounted) {
-        showGlassSnackBar(context,
-            'Could not connect to the printer. ${apiErrorMessage(e)}',
+        showGlassSnackBar(
+            context, 'Could not connect to the printer. ${apiErrorMessage(e)}',
             icon: Icons.error_outline_rounded, color: DesignColors.error);
       }
     } finally {
@@ -2577,7 +2646,8 @@ class _NotificationSettingsSheetState
                       title: 'Update available',
                       subtitle: '${cleanReleaseName(
                         _availableUpdate!.displayVersion,
-                        fallback: 'Counterbase ${_availableUpdate!.latestVersion}',
+                        fallback:
+                            'Counterbase ${_availableUpdate!.latestVersion}',
                       )} is ready to install',
                       trailing: SettingsPrimaryButton(
                         label: 'Update',
@@ -2598,7 +2668,8 @@ class _NotificationSettingsSheetState
                               .textTheme
                               .bodySmall
                               ?.copyWith(
-                                  color: context.themed(DesignColors.darkTextSecondary),
+                                  color: context
+                                      .themed(DesignColors.darkTextSecondary),
                                   height: 1.4),
                           maxLines: 4,
                           overflow: TextOverflow.ellipsis,
@@ -2761,8 +2832,7 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
         _isConfirmingBiometric = false;
       });
       if (mounted) {
-        showGlassSnackBar(
-            context,
+        showGlassSnackBar(context,
             'Could not check fingerprint or face unlock. ${apiErrorMessage(e)}',
             icon: Icons.error_outline_rounded, color: DesignColors.error);
       }
@@ -2831,7 +2901,8 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                   SettingsRow(
                     icon: Icons.lock_clock_rounded,
                     title: 'Ask to unlock when I come back',
-                    subtitle: 'Asks for your fingerprint, PIN or pattern after you leave the app',
+                    subtitle:
+                        'Asks for your fingerprint, PIN or pattern after you leave the app',
                     trailing: Switch(
                       value: _requireUnlockOnResume,
                       activeThumbColor: DesignColors.accent,
@@ -3373,7 +3444,7 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                           actionLabel: 'Retry',
                           onAction: _loadBranches,
                         )
-                          : _branches.isEmpty
+                      : _branches.isEmpty
                           ? EmptyState(
                               icon: Icons.store_outlined,
                               title: 'No branches yet',
@@ -3408,7 +3479,8 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                                               color: isActive
                                                   ? DesignColors.success
                                                   : DesignColors.textTertiary),
-                                          if (widget.canUpdate || widget.canDelete)
+                                          if (widget.canUpdate ||
+                                              widget.canDelete)
                                             PopupMenuButton<String>(
                                               onSelected: (value) {
                                                 if (value == 'edit') {

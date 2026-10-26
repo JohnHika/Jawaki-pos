@@ -118,8 +118,9 @@ AppIconSignals signalsFromDailyTotals({
 
 /// Switches the launcher icon to match how the shop is doing.
 ///
-/// Opt-in (off by default). Android can only swap between icons that ship in
-/// the app, and the swap has two side effects this class is built around:
+/// Enabled by default, with an owner-controlled opt-out. Android can only swap
+/// between icons that ship in the app, and the swap has two side effects this
+/// class is built around:
 ///  * a launcher may delete the home-screen shortcut when its icon is
 ///    switched, so changes are rare (at most one per [minGap]) and the owner
 ///    can put the shortcut back with [pinCurrentIcon];
@@ -152,7 +153,7 @@ class AppIconService {
 
   Future<bool> isEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(enabledPref) ?? false;
+    return prefs.getBool(enabledPref) ?? true;
   }
 
   /// Records the owner's choice. The icon itself changes the next time the app
@@ -197,7 +198,7 @@ class AppIconService {
     final prefs = await SharedPreferences.getInstance();
     final active = await current();
 
-    if (!(prefs.getBool(enabledPref) ?? false)) {
+    if (!(prefs.getBool(enabledPref) ?? true)) {
       if (active == AppIconVariant.standard) return active;
       await _apply(AppIconVariant.standard, prefs);
       return AppIconVariant.standard;

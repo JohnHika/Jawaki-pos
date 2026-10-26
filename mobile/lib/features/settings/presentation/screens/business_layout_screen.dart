@@ -6,6 +6,8 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/business_layout_preview.dart';
+import '../../../../core/widgets/business_layout_profile_picker.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 class BusinessLayoutScreen extends ConsumerStatefulWidget {
@@ -17,23 +19,91 @@ class BusinessLayoutScreen extends ConsumerStatefulWidget {
 }
 
 class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
+  final _profileSearchController = TextEditingController();
   late String _profileId;
+  late List<String> _additionalProfileIds;
+  String? _startPath;
   late List<String> _priorityPaths;
+  late List<String> _hiddenPaths;
+  late Map<String, String> _actionLabels;
+  late Map<String, String> _terminologyOverrides;
+  late String _defaultBaseUnit;
+  late bool _allowFractionsForNewProducts;
+  late bool _trackInventoryForNewProducts;
+  late String _posProductView;
+  late bool _showPosCategories;
+  late bool _showPosFavorites;
+  late bool _showPosCustomer;
+  late List<String> _posQuickActions;
+  late List<String> _dashboardMetrics;
+  late List<String> _dashboardSections;
+  late List<String> _productFieldKeys;
+  late List<BusinessLayoutProductField> _customProductFields;
+  String _profileSearch = '';
   bool _initialized = false;
   bool _saving = false;
 
   @override
+  void dispose() {
+    _profileSearchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
-    final isAdmin = user?['role']?.toString().toUpperCase() == 'ADMIN';
+    final canManageLayout =
+        ref.watch(permissionsProvider).has('branches.tenant.update');
+    final canEditLayout = canManageLayout && !_saving;
     if (!_initialized) {
       final config = businessLayoutFromUser(user);
       _profileId = config.profileId;
+      _additionalProfileIds = [...config.additionalProfileIds];
+      _startPath = config.startPath;
       _priorityPaths = [...config.priorityPaths];
+      _hiddenPaths = [...config.hiddenPaths];
+      _actionLabels = {...config.actionLabels};
+      _terminologyOverrides = {...config.terminologyOverrides};
+      _defaultBaseUnit = config.defaultBaseUnit;
+      _allowFractionsForNewProducts =
+          config.effectiveAllowFractionsForNewProducts;
+      _trackInventoryForNewProducts =
+          config.effectiveTrackInventoryForNewProducts;
+      _posProductView = config.effectivePosProductView;
+      _showPosCategories = config.effectiveShowPosCategories;
+      _showPosFavorites = config.effectiveShowPosFavorites;
+      _showPosCustomer = config.effectiveShowPosCustomer;
+      _posQuickActions = [...config.effectivePosQuickActions];
+      _dashboardMetrics = [...config.effectiveDashboardMetrics];
+      _dashboardSections = [...config.effectiveDashboardSections];
+      _productFieldKeys =
+          config.effectiveProductFields.map((field) => field.key).toList();
+      _customProductFields = [...config.customProductFields];
       _initialized = true;
     }
 
     final selectedPreset = businessLayoutPreset(_profileId);
+    final selectedLayout = BusinessLayoutConfig(
+      preset: selectedPreset,
+      additionalProfileIds: _additionalProfileIds,
+      priorityPaths: _priorityPaths,
+      hiddenPaths: _hiddenPaths,
+      actionLabels: _actionLabels,
+      terminologyOverrides: _terminologyOverrides,
+      baseUnitOverride: _defaultBaseUnit,
+      allowFractionsForNewProducts: _allowFractionsForNewProducts,
+      trackInventoryForNewProducts: _trackInventoryForNewProducts,
+      startPath: _startPath,
+      posProductView: _posProductView,
+      showPosCategories: _showPosCategories,
+      showPosFavorites: _showPosFavorites,
+      showPosCustomer: _showPosCustomer,
+      posQuickActions: _posQuickActions,
+      dashboardMetrics: _dashboardMetrics,
+      dashboardSections: _dashboardSections,
+      productFieldKeys: _productFieldKeys,
+      customProductFields: _customProductFields,
+    );
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final surface = isDark ? DesignColors.darkSurface : Colors.white;
     final text =
@@ -41,11 +111,17 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
     final secondary =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final availableActions = businessLayoutActions
-        .where((action) => !_priorityPaths.contains(action.path))
+        .where((action) =>
+            selectedLayout.isActionVisible(action.path) &&
+            !_priorityPaths.contains(action.path))
         .toList();
+    final profileQuery = _profileSearch.trim().toLowerCase();
+    final visiblePresets = businessLayoutPresets.where((preset) {
+      return businessLayoutProfileMatchesSearch(preset, profileQuery);
+    }).toList(growable: false);
 
     return Scaffold(
-      appBar: const BrandedAppBar(title: 'Business layout'),
+      appBar: const BrandedAppBar(title: 'Layout actions'),
       body: SafeArea(
         top: false,
         child: Column(
@@ -63,37 +139,124 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Choose a business starting point, then put your team’s most-used areas first. You can change this whenever the shop grows.',
+                    'Choose a shop profile, shape checkout, rename and show the work areas this shop uses, set its opening screen, and arrange the team’s shortcuts. The layout is shared across the shop and can change as the business grows.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: secondary,
                           height: 1.45,
                         ),
                   ),
+                  if (!canManageLayout) ...[
+                    const SizedBox(height: 14),
+                    const _PermissionNotice(),
+                  ],
                   const SizedBox(height: 22),
                   const _SectionHeading(
-                    title: 'Business profile',
-                    subtitle: 'This applies to the whole shop on every device.',
+                    title: 'Shop profile',
+                    subtitle:
+                        'Choose a ready-made setup, then tune it below. The profile refreshes its recommended layout; your custom wording stays in place.',
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _profileSearchController,
+                    onChanged: (value) =>
+                        setState(() => _profileSearch = value),
+                    decoration: InputDecoration(
+                      hintText: 'Find a shop type',
+                      prefixIcon: const Icon(Icons.search_rounded),
+                      suffixIcon: _profileSearch.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: 'Clear shop type search',
+                              onPressed: () {
+                                _profileSearchController.clear();
+                                setState(() => _profileSearch = '');
+                              },
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                      border: const OutlineInputBorder(),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   LayoutBuilder(builder: (context, constraints) {
-                    final width = (constraints.maxWidth - 12) / 2;
+                    final columns = constraints.maxWidth >= 980
+                        ? 3
+                        : constraints.maxWidth >= 600
+                            ? 2
+                            : 1;
+                    const spacing = 12.0;
+                    final width =
+                        (constraints.maxWidth - spacing * (columns - 1)) /
+                            columns;
+                    if (visiblePresets.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Text('No shop profiles match that search.'),
+                      );
+                    }
                     return Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: businessLayoutPresets.map((preset) {
+                      spacing: spacing,
+                      runSpacing: spacing,
+                      children: visiblePresets.map((preset) {
                         final selected = preset.id == _profileId;
                         return SizedBox(
                           width: width,
                           child: _ProfileCard(
                             preset: preset,
                             selected: selected,
-                            onTap: _saving
+                            onTap: !canEditLayout
                                 ? null
                                 : () => setState(() {
                                       if (_profileId != preset.id) {
                                         _profileId = preset.id;
-                                        _priorityPaths = [
-                                          ...preset.priorityPaths
+                                        _additionalProfileIds.remove(preset.id);
+                                        _hiddenPaths =
+                                            businessLayoutDefaultHiddenPaths(
+                                          _profileId,
+                                          _additionalProfileIds,
+                                        );
+                                        _priorityPaths =
+                                            businessLayoutDefaultPriorityPaths(
+                                          _profileId,
+                                          _additionalProfileIds,
+                                        );
+                                        _startPath = _priorityPaths.isEmpty
+                                            ? null
+                                            : _priorityPaths.first;
+                                        _defaultBaseUnit =
+                                            preset.defaultBaseUnit;
+                                        _allowFractionsForNewProducts =
+                                            preset.defaultAllowFractions;
+                                        _trackInventoryForNewProducts = preset
+                                            .defaultTrackInventoryForNewProducts;
+                                        _posProductView =
+                                            preset.defaultPosProductView;
+                                        _showPosCategories =
+                                            preset.defaultShowPosCategories;
+                                        _showPosFavorites =
+                                            preset.defaultShowPosFavorites;
+                                        _showPosCustomer =
+                                            preset.defaultShowPosCustomer;
+                                        _posQuickActions = [
+                                          ...preset.defaultPosQuickActions,
+                                        ];
+                                        _dashboardMetrics = [
+                                          ...businessLayoutDefaultDashboardMetrics(
+                                            _profileId,
+                                            _additionalProfileIds,
+                                          )
+                                        ];
+                                        _dashboardSections = [
+                                          ...businessLayoutDefaultDashboardSections(
+                                            _profileId,
+                                            _additionalProfileIds,
+                                          )
+                                        ];
+                                        _productFieldKeys = [
+                                          ...businessLayoutDefaultProductFieldKeys(
+                                            _profileId,
+                                            _additionalProfileIds,
+                                            customFields: _customProductFields,
+                                          ),
                                         ];
                                       }
                                     }),
@@ -102,11 +265,812 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                       }).toList(),
                     );
                   }),
+                  const SizedBox(height: 12),
+                  BusinessLayoutPreview(layout: selectedLayout),
+                  const SizedBox(height: 16),
+                  const _SectionHeading(
+                    title: 'Additional shop profiles',
+                    subtitle:
+                        'Combine up to three trades. The main profile keeps its wording and checkout defaults; additional profiles add relevant product details and useful work areas.',
+                  ),
+                  const SizedBox(height: 8),
+                  if (_additionalProfileIds.isNotEmpty)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: selectedLayout.additionalPresets.map((profile) {
+                        return InputChip(
+                          avatar: Icon(profile.icon, size: 18),
+                          label: Text(profile.name),
+                          onDeleted: !canEditLayout
+                              ? null
+                              : () => _applyAdditionalProfiles(
+                                    _additionalProfileIds
+                                        .where((id) => id != profile.id)
+                                        .toList(),
+                                  ),
+                        );
+                      }).toList(growable: false),
+                    ),
+                  if (_additionalProfileIds.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        'For example, combine a bookshop with stationery or a grocery with a bakery counter.',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: secondary, height: 1.35),
+                      ),
+                    ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed:
+                          !canEditLayout ? null : _chooseAdditionalProfiles,
+                      icon: const Icon(Icons.add_rounded),
+                      label: Text(_additionalProfileIds.isEmpty
+                          ? 'Add another shop profile'
+                          : 'Edit additional profiles'),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: !canEditLayout ? null : _editProductWording,
+                    icon: const Icon(Icons.edit_note_rounded),
+                    label: const Text('Customize shop wording'),
+                  ),
                   const SizedBox(height: 22),
                   const _SectionHeading(
-                    title: 'Layout actions',
+                    title: 'New product defaults',
                     subtitle:
-                        'Move your most-used work areas to the front of navigation.',
+                        'Set the starting unit and quantity behavior for new items. Existing items keep their saved settings.',
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('layout-unit-$_defaultBaseUnit'),
+                    initialValue: _defaultBaseUnit,
+                    decoration: const InputDecoration(
+                      labelText: 'Default selling unit',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.straighten_rounded),
+                    ),
+                    items: businessLayoutUnits
+                        .map((unit) => DropdownMenuItem(
+                              value: unit,
+                              child: Text(_unitLabel(unit)),
+                            ))
+                        .toList(),
+                    onChanged: !canEditLayout
+                        ? null
+                        : (unit) {
+                            if (unit != null) {
+                              setState(() => _defaultBaseUnit = unit);
+                            }
+                          },
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    title: const Text('Allow fractional quantities by default'),
+                    subtitle: const Text(
+                      'Useful for goods sold by weight or measure. Existing items are unchanged.',
+                    ),
+                    value: _allowFractionsForNewProducts,
+                    activeTrackColor: DesignColors.accent,
+                    onChanged: !canEditLayout
+                        ? null
+                        : (value) => setState(
+                              () => _allowFractionsForNewProducts = value,
+                            ),
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    title: const Text('Track stock for new items'),
+                    subtitle: const Text(
+                      'Turn this off for services or other non-stock items. You can still choose stock tracking for each item; existing items are unchanged.',
+                    ),
+                    value: _trackInventoryForNewProducts,
+                    activeTrackColor: DesignColors.accent,
+                    onChanged: !canEditLayout
+                        ? null
+                        : (value) => setState(
+                              () => _trackInventoryForNewProducts = value,
+                            ),
+                  ),
+                  const SizedBox(height: 22),
+                  const _SectionHeading(
+                    title: 'Product details',
+                    subtitle:
+                        'Choose the extra details each product form should collect for this trade. These details sync with the shop and stay available offline.',
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isDark
+                            ? DesignColors.darkBorder
+                            : DesignColors.surfaceBorderLight,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        if (selectedPreset.productFields.isEmpty &&
+                            _customProductFields.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Text(
+                              'Add details such as size, author, model or pack quantity.',
+                              style: TextStyle(color: secondary),
+                            ),
+                          ),
+                        for (final field in [
+                          ...selectedPreset.productFields,
+                          ..._customProductFields,
+                        ])
+                          CheckboxListTile.adaptive(
+                            contentPadding: EdgeInsets.zero,
+                            value: _productFieldKeys.contains(field.key),
+                            activeColor: DesignColors.accent,
+                            title: Text(field.label),
+                            subtitle: Text(field.hint),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            secondary: _customProductFields
+                                    .any((custom) => custom.key == field.key)
+                                ? IconButton(
+                                    tooltip: 'Remove custom detail',
+                                    onPressed: !canEditLayout
+                                        ? null
+                                        : () =>
+                                            _removeCustomProductField(field),
+                                    icon: const Icon(
+                                        Icons.delete_outline_rounded),
+                                  )
+                                : null,
+                            onChanged: !canEditLayout
+                                ? null
+                                : (enabled) => setState(() {
+                                      if (enabled == true) {
+                                        if (!_productFieldKeys
+                                            .contains(field.key)) {
+                                          _productFieldKeys.add(field.key);
+                                        }
+                                      } else {
+                                        _productFieldKeys.remove(field.key);
+                                      }
+                                    }),
+                          ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: OutlinedButton.icon(
+                            onPressed:
+                                !canEditLayout ? null : _addCustomProductField,
+                            icon: const Icon(Icons.add_rounded),
+                            label: const Text('Add a custom detail'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  const _SectionHeading(
+                    title: 'Checkout layout',
+                    subtitle:
+                        'Shape the product browser and keep the shortcuts your team uses.',
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Start from a selling style',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700, color: text),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Each style sets a starting point. You can still adjust every control below.',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: secondary, height: 1.35),
+                  ),
+                  const SizedBox(height: 10),
+                  LayoutBuilder(builder: (context, constraints) {
+                    final columns = constraints.maxWidth >= 980
+                        ? 3
+                        : constraints.maxWidth >= 600
+                            ? 2
+                            : 1;
+                    const spacing = 10.0;
+                    final width =
+                        (constraints.maxWidth - spacing * (columns - 1)) /
+                            columns;
+                    return Wrap(
+                      spacing: spacing,
+                      runSpacing: spacing,
+                      children: businessLayoutCheckoutStyles.map((style) {
+                        final selected = style.matches(selectedLayout);
+                        return SizedBox(
+                          width: width,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: !canEditLayout
+                                ? null
+                                : () => setState(() {
+                                      _posProductView = style.productView;
+                                      _showPosCategories = style.showCategories;
+                                      _showPosFavorites = style.showFavorites;
+                                      _showPosCustomer = style.showCustomer;
+                                      if (style.showFavorites &&
+                                          !_posQuickActions
+                                              .contains('favorites')) {
+                                        _posQuickActions.add('favorites');
+                                      } else if (!style.showFavorites) {
+                                        _posQuickActions.remove('favorites');
+                                      }
+                                      if (style.showCustomer &&
+                                          !_posQuickActions
+                                              .contains('customer')) {
+                                        _posQuickActions.add('customer');
+                                      } else if (!style.showCustomer) {
+                                        _posQuickActions.remove('customer');
+                                      }
+                                    }),
+                            child: AnimatedContainer(
+                              duration: DesignAnimation.fast,
+                              constraints: const BoxConstraints(minHeight: 112),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? DesignColors.accent
+                                        .withValues(alpha: isDark ? .18 : .10)
+                                    : surface,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: selected
+                                      ? DesignColors.accent
+                                      : isDark
+                                          ? DesignColors.darkBorder
+                                          : DesignColors.surfaceBorderLight,
+                                  width: selected ? 1.5 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(style.icon,
+                                          color: DesignColors.accent, size: 20),
+                                      const Spacer(),
+                                      if (selected)
+                                        const Icon(Icons.check_circle_rounded,
+                                            color: DesignColors.accent,
+                                            size: 18),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(style.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          color: text,
+                                          fontWeight: FontWeight.w700)),
+                                  const SizedBox(height: 3),
+                                  Text(style.description,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          color: secondary,
+                                          fontSize: 12,
+                                          height: 1.3)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(growable: false),
+                    );
+                  }),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isDark
+                            ? DesignColors.darkBorder
+                            : DesignColors.surfaceBorderLight,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Product browser',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Choose a visual grid for image-led selling or a compact list for titles and codes.',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: secondary, height: 1.35),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: SegmentedButton<String>(
+                            segments: const [
+                              ButtonSegment(
+                                value: 'grid',
+                                icon: Icon(Icons.grid_view_rounded),
+                                label: Text('Grid'),
+                              ),
+                              ButtonSegment(
+                                value: 'list',
+                                icon: Icon(Icons.view_list_rounded),
+                                label: Text('Compact list'),
+                              ),
+                            ],
+                            selected: {_posProductView},
+                            onSelectionChanged: !canEditLayout
+                                ? null
+                                : (selection) => setState(() {
+                                      _posProductView = selection.first;
+                                    }),
+                          ),
+                        ),
+                        const Divider(height: 22),
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Category filters'),
+                          subtitle: const Text(
+                              'Show categories above the product browser.'),
+                          value: _showPosCategories,
+                          activeTrackColor: DesignColors.accent,
+                          onChanged: !canEditLayout
+                              ? null
+                              : (value) => setState(
+                                    () => _showPosCategories = value,
+                                  ),
+                        ),
+                        const Divider(height: 20),
+                        Text(
+                          'POS toolbar order',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Choose the shortcuts at this till and move the most-used ones first. Staff access rules still apply.',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: secondary, height: 1.35),
+                        ),
+                        const SizedBox(height: 6),
+                        ..._posQuickActions.asMap().entries.map((entry) {
+                          final option = businessLayoutPosActions.firstWhere(
+                            (action) => action.id == entry.value,
+                          );
+                          return Padding(
+                            key: ValueKey('pos-action-${option.id}'),
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading:
+                                  Icon(option.icon, color: DesignColors.accent),
+                              title: Text(option.label),
+                              subtitle: Text(option.description),
+                              trailing: SizedBox(
+                                width: 136,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    Switch.adaptive(
+                                      value: true,
+                                      activeTrackColor: DesignColors.accent,
+                                      onChanged: !canEditLayout ||
+                                              option.id == 'cart'
+                                          ? null
+                                          : (_) =>
+                                              _togglePosQuickAction(option.id),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Move ${option.label} up',
+                                      visualDensity: VisualDensity.compact,
+                                      onPressed:
+                                          !canEditLayout || entry.key == 0
+                                              ? null
+                                              : () => _movePosQuickAction(
+                                                  entry.key, -1),
+                                      icon: const Icon(
+                                          Icons.arrow_upward_rounded),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Move ${option.label} down',
+                                      visualDensity: VisualDensity.compact,
+                                      onPressed: !canEditLayout ||
+                                              entry.key ==
+                                                  _posQuickActions.length - 1
+                                          ? null
+                                          : () =>
+                                              _movePosQuickAction(entry.key, 1),
+                                      icon: const Icon(
+                                          Icons.arrow_downward_rounded),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                        ...businessLayoutPosActions
+                            .where((action) =>
+                                !_posQuickActions.contains(action.id))
+                            .map((action) => CheckboxListTile.adaptive(
+                                  key: ValueKey('pos-action-add-${action.id}'),
+                                  contentPadding: EdgeInsets.zero,
+                                  value: false,
+                                  activeColor: DesignColors.accent,
+                                  secondary:
+                                      Icon(action.icon, color: secondary),
+                                  title: Text(action.label),
+                                  subtitle: Text(action.description),
+                                  onChanged: !canEditLayout
+                                      ? null
+                                      : (enabled) {
+                                          if (enabled != true) return;
+                                          setState(() {
+                                            _posQuickActions.add(action.id);
+                                            if (action.id == 'customer') {
+                                              _showPosCustomer = true;
+                                            } else if (action.id ==
+                                                'favorites') {
+                                              _showPosFavorites = true;
+                                            }
+                                          });
+                                        },
+                                )),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  const _SectionHeading(
+                    title: 'Dashboard layout',
+                    subtitle:
+                        'Choose the dashboard sections your team needs. Your reports and records remain available if a section is hidden.',
+                  ),
+                  const SizedBox(height: 8),
+                  ...businessLayoutDashboardSections.map((section) {
+                    final selected = _dashboardSections.contains(section.id);
+                    return CheckboxListTile.adaptive(
+                      key: ValueKey('dashboard-section-${section.id}'),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                      value: selected,
+                      activeColor: DesignColors.accent,
+                      secondary: Icon(section.icon, color: DesignColors.accent),
+                      title: Text(section.label),
+                      subtitle: Text(section.description),
+                      onChanged: !canEditLayout ||
+                              (selected && _dashboardSections.length == 1)
+                          ? null
+                          : (enabled) => setState(() {
+                                if (enabled == true && !selected) {
+                                  _dashboardSections.add(section.id);
+                                } else if (enabled == false && selected) {
+                                  _dashboardSections.remove(section.id);
+                                }
+                              }),
+                    );
+                  }),
+                  const SizedBox(height: 12),
+                  const _SectionHeading(
+                    title: 'Dashboard figures',
+                    subtitle:
+                        'Choose the figures your team needs first and arrange them in order.',
+                  ),
+                  const SizedBox(height: 10),
+                  ...businessLayoutDashboardMetrics.map((metric) {
+                    final index = _dashboardMetrics.indexOf(metric.id);
+                    final selected = index >= 0;
+                    final rowColor = isDark
+                        ? DesignColors.darkSurfaceElevated
+                        : Colors.white;
+                    return Padding(
+                      key: ValueKey('dashboard-metric-${metric.id}'),
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: rowColor,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: isDark
+                                ? DesignColors.darkBorder
+                                : DesignColors.surfaceBorderLight,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Checkbox.adaptive(
+                              value: selected,
+                              activeColor: DesignColors.accent,
+                              onChanged: !canEditLayout ||
+                                      (selected &&
+                                          _dashboardMetrics.length == 1)
+                                  ? null
+                                  : (value) => setState(() {
+                                        if (value == true && !selected) {
+                                          _dashboardMetrics.add(metric.id);
+                                        } else if (value == false &&
+                                            selected &&
+                                            _dashboardMetrics.length > 1) {
+                                          _dashboardMetrics.remove(metric.id);
+                                        }
+                                      }),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(metric.label,
+                                      style: TextStyle(
+                                          color: text,
+                                          fontWeight: FontWeight.w700)),
+                                  Text(metric.description,
+                                      style: TextStyle(
+                                          color: secondary, fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            if (selected) ...[
+                              IconButton(
+                                tooltip: 'Move ${metric.label} earlier',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: !canEditLayout || index == 0
+                                    ? null
+                                    : () => _moveDashboardMetric(index, -1),
+                                icon: const Icon(Icons.arrow_upward_rounded),
+                              ),
+                              IconButton(
+                                tooltip: 'Move ${metric.label} later',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: !canEditLayout ||
+                                        index == _dashboardMetrics.length - 1
+                                    ? null
+                                    : () => _moveDashboardMetric(index, 1),
+                                icon: const Icon(Icons.arrow_downward_rounded),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 22),
+                  const _SectionHeading(
+                    title: 'What appears in the app',
+                    subtitle:
+                        'Show the work areas this shop uses. Hidden areas keep their data and permissions, and can be turned back on here.',
+                  ),
+                  const SizedBox(height: 10),
+                  LayoutBuilder(builder: (context, constraints) {
+                    final columns = constraints.maxWidth >= 980
+                        ? 3
+                        : constraints.maxWidth >= 600
+                            ? 2
+                            : 1;
+                    const spacing = 10.0;
+                    final cardWidth =
+                        (constraints.maxWidth - spacing * (columns - 1)) /
+                            columns;
+                    final visibleCount = businessLayoutActions
+                        .where((action) =>
+                            selectedLayout.isActionVisible(action.path))
+                        .length;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$visibleCount of ${businessLayoutActions.length} work areas shown',
+                          style:
+                              Theme.of(context).textTheme.labelLarge?.copyWith(
+                                    color: DesignColors.accent,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: spacing,
+                          runSpacing: spacing,
+                          children: businessLayoutActions.map((action) {
+                            final visible =
+                                selectedLayout.isActionVisible(action.path);
+                            final canHide =
+                                businessLayoutCanHideAction(action.path);
+                            final actionLabel = selectedLayout.actionLabel(
+                              action.path,
+                              action.path == '/products'
+                                  ? selectedLayout.productsLabel
+                                  : action.label,
+                            );
+                            return SizedBox(
+                              width: cardWidth,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: !canEditLayout || !canHide
+                                    ? null
+                                    : () => _toggleActionVisibility(
+                                          action.path,
+                                        ),
+                                child: AnimatedContainer(
+                                  duration: DesignAnimation.fast,
+                                  constraints:
+                                      const BoxConstraints(minHeight: 82),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: visible
+                                        ? DesignColors.accent.withValues(
+                                            alpha: isDark ? .16 : .08)
+                                        : isDark
+                                            ? DesignColors.darkSurfaceElevated
+                                            : DesignColors.surfaceMuted,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: visible
+                                          ? DesignColors.accent
+                                              .withValues(alpha: .55)
+                                          : isDark
+                                              ? DesignColors.darkBorder
+                                              : DesignColors.surfaceBorderLight,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        action.icon,
+                                        size: 20,
+                                        color: visible
+                                            ? DesignColors.accent
+                                            : secondary,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              actionLabel,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: text,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 3),
+                                            Text(
+                                              canHide
+                                                  ? visible
+                                                      ? 'Shown in app'
+                                                      : 'Hidden from app'
+                                                  : 'Always available',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: secondary,
+                                                fontSize: 10.5,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Icon(
+                                        canHide
+                                            ? visible
+                                                ? Icons.visibility_rounded
+                                                : Icons.visibility_off_rounded
+                                            : Icons.lock_outline_rounded,
+                                        size: 17,
+                                        color: visible
+                                            ? DesignColors.accent
+                                            : secondary,
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Rename $actionLabel',
+                                        visualDensity: VisualDensity.compact,
+                                        constraints: const BoxConstraints(
+                                          minWidth: 40,
+                                          minHeight: 40,
+                                        ),
+                                        padding: EdgeInsets.zero,
+                                        onPressed: !canEditLayout
+                                            ? null
+                                            : () => _renameAction(
+                                                  action.path,
+                                                  actionLabel,
+                                                ),
+                                        icon: const Icon(
+                                          Icons.edit_rounded,
+                                          size: 17,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(growable: false),
+                        ),
+                      ],
+                    );
+                  }),
+                  const SizedBox(height: 22),
+                  const _SectionHeading(
+                    title: 'Opening screen',
+                    subtitle:
+                        'Choose the first work area after sign-in. Staff still need permission to open it.',
+                  ),
+                  const SizedBox(height: 10),
+                  if (_priorityPaths.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? DesignColors.darkSurfaceElevated
+                            : DesignColors.surfaceMuted,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Text(
+                          'Add a work area below before choosing a start screen.'),
+                    )
+                  else
+                    DropdownButtonFormField<String>(
+                      key: ValueKey(
+                          'layout-start-$_startPath-${_priorityPaths.join('|')}'),
+                      initialValue: _priorityPaths.contains(_startPath)
+                          ? _startPath
+                          : _priorityPaths.first,
+                      decoration: const InputDecoration(
+                        labelText: 'Open Counterbase at',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.login_rounded),
+                      ),
+                      items: _priorityPaths.map((path) {
+                        final action = businessLayoutActions.firstWhere(
+                          (item) => item.path == path,
+                          orElse: () => businessLayoutActions.first,
+                        );
+                        final label = _actionLabels[path] ??
+                            selectedLayout.actionLabel(path, action.label);
+                        return DropdownMenuItem<String>(
+                          value: path,
+                          child: Text(label, overflow: TextOverflow.ellipsis),
+                        );
+                      }).toList(),
+                      onChanged: !canEditLayout
+                          ? null
+                          : (path) => setState(() => _startPath = path),
+                    ),
+                  const SizedBox(height: 22),
+                  const _SectionHeading(
+                    title: 'Work areas and actions',
+                    subtitle:
+                        'Pin the screens your team uses most, arrange them, and give shortcuts familiar names.',
                   ),
                   const SizedBox(height: 10),
                   Text(
@@ -125,6 +1089,8 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                         (item) => item.path == entry.value,
                         orElse: () => businessLayoutActions.first,
                       );
+                      final actionLabel = _actionLabels[action.path] ??
+                          selectedLayout.actionLabel(action.path, action.label);
                       return Padding(
                         key: ValueKey(action.path),
                         padding: const EdgeInsets.only(bottom: 8),
@@ -146,34 +1112,54 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                               child: Icon(action.icon,
                                   size: 20, color: DesignColors.accent),
                             ),
-                            title: Text(action.label,
+                            title: Text(actionLabel,
                                 style: TextStyle(
                                     color: text, fontWeight: FontWeight.w600)),
-                            subtitle: Text('Priority ${entry.key + 1}',
+                            subtitle: Text('Pinned ${entry.key + 1}',
                                 style: TextStyle(color: secondary)),
-                            trailing: SizedBox(
-                              width: 96,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  IconButton(
-                                    tooltip: 'Move up',
-                                    onPressed: _saving || entry.key == 0
-                                        ? null
-                                        : () => _moveAction(entry.key, -1),
-                                    icon:
-                                        const Icon(Icons.arrow_upward_rounded),
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Remove shortcut',
-                                    onPressed: _saving
-                                        ? null
-                                        : () => setState(() =>
-                                            _priorityPaths.removeAt(entry.key)),
-                                    icon: const Icon(Icons.close_rounded),
-                                  ),
-                                ],
-                              ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Move up',
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: !canEditLayout || entry.key == 0
+                                      ? null
+                                      : () => _moveAction(entry.key, -1),
+                                  icon: const Icon(Icons.arrow_upward_rounded),
+                                ),
+                                IconButton(
+                                  tooltip: 'Move down',
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: !canEditLayout ||
+                                          entry.key == _priorityPaths.length - 1
+                                      ? null
+                                      : () => _moveAction(entry.key, 1),
+                                  icon:
+                                      const Icon(Icons.arrow_downward_rounded),
+                                ),
+                                PopupMenuButton<String>(
+                                  tooltip: 'Shortcut options',
+                                  enabled: canEditLayout,
+                                  onSelected: (value) {
+                                    if (value == 'rename') {
+                                      _renameAction(action.path, actionLabel);
+                                    } else if (value == 'remove') {
+                                      _removeAction(entry.key);
+                                    }
+                                  },
+                                  itemBuilder: (context) => const [
+                                    PopupMenuItem(
+                                      value: 'rename',
+                                      child: Text('Rename shortcut'),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'remove',
+                                      child: Text('Unpin from quick access'),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -184,20 +1170,70 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                     runSpacing: 8,
                     children: [
                       OutlinedButton.icon(
-                        onPressed: _saving || availableActions.isEmpty
+                        onPressed: !canEditLayout || availableActions.isEmpty
                             ? null
                             : () => _addActions(availableActions),
                         icon: const Icon(Icons.add_rounded),
-                        label: const Text('Add work area'),
+                        label: const Text('Pin work area'),
                       ),
                       TextButton.icon(
-                        onPressed: _saving
+                        onPressed: !canEditLayout
                             ? null
-                            : () => setState(() => _priorityPaths = [
-                                  ...selectedPreset.priorityPaths
-                                ]),
+                            : () => setState(() {
+                                  _hiddenPaths =
+                                      businessLayoutDefaultHiddenPaths(
+                                    _profileId,
+                                    _additionalProfileIds,
+                                  );
+                                  _priorityPaths =
+                                      businessLayoutDefaultPriorityPaths(
+                                    _profileId,
+                                    _additionalProfileIds,
+                                  );
+                                  _actionLabels.clear();
+                                  _startPath = _priorityPaths.isEmpty
+                                      ? null
+                                      : _priorityPaths.first;
+                                  _terminologyOverrides.clear();
+                                  _defaultBaseUnit =
+                                      selectedPreset.defaultBaseUnit;
+                                  _allowFractionsForNewProducts =
+                                      selectedPreset.defaultAllowFractions;
+                                  _trackInventoryForNewProducts = selectedPreset
+                                      .defaultTrackInventoryForNewProducts;
+                                  _posProductView =
+                                      selectedPreset.defaultPosProductView;
+                                  _showPosCategories =
+                                      selectedPreset.defaultShowPosCategories;
+                                  _showPosFavorites =
+                                      selectedPreset.defaultShowPosFavorites;
+                                  _showPosCustomer =
+                                      selectedPreset.defaultShowPosCustomer;
+                                  _posQuickActions = [
+                                    ...selectedPreset.defaultPosQuickActions,
+                                  ];
+                                  _dashboardMetrics = [
+                                    ...businessLayoutDefaultDashboardMetrics(
+                                      _profileId,
+                                      _additionalProfileIds,
+                                    )
+                                  ];
+                                  _dashboardSections = [
+                                    ...businessLayoutDefaultDashboardSections(
+                                      _profileId,
+                                      _additionalProfileIds,
+                                    )
+                                  ];
+                                  _productFieldKeys = [
+                                    ...businessLayoutDefaultProductFieldKeys(
+                                      _profileId,
+                                      _additionalProfileIds,
+                                      customFields: _customProductFields,
+                                    ),
+                                  ];
+                                }),
                         icon: const Icon(Icons.restart_alt_rounded),
-                        label: const Text('Use suggested order'),
+                        label: const Text('Reset to profile defaults'),
                       ),
                     ],
                   ),
@@ -218,7 +1254,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            'Shortcuts only change the order of existing screens. Each team member still sees only the areas their role allows.',
+                            'Pinned work areas move earlier in navigation. Hidden areas disappear from the menu but keep their data and permissions. Profiles change wording and product browsing defaults; payment, stock, and staff permissions keep their existing rules.',
                             style: Theme.of(context)
                                 .textTheme
                                 .bodySmall
@@ -228,10 +1264,6 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                       ],
                     ),
                   ),
-                  if (!isAdmin) ...[
-                    const SizedBox(height: 16),
-                    const _PermissionNotice(),
-                  ],
                 ],
               ),
             ),
@@ -250,7 +1282,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: _saving || !isAdmin ? null : _save,
+                  onPressed: !canEditLayout ? null : _save,
                   icon: _saving
                       ? const SizedBox(
                           width: 18,
@@ -258,8 +1290,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.check_rounded),
-                  label:
-                      Text(_saving ? 'Saving layout…' : 'Save business layout'),
+                  label: Text(_saving ? 'Saving layout…' : 'Save shop layout'),
                   style: FilledButton.styleFrom(
                     backgroundColor: DesignColors.accent,
                     foregroundColor: Colors.white,
@@ -276,6 +1307,21 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
     );
   }
 
+  void _toggleActionVisibility(String path) {
+    if (!businessLayoutCanHideAction(path)) return;
+    setState(() {
+      if (_hiddenPaths.contains(path)) {
+        _hiddenPaths.remove(path);
+      } else {
+        _hiddenPaths.add(path);
+        _priorityPaths.remove(path);
+        if (_startPath == path) {
+          _startPath = _priorityPaths.isEmpty ? null : _priorityPaths.first;
+        }
+      }
+    });
+  }
+
   void _moveAction(int index, int delta) {
     final target = index + delta;
     if (target < 0 || target >= _priorityPaths.length) return;
@@ -285,8 +1331,229 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
     });
   }
 
+  void _togglePosQuickAction(String id) {
+    setState(() {
+      if (_posQuickActions.contains(id)) {
+        _posQuickActions.remove(id);
+        if (id == 'customer') _showPosCustomer = false;
+        if (id == 'favorites') _showPosFavorites = false;
+      } else {
+        _posQuickActions.add(id);
+        if (id == 'customer') _showPosCustomer = true;
+        if (id == 'favorites') _showPosFavorites = true;
+      }
+    });
+  }
+
+  void _movePosQuickAction(int index, int delta) {
+    final target = index + delta;
+    if (target < 0 || target >= _posQuickActions.length) return;
+    setState(() {
+      final action = _posQuickActions.removeAt(index);
+      _posQuickActions.insert(target, action);
+    });
+  }
+
+  void _moveDashboardMetric(int index, int delta) {
+    final target = index + delta;
+    if (target < 0 || target >= _dashboardMetrics.length) return;
+    setState(() {
+      final metric = _dashboardMetrics.removeAt(index);
+      _dashboardMetrics.insert(target, metric);
+    });
+  }
+
+  Future<void> _addCustomProductField() async {
+    if (_customProductFields.length >= 20) {
+      showGlassSnackBar(
+        context,
+        'You can add up to 20 custom product details.',
+        icon: Icons.info_outline_rounded,
+        color: DesignColors.error,
+      );
+      return;
+    }
+    final labelController = TextEditingController();
+    final hintController = TextEditingController();
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Add product detail'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: labelController,
+              autofocus: true,
+              maxLength: 40,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Field name',
+                hintText: 'e.g. Shelf location',
+              ),
+            ),
+            TextField(
+              controller: hintController,
+              maxLength: 80,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Entry hint (optional)',
+                hintText: 'e.g. Aisle and shelf',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final label = labelController.text.trim();
+              if (label.isNotEmpty) {
+                Navigator.of(dialogContext).pop({
+                  'label': label,
+                  'hint': hintController.text.trim(),
+                });
+              }
+            },
+            child: const Text('Add field'),
+          ),
+        ],
+      ),
+    );
+    labelController.dispose();
+    hintController.dispose();
+    if (result == null || !mounted) return;
+
+    final label = result['label']!.trim();
+    final slug = label
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    if (slug.isEmpty) {
+      showGlassSnackBar(
+        context,
+        'Use a field name with letters or numbers.',
+        icon: Icons.info_outline_rounded,
+        color: DesignColors.error,
+      );
+      return;
+    }
+    final occupied = {
+      ...businessLayoutPreset(_profileId)
+          .productFields
+          .map((field) => field.key),
+      ..._customProductFields.map((field) => field.key),
+    };
+    final base = 'custom_${slug.length > 28 ? slug.substring(0, 28) : slug}';
+    var key = base;
+    var suffix = 2;
+    while (occupied.contains(key)) {
+      final suffixText = '_$suffix';
+      final keep = 40 - suffixText.length;
+      key = '${base.length > keep ? base.substring(0, keep) : base}$suffixText';
+      suffix++;
+    }
+    final field = BusinessLayoutProductField(
+      key: key,
+      label: label.length > 40 ? label.substring(0, 40) : label,
+      hint: result['hint'] ?? '',
+    );
+    setState(() {
+      _customProductFields.add(field);
+      _productFieldKeys.add(field.key);
+    });
+  }
+
+  Future<void> _removeCustomProductField(
+    BusinessLayoutProductField field,
+  ) async {
+    final remove = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove custom detail?'),
+        content: Text(
+          '“${field.label}” will disappear from product forms. Saved product values are retained in the catalog.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep field'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (remove != true || !mounted) return;
+    setState(() {
+      _customProductFields.removeWhere((item) => item.key == field.key);
+      _productFieldKeys.remove(field.key);
+    });
+  }
+
+  void _removeAction(int index) {
+    setState(() {
+      final removedPath = _priorityPaths.removeAt(index);
+      if (_startPath == removedPath) {
+        _startPath = _priorityPaths.isEmpty ? null : _priorityPaths.first;
+      }
+    });
+  }
+
+  Future<void> _renameAction(String path, String currentLabel) async {
+    final controller = TextEditingController(text: currentLabel);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Rename shortcut'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 32,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Shortcut name',
+            hintText: 'For example, Stock or Till',
+          ),
+          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('Save name'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (result == null || !mounted) return;
+    final label = result.trim();
+    setState(() {
+      if (label.isEmpty) {
+        _actionLabels.remove(path);
+      } else {
+        _actionLabels[path] = label;
+      }
+    });
+  }
+
   Future<void> _addActions(List<BusinessLayoutAction> actions) async {
     final selected = <String>{};
+    final selectedPreset = businessLayoutPreset(_profileId);
+    final selectedLayout = BusinessLayoutConfig(
+      preset: selectedPreset,
+      additionalProfileIds: _additionalProfileIds,
+      priorityPaths: _priorityPaths,
+    );
     final result = await showModalBottomSheet<List<String>>(
       context: context,
       isScrollControlled: true,
@@ -309,8 +1576,8 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const _SectionHeading(
-                title: 'Add work areas',
-                subtitle: 'Choose screens to bring forward.',
+                title: 'Pin work areas',
+                subtitle: 'Choose screens to bring forward in navigation.',
               ),
               const SizedBox(height: 12),
               Flexible(
@@ -322,7 +1589,9 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                             activeColor: DesignColors.accent,
                             secondary:
                                 Icon(action.icon, color: DesignColors.accent),
-                            title: Text(action.label),
+                            title: Text(_actionLabels[action.path] ??
+                                selectedLayout.actionLabel(
+                                    action.path, action.label)),
                             onChanged: (checked) => setSheetState(() {
                               if (checked == true) {
                                 selected.add(action.path);
@@ -352,7 +1621,174 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
       ),
     );
     if (result == null || !mounted) return;
-    setState(() => _priorityPaths.addAll(result));
+    setState(() {
+      _priorityPaths.addAll(result);
+      _startPath ??= _priorityPaths.isEmpty ? null : _priorityPaths.first;
+    });
+  }
+
+  Future<void> _editProductWording() async {
+    final preset = businessLayoutPreset(_profileId);
+    final current = BusinessLayoutConfig(
+      preset: preset,
+      additionalProfileIds: _additionalProfileIds,
+      priorityPaths: _priorityPaths,
+      terminologyOverrides: _terminologyOverrides,
+      baseUnitOverride: _defaultBaseUnit,
+      posProductView: _posProductView,
+      showPosCategories: _showPosCategories,
+      showPosFavorites: _showPosFavorites,
+      showPosCustomer: _showPosCustomer,
+      posQuickActions: _posQuickActions,
+      dashboardMetrics: _dashboardMetrics,
+      dashboardSections: _dashboardSections,
+    );
+    final fields = <_LayoutTermField>[
+      _LayoutTermField(
+          'productSingular', 'Single item name', current.productSingular),
+      _LayoutTermField(
+          'productsLabel', 'Items section name', current.productsLabel),
+      _LayoutTermField(
+          'customerSingular', 'Single customer name', current.customerSingular),
+      _LayoutTermField(
+          'customersLabel', 'Customer section name', current.customersLabel),
+      _LayoutTermField(
+          'productCodeLabel', 'Item code label', current.productCodeLabel),
+      _LayoutTermField(
+          'productCodeHint', 'Item code prompt', current.productCodeHint, 2),
+      _LayoutTermField(
+          'productNameHint', 'Item name prompt', current.productNameHint, 2),
+      _LayoutTermField('catalogSearchHint', 'Catalogue search prompt',
+          current.catalogSearchHint),
+      _LayoutTermField(
+          'posSearchHint', 'POS search prompt', current.posSearchHint),
+    ];
+    final controllers = {
+      for (final field in fields)
+        field.key: TextEditingController(text: field.value),
+    };
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Shop wording'),
+        content: SizedBox(
+          width: 480,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(dialogContext).height * .65,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: fields
+                    .map((field) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: TextField(
+                            controller: controllers[field.key],
+                            maxLength: 80,
+                            maxLines: field.maxLines,
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: InputDecoration(
+                              labelText: field.label,
+                              helperText: 'Clear to use the profile suggestion',
+                              border: const OutlineInputBorder(),
+                            ),
+                          ),
+                        ))
+                    .toList(),
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop({
+              for (final entry in controllers.entries)
+                entry.key: entry.value.text.trim(),
+            }),
+            child: const Text('Use wording'),
+          ),
+        ],
+      ),
+    );
+    for (final controller in controllers.values) {
+      controller.dispose();
+    }
+    if (result == null || !mounted) return;
+    final defaults = {
+      'productSingular': preset.productSingular,
+      'productsLabel': preset.productsLabel,
+      'productCodeLabel': preset.productCodeLabel,
+      'productCodeHint': preset.productCodeHint,
+      'productNameHint': preset.productNameHint,
+      'catalogSearchHint': preset.catalogSearchHint,
+      'posSearchHint': preset.posSearchHint,
+      'customerSingular': preset.customerSingular,
+      'customersLabel': preset.customersLabel,
+    };
+    setState(() {
+      _terminologyOverrides = {
+        for (final entry in result.entries)
+          if (entry.value.isNotEmpty && entry.value != defaults[entry.key])
+            entry.key: entry.value,
+      };
+    });
+  }
+
+  Future<void> _chooseAdditionalProfiles() async {
+    final selected = await showBusinessLayoutProfilePicker(
+      context,
+      primaryProfileId: _profileId,
+      selectedProfileIds: _additionalProfileIds,
+    );
+    if (selected == null || !mounted) return;
+    _applyAdditionalProfiles(selected);
+  }
+
+  void _applyAdditionalProfiles(List<String> profileIds) {
+    final added = businessLayoutAdditionalPresets(_profileId, profileIds)
+        .where((profile) => !_additionalProfileIds.contains(profile.id))
+        .toList(growable: false);
+    final normalized = businessLayoutAdditionalPresets(_profileId, profileIds)
+        .map((profile) => profile.id)
+        .toList(growable: false);
+    setState(() {
+      _additionalProfileIds = normalized;
+      for (final profile in added) {
+        for (final path in profile.defaultVisiblePaths) {
+          _hiddenPaths.remove(path);
+        }
+        for (final path in profile.priorityPaths) {
+          if (!_hiddenPaths.contains(path) && !_priorityPaths.contains(path)) {
+            _priorityPaths.add(path);
+          }
+        }
+        for (final metric in profile.defaultDashboardMetrics) {
+          if (!_dashboardMetrics.contains(metric)) {
+            _dashboardMetrics.add(metric);
+          }
+        }
+        for (final section in profile.defaultDashboardSections) {
+          if (!_dashboardSections.contains(section)) {
+            _dashboardSections.add(section);
+          }
+        }
+      }
+      for (final fieldKey in businessLayoutDefaultProductFieldKeys(
+        _profileId,
+        _additionalProfileIds,
+        customFields: _customProductFields,
+      )) {
+        if (!_productFieldKeys.contains(fieldKey)) {
+          _productFieldKeys.add(fieldKey);
+        }
+      }
+      _startPath ??= _priorityPaths.firstOrNull;
+    });
   }
 
   Future<void> _save() async {
@@ -360,7 +1796,24 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
     try {
       final layout = BusinessLayoutConfig(
         preset: businessLayoutPreset(_profileId),
+        additionalProfileIds: [..._additionalProfileIds],
         priorityPaths: [..._priorityPaths],
+        hiddenPaths: [..._hiddenPaths],
+        actionLabels: {..._actionLabels},
+        terminologyOverrides: {..._terminologyOverrides},
+        baseUnitOverride: _defaultBaseUnit,
+        allowFractionsForNewProducts: _allowFractionsForNewProducts,
+        trackInventoryForNewProducts: _trackInventoryForNewProducts,
+        startPath: _startPath,
+        posProductView: _posProductView,
+        showPosCategories: _showPosCategories,
+        showPosFavorites: _showPosFavorites,
+        showPosCustomer: _showPosCustomer,
+        posQuickActions: [..._posQuickActions],
+        dashboardMetrics: [..._dashboardMetrics],
+        dashboardSections: [..._dashboardSections],
+        productFieldKeys: [..._productFieldKeys],
+        customProductFields: [..._customProductFields],
       );
       final updated = await getIt<ApiClient>().updateCurrentTenant(
         settings: {'businessLayout': layout.toJson()},
@@ -374,7 +1827,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
       if (mounted) {
         showGlassSnackBar(
           context,
-          'Business layout saved for this shop',
+          'Layout actions saved for this shop',
           icon: Icons.check_circle_rounded,
           color: DesignColors.success,
         );
@@ -393,6 +1846,23 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
     }
   }
 }
+
+class _LayoutTermField {
+  const _LayoutTermField(
+    this.key,
+    this.label,
+    this.value, [
+    this.maxLines = 1,
+  ]);
+
+  final String key;
+  final String label;
+  final String value;
+  final int maxLines;
+}
+
+String _unitLabel(String unit) =>
+    unit.isEmpty ? unit : '${unit[0].toUpperCase()}${unit.substring(1)}';
 
 class _ProfileCard extends StatelessWidget {
   const _ProfileCard({
@@ -527,7 +1997,7 @@ class _PermissionNotice extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
         ),
         child: const Text(
-          'Only a workspace administrator can save a business wide layout.',
+          'Only team members with permission to manage shop settings can change this shared layout.',
         ),
       );
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/injection.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
@@ -43,7 +44,9 @@ class _ShopAlertsScreenState extends ConsumerState<ShopAlertsScreen> {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Shop Alerts',
+        title: ref
+            .watch(businessLayoutProvider)
+            .actionLabel('/shop-alerts', 'Shop Alerts'),
         showBackButton: GoRouter.of(context).canPop(),
         actions: [
           if (perms.has('accountability.manage'))
@@ -210,7 +213,9 @@ class _AlertTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
           border: Border.all(
             color: alert.acknowledged
-                ? (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
+                ? (isDark
+                    ? DesignColors.darkBorder
+                    : DesignColors.surfaceBorder)
                 : color.withValues(alpha: 0.5),
           ),
         ),

@@ -17,11 +17,6 @@ final _currencyFmt =
 final _timeFmt = DateFormat('dd MMM, HH:mm');
 const _eodRequestTimeout = Duration(seconds: 8);
 
-String _todayIso() {
-  final n = DateTime.now();
-  return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
-}
-
 /// Combines today's sales summary, expected cash, and any existing close so
 /// the screen can show either "open — review & close" or "closed at …".
 final _eodProvider =
@@ -29,19 +24,18 @@ final _eodProvider =
   final branchId = getIt<AuthService>().branchId;
   if (branchId == null) return {'noBranch': true};
   final api = getIt<ApiClient>();
-  final date = _todayIso();
   final apiHost = Uri.tryParse(api.baseUrl)?.host;
   final isLocalServer =
       apiHost == '127.0.0.1' || apiHost == 'localhost' || apiHost == '::1';
   // Sales figures are essential; cash and close status are secondary. A
   // failure in either secondary request must not blank the whole report.
   final results = await Future.wait([
-    _captureEodRequest(api.getSalesDailySummary(branchId, date,
-        requestTimeout: _eodRequestTimeout)),
+    _captureEodRequest(
+        api.getSalesTodaySummary(branchId, requestTimeout: _eodRequestTimeout)),
     _captureEodRequest(
         api.getAvailableCash(branchId, requestTimeout: _eodRequestTimeout)),
-    _captureEodRequest(api.getDailyClose(branchId,
-        date: date, requestTimeout: _eodRequestTimeout)),
+    _captureEodRequest(
+        api.getDailyClose(branchId, requestTimeout: _eodRequestTimeout)),
   ]);
   var summary = results[0]['value'] as Map<String, dynamic>?;
   Object? summaryError = results[0]['error'];
@@ -188,7 +182,11 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
         : null;
     final closeStatusKnown = closeError == null && summaryError == null;
     final cashStatusKnown = cashError == null && expectedCash != null;
-    final canClose = closeStatusKnown && cashStatusKnown;
+    final businessDate = summary['date']?.toString();
+    final canClose = closeStatusKnown &&
+        cashStatusKnown &&
+        businessDate != null &&
+        RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(businessDate);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.lg,
@@ -352,7 +350,12 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                             ? 'Re-close day'
                             : 'Close end of day',
             icon: Icons.check_circle_outline_rounded,
-            onPressed: canClose ? () => _showCloseSheet(expectedCash) : null,
+            onPressed: canClose
+                ? () => _showCloseSheet(
+                      expectedCash,
+                      businessDate: businessDate,
+                    )
+                : null,
             height: 52,
             borderRadius: DesignSpacing.radiusMd,
           ),
@@ -397,7 +400,10 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     );
   }
 
-  Future<void> _showCloseSheet(double? expectedCash) async {
+  Future<void> _showCloseSheet(
+    double? expectedCash, {
+    required String businessDate,
+  }) async {
     final branchId = getIt<AuthService>().branchId;
     if (branchId == null) return;
 
@@ -437,8 +443,8 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                     const SizedBox(height: DesignSpacing.xs),
                     Text(
                       expectedCash != null
-                          ? 'System expects ${_currencyFmt.format(expectedCash)} in the till. Count it to finalize the day.'
-                          : 'Count the cash in the till to finalize the day.',
+                          ? 'Closing business day $businessDate. System expects ${_currencyFmt.format(expectedCash)} in the till. Count it to finalize the day.'
+                          : 'Closing business day $businessDate. Count the cash in the till to finalize the day.',
                       style: TextStyle(
                           color: isDark
                               ? DesignColors.darkTextSecondary
@@ -536,10 +542,8 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
       await getIt<ApiClient>().closeEndOfDay(
         branchId,
         countedCash: counted,
-        // Close the same branch-local business day whose figures and existing
-        // close status were displayed above. The server otherwise defaults to
-        // its UTC date, which can still be yesterday near midnight in Nairobi.
-        date: _todayIso(),
+        // Close the exact branch-local business date returned with the report.
+        date: businessDate,
         notes: notesController.text.trim().isEmpty
             ? null
             : notesController.text.trim(),

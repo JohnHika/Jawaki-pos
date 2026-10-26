@@ -16,6 +16,8 @@ import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/core/widgets/business_layout_preview.dart';
+import 'package:axon_pos/core/widgets/business_layout_profile_picker.dart';
 import 'package:axon_pos/core/widgets/motion.dart';
 
 String companySetupErrorMessage(Object error) {
@@ -73,11 +75,22 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   final _branchAddressController = TextEditingController();
   final _branchPhoneController = TextEditingController();
   final _otpController = TextEditingController();
+  final _businessLayoutSearchController = TextEditingController();
 
   int _currentStep = 0;
   bool _isLoading = false;
   bool _acceptedSignupPolicies = false;
+  bool _showAllBusinessLayouts = false;
   String _businessLayoutId = 'general_retail';
+  List<String> _additionalBusinessLayoutIds = [];
+  List<String> _posQuickActions = [
+    'customer',
+    'favorites',
+    'held_sales',
+    'hold_sale',
+    'cart',
+  ];
+  String _businessLayoutSearch = '';
   String? _errorMessage;
   String? _challengeId;
   String? _challengeEmail;
@@ -96,6 +109,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
       _branchAddressController,
       _branchPhoneController,
       _otpController,
+      _businessLayoutSearchController,
     ]) {
       controller.dispose();
     }
@@ -103,30 +117,67 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     super.dispose();
   }
 
-  WorkspaceCreationRequest _workspaceRequest() => WorkspaceCreationRequest(
-        companyName: _companyNameController.text.trim(),
-        firstName: _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim(),
-        deviceId: getIt<AuthService>().deviceId,
-        branch: WorkspaceBranchDetails(
-          name: _branchNameController.text.trim(),
-          code: _branchCodeController.text.trim().toUpperCase(),
-          address: _optional(_branchAddressController),
-          phone: _optional(_branchPhoneController),
-          email: _verificationMode == _VerificationMode.google &&
-                  _verifiedGoogleEmail != null
-              ? _verifiedGoogleEmail!
-              : _emailController.text.trim(),
-        ),
-        acceptedPolicyTypes: kSignupPolicyTypes,
-        settings: {
-          'businessLayout': BusinessLayoutConfig(
-            preset: businessLayoutPreset(_businessLayoutId),
-            priorityPaths:
-                businessLayoutPreset(_businessLayoutId).priorityPaths,
-          ).toJson(),
-        },
-      );
+  WorkspaceCreationRequest _workspaceRequest() {
+    final preset = businessLayoutPreset(_businessLayoutId);
+    final priorityPaths = businessLayoutDefaultPriorityPaths(
+      _businessLayoutId,
+      _additionalBusinessLayoutIds,
+    );
+    return WorkspaceCreationRequest(
+      companyName: _companyNameController.text.trim(),
+      firstName: _firstNameController.text.trim(),
+      lastName: _lastNameController.text.trim(),
+      deviceId: getIt<AuthService>().deviceId,
+      branch: WorkspaceBranchDetails(
+        name: _branchNameController.text.trim(),
+        code: _branchCodeController.text.trim().toUpperCase(),
+        address: _optional(_branchAddressController),
+        phone: _optional(_branchPhoneController),
+        email: _verificationMode == _VerificationMode.google &&
+                _verifiedGoogleEmail != null
+            ? _verifiedGoogleEmail!
+            : _emailController.text.trim(),
+      ),
+      acceptedPolicyTypes: kSignupPolicyTypes,
+      settings: {
+        'businessLayout': BusinessLayoutConfig(
+          preset: preset,
+          additionalProfileIds: _additionalBusinessLayoutIds,
+          priorityPaths: priorityPaths,
+          hiddenPaths: businessLayoutDefaultHiddenPaths(
+            _businessLayoutId,
+            _additionalBusinessLayoutIds,
+          ),
+          startPath: priorityPaths.firstOrNull,
+          posQuickActions: _posQuickActions,
+          showPosFavorites: _posQuickActions.contains('favorites'),
+          showPosCustomer: _posQuickActions.contains('customer'),
+          dashboardMetrics: businessLayoutDefaultDashboardMetrics(
+            _businessLayoutId,
+            _additionalBusinessLayoutIds,
+          ),
+          dashboardSections: businessLayoutDefaultDashboardSections(
+            _businessLayoutId,
+            _additionalBusinessLayoutIds,
+          ),
+          productFieldKeys: businessLayoutDefaultProductFieldKeys(
+            _businessLayoutId,
+            _additionalBusinessLayoutIds,
+          ),
+        ).toJson(),
+      },
+    );
+  }
+
+  Future<void> _chooseAdditionalBusinessProfiles() async {
+    final selected = await showBusinessLayoutProfilePicker(
+      context,
+      primaryProfileId: _businessLayoutId,
+      selectedProfileIds: _additionalBusinessLayoutIds,
+    );
+    if (selected == null || !mounted) return;
+    setState(() => _additionalBusinessLayoutIds = selected);
+  }
 
   String? _optional(TextEditingController controller) {
     final value = controller.text.trim();
@@ -408,7 +459,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
             ),
             const SizedBox(height: 26),
             Text(
-              'Choose a business layout',
+              'Choose your shop profile',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: context.themed(DesignColors.darkTextPrimary),
                     fontWeight: FontWeight.w700,
@@ -416,85 +467,153 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Counterbase will put the most relevant work areas first. You can change this any time.',
+              'Counterbase will tailor the POS, product details, customer wording, dashboard and shortcuts. Adjust the full layout later in Settings → Layout actions.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: context.themed(DesignColors.darkTextTertiary),
                     height: 1.4,
                   ),
             ),
             const SizedBox(height: 14),
+            TextField(
+              controller: _businessLayoutSearchController,
+              onChanged: (value) =>
+                  setState(() => _businessLayoutSearch = value),
+              decoration: InputDecoration(
+                hintText: 'Find your type of shop',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _businessLayoutSearch.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear shop profile search',
+                        onPressed: () {
+                          _businessLayoutSearchController.clear();
+                          setState(() => _businessLayoutSearch = '');
+                        },
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 14),
             LayoutBuilder(builder: (context, constraints) {
-              final cardWidth = (constraints.maxWidth - 10) / 2;
+              // Profile cards were forced into two columns on every device.
+              // On a phone that left only ~130 px for the name and summary,
+              // making the most important setup choice difficult to scan.
+              final columns = constraints.maxWidth >= 620 ? 2 : 1;
+              const spacing = 12.0;
+              final cardWidth = columns == 1
+                  ? constraints.maxWidth
+                  : (constraints.maxWidth - spacing) / columns;
+              final profileQuery = _businessLayoutSearch.trim().toLowerCase();
+              const featuredProfileIds = {
+                'general_retail',
+                'service_counter',
+                'bookshop',
+                'kamukunji_counter',
+                'grocery',
+                'cafe_takeaway',
+                'fashion',
+                'hardware',
+              };
+              final availableProfiles = _showAllBusinessLayouts ||
+                      profileQuery.isNotEmpty
+                  ? businessLayoutPresets
+                  : businessLayoutPresets
+                      .where((preset) => featuredProfileIds.contains(preset.id))
+                      .toList(growable: false);
+              final shownProfiles = availableProfiles
+                  .where((preset) => businessLayoutProfileMatchesSearch(
+                        preset,
+                        profileQuery,
+                      ))
+                  .toList(growable: false);
+              if (shownProfiles.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Text('No shop profiles match that search.'),
+                );
+              }
               return Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: businessLayoutPresets.map((preset) {
+                spacing: spacing,
+                runSpacing: spacing,
+                children: shownProfiles.map((preset) {
                   final selected = _businessLayoutId == preset.id;
                   return SizedBox(
                     width: cardWidth,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () =>
-                          setState(() => _businessLayoutId = preset.id),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        constraints: const BoxConstraints(minHeight: 88),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: context.themed(selected
-                              ? DesignColors.brand.withValues(alpha: 0.16)
-                              : DesignColors.darkSurfaceElevated),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
+                    child: Semantics(
+                      button: true,
+                      selected: selected,
+                      label: '${preset.name}. ${preset.description}',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => setState(() {
+                          _businessLayoutId = preset.id;
+                          _additionalBusinessLayoutIds.remove(preset.id);
+                          _posQuickActions = [
+                            ...preset.defaultPosQuickActions,
+                          ];
+                        }),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          constraints: const BoxConstraints(minHeight: 84),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
                             color: context.themed(selected
-                                ? DesignColors.brand
-                                : DesignColors.darkBorder),
-                            width: selected ? 1.5 : 1,
-                          ),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(preset.icon,
-                                size: 20,
-                                color: context.themed(selected
-                                    ? DesignColors.brand
-                                    : DesignColors.darkTextSecondary)),
-                            const SizedBox(width: 9),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    preset.name,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: context
-                                          .themed(DesignColors.darkTextPrimary),
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    preset.description,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: context.themed(
-                                          DesignColors.darkTextTertiary),
-                                      fontSize: 10.5,
-                                      height: 1.25,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ? DesignColors.brand.withValues(alpha: 0.16)
+                                : DesignColors.darkSurfaceElevated),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: context.themed(selected
+                                  ? DesignColors.brand
+                                  : DesignColors.darkBorder),
+                              width: selected ? 1.5 : 1,
                             ),
-                            if (selected)
-                              const Icon(Icons.check_circle_rounded,
-                                  color: DesignColors.brand, size: 18),
-                          ],
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(preset.icon,
+                                  size: 22,
+                                  color: context.themed(selected
+                                      ? DesignColors.brand
+                                      : DesignColors.darkTextSecondary)),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      preset.name,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: context.themed(
+                                            DesignColors.darkTextPrimary),
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      preset.description,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: context.themed(
+                                            DesignColors.darkTextTertiary),
+                                        fontSize: 12,
+                                        height: 1.3,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (selected) ...[
+                                const SizedBox(width: 8),
+                                const Icon(Icons.check_circle_rounded,
+                                    color: DesignColors.brand, size: 20),
+                              ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -502,6 +621,171 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                 }).toList(),
               );
             }),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => setState(() {
+                  _showAllBusinessLayouts = !_showAllBusinessLayouts;
+                }),
+                icon: Icon(_showAllBusinessLayouts
+                    ? Icons.expand_less_rounded
+                    : Icons.expand_more_rounded),
+                label: Text(_showAllBusinessLayouts
+                    ? 'Show popular profiles'
+                    : 'Show all ${businessLayoutPresets.length} shop profiles'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Does the shop sell other kinds of products too?',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: context.themed(DesignColors.darkTextPrimary),
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Add up to three profiles. The main profile controls the wording; the others add relevant product details and work areas.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: context.themed(DesignColors.darkTextTertiary),
+                    height: 1.35,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            if (_additionalBusinessLayoutIds.isNotEmpty)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: businessLayoutAdditionalPresets(
+                  _businessLayoutId,
+                  _additionalBusinessLayoutIds,
+                ).map((profile) {
+                  return InputChip(
+                    avatar: Icon(profile.icon, size: 18),
+                    label: Text(profile.name),
+                    onDeleted: () => setState(() {
+                      _additionalBusinessLayoutIds.remove(profile.id);
+                    }),
+                  );
+                }).toList(growable: false),
+              ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: _chooseAdditionalBusinessProfiles,
+                icon: const Icon(Icons.add_rounded),
+                label: Text(_additionalBusinessLayoutIds.isEmpty
+                    ? 'Add another shop profile'
+                    : 'Edit additional profiles'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Builder(builder: (context) {
+              final preset = businessLayoutPreset(_businessLayoutId);
+              final priorityPaths = businessLayoutDefaultPriorityPaths(
+                _businessLayoutId,
+                _additionalBusinessLayoutIds,
+              );
+              return BusinessLayoutPreview(
+                layout: BusinessLayoutConfig(
+                  preset: preset,
+                  additionalProfileIds: _additionalBusinessLayoutIds,
+                  priorityPaths: priorityPaths,
+                  hiddenPaths: businessLayoutDefaultHiddenPaths(
+                    _businessLayoutId,
+                    _additionalBusinessLayoutIds,
+                  ),
+                  startPath: priorityPaths.firstOrNull,
+                  posQuickActions: _posQuickActions,
+                  showPosFavorites: _posQuickActions.contains('favorites'),
+                  showPosCustomer: _posQuickActions.contains('customer'),
+                  dashboardMetrics: businessLayoutDefaultDashboardMetrics(
+                    _businessLayoutId,
+                    _additionalBusinessLayoutIds,
+                  ),
+                  dashboardSections: businessLayoutDefaultDashboardSections(
+                    _businessLayoutId,
+                    _additionalBusinessLayoutIds,
+                  ),
+                  productFieldKeys: businessLayoutDefaultProductFieldKeys(
+                    _businessLayoutId,
+                    _additionalBusinessLayoutIds,
+                  ),
+                ),
+              );
+            }),
+            const SizedBox(height: 14),
+            Container(
+              decoration: BoxDecoration(
+                color: context.themed(DesignColors.darkSurfaceElevated),
+                borderRadius: BorderRadius.circular(16),
+                border:
+                    Border.all(color: context.themed(DesignColors.darkBorder)),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+                    child: Text(
+                      'POS toolbar shortcuts',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            color: context.themed(DesignColors.darkTextPrimary),
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
+                  Text(
+                    'Choose what the cashier sees at this counter. You can reorder and adjust shortcuts later in Layout actions.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: context.themed(DesignColors.darkTextTertiary),
+                          height: 1.35,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  ...businessLayoutPosActions.map((action) {
+                    final enabled = _posQuickActions.contains(action.id);
+                    return SwitchListTile.adaptive(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                      title: Text(
+                        action.label,
+                        style: TextStyle(
+                          color: context.themed(DesignColors.darkTextPrimary),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: Text(
+                        action.id == 'cart'
+                            ? 'Always available to finish checkout.'
+                            : action.description,
+                        style: TextStyle(
+                          color: context.themed(DesignColors.darkTextTertiary),
+                        ),
+                      ),
+                      secondary: Icon(action.icon,
+                          color: context.themed(DesignColors.brand)),
+                      value: enabled,
+                      activeTrackColor: DesignColors.brand,
+                      onChanged: action.id == 'cart'
+                          ? null
+                          : (value) => setState(() {
+                                if (value) {
+                                  if (!_posQuickActions.contains(action.id)) {
+                                    _posQuickActions.add(action.id);
+                                  }
+                                } else {
+                                  _posQuickActions.remove(action.id);
+                                }
+                              }),
+                    );
+                  }),
+                ],
+              ),
+            ),
           ],
         );
       case 1:

@@ -6,21 +6,6 @@ import '../../../../core/widgets/motion_kit.dart';
 import '../providers/catalog_provider.dart';
 
 class CategoryChips extends ConsumerWidget {
-  static String _getUserFriendlyError(dynamic error) {
-    final errorString = error.toString().toLowerCase();
-
-    if (errorString.contains('network') || errorString.contains('socket') || errorString.contains('connection')) {
-      return 'network error';
-    } else if (errorString.contains('timeout')) {
-      return 'request timeout';
-    } else if (errorString.contains('format') || errorString.contains('parse')) {
-      return 'data format issue';
-    } else if (errorString.contains('auth') || errorString.contains('permission') || errorString.contains('unauthorized')) {
-      return 'authentication required';
-    }
-
-    return 'unknown error';
-  }
   const CategoryChips({super.key});
 
   @override
@@ -65,16 +50,35 @@ class CategoryChips extends ConsumerWidget {
           itemCount: 5,
           itemBuilder: (context, index) => const _CategoryChipSkeleton(),
         ),
-        error: (error, _) => Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                'Failed to load categories: ${_getUserFriendlyError(error)}',
-                style: const TextStyle(color: DesignColors.error, fontSize: 14),
-                textAlign: TextAlign.center,
+        error: (_, __) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              const Icon(Icons.category_outlined,
+                  size: 18, color: DesignColors.error),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Categories unavailable',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13),
+                ),
               ),
-            ),
+              TextButton.icon(
+                onPressed: () => ref.invalidate(categoriesProvider),
+                icon: const Icon(Icons.refresh_rounded, size: 17),
+                label: const Text('Retry'),
+                style: TextButton.styleFrom(
+                  foregroundColor: DesignColors.accent,
+                  minimumSize: const Size(72, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ],
           ),
+        ),
       ),
     );
   }

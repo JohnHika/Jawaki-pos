@@ -13,6 +13,7 @@ import {
 import { CashFundingSource as PrismaCashFundingSource, Prisma, StockMovementType } from '@prisma/client';
 import { lockStockForUpdate } from '../common/stock-lock';
 import { applyPurchaseCost } from '../common/product-cost';
+import { getDayBoundsInTimezone, todayInTimezone } from '../common/operating-hours';
 
 @Injectable()
 export class SuppliersService {
@@ -64,7 +65,16 @@ export class SuppliersService {
     if (suppliers.length === 0) return [];
 
     const supplierIds = suppliers.map((s) => s.id);
-    const now = new Date();
+    const branches = await this.prisma.branch.findMany({
+      where: { tenantId },
+      select: { id: true, timezone: true },
+    });
+    const overdueBranches = branches.map((branch) => {
+      const timezone = branch.timezone || 'Africa/Nairobi';
+      const today = todayInTimezone(timezone);
+      const { start } = getDayBoundsInTimezone(today, timezone);
+      return { branchId: branch.id, dueDate: { lt: start } };
+    });
 
     const [invoiceTotals, paymentTotals, overdueCounts, lastPayments] = await Promise.all([
       this.prisma.supplierInvoice.groupBy({
@@ -83,7 +93,7 @@ export class SuppliersService {
         where: {
           supplierId: { in: supplierIds },
           status: { not: SupplierInvoiceStatus.PAID },
-          dueDate: { lt: now },
+          OR: overdueBranches,
         },
         _count: { _all: true },
       }),

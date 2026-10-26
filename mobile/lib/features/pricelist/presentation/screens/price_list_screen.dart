@@ -9,6 +9,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/services/export_document_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/shop_name.dart';
 import '../../../../core/widgets/form_kit.dart';
@@ -125,6 +126,7 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final businessLayout = ref.watch(businessLayoutProvider);
     final products = ref.watch(filteredProductsProvider(FilterParams()));
     final categories = ref.watch(categoriesProvider).valueOrNull ?? const [];
     final categoryNames = {
@@ -136,7 +138,9 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Price List',
+        title: ref
+            .watch(businessLayoutProvider)
+            .actionLabel('/price-list', 'Price List'),
         showBackButton: GoRouter.of(context).canPop(),
       ),
       body: products.when(
@@ -185,7 +189,8 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
                 value: _inStockOnly,
                 activeThumbColor: DesignColors.accent,
                 onChanged: (v) => setState(() => _inStockOnly = v),
-                title: const Text('Only items in stock'),
+                title: Text(
+                    'Only ${businessLayout.productsLabel.toLowerCase()} in stock'),
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -193,7 +198,8 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
                 activeThumbColor: DesignColors.accent,
                 onChanged: (v) => setState(() => _showTiers = v),
                 title: const Text('Show bulk prices'),
-                subtitle: const Text('Dozen, carton and other wholesale prices'),
+                subtitle:
+                    const Text('Dozen, carton and other wholesale prices'),
               ),
               const SizedBox(height: DesignSpacing.sm),
               TextField(
@@ -206,8 +212,10 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
                     prefixIcon: Icons.phone_outlined),
               ),
               const SizedBox(height: DesignSpacing.lg),
-              Text('${items.length} item${items.length == 1 ? '' : 's'} on the list',
-                  style: TextStyle(color: secondary, fontWeight: FontWeight.w600)),
+              Text(
+                  '${items.length} ${items.length == 1 ? businessLayout.productSingular.toLowerCase() : businessLayout.productsLabel.toLowerCase()} on the list',
+                  style:
+                      TextStyle(color: secondary, fontWeight: FontWeight.w600)),
               const SizedBox(height: DesignSpacing.sm),
               Container(
                 constraints: const BoxConstraints(maxHeight: 260),

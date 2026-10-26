@@ -3,24 +3,28 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Optional,
-} from '@nestjs/common';
-import { AccountabilityService } from '../accountability/accountability.service';
-import { CouponsService, SaleCouponUse } from '../coupons/coupons.service';
-import { spreadCouponDiscount } from '../coupons/coupons.rules';
-import { severityForAmount } from '../accountability/accountability.rules';
-import { PrismaService } from '../common/prisma/prisma.service';
-import { RedisService } from '../common/redis/redis.service';
-import { getDayBoundsInTimezone, todayInTimezone } from '../common/operating-hours';
-import { CashFlowService } from '../cash-flow/cash-flow.service';
-import { CashEntryType } from '../cash-flow/dto/cash-flow.dto';
-import { FinanceService } from '../finance/finance.service';
+} from "@nestjs/common";
+import { AccountabilityService } from "../accountability/accountability.service";
+import { CouponsService, SaleCouponUse } from "../coupons/coupons.service";
+import { spreadCouponDiscount } from "../coupons/coupons.rules";
+import { severityForAmount } from "../accountability/accountability.rules";
+import { PrismaService } from "../common/prisma/prisma.service";
+import { RedisService } from "../common/redis/redis.service";
+import {
+  getDayBoundsInTimezone,
+  todayInTimezone,
+} from "../common/operating-hours";
+import { CashFlowService } from "../cash-flow/cash-flow.service";
+import { CashEntryType } from "../cash-flow/dto/cash-flow.dto";
+import { FinanceService } from "../finance/finance.service";
 import {
   CreateSaleDto,
   CreateRefundDto,
   ReconcileOfflineSalesDto,
   SalesQueryDto,
-} from './dto/sales.dto';
+} from "./dto/sales.dto";
 import {
   PaymentMethod,
   PaymentStatus,
@@ -28,14 +32,14 @@ import {
   ReceivableStatus,
   SaleStatus,
   StockMovementType,
-} from '@prisma/client';
-import { lockStockForUpdate } from '../common/stock-lock';
+} from "@prisma/client";
+import { lockStockForUpdate } from "../common/stock-lock";
 
 @Injectable()
 export class SalesService {
   constructor(
     private prisma: PrismaService,
-    private redisService: RedisService,
+    _redisService: RedisService,
     private cashFlowService: CashFlowService,
     private financeService: FinanceService,
     // Optional so unit tests (and any caller that builds the service by hand)
@@ -52,6 +56,8 @@ export class SalesService {
       verifiedMerchantMpesa?: boolean;
       /** True only when replaying an already completed sale through sync. */
       offlineReconciliation?: boolean;
+      /** The rate captured in the server-side quote for a verified M-Pesa charge. */
+      taxRatePercentSnapshot?: number;
     } = {},
   ) {
     if (
@@ -59,7 +65,7 @@ export class SalesService {
       dto.tenders?.some((tender) => tender.method === PaymentMethod.MANUAL)
     ) {
       throw new BadRequestException(
-        'Manual payment recording is unavailable. Choose cash, verified M-Pesa, or debt.',
+        "Manual payment recording is unavailable. Choose cash, verified M-Pesa, or debt.",
       );
     }
 
@@ -71,7 +77,7 @@ export class SalesService {
       !options.verifiedMerchantMpesa
     ) {
       throw new BadRequestException(
-        'M-Pesa sales can only be recorded after payment is verified.',
+        "M-Pesa sales can only be recorded after payment is verified.",
       );
     }
 
@@ -82,17 +88,19 @@ export class SalesService {
       dto.paymentMethod === PaymentMethod.TOURISTTAP
     ) {
       throw new BadRequestException(
-        'Electronic sales can only be recorded after provider payment is verified.',
+        "Electronic sales can only be recorded after provider payment is verified.",
       );
     }
     if (
       dto.paymentMethod === PaymentMethod.SPLIT &&
-      dto.tenders?.some((tender) =>
-        tender.method !== PaymentMethod.CASH && tender.method !== PaymentMethod.CREDIT,
+      dto.tenders?.some(
+        (tender) =>
+          tender.method !== PaymentMethod.CASH &&
+          tender.method !== PaymentMethod.CREDIT,
       )
     ) {
       throw new BadRequestException(
-        'Split payments currently support cash and debt only. Use the verified M-Pesa checkout for electronic payments.',
+        "Split payments currently support cash and debt only. Use the verified M-Pesa checkout for electronic payments.",
       );
     }
 
@@ -102,8 +110,17 @@ export class SalesService {
     });
 
     if (!branch) {
-      throw new NotFoundException('Branch not found');
+      throw new NotFoundException("Branch not found");
     }
+
+    // The business-level rate is the source of truth shown in Settings and
+    // used by the mobile cart. A verified asynchronous M-Pesa checkout keeps
+    // the rate that was quoted before the customer approved the prompt.
+    const taxRatePercent =
+      options.taxRatePercentSnapshot != null &&
+      (options.verifiedMerchantMpesa || options.offlineReconciliation)
+        ? this.normalizeTaxRatePercent(options.taxRatePercentSnapshot)
+        : await this.getBusinessTaxRatePercent(tenantId);
 
     // Check for duplicate offline ID
     if (dto.offlineId) {
@@ -111,11 +128,61 @@ export class SalesService {
         where: { offlineId: dto.offlineId },
       });
       if (existing) {
+        // An idempotency key must never let a different tender reuse an old
+        // receipt. In particular, a client must not pre-create a cash sale
+        // with the offline ID reserved for a pending Paystack M-Pesa charge.
+        if (
+          existing.branchId !== dto.branchId ||
+          existing.paymentMethod !== dto.paymentMethod ||
+          existing.customerId !== (dto.customerId ?? null)
+        ) {
+          throw new ConflictException(
+            "This sale reference already belongs to a different checkout. Refresh the sale before retrying.",
+          );
+        }
         // Return existing sale (idempotent). The original create already
         // logged its cash-ledger entry inside its own transaction, so no
         // entry is appended here — re-appending on every retry would
         // double-count the same sale's cash in the till.
         return this.getSale(existing.id, tenantId);
+      }
+    }
+
+    // A Paystack reference is reserved for the provider-verified sale. A
+    // client must not use the visible pending reference to pre-create a cash
+    // receipt before Paystack's verification callback settles the charge.
+    const reservedChargeReference = dto.offlineId?.startsWith("paystack-")
+      ? dto.offlineId.slice("paystack-".length)
+      : null;
+    if (reservedChargeReference && !options.verifiedMerchantMpesa) {
+      const reservedCharge = await this.prisma.merchantCharge.findUnique({
+        where: { reference: reservedChargeReference },
+        select: { tenantId: true, branchId: true, purpose: true },
+      });
+      if (
+        reservedCharge?.tenantId === tenantId &&
+        reservedCharge.branchId === dto.branchId &&
+        reservedCharge.purpose === "SALE"
+      ) {
+        throw new ConflictException(
+          "This sale reference is reserved for its Paystack M-Pesa payment. Check the payment status before retrying.",
+        );
+      }
+    }
+
+    // Customer IDs are tenant data, not just globally unique row IDs. Check
+    // ownership before writing the foreign key so a sale cannot expose or
+    // attach another business's customer, and offline sync gets a clear
+    // retryable error while its CUSTOMER_CREATED event is still pending.
+    if (dto.customerId) {
+      const customer = await this.prisma.customer.findFirst({
+        where: { id: dto.customerId, tenantId },
+        select: { id: true },
+      });
+      if (!customer) {
+        throw new BadRequestException(
+          "Customer was not found for this business. Sync the customer, then retry the sale.",
+        );
       }
     }
 
@@ -125,21 +192,37 @@ export class SalesService {
       where: { id: { in: productIds }, tenantId },
       include: {
         priceOverrides: {
-          where: { branchId: dto.branchId, isActive: true },
+          where: {
+            branchId: dto.branchId,
+            isActive: true,
+            AND: [
+              { OR: [{ startDate: null }, { startDate: { lte: new Date() } }] },
+              { OR: [{ endDate: null }, { endDate: { gte: new Date() } }] },
+            ],
+          },
         },
         stock: {
           where: { branchId: dto.branchId },
         },
+        pricingTiers: true,
       },
     });
 
     if (products.length !== productIds.length) {
-      throw new NotFoundException('One or more products not found');
+      throw new NotFoundException("One or more products not found");
+    }
+
+    // Ordinary online checkouts must use a real catalog unit and price.
+    // Offline reconciliation is exempt because its recorded price was set at
+    // the counter; verified M-Pesa is exempt here because the canonical quote
+    // was already checked before Paystack received the charge request.
+    if (!options.offlineReconciliation && !options.verifiedMerchantMpesa) {
+      await this.assertOnlineSalePricing(userId, tenantId, dto, products);
     }
 
     // Validate stock and calculate totals
     let subtotal = 0;
-    let totalTax = 0;
+    const discountAmount = dto.discountAmount ?? 0;
     const saleItems: any[] = [];
     const stockUpdates: any[] = [];
     const batchAllocations: Map<string, any[]> = new Map(); // productId -> batch allocations
@@ -169,12 +252,13 @@ export class SalesService {
 
       const lineDiscount = item.discount || 0;
       const lineSubtotal = unitPrice * item.quantity - lineDiscount;
-      const taxRate = Number(product.taxRate);
-      const taxAmount = lineSubtotal * (taxRate / 100);
-      const lineTotal = lineSubtotal + taxAmount;
+      if (!Number.isFinite(lineSubtotal) || lineSubtotal < 0) {
+        throw new BadRequestException(
+          `${product.name} has an invalid discount`,
+        );
+      }
 
       subtotal += lineSubtotal;
-      totalTax += taxAmount;
 
       saleItems.push({
         productId: product.id,
@@ -182,40 +266,82 @@ export class SalesService {
         quantity: item.quantity,
         unitPrice,
         discount: lineDiscount,
-        taxRate,
-        taxAmount,
-        totalAmount: lineTotal,
+        taxRate: taxRatePercent,
+        taxAmount: 0,
+        totalAmount: lineSubtotal,
         unit: item.unit ?? null,
         quantityPerUnit: item.quantityPerUnit ?? null,
       });
-
     }
 
-    const discountAmount = dto.discountAmount || 0;
-    const totalAmount = subtotal + totalTax - discountAmount;
+    if (
+      !Number.isFinite(discountAmount) ||
+      discountAmount < 0 ||
+      discountAmount > subtotal
+    ) {
+      throw new BadRequestException("Sale discount exceeds the cart subtotal");
+    }
+    const taxableSubtotal = subtotal - discountAmount;
+    const totalTax =
+      Math.round(
+        ((taxableSubtotal * taxRatePercent) / 100) * 100 + Number.EPSILON,
+      ) / 100;
+
+    // Spread tax rounding across item rows so their tax sum matches the sale.
+    // The sale-level discount remains a separate receipt line, while the tax
+    // is calculated on the discounted amount shown by the mobile cart.
+    let allocatedTax = 0;
+    for (let index = 0; index < saleItems.length; index++) {
+      const lineSubtotal =
+        Number(saleItems[index].unitPrice) * Number(saleItems[index].quantity) -
+        Number(saleItems[index].discount);
+      const lineTax =
+        index === saleItems.length - 1
+          ? Math.round((totalTax - allocatedTax) * 100) / 100
+          : subtotal > 0
+            ? Math.floor(
+                totalTax * (lineSubtotal / subtotal) * 100 + Number.EPSILON,
+              ) / 100
+            : 0;
+      saleItems[index].taxAmount = lineTax;
+      saleItems[index].totalAmount = lineSubtotal + lineTax;
+      allocatedTax += lineTax;
+    }
+    const totalAmount =
+      Math.round((taxableSubtotal + totalTax) * 100 + Number.EPSILON) / 100;
 
     // SPLIT sales derive their payment amounts from the tender rows. CREDIT
     // tenders are obligations, not money received, so keep them out of
     // Sale.paidAmount while creating their receivable below.
     if (dto.paymentMethod === PaymentMethod.SPLIT) {
       const splitTenders = dto.tenders ?? [];
-      const cashTenders = splitTenders.filter((tender) => tender.method === PaymentMethod.CASH);
-      const debtTenders = splitTenders.filter((tender) => tender.method === PaymentMethod.CREDIT);
+      const cashTenders = splitTenders.filter(
+        (tender) => tender.method === PaymentMethod.CASH,
+      );
+      const debtTenders = splitTenders.filter(
+        (tender) => tender.method === PaymentMethod.CREDIT,
+      );
       if (
         splitTenders.length !== 2 ||
         cashTenders.length !== 1 ||
         debtTenders.length !== 1 ||
-        splitTenders.some((tender) => !Number.isFinite(tender.amount) || tender.amount <= 0)
+        splitTenders.some(
+          (tender) => !Number.isFinite(tender.amount) || tender.amount <= 0,
+        )
       ) {
         throw new BadRequestException(
-          'A split needs one positive cash amount and one positive debt amount.',
+          "A split needs one positive cash amount and one positive debt amount.",
         );
       }
       if (!dto.customerId) {
-        throw new BadRequestException('Choose a customer before adding the debt portion.');
+        throw new BadRequestException(
+          "Choose a customer before adding the debt portion.",
+        );
       }
     } else if (dto.tenders && dto.tenders.length > 0) {
-      throw new BadRequestException('tenders is only valid when paymentMethod is SPLIT');
+      throw new BadRequestException(
+        "tenders is only valid when paymentMethod is SPLIT",
+      );
     }
 
     const tenderTotal = dto.tenders?.reduce((sum, t) => sum + t.amount, 0);
@@ -225,33 +351,38 @@ export class SalesService {
         tenderTotal! > Number.MAX_SAFE_INTEGER / 100 ||
         totalAmount > Number.MAX_SAFE_INTEGER / 100)
     ) {
-      throw new BadRequestException('Split payment amounts exceed the supported limit.');
+      throw new BadRequestException(
+        "Split payment amounts exceed the supported limit.",
+      );
     }
-    const splitCreditPortion = dto.paymentMethod === PaymentMethod.SPLIT
-      ? (dto.tenders ?? [])
-          .filter((tender) => tender.method === PaymentMethod.CREDIT)
-          .reduce((sum, tender) => sum + tender.amount, 0)
-      : 0;
+    const splitCreditPortion =
+      dto.paymentMethod === PaymentMethod.SPLIT
+        ? (dto.tenders ?? [])
+            .filter((tender) => tender.method === PaymentMethod.CREDIT)
+            .reduce((sum, tender) => sum + tender.amount, 0)
+        : 0;
 
     if (
       dto.paymentMethod === PaymentMethod.SPLIT &&
       Math.round(tenderTotal! * 100) !== Math.round(totalAmount * 100)
     ) {
       throw new BadRequestException(
-        'The cash and debt portions must add up exactly to the sale total.',
+        "The cash and debt portions must add up exactly to the sale total.",
       );
     }
 
     // For CREDIT payment, paidAmount is optional (defaults to 0, creating an outstanding balance)
-    const paidAmount = dto.paymentMethod === PaymentMethod.SPLIT
-      ? tenderTotal! - splitCreditPortion
-      : dto.paymentMethod === PaymentMethod.CREDIT
-        ? (dto.paidAmount ?? 0)
-        : (dto.paidAmount ?? totalAmount);
+    const paidAmount =
+      dto.paymentMethod === PaymentMethod.SPLIT
+        ? tenderTotal! - splitCreditPortion
+        : dto.paymentMethod === PaymentMethod.CREDIT
+          ? (dto.paidAmount ?? 0)
+          : (dto.paidAmount ?? totalAmount);
 
-    const changeAmount = dto.paymentMethod === PaymentMethod.SPLIT
-      ? Math.round((tenderTotal! - totalAmount) * 100) / 100
-      : Math.round((paidAmount - totalAmount) * 100) / 100;
+    const changeAmount =
+      dto.paymentMethod === PaymentMethod.SPLIT
+        ? Math.round((tenderTotal! - totalAmount) * 100) / 100
+        : Math.round((paidAmount - totalAmount) * 100) / 100;
 
     if (
       dto.paymentMethod === PaymentMethod.SPLIT
@@ -259,17 +390,18 @@ export class SalesService {
         : Math.round(paidAmount * 100) < Math.round(totalAmount * 100) &&
           dto.paymentMethod !== PaymentMethod.CREDIT
     ) {
-      throw new BadRequestException('Paid amount is less than total');
+      throw new BadRequestException("Paid amount is less than total");
     }
 
     // A credit obligation is derived server-side from the receipt's payment
     // representation. Clients never provide a receivable balance. For SPLIT,
     // only the explicit CREDIT tender becomes debt; cash tenders are settled.
-    const creditPortion = dto.paymentMethod === PaymentMethod.SPLIT
-      ? splitCreditPortion
-      : dto.paymentMethod === PaymentMethod.CREDIT
-        ? Math.max(totalAmount - paidAmount, 0)
-        : 0;
+    const creditPortion =
+      dto.paymentMethod === PaymentMethod.SPLIT
+        ? splitCreditPortion
+        : dto.paymentMethod === PaymentMethod.CREDIT
+          ? Math.max(totalAmount - paidAmount, 0)
+          : 0;
 
     // A coupon the shop issued is an approved discount, so it does not count
     // against the cashier's own discount limit. The phone has already taken
@@ -285,13 +417,20 @@ export class SalesService {
         customerId: dto.customerId,
         lines: saleItems.map((line) => ({
           productId: line.productId,
-          amount: Number(line.unitPrice) * Number(line.quantity) - Number(line.discount),
+          amount:
+            Number(line.unitPrice) * Number(line.quantity) -
+            Number(line.discount),
         })),
       });
       if (checked.verdict.ok) {
         const amount = Math.min(checked.verdict.discount, discountAmount);
         if (amount > 0 && checked.couponId) {
-          couponUse = { couponId: checked.couponId, code: checked.code, amount, productIds: checked.productIds };
+          couponUse = {
+            couponId: checked.couponId,
+            code: checked.code,
+            amount,
+            productIds: checked.productIds,
+          };
         }
       } else {
         couponProblem = checked.verdict.message;
@@ -307,7 +446,9 @@ export class SalesService {
       ? spreadCouponDiscount(
           saleItems.map((line) => ({
             productId: line.productId,
-            amount: Number(line.unitPrice) * Number(line.quantity) - Number(line.discount),
+            amount:
+              Number(line.unitPrice) * Number(line.quantity) -
+              Number(line.discount),
           })),
           couponUse.productIds,
           couponUse.amount,
@@ -325,9 +466,13 @@ export class SalesService {
           tenantId,
           branchId: dto.branchId,
           customerId: dto.customerId,
-          overallDiscount: Math.max(discountAmount - (couponUse?.amount ?? 0), 0),
+          overallDiscount: Math.max(
+            discountAmount - (couponUse?.amount ?? 0),
+            0,
+          ),
           creditAmount: creditPortion,
-          enforce: !options.offlineReconciliation && !options.verifiedMerchantMpesa,
+          enforce:
+            !options.offlineReconciliation && !options.verifiedMerchantMpesa,
           lines: saleItems.map((line, index) => {
             const product = products.find((p) => p.id === line.productId);
             return {
@@ -337,8 +482,10 @@ export class SalesService {
               unitPrice: Number(line.unitPrice),
               discount: Number(line.discount),
               approvedDiscount: couponShares?.[index] ?? 0,
-              costPrice: product?.costPrice != null ? Number(product.costPrice) : null,
-              minPrice: product?.minPrice != null ? Number(product.minPrice) : null,
+              costPrice:
+                product?.costPrice != null ? Number(product.costPrice) : null,
+              minPrice:
+                product?.minPrice != null ? Number(product.minPrice) : null,
             };
           }),
         })
@@ -362,306 +509,324 @@ export class SalesService {
       resolvedDeviceId = device?.id ?? null;
     }
 
-    // Generate receipt number
-    const receiptNumber = await this.generateReceiptNumber(dto.branchId);
-
     let couponOverLimit = false;
 
     // Create sale with transaction
-    const sale = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      // Stock validation and movement arithmetic must happen after the same
-      // row locks used by receiving. Pre-transaction reads can become stale
-      // while waiting behind another sale or receipt and can drive stock
-      // negative or record incorrect previous/new balances.
-      for (const item of [...dto.items].sort((a, b) =>
-        a.productId.localeCompare(b.productId),
-      )) {
-        const product = products.find((candidate) => candidate.id === item.productId);
-        if (!product?.trackInventory) continue;
-
-        const stock = await lockStockForUpdate(
-          tx,
-          dto.branchId,
-          product.id,
-        );
-        if (!stock) {
-          throw new BadRequestException(
-            `Insufficient stock for ${product.name}. Available: 0`,
+    const sale = await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        // Stock validation and movement arithmetic must happen after the same
+        // row locks used by receiving. Pre-transaction reads can become stale
+        // while waiting behind another sale or receipt and can drive stock
+        // negative or record incorrect previous/new balances.
+        for (const item of [...dto.items].sort((a, b) =>
+          a.productId.localeCompare(b.productId),
+        )) {
+          const product = products.find(
+            (candidate) => candidate.id === item.productId,
           );
-        }
+          if (!product?.trackInventory) continue;
 
-        const currentStock = Number(stock.quantity);
-        if (currentStock < item.quantity) {
-          throw new BadRequestException(
-            `Insufficient stock for ${product.name}. Available: ${currentStock}`,
-          );
-        }
+          const stock = await lockStockForUpdate(tx, dto.branchId, product.id);
+          if (!stock) {
+            throw new BadRequestException(
+              `Insufficient stock for ${product.name}. Available: 0`,
+            );
+          }
 
-        stockUpdates.push({
-          branchId: dto.branchId,
-          productId: product.id,
-          type: StockMovementType.SALE,
-          quantity: -item.quantity,
-          previousQty: currentStock,
-          newQty: currentStock - item.quantity,
-        });
+          const currentStock = Number(stock.quantity);
+          if (currentStock < item.quantity) {
+            throw new BadRequestException(
+              `Insufficient stock for ${product.name}. Available: ${currentStock}`,
+            );
+          }
 
-        await tx.$queryRaw`
+          stockUpdates.push({
+            branchId: dto.branchId,
+            productId: product.id,
+            type: StockMovementType.SALE,
+            quantity: -item.quantity,
+            previousQty: currentStock,
+            newQty: currentStock - item.quantity,
+          });
+
+          await tx.$queryRaw`
           SELECT id
           FROM stock_batches
           WHERE "stockId" = ${stock.id}
           FOR UPDATE
         `;
-        const batches = await tx.stockBatch.findMany({
-          where: { stockId: stock.id, isBlocked: false },
-          orderBy: [{ expiryDate: 'asc' }, { id: 'asc' }],
-        });
-        if (batches.length === 0) continue;
-
-        const now = new Date();
-        if (
-          batches.some(
-            (batch) =>
-              batch.expiryDate &&
-              batch.expiryDate < now &&
-              Number(batch.quantity) > 0,
-          )
-        ) {
-          throw new BadRequestException(
-            `Cannot sell ${product.name}: Product has expired batches. Please check inventory.`,
-          );
-        }
-
-        const allocations = [];
-        let remainingQty = item.quantity;
-        for (const batch of batches) {
-          if (remainingQty <= 0) break;
-          const availableQty =
-            Number(batch.quantity) - Number(batch.reservedQty);
-          if (availableQty <= 0) continue;
-          const allocateQty = Math.min(availableQty, remainingQty);
-          allocations.push({
-            batchId: batch.id,
-            batchNumber: batch.batchNumber,
-            quantity: allocateQty,
-            expiryDate: batch.expiryDate,
+          const batches = await tx.stockBatch.findMany({
+            where: { stockId: stock.id, isBlocked: false },
+            orderBy: [{ expiryDate: "asc" }, { id: "asc" }],
           });
-          remainingQty -= allocateQty;
+          if (batches.length === 0) continue;
+
+          const now = new Date();
+          if (
+            batches.some(
+              (batch) =>
+                batch.expiryDate &&
+                batch.expiryDate < now &&
+                Number(batch.quantity) > 0,
+            )
+          ) {
+            throw new BadRequestException(
+              `Cannot sell ${product.name}: Product has expired batches. Please check inventory.`,
+            );
+          }
+
+          const allocations = [];
+          let remainingQty = item.quantity;
+          for (const batch of batches) {
+            if (remainingQty <= 0) break;
+            const availableQty =
+              Number(batch.quantity) - Number(batch.reservedQty);
+            if (availableQty <= 0) continue;
+            const allocateQty = Math.min(availableQty, remainingQty);
+            allocations.push({
+              batchId: batch.id,
+              batchNumber: batch.batchNumber,
+              quantity: allocateQty,
+              expiryDate: batch.expiryDate,
+            });
+            remainingQty -= allocateQty;
+          }
+          if (remainingQty > 0) {
+            throw new BadRequestException(
+              `Insufficient non-expired stock for ${product.name}. Requested: ${item.quantity}, Available: ${item.quantity - remainingQty}`,
+            );
+          }
+          batchAllocations.set(product.id, allocations);
         }
-        if (remainingQty > 0) {
-          throw new BadRequestException(
-            `Insufficient non-expired stock for ${product.name}. Requested: ${item.quantity}, Available: ${item.quantity - remainingQty}`,
-          );
-        }
-        batchAllocations.set(product.id, allocations);
-      }
 
-      // Create sale
-      const newSale = await tx.sale.create({
-        data: {
-          branchId: dto.branchId,
-          deviceId: resolvedDeviceId,
-          userId,
-          receiptNumber,
-          customerId: dto.customerId,
-          status: SaleStatus.COMPLETED,
-          subtotal,
-          taxAmount: totalTax,
-          discountAmount,
-          totalAmount,
-          paidAmount: paidAmount,
-          changeAmount: Math.max(0, changeAmount),
-          paymentMethod: dto.paymentMethod,
-          notes: dto.notes,
-          offlineId: dto.offlineId,
-          metadata: couponUse
-            ? { coupon: { code: couponUse.code, amount: couponUse.amount } }
-            : {},
-          items: {
-            create: saleItems,
-          },
-        },
-        include: {
-          items: true,
-          branch: { select: { name: true } },
-          user: { select: { firstName: true, lastName: true } },
-          customer: { select: { name: true } },
-        },
-      });
+        // Allocate the receipt number under the same transaction as the sale.
+        // A Redis GET followed by SET can hand the same number to two app
+        // instances, which is especially painful after a provider has already
+        // confirmed an M-Pesa charge. The database lock serializes that small
+        // section across instances and the unique lookup also skips old gaps.
+        const receiptNumber = await this.generateReceiptNumber(
+          tx,
+          dto.branchId,
+          branch.code,
+          branch.timezone,
+        );
 
-      if (couponUse && this.coupons) {
-        const redeemed = await this.coupons.redeemInTx(tx, {
-          tenantId,
-          branchId: dto.branchId,
-          saleId: newSale.id,
-          userId,
-          customerId: dto.customerId,
-          use: couponUse,
-        });
-        couponOverLimit = redeemed.overLimit;
-      }
-
-      // Retail credit is a first-class obligation linked to this immutable
-      // receipt, written on this same transaction as stock and sale rows.
-      if (creditPortion > 0) {
-        await this.financeService.createRetailReceivableForSale(tx, {
-          tenantId,
-          branchId: dto.branchId,
-          saleId: newSale.id,
-          customerId: dto.customerId,
-          originalAmount: creditPortion,
-          dueDate: dto.creditDueDate
-            ? new Date(dto.creditDueDate)
-            : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          offlineId: dto.offlineId,
-          createdById: userId,
-        });
-      }
-
-      // Split sales get one Payment row per tender so the breakdown
-      // (how much was cash vs M-Pesa vs card) survives past the top-level
-      // Sale.paymentMethod=SPLIT, which on its own can't represent that.
-      let tenderPayments: Awaited<ReturnType<typeof tx.payment.findMany>> = [];
-      if (dto.paymentMethod === PaymentMethod.SPLIT && dto.tenders) {
-        await tx.payment.createMany({
-          data: dto.tenders.map((tender) => ({
-            saleId: newSale.id,
-            method: tender.method,
-            amount: tender.amount,
-            status: tender.method === PaymentMethod.CREDIT
-              ? PaymentStatus.PENDING
-              : PaymentStatus.COMPLETED,
-            transactionId: tender.reference,
-            paidAt: new Date(),
-          })),
-        });
-        tenderPayments = await tx.payment.findMany({ where: { saleId: newSale.id } });
-      }
-
-      // Update stock
-      for (const update of stockUpdates) {
-        await tx.stock.upsert({
-          where: {
-            branchId_productId: {
-              branchId: update.branchId,
-              productId: update.productId,
+        // Create sale
+        const newSale = await tx.sale.create({
+          data: {
+            branchId: dto.branchId,
+            deviceId: resolvedDeviceId,
+            userId,
+            receiptNumber,
+            customerId: dto.customerId,
+            status: SaleStatus.COMPLETED,
+            subtotal,
+            taxAmount: totalTax,
+            discountAmount,
+            totalAmount,
+            paidAmount: paidAmount,
+            changeAmount: Math.max(0, changeAmount),
+            paymentMethod: dto.paymentMethod,
+            notes: dto.notes,
+            offlineId: dto.offlineId,
+            metadata: couponUse
+              ? { coupon: { code: couponUse.code, amount: couponUse.amount } }
+              : {},
+            items: {
+              create: saleItems,
             },
           },
-          create: {
-            branchId: update.branchId,
-            productId: update.productId,
-            quantity: update.newQty,
-          },
-          update: {
-            quantity: { decrement: Math.abs(update.quantity) },
+          include: {
+            items: true,
+            branch: { select: { name: true } },
+            user: { select: { firstName: true, lastName: true } },
+            customer: { select: { name: true } },
           },
         });
 
-        // Record stock movement
-        await tx.stockMovement.create({
-          data: {
-            branchId: update.branchId,
-            productId: update.productId,
-            type: update.type,
-            quantity: update.quantity,
-            previousQty: update.previousQty,
-            newQty: update.newQty,
-            reference: newSale.id,
+        if (couponUse && this.coupons) {
+          const redeemed = await this.coupons.redeemInTx(tx, {
+            tenantId,
+            branchId: dto.branchId,
+            saleId: newSale.id,
+            userId,
+            customerId: dto.customerId,
+            use: couponUse,
+          });
+          couponOverLimit = redeemed.overLimit;
+        }
+
+        // Retail credit is a first-class obligation linked to this immutable
+        // receipt, written on this same transaction as stock and sale rows.
+        if (creditPortion > 0) {
+          await this.financeService.createRetailReceivableForSale(tx, {
+            tenantId,
+            branchId: dto.branchId,
+            saleId: newSale.id,
+            customerId: dto.customerId,
+            originalAmount: creditPortion,
+            dueDate: dto.creditDueDate
+              ? new Date(dto.creditDueDate)
+              : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            offlineId: dto.offlineId,
             createdById: userId,
-          },
-        });
+          });
+        }
 
-        // Update batches and create batch sale item records
-        const allocations = batchAllocations.get(update.productId);
-        if (allocations && allocations.length > 0) {
-          // Find the sale item for this product
-          const saleItem = newSale.items.find((si) => si.productId === update.productId);
+        // Split sales get one Payment row per tender so the breakdown
+        // (how much was cash vs M-Pesa vs card) survives past the top-level
+        // Sale.paymentMethod=SPLIT, which on its own can't represent that.
+        let tenderPayments: Awaited<ReturnType<typeof tx.payment.findMany>> =
+          [];
+        if (dto.paymentMethod === PaymentMethod.SPLIT && dto.tenders) {
+          await tx.payment.createMany({
+            data: dto.tenders.map((tender) => ({
+              saleId: newSale.id,
+              method: tender.method,
+              amount: tender.amount,
+              status:
+                tender.method === PaymentMethod.CREDIT
+                  ? PaymentStatus.PENDING
+                  : PaymentStatus.COMPLETED,
+              transactionId: tender.reference,
+              paidAt: new Date(),
+            })),
+          });
+          tenderPayments = await tx.payment.findMany({
+            where: { saleId: newSale.id },
+          });
+        }
 
-          for (const allocation of allocations) {
-            // Deduct from batch
-            await tx.stockBatch.update({
-              where: { id: allocation.batchId },
-              data: {
-                quantity: { decrement: allocation.quantity },
+        // Update stock
+        for (const update of stockUpdates) {
+          await tx.stock.upsert({
+            where: {
+              branchId_productId: {
+                branchId: update.branchId,
+                productId: update.productId,
               },
-            });
+            },
+            create: {
+              branchId: update.branchId,
+              productId: update.productId,
+              quantity: update.newQty,
+            },
+            update: {
+              quantity: { decrement: Math.abs(update.quantity) },
+            },
+          });
 
-            // Create sale item batch record for tracking
-            if (saleItem) {
-              await tx.saleItemBatch.create({
+          // Record stock movement
+          await tx.stockMovement.create({
+            data: {
+              branchId: update.branchId,
+              productId: update.productId,
+              type: update.type,
+              quantity: update.quantity,
+              previousQty: update.previousQty,
+              newQty: update.newQty,
+              reference: newSale.id,
+              createdById: userId,
+            },
+          });
+
+          // Update batches and create batch sale item records
+          const allocations = batchAllocations.get(update.productId);
+          if (allocations && allocations.length > 0) {
+            // Find the sale item for this product
+            const saleItem = newSale.items.find(
+              (si) => si.productId === update.productId,
+            );
+
+            for (const allocation of allocations) {
+              // Deduct from batch
+              await tx.stockBatch.update({
+                where: { id: allocation.batchId },
                 data: {
-                  saleItemId: saleItem.id,
-                  stockBatchId: allocation.batchId,
-                  quantity: allocation.quantity,
+                  quantity: { decrement: allocation.quantity },
+                },
+              });
+
+              // Create sale item batch record for tracking
+              if (saleItem) {
+                await tx.saleItemBatch.create({
+                  data: {
+                    saleItemId: saleItem.id,
+                    stockBatchId: allocation.batchId,
+                    quantity: allocation.quantity,
+                    batchNumber: allocation.batchNumber,
+                    expiryDate: allocation.expiryDate,
+                  },
+                });
+              }
+
+              // Record stock movement for batch
+              await tx.stockMovement.create({
+                data: {
+                  branchId: update.branchId,
+                  productId: update.productId,
+                  batchId: allocation.batchId,
+                  type: StockMovementType.SALE,
+                  quantity: -allocation.quantity,
+                  previousQty: update.previousQty,
+                  newQty: update.newQty,
                   batchNumber: allocation.batchNumber,
                   expiryDate: allocation.expiryDate,
+                  reference: newSale.id,
+                  notes: `Sale from batch ${allocation.batchNumber}`,
+                  createdById: userId,
                 },
               });
             }
-
-            // Record stock movement for batch
-            await tx.stockMovement.create({
-              data: {
-                branchId: update.branchId,
-                productId: update.productId,
-                batchId: allocation.batchId,
-                type: StockMovementType.SALE,
-                quantity: -allocation.quantity,
-                previousQty: update.previousQty,
-                newQty: update.newQty,
-                batchNumber: allocation.batchNumber,
-                expiryDate: allocation.expiryDate,
-                reference: newSale.id,
-                notes: `Sale from batch ${allocation.batchNumber}`,
-                createdById: userId,
-              },
-            });
           }
         }
-      }
 
-      // Cash-flow ledger only ever tracks physical cash movements — sales
-      // paid by M-Pesa/card/credit don't put cash in the till, so they're
-      // excluded here. ALL_REVENUE mode reads straight from Sale.totalAmount
-      // instead of this ledger for that reason (see
-      // CashFlowService.getAvailableCash). Written on the same tx as the
-      // sale itself: a crash can no longer commit the sale while losing its
-      // cash entry (or vice versa).
-      if (dto.paymentMethod === PaymentMethod.CASH && Number(paidAmount) > 0) {
-        await this.cashFlowService.recordEntry({
-          tx,
-          branchId: dto.branchId,
-          type: CashEntryType.SALE_CASH_IN,
-          amount: Number(paidAmount) - Math.max(0, changeAmount),
-          referenceType: 'sale',
-          referenceId: newSale.id,
-          createdById: userId,
-        });
-      } else if (dto.paymentMethod === PaymentMethod.SPLIT && dto.tenders) {
-        // Only the cash tender(s) put physical money in the till. Change is
-        // handed back in cash regardless of which tender it's notionally
-        // "from," so it comes out of the cash portion specifically — not
-        // proportionally across all tenders, which would misstate how much
-        // cash actually changed hands.
-        const cashTendered = dto.tenders
-          .filter((t) => t.method === PaymentMethod.CASH)
-          .reduce((sum, t) => sum + t.amount, 0);
-        const netCashIn = cashTendered - Math.max(0, changeAmount);
-        if (netCashIn > 0) {
+        // Cash-flow ledger only ever tracks physical cash movements — sales
+        // paid by M-Pesa/card/credit don't put cash in the till, so they're
+        // excluded here. ALL_REVENUE mode reads straight from Sale.totalAmount
+        // instead of this ledger for that reason (see
+        // CashFlowService.getAvailableCash). Written on the same tx as the
+        // sale itself: a crash can no longer commit the sale while losing its
+        // cash entry (or vice versa).
+        if (
+          dto.paymentMethod === PaymentMethod.CASH &&
+          Number(paidAmount) > 0
+        ) {
           await this.cashFlowService.recordEntry({
             tx,
             branchId: dto.branchId,
             type: CashEntryType.SALE_CASH_IN,
-            amount: netCashIn,
-            referenceType: 'sale',
+            amount: Number(paidAmount) - Math.max(0, changeAmount),
+            referenceType: "sale",
             referenceId: newSale.id,
             createdById: userId,
           });
+        } else if (dto.paymentMethod === PaymentMethod.SPLIT && dto.tenders) {
+          // Only the cash tender(s) put physical money in the till. Change is
+          // handed back in cash regardless of which tender it's notionally
+          // "from," so it comes out of the cash portion specifically — not
+          // proportionally across all tenders, which would misstate how much
+          // cash actually changed hands.
+          const cashTendered = dto.tenders
+            .filter((t) => t.method === PaymentMethod.CASH)
+            .reduce((sum, t) => sum + t.amount, 0);
+          const netCashIn = cashTendered - Math.max(0, changeAmount);
+          if (netCashIn > 0) {
+            await this.cashFlowService.recordEntry({
+              tx,
+              branchId: dto.branchId,
+              type: CashEntryType.SALE_CASH_IN,
+              amount: netCashIn,
+              referenceType: "sale",
+              referenceId: newSale.id,
+              createdById: userId,
+            });
+          }
         }
-      }
 
-      return { ...newSale, payments: tenderPayments };
-    });
+        return { ...newSale, payments: tenderPayments };
+      },
+    );
 
     if (this.accountability && assessment.violations.length > 0) {
       await this.accountability.flagSale(
@@ -694,6 +859,356 @@ export class SalesService {
   }
 
   /**
+   * Rebuild the merchant M-Pesa checkout amount from catalog data and enforce
+   * cashier price/discount permissions before asking Paystack to charge.
+   */
+  async quoteMerchantMpesaSale(
+    userId: string,
+    tenantId: string,
+    dto: CreateSaleDto,
+  ): Promise<{ amount: number; taxRatePercent: number; sale: CreateSaleDto }> {
+    const [branch, taxRatePercent] = await Promise.all([
+      this.prisma.branch.findFirst({
+        where: { id: dto.branchId, tenantId, isActive: true },
+        select: { id: true },
+      }),
+      this.getBusinessTaxRatePercent(tenantId),
+    ]);
+    if (!branch)
+      throw new NotFoundException("Branch was not found for this business");
+    if (dto.customerId) {
+      const customer = await this.prisma.customer.findFirst({
+        where: { id: dto.customerId, tenantId },
+        select: { id: true },
+      });
+      if (!customer)
+        throw new BadRequestException(
+          "Customer was not found for this business",
+        );
+    }
+
+    const productIds = dto.items.map((item) => item.productId);
+    if (new Set(productIds).size !== productIds.length) {
+      throw new BadRequestException(
+        "Combine duplicate cart lines before payment",
+      );
+    }
+    const now = new Date();
+    const products = await this.prisma.product.findMany({
+      where: { tenantId, id: { in: productIds }, isActive: true },
+      include: {
+        priceOverrides: {
+          where: {
+            branchId: dto.branchId,
+            isActive: true,
+            AND: [
+              { OR: [{ startDate: null }, { startDate: { lte: now } }] },
+              { OR: [{ endDate: null }, { endDate: { gte: now } }] },
+            ],
+          },
+        },
+        stock: { where: { branchId: dto.branchId } },
+        pricingTiers: true,
+      },
+    });
+    if (products.length !== productIds.length) {
+      throw new BadRequestException("A product in this cart is unavailable");
+    }
+    await this.assertOnlineSalePricing(userId, tenantId, dto, products);
+
+    let subtotal = 0;
+    const items = dto.items.map((item) => {
+      const product = products.find((entry) => entry.id === item.productId)!;
+      if (!product.allowFractions && !Number.isInteger(item.quantity)) {
+        throw new BadRequestException(
+          `${product.name} is sold in whole units. Update its product settings before selling a fraction.`,
+        );
+      }
+      if (
+        product.trackInventory &&
+        Number(product.stock[0]?.quantity ?? 0) < item.quantity
+      ) {
+        throw new ConflictException(`${product.name} is out of stock`);
+      }
+      const unitPrice =
+        item.unitPrice ??
+        this.catalogUnitPrice(product, item.unit, item.quantityPerUnit);
+      const line = unitPrice * item.quantity - (item.discount ?? 0);
+      if (!Number.isFinite(line) || line < 0) {
+        throw new BadRequestException("Item discount exceeds its price");
+      }
+      subtotal += line;
+      return { ...item, unitPrice };
+    });
+    const discountAmount = dto.discountAmount ?? 0;
+    if (
+      !Number.isFinite(discountAmount) ||
+      discountAmount < 0 ||
+      discountAmount > subtotal
+    ) {
+      throw new BadRequestException("Sale discount exceeds the cart subtotal");
+    }
+    const taxableSubtotal = subtotal - discountAmount;
+    const tax =
+      Math.round(
+        ((taxableSubtotal * taxRatePercent) / 100) * 100 + Number.EPSILON,
+      ) / 100;
+    const amount =
+      Math.round((taxableSubtotal + tax) * 100 + Number.EPSILON) / 100;
+    if (amount < 3 || amount > 9_999_999) {
+      throw new BadRequestException(
+        "Sale amount is outside supported Paystack limits",
+      );
+    }
+    if (this.accountability) {
+      let couponDiscount = 0;
+      let couponProductIds: string[] = [];
+      if (dto.couponCode?.trim() && this.coupons) {
+        const checked = await this.coupons.assessForSale({
+          tenantId,
+          code: dto.couponCode.trim(),
+          customerId: dto.customerId,
+          lines: items.map((item) => ({
+            productId: item.productId,
+            amount: item.unitPrice! * item.quantity - (item.discount ?? 0),
+          })),
+        });
+        if (!checked.verdict.ok)
+          throw new BadRequestException(checked.verdict.message);
+        couponDiscount = Math.min(checked.verdict.discount, discountAmount);
+        couponProductIds = checked.productIds;
+      }
+      const couponShares =
+        couponDiscount > 0
+          ? spreadCouponDiscount(
+              items.map((item) => ({
+                productId: item.productId,
+                amount: item.unitPrice! * item.quantity - (item.discount ?? 0),
+              })),
+              couponProductIds,
+              couponDiscount,
+            )
+          : [];
+      const assessment = await this.accountability.assessSale({
+        userId,
+        tenantId,
+        branchId: dto.branchId,
+        customerId: dto.customerId,
+        overallDiscount: Math.max(discountAmount - couponDiscount, 0),
+        creditAmount: 0,
+        enforce: true,
+        lines: items.map((item, index) => {
+          const product = products.find(
+            (entry) => entry.id === item.productId,
+          )!;
+          return {
+            productId: item.productId,
+            name: product.name,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice!,
+            discount: item.discount ?? 0,
+            approvedDiscount: couponShares[index] ?? 0,
+            costPrice:
+              product.costPrice == null ? null : Number(product.costPrice),
+            minPrice:
+              product.minPrice == null ? null : Number(product.minPrice),
+          };
+        }),
+      });
+      if (assessment.blocked) this.accountability.refuse(assessment.violations);
+    }
+    return {
+      amount,
+      taxRatePercent,
+      sale: { ...dto, items, paidAmount: amount },
+    };
+  }
+
+  private async getBusinessTaxRatePercent(tenantId: string): Promise<number> {
+    if (!this.prisma.tenant?.findUnique) return 0;
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { settings: true },
+    });
+    // A valid branch implies its tenant exists; a missing tenant here also
+    // covers lightweight service callers that omit this optional model.
+    if (!tenant) return 0;
+    const settings = tenant.settings;
+    const rawRate =
+      settings && typeof settings === "object" && !Array.isArray(settings)
+        ? (settings as Record<string, unknown>).taxRatePercent
+        : undefined;
+    return rawRate == null ? 0 : this.normalizeTaxRatePercent(rawRate);
+  }
+
+  private normalizeTaxRatePercent(value: unknown): number {
+    const rate = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+      throw new BadRequestException(
+        "The business tax rate is invalid. Ask an admin to correct it before taking payment.",
+      );
+    }
+    return rate;
+  }
+
+  private async assertOnlineSalePricing(
+    userId: string,
+    tenantId: string,
+    dto: CreateSaleDto,
+    products: any[],
+  ): Promise<void> {
+    const [canOverridePrice, canDiscount] = await Promise.all([
+      this.accountability?.userHas(userId, "sales.price_override") ??
+        Promise.resolve(false),
+      this.accountability?.userHas(userId, "sales.discount") ??
+        Promise.resolve(false),
+    ]);
+
+    let gross = 0;
+    let manualDiscount = 0;
+    for (const item of dto.items) {
+      const product = products.find((entry) => entry.id === item.productId);
+      if (!product)
+        throw new BadRequestException("A product in this cart is unavailable");
+      const catalogPrice = this.catalogUnitPrice(
+        product,
+        item.unit,
+        item.quantityPerUnit,
+      );
+      const submittedPrice = item.unitPrice ?? catalogPrice;
+      if (!Number.isFinite(submittedPrice) || submittedPrice < 0) {
+        throw new BadRequestException("Enter a valid item price");
+      }
+      if (
+        !canOverridePrice &&
+        Math.round(submittedPrice * 100_000_000) !==
+          Math.round(catalogPrice * 100_000_000)
+      ) {
+        throw new ForbiddenException(
+          `${product.name} has a different catalog price. Ask a supervisor to approve a price change.`,
+        );
+      }
+      const lineGross = submittedPrice * item.quantity;
+      const lineDiscount = item.discount ?? 0;
+      if (
+        !Number.isFinite(lineGross) ||
+        !Number.isFinite(lineDiscount) ||
+        lineDiscount < 0 ||
+        lineDiscount > lineGross
+      ) {
+        throw new BadRequestException(
+          `${product.name} has an invalid discount`,
+        );
+      }
+      gross += lineGross;
+      manualDiscount += lineDiscount;
+    }
+
+    const saleDiscount = dto.discountAmount ?? 0;
+    if (
+      !Number.isFinite(saleDiscount) ||
+      saleDiscount < 0 ||
+      saleDiscount > gross - manualDiscount
+    ) {
+      throw new BadRequestException(
+        "Sale discount exceeds the remaining cart total",
+      );
+    }
+
+    let approvedCouponDiscount = 0;
+    if (dto.couponCode?.trim()) {
+      if (!this.coupons) {
+        throw new BadRequestException(
+          "Coupon verification is unavailable. Remove the coupon and retry.",
+        );
+      }
+      const checked = await this.coupons.assessForSale({
+        tenantId,
+        code: dto.couponCode.trim(),
+        customerId: dto.customerId,
+        lines: dto.items.map((item) => ({
+          productId: item.productId,
+          amount:
+            (item.unitPrice ??
+              this.catalogUnitPrice(
+                products.find((entry) => entry.id === item.productId),
+                item.unit,
+                item.quantityPerUnit,
+              )) *
+              item.quantity -
+            (item.discount ?? 0),
+        })),
+      });
+      if (!checked.verdict.ok)
+        throw new BadRequestException(checked.verdict.message);
+      approvedCouponDiscount = Math.min(checked.verdict.discount, saleDiscount);
+    }
+    manualDiscount += saleDiscount - approvedCouponDiscount;
+
+    if (manualDiscount <= 0 || canDiscount) return;
+    if (!this.accountability) {
+      throw new ForbiddenException(
+        "Discount rules could not be verified. Ask a supervisor for approval.",
+      );
+    }
+    const settings = await this.accountability.getSettings(tenantId);
+    if (settings.priceGuard.mode === "OFF") return;
+    const percent = gross > 0 ? (manualDiscount / gross) * 100 : 0;
+    if (percent > settings.priceGuard.maxCashierDiscountPercent + 0.000001) {
+      throw new ForbiddenException(
+        `Discount is over the ${settings.priceGuard.maxCashierDiscountPercent}% cashier limit. Ask a supervisor for approval.`,
+      );
+    }
+  }
+
+  private catalogUnitPrice(
+    product: any,
+    unit?: string | null,
+    quantityPerUnit?: number | null,
+  ): number {
+    const baseUnit = String(product.unit ?? "")
+      .trim()
+      .toLowerCase();
+    const selectedUnit = String(unit ?? "")
+      .trim()
+      .toLowerCase();
+    const conversion = quantityPerUnit == null ? null : Number(quantityPerUnit);
+    if (
+      conversion != null &&
+      (!Number.isFinite(conversion) || conversion <= 0)
+    ) {
+      throw new BadRequestException("Select a valid product sale unit");
+    }
+    if (!selectedUnit || selectedUnit === baseUnit) {
+      if (conversion != null && Math.abs(conversion - 1) > 0.000001) {
+        throw new BadRequestException(
+          "The selected product unit does not match its conversion",
+        );
+      }
+      return Number(product.priceOverrides?.[0]?.price ?? product.basePrice);
+    }
+    const tier = (product.pricingTiers ?? []).find(
+      (entry: any) => String(entry.unit).trim().toLowerCase() === selectedUnit,
+    );
+    if (!tier)
+      throw new BadRequestException(
+        `${product.name} is not configured for sale by ${unit}`,
+      );
+    const tierConversion = Number(tier.quantityPerUnit);
+    if (
+      conversion != null &&
+      Math.abs(conversion - tierConversion) > 0.000001
+    ) {
+      throw new BadRequestException(
+        "The selected product unit does not match its conversion",
+      );
+    }
+    // Keep enough precision per base unit for the line total to reproduce the
+    // configured bulk-tier price (e.g. KES 100 / 3 units).
+    return Number((Number(tier.price) / tierConversion).toFixed(8));
+  }
+
+  /**
    * Turns the `startDate`/`endDate` query values into a `createdAt` filter.
    *
    * Clients send plain calendar dates ("2026-10-13"). `new Date("2026-10-13")` is
@@ -711,8 +1226,12 @@ export class SalesService {
     if (!startDate && !endDate) return undefined;
     const dateOnly = /^\d{4}-\d{2}-\d{2}$/;
 
-    let timezone = 'Africa/Nairobi';
-    if (branchId && ((startDate && dateOnly.test(startDate)) || (endDate && dateOnly.test(endDate)))) {
+    let timezone = "Africa/Nairobi";
+    if (
+      branchId &&
+      ((startDate && dateOnly.test(startDate)) ||
+        (endDate && dateOnly.test(endDate)))
+    ) {
       const branch = await this.prisma.branch.findFirst({
         where: { id: branchId, tenantId },
         select: { timezone: true },
@@ -735,7 +1254,16 @@ export class SalesService {
   }
 
   async getSales(tenantId: string, query: SalesQueryDto) {
-    const { branchId, userId, status, paymentMethod, startDate, endDate, page = 1, limit = 50 } = query;
+    const {
+      branchId,
+      userId,
+      status,
+      paymentMethod,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 50,
+    } = query;
     const skip = (page - 1) * limit;
 
     const where: any = {
@@ -747,7 +1275,12 @@ export class SalesService {
     if (status) where.status = status;
     if (paymentMethod) where.paymentMethod = paymentMethod;
 
-    const createdAt = await this.resolveCreatedAtRange(tenantId, branchId, startDate, endDate);
+    const createdAt = await this.resolveCreatedAtRange(
+      tenantId,
+      branchId,
+      startDate,
+      endDate,
+    );
     if (createdAt) where.createdAt = createdAt;
 
     const [sales, total] = await Promise.all([
@@ -758,7 +1291,7 @@ export class SalesService {
           user: { select: { firstName: true, lastName: true } },
           customer: { select: { name: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         skip,
         take: limit,
       }),
@@ -806,7 +1339,9 @@ export class SalesService {
             product: { select: { sku: true } },
           },
         },
-        branch: { select: { name: true, code: true, address: true, phone: true } },
+        branch: {
+          select: { name: true, code: true, address: true, phone: true },
+        },
         user: { select: { firstName: true, lastName: true } },
         customer: { select: { name: true, phone: true } },
         payments: true,
@@ -817,7 +1352,7 @@ export class SalesService {
     });
 
     if (!sale) {
-      throw new NotFoundException('Sale not found');
+      throw new NotFoundException("Sale not found");
     }
 
     return this.formatSale(sale, true);
@@ -832,7 +1367,9 @@ export class SalesService {
       },
       include: {
         items: true,
-        branch: { select: { name: true, code: true, address: true, phone: true } },
+        branch: {
+          select: { name: true, code: true, address: true, phone: true },
+        },
         user: { select: { firstName: true, lastName: true } },
         customer: { select: { name: true, phone: true } },
         payments: true,
@@ -840,13 +1377,18 @@ export class SalesService {
     });
 
     if (!sale) {
-      throw new NotFoundException('Receipt not found');
+      throw new NotFoundException("Receipt not found");
     }
 
     return this.formatSale(sale, true);
   }
 
-  async voidSale(saleId: string, userId: string, tenantId: string, reason: string) {
+  async voidSale(
+    saleId: string,
+    userId: string,
+    tenantId: string,
+    reason: string,
+  ) {
     const sale = await this.prisma.sale.findFirst({
       where: {
         id: saleId,
@@ -856,7 +1398,7 @@ export class SalesService {
     });
 
     if (!sale) {
-      throw new NotFoundException('Sale not found');
+      throw new NotFoundException("Sale not found");
     }
 
     // A repeated request is a safe retry (for example after the app lost the
@@ -864,149 +1406,152 @@ export class SalesService {
     if (sale.status === SaleStatus.VOIDED) return sale;
 
     if (sale.status !== SaleStatus.COMPLETED) {
-      throw new BadRequestException('Only completed sales can be voided');
+      throw new BadRequestException("Only completed sales can be voided");
     }
 
     // Void sale and restore stock
-    const outcome = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.$queryRaw`
+    const outcome = await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        await tx.$queryRaw`
         SELECT id FROM sales WHERE id = ${saleId} FOR UPDATE
       `;
-      const lockedSale = await tx.sale.findUnique({
-        where: { id: saleId },
-        include: { items: true, payments: true },
-      });
-      if (!lockedSale) {
-        throw new NotFoundException('Sale not found');
-      }
-      if (lockedSale.status === SaleStatus.VOIDED) {
-        return { sale: lockedSale, didVoid: false };
-      }
-      if (lockedSale.status !== SaleStatus.COMPLETED) {
-        throw new BadRequestException('Only completed sales can be voided');
-      }
+        const lockedSale = await tx.sale.findUnique({
+          where: { id: saleId },
+          include: { items: true, payments: true },
+        });
+        if (!lockedSale) {
+          throw new NotFoundException("Sale not found");
+        }
+        if (lockedSale.status === SaleStatus.VOIDED) {
+          return { sale: lockedSale, didVoid: false };
+        }
+        if (lockedSale.status !== SaleStatus.COMPLETED) {
+          throw new BadRequestException("Only completed sales can be voided");
+        }
 
-      // A credit sale's receivable is part of the sale's financial record.
-      // Close an untouched receivable with the void. If any amount has already
-      // been collected (or an M-Pesa request is pending), stop and require that
-      // money to be reconciled first instead of erasing a real customer debt.
-      const receivableRows = await tx.$queryRaw<Array<{ id: string }>>`
+        // A credit sale's receivable is part of the sale's financial record.
+        // Close an untouched receivable with the void. If any amount has already
+        // been collected (or an M-Pesa request is pending), stop and require that
+        // money to be reconciled first instead of erasing a real customer debt.
+        const receivableRows = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id FROM retail_receivables WHERE "saleId" = ${saleId} FOR UPDATE
       `;
-      if (receivableRows.length > 0) {
-        const receivableId = receivableRows[0].id;
-        const lockKey = `merchant-receivable:${tenantId}:retail:${receivableId}`;
-        await tx.$queryRaw`
+        if (receivableRows.length > 0) {
+          const receivableId = receivableRows[0].id;
+          const lockKey = `merchant-receivable:${tenantId}:retail:${receivableId}`;
+          await tx.$queryRaw`
           SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
         `;
-        const receivable = await tx.retailReceivable.findUnique({
-          where: { id: receivableId },
-          include: { payments: { select: { id: true } } },
-        });
-        if (!receivable) throw new NotFoundException('Sale receivable not found');
-        const hasCollectedAmount =
-          receivable.payments.length > 0 ||
-          receivable.status !== ReceivableStatus.OPEN ||
-          !receivable.outstandingAmount.equals(receivable.originalAmount);
-        const pendingCharge = await tx.merchantCharge.count({
-          where: {
-            tenantId,
-            purpose: 'RECEIVABLE',
-            receivableType: 'retail',
-            receivableId,
-            status: { in: ['PENDING', 'SETTLING', 'NEEDS_REVIEW'] },
-          },
-        });
-        if (hasCollectedAmount || pendingCharge > 0) {
-          throw new ConflictException(
-            pendingCharge > 0
-              ? 'This sale has an M-Pesa debt payment in progress. Resolve it before voiding the sale.'
-              : 'This sale has collected debt payments. Refund or reconcile them before voiding the sale.',
-          );
-        }
-        await tx.retailReceivable.update({
-          where: { id: receivableId },
-          data: { status: ReceivableStatus.VOIDED, outstandingAmount: 0 },
-        });
-      }
-
-      const voidedSale = await tx.sale.update({
-        where: { id: saleId },
-        data: {
-          status: SaleStatus.VOIDED,
-          notes: `${lockedSale.notes || ''}\nVOIDED: ${reason}`,
-          metadata: {
-            ...((lockedSale.metadata as object) || {}),
-            voidedBy: userId,
-            voidedAt: new Date().toISOString(),
-            voidReason: reason,
-          },
-        },
-      });
-
-      // Restore stock
-      for (const item of [...lockedSale.items].sort((a, b) =>
-        a.productId.localeCompare(b.productId),
-      )) {
-        const stock = await lockStockForUpdate(
-          tx,
-          lockedSale.branchId,
-          item.productId,
-        );
-
-        if (stock) {
-          const previousQty = Number(stock.quantity);
-          const newQty = previousQty + Number(item.quantity);
-
-          await tx.stock.update({
-            where: { id: stock.id },
-            data: { quantity: newQty },
+          const receivable = await tx.retailReceivable.findUnique({
+            where: { id: receivableId },
+            include: { payments: { select: { id: true } } },
           });
-
-          await tx.stockMovement.create({
-            data: {
-              branchId: sale.branchId,
-              productId: item.productId,
-              type: StockMovementType.RETURN,
-              quantity: Number(item.quantity),
-              previousQty,
-              newQty,
-              reference: saleId,
-              notes: `Void: ${reason}`,
-              createdById: userId,
+          if (!receivable)
+            throw new NotFoundException("Sale receivable not found");
+          const hasCollectedAmount =
+            receivable.payments.length > 0 ||
+            receivable.status !== ReceivableStatus.OPEN ||
+            !receivable.outstandingAmount.equals(receivable.originalAmount);
+          const pendingCharge = await tx.merchantCharge.count({
+            where: {
+              tenantId,
+              purpose: "RECEIVABLE",
+              receivableType: "retail",
+              receivableId,
+              status: { in: ["PENDING", "SETTLING", "NEEDS_REVIEW"] },
             },
           });
+          if (hasCollectedAmount || pendingCharge > 0) {
+            throw new ConflictException(
+              pendingCharge > 0
+                ? "This sale has an M-Pesa debt payment in progress. Resolve it before voiding the sale."
+                : "This sale has collected debt payments. Refund or reconcile them before voiding the sale.",
+            );
+          }
+          await tx.retailReceivable.update({
+            where: { id: receivableId },
+            data: { status: ReceivableStatus.VOIDED, outstandingAmount: 0 },
+          });
         }
-      }
 
-      // Reverse the cash that was originally logged in, so a voided cash sale
-      // doesn't keep inflating "available cash to restock." Same tx as the
-      // status flip: a crash can't leave a voided sale with its cash still
-      // counted in the till (or an un-voided sale with cash removed).
-      const cashReceived =
-        lockedSale.paymentMethod === PaymentMethod.CASH
-          ? Number(lockedSale.paidAmount) - Number(lockedSale.changeAmount)
-          : lockedSale.paymentMethod === PaymentMethod.SPLIT
-            ? lockedSale.payments
-                .filter((payment) => payment.method === PaymentMethod.CASH)
-                .reduce((sum, payment) => sum + Number(payment.amount), 0) -
-              Number(lockedSale.changeAmount)
-            : 0;
-      if (cashReceived > 0) {
-        await this.cashFlowService.recordEntry({
-          tx,
-          branchId: sale.branchId,
-          type: CashEntryType.SALE_CASH_IN,
-          amount: -cashReceived,
-          referenceType: 'sale',
-          referenceId: sale.id,
-          note: `Voided: ${reason}`,
-          createdById: userId,
+        const voidedSale = await tx.sale.update({
+          where: { id: saleId },
+          data: {
+            status: SaleStatus.VOIDED,
+            notes: `${lockedSale.notes || ""}\nVOIDED: ${reason}`,
+            metadata: {
+              ...((lockedSale.metadata as object) || {}),
+              voidedBy: userId,
+              voidedAt: new Date().toISOString(),
+              voidReason: reason,
+            },
+          },
         });
-      }
 
-      return { sale: voidedSale, didVoid: true };
-    });
+        // Restore stock
+        for (const item of [...lockedSale.items].sort((a, b) =>
+          a.productId.localeCompare(b.productId),
+        )) {
+          const stock = await lockStockForUpdate(
+            tx,
+            lockedSale.branchId,
+            item.productId,
+          );
+
+          if (stock) {
+            const previousQty = Number(stock.quantity);
+            const newQty = previousQty + Number(item.quantity);
+
+            await tx.stock.update({
+              where: { id: stock.id },
+              data: { quantity: newQty },
+            });
+
+            await tx.stockMovement.create({
+              data: {
+                branchId: sale.branchId,
+                productId: item.productId,
+                type: StockMovementType.RETURN,
+                quantity: Number(item.quantity),
+                previousQty,
+                newQty,
+                reference: saleId,
+                notes: `Void: ${reason}`,
+                createdById: userId,
+              },
+            });
+          }
+        }
+
+        // Reverse the cash that was originally logged in, so a voided cash sale
+        // doesn't keep inflating "available cash to restock." Same tx as the
+        // status flip: a crash can't leave a voided sale with its cash still
+        // counted in the till (or an un-voided sale with cash removed).
+        const cashReceived =
+          lockedSale.paymentMethod === PaymentMethod.CASH
+            ? Number(lockedSale.paidAmount) - Number(lockedSale.changeAmount)
+            : lockedSale.paymentMethod === PaymentMethod.SPLIT
+              ? lockedSale.payments
+                  .filter((payment) => payment.method === PaymentMethod.CASH)
+                  .reduce((sum, payment) => sum + Number(payment.amount), 0) -
+                Number(lockedSale.changeAmount)
+              : 0;
+        if (cashReceived > 0) {
+          await this.cashFlowService.recordEntry({
+            tx,
+            branchId: sale.branchId,
+            type: CashEntryType.SALE_CASH_IN,
+            amount: -cashReceived,
+            referenceType: "sale",
+            referenceId: sale.id,
+            note: `Voided: ${reason}`,
+            createdById: userId,
+          });
+        }
+
+        return { sale: voidedSale, didVoid: true };
+      },
+    );
 
     const voided = outcome.sale;
     if (!outcome.didVoid) return voided;
@@ -1022,7 +1567,14 @@ export class SalesService {
    * it is HIGH when it is large or happens after the day was already closed.
    */
   private async recordVoid(
-    sale: { id: string; branchId: string; receiptNumber: string; totalAmount: unknown; createdAt: Date; paymentMethod: PaymentMethod },
+    sale: {
+      id: string;
+      branchId: string;
+      receiptNumber: string;
+      totalAmount: unknown;
+      createdAt: Date;
+      paymentMethod: PaymentMethod;
+    },
     userId: string,
     tenantId: string,
     reason: string,
@@ -1042,26 +1594,32 @@ export class SalesService {
         where: { branchId: sale.branchId, date: createdDay },
         select: { id: true },
       });
-      const severity = closed ? 'HIGH' : severityForAmount(amount, settings.alerts.voidAlertAmount);
+      const severity = closed
+        ? "HIGH"
+        : severityForAmount(amount, settings.alerts.voidAlertAmount);
       const actor = await this.accountability.actorName(userId);
 
       await this.accountability.record({
         userId,
-        action: 'SALE_VOIDED',
-        entityType: 'Sale',
+        action: "SALE_VOIDED",
+        entityType: "Sale",
         entityId: sale.id,
-        oldValues: { status: 'COMPLETED', totalAmount: amount, paymentMethod: sale.paymentMethod },
-        newValues: { status: 'VOIDED', reason },
+        oldValues: {
+          status: "COMPLETED",
+          totalAmount: amount,
+          paymentMethod: sale.paymentMethod,
+        },
+        newValues: { status: "VOIDED", reason },
       });
       await this.accountability.raise({
         tenantId,
         branchId: sale.branchId,
-        type: 'VOID',
+        type: "VOID",
         severity,
-        title: closed ? 'Sale voided after day close' : 'Sale voided',
-        body: `${actor} voided receipt ${sale.receiptNumber} (KES ${Math.round(amount).toLocaleString('en-KE')}, ${sale.paymentMethod}). Reason: ${reason || 'none given'}`,
+        title: closed ? "Sale voided after day close" : "Sale voided",
+        body: `${actor} voided receipt ${sale.receiptNumber} (KES ${Math.round(amount).toLocaleString("en-KE")}, ${sale.paymentMethod}). Reason: ${reason || "none given"}`,
         actorUserId: userId,
-        entityType: 'Sale',
+        entityType: "Sale",
         entityId: sale.id,
         data: { amount, reason, afterDayClose: !!closed },
       });
@@ -1080,11 +1638,11 @@ export class SalesService {
     });
 
     if (!sale) {
-      throw new NotFoundException('Sale not found');
+      throw new NotFoundException("Sale not found");
     }
 
     if (sale.status === SaleStatus.VOIDED) {
-      throw new BadRequestException('Cannot refund a voided sale');
+      throw new BadRequestException("Cannot refund a voided sale");
     }
 
     // Create refund
@@ -1097,7 +1655,7 @@ export class SalesService {
         include: { items: true, refunds: { include: { items: true } } },
       });
       if (!lockedSale || lockedSale.status === SaleStatus.VOIDED) {
-        throw new BadRequestException('Cannot refund a voided sale');
+        throw new BadRequestException("Cannot refund a voided sale");
       }
 
       let lockedRefundAmount = 0;
@@ -1139,7 +1697,7 @@ export class SalesService {
           saleId: dto.saleId,
           amount: lockedRefundAmount,
           reason: dto.reason,
-          status: 'completed',
+          status: "completed",
           processedById: userId,
           processedAt: new Date(),
           items: {
@@ -1195,9 +1753,10 @@ export class SalesService {
       const totalRefunded =
         lockedSale.refunds.reduce((sum, r) => sum + Number(r.amount), 0) +
         lockedRefundAmount;
-      const newStatus = totalRefunded >= Number(lockedSale.totalAmount)
-        ? SaleStatus.REFUNDED
-        : SaleStatus.PARTIAL_REFUND;
+      const newStatus =
+        totalRefunded >= Number(lockedSale.totalAmount)
+          ? SaleStatus.REFUNDED
+          : SaleStatus.PARTIAL_REFUND;
 
       await tx.sale.update({
         where: { id: dto.saleId },
@@ -1226,20 +1785,20 @@ export class SalesService {
       const actor = await this.accountability.actorName(userId);
       await this.accountability.record({
         userId,
-        action: 'SALE_REFUNDED',
-        entityType: 'Sale',
+        action: "SALE_REFUNDED",
+        entityType: "Sale",
         entityId: sale.id,
         newValues: { refundId: refund.id, amount, reason },
       });
       await this.accountability.raise({
         tenantId,
         branchId: sale.branchId,
-        type: 'REFUND',
+        type: "REFUND",
         severity: severityForAmount(amount, settings.alerts.refundAlertAmount),
-        title: 'Refund given',
-        body: `${actor} refunded KES ${Math.round(amount).toLocaleString('en-KE')} on receipt ${sale.receiptNumber}. Reason: ${reason || 'none given'}`,
+        title: "Refund given",
+        body: `${actor} refunded KES ${Math.round(amount).toLocaleString("en-KE")} on receipt ${sale.receiptNumber}. Reason: ${reason || "none given"}`,
         actorUserId: userId,
-        entityType: 'Sale',
+        entityType: "Sale",
         entityId: sale.id,
         data: { amount, reason, refundId: refund.id },
       });
@@ -1255,7 +1814,7 @@ export class SalesService {
     });
     const { start: startOfDay, end: endOfDay } = getDayBoundsInTimezone(
       date,
-      branch?.timezone ?? 'Africa/Nairobi',
+      branch?.timezone ?? "Africa/Nairobi",
     );
 
     const [sales, refunds] = await Promise.all([
@@ -1264,6 +1823,21 @@ export class SalesService {
           branchId,
           branch: { tenantId },
           createdAt: { gte: startOfDay, lte: endOfDay },
+          // Keep voided and otherwise non-completed records visible in the
+          // daily summary. Only completed M-Pesa revenue needs provider proof.
+          OR: [
+            { status: { not: SaleStatus.COMPLETED } },
+            { paymentMethod: { not: PaymentMethod.MPESA } },
+            {
+              paymentMethod: PaymentMethod.MPESA,
+              payments: {
+                some: {
+                  method: PaymentMethod.MPESA,
+                  status: PaymentStatus.COMPLETED,
+                },
+              },
+            },
+          ],
         },
       }),
       this.prisma.refund.findMany({
@@ -1277,11 +1851,15 @@ export class SalesService {
       }),
     ]);
 
-    const completedSales = sales.filter((s) => s.status === SaleStatus.COMPLETED);
+    const completedSales = sales.filter(
+      (s) => s.status === SaleStatus.COMPLETED,
+    );
     const voidedSales = sales.filter((s) => s.status === SaleStatus.VOIDED);
 
     // Calculate credit sales and outstanding balances
-    const creditSales = completedSales.filter((s) => s.paymentMethod === PaymentMethod.CREDIT);
+    const creditSales = completedSales.filter(
+      (s) => s.paymentMethod === PaymentMethod.CREDIT,
+    );
     const totalOutstanding = creditSales.reduce((sum, s) => {
       const outstanding = (s.metadata as any)?.outstandingBalance ?? 0;
       return sum + Number(outstanding);
@@ -1289,10 +1867,16 @@ export class SalesService {
 
     return {
       date,
-      totalSales: completedSales.reduce((sum, s) => sum + Number(s.totalAmount), 0),
+      totalSales: completedSales.reduce(
+        (sum, s) => sum + Number(s.totalAmount),
+        0,
+      ),
       totalTransactions: completedSales.length,
       totalTax: completedSales.reduce((sum, s) => sum + Number(s.taxAmount), 0),
-      totalDiscount: completedSales.reduce((sum, s) => sum + Number(s.discountAmount), 0),
+      totalDiscount: completedSales.reduce(
+        (sum, s) => sum + Number(s.discountAmount),
+        0,
+      ),
       cashSales: completedSales
         .filter((s) => s.paymentMethod === PaymentMethod.CASH)
         .reduce((sum, s) => sum + Number(s.totalAmount), 0),
@@ -1300,18 +1884,40 @@ export class SalesService {
         .filter((s) => s.paymentMethod === PaymentMethod.MPESA)
         .reduce((sum, s) => sum + Number(s.totalAmount), 0),
       cardSales: 0,
-      creditSales: creditSales.reduce((sum, s) => sum + Number(s.totalAmount), 0),
+      creditSales: creditSales.reduce(
+        (sum, s) => sum + Number(s.totalAmount),
+        0,
+      ),
       outstandingBalance: totalOutstanding,
       voidedCount: voidedSales.length,
       refundedAmount: refunds.reduce((sum, r) => sum + Number(r.amount), 0),
     };
   }
 
+  /** Current sales day as observed in the branch timezone, not the caller's device timezone. */
+  async getTodayDailySummary(branchId: string, tenantId: string) {
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: branchId, tenantId },
+      select: { timezone: true },
+    });
+    if (!branch) throw new NotFoundException("Branch not found");
+
+    const date = todayInTimezone(branch.timezone ?? "Africa/Nairobi");
+    return this.getDailySummary(branchId, date, tenantId);
+  }
+
   async getCreditSalesWithOutstandingBalance(
     tenantId: string,
     query: SalesQueryDto,
   ) {
-    const { branchId, userId, startDate, endDate, page = 1, limit = 50 } = query;
+    const {
+      branchId,
+      userId,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 50,
+    } = query;
     const skip = (page - 1) * limit;
 
     const where: any = {
@@ -1323,7 +1929,12 @@ export class SalesService {
     if (branchId) where.branchId = branchId;
     if (userId) where.userId = userId;
 
-    const createdAt = await this.resolveCreatedAtRange(tenantId, branchId, startDate, endDate);
+    const createdAt = await this.resolveCreatedAtRange(
+      tenantId,
+      branchId,
+      startDate,
+      endDate,
+    );
     if (createdAt) where.createdAt = createdAt;
 
     // Filter for sales with outstanding balance
@@ -1334,7 +1945,7 @@ export class SalesService {
         user: { select: { firstName: true, lastName: true } },
         customer: { select: { name: true, phone: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       skip,
       take: limit,
     });
@@ -1371,7 +1982,7 @@ export class SalesService {
       include: {
         customer: { select: { id: true, name: true, phone: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
 
     // Only sales that still have an outstanding balance
@@ -1381,7 +1992,7 @@ export class SalesService {
     });
 
     // Group by customerId; sales with no linked customer fall into a shared bucket.
-    const UNLINKED_KEY = 'unlinked';
+    const UNLINKED_KEY = "unlinked";
     const grouped = new Map<
       string,
       {
@@ -1395,7 +2006,9 @@ export class SalesService {
     >();
 
     for (const sale of salesWithOutstanding) {
-      const outstanding = Number((sale.metadata as any)?.outstandingBalance ?? 0);
+      const outstanding = Number(
+        (sale.metadata as any)?.outstandingBalance ?? 0,
+      );
       const key = sale.customerId ?? UNLINKED_KEY;
       const existing = grouped.get(key);
       if (existing) {
@@ -1407,7 +2020,7 @@ export class SalesService {
       } else {
         grouped.set(key, {
           customerId: sale.customerId ?? null,
-          customerName: sale.customer?.name ?? 'Walk-in / unlinked',
+          customerName: sale.customer?.name ?? "Walk-in / unlinked",
           phone: sale.customer?.phone ?? null,
           totalOutstanding: outstanding,
           creditSaleCount: 1,
@@ -1439,7 +2052,12 @@ export class SalesService {
     return results;
   }
 
-  async bulkVoidSales(userId: string, tenantId: string, ids: string[], reason: string) {
+  async bulkVoidSales(
+    userId: string,
+    tenantId: string,
+    ids: string[],
+    reason: string,
+  ) {
     const results: any[] = [];
     for (const saleId of ids) {
       const result = await this.voidSale(saleId, userId, tenantId, reason);
@@ -1450,38 +2068,59 @@ export class SalesService {
 
   // ==================== HELPERS ====================
 
-  private async generateReceiptNumber(branchId: string): Promise<string> {
-    const branch = await this.prisma.branch.findUnique({
-      where: { id: branchId },
-      select: { code: true, timezone: true },
-    });
-
-    const timezone = branch?.timezone ?? 'Africa/Nairobi';
+  private async generateReceiptNumber(
+    tx: Prisma.TransactionClient,
+    branchId: string,
+    branchCode: string | null | undefined,
+    branchTimezone: string | null | undefined,
+  ): Promise<string> {
+    const timezone = branchTimezone ?? "Africa/Nairobi";
     const todayStr = todayInTimezone(timezone);
-    const datePrefix = todayStr.replace(/-/g, '');
-    const prefix = `${branch?.code || 'POS'}-${datePrefix}`;
+    const datePrefix = todayStr.replace(/-/g, "");
+    const prefix = `${branchCode || "POS"}-${datePrefix}`;
 
-    // Get count for today
-    const key = `receipt:${prefix}`;
-    let count = await this.redisService.get(key);
-
-    if (!count) {
-      // Count from database
-      const { start: startOfDay } = getDayBoundsInTimezone(todayStr, timezone);
-
-      const existingCount = await this.prisma.sale.count({
-        where: {
-          branchId,
-          createdAt: { gte: startOfDay },
-        },
-      });
-      count = String(existingCount);
+    // Branch codes are only unique inside a tenant, while receipt numbers are
+    // globally unique. Lock by the actual receipt prefix so two shops that
+    // happen to use the same branch code cannot allocate the same number.
+    const transactionKey = `receipt-sequence:${prefix}`;
+    // Prisma transaction clients expose this method. Adapters without advisory
+    // locks still retain the unique-number collision check below.
+    const transactionClient = tx as Prisma.TransactionClient & {
+      $queryRaw?: any;
+    };
+    if (typeof transactionClient.$queryRaw === "function") {
+      await transactionClient.$queryRaw`
+        SELECT pg_advisory_xact_lock(hashtextextended(${transactionKey}, 0))
+      `;
     }
 
-    const newCount = parseInt(count, 10) + 1;
-    await this.redisService.set(key, String(newCount), 86400); // TTL 24 hours
+    const { start: startOfDay, end: endOfDay } = getDayBoundsInTimezone(
+      todayStr,
+      timezone,
+    );
+    const existingCount = await tx.sale.count({
+      where: {
+        branchId,
+        createdAt: { gte: startOfDay, lt: endOfDay },
+      },
+    });
+    let newCount = existingCount + 1;
 
-    return `${prefix}-${String(newCount).padStart(4, '0')}`;
+    // Failed transactions can leave gaps in the old Redis counter. Skip any
+    // receipt number already used instead of relying on a count to imply the
+    // highest suffix.
+    while (
+      await tx.sale.findUnique({
+        where: {
+          receiptNumber: `${prefix}-${String(newCount).padStart(4, "0")}`,
+        },
+        select: { id: true },
+      })
+    ) {
+      newCount++;
+    }
+
+    return `${prefix}-${String(newCount).padStart(4, "0")}`;
   }
 
   private formatSale(sale: any, includeItems = false) {
@@ -1491,7 +2130,9 @@ export class SalesService {
       branchId: sale.branchId,
       branchName: sale.branch?.name,
       userId: sale.userId,
-      userName: sale.user ? `${sale.user.firstName} ${sale.user.lastName}` : undefined,
+      userName: sale.user
+        ? `${sale.user.firstName} ${sale.user.lastName}`
+        : undefined,
       customerId: sale.customerId,
       customerName: sale.customer?.name,
       customerPhone: sale.customer?.phone,

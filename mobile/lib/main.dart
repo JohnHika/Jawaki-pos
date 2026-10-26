@@ -76,36 +76,6 @@ void main() async {
     );
     debugPrint('[main] Local server auto-start armed');
 
-    debugPrint('[main] Initializing background sync (non-blocking)...');
-    try {
-      await BackgroundSyncService.initialize()
-          .timeout(const Duration(seconds: 15));
-      debugPrint('[main] Background sync initialized successfully');
-    } catch (e, stackTrace) {
-      debugPrint('[main] Background sync init failed (non-critical): $e');
-      debugPrint('[main] Stack trace: $stackTrace');
-    }
-
-    debugPrint('[main] Initializing notifications (non-blocking)...');
-    try {
-      final notificationService = getIt<NotificationService>();
-      await notificationService
-          .initialize()
-          .timeout(const Duration(seconds: 15));
-      // Re-register the token on every cold start if the user already
-      // granted permission previously — FCM tokens can rotate, and this
-      // keeps the backend's copy fresh without asking again.
-      if (await notificationService.hasPermission()) {
-        await notificationService
-            .registerToken()
-            .timeout(const Duration(seconds: 10));
-      }
-      debugPrint('[main] Notifications initialized successfully');
-    } catch (e, stackTrace) {
-      debugPrint('[main] Notification init failed (non-critical): $e');
-      debugPrint('[main] Stack trace: $stackTrace');
-    }
-
     // Non-blocking and best-effort: if this device isn't logged in yet, or
     // the check fails offline, printing simply stays local-only until the
     // user opens the app and it's confirmed — never worth delaying launch.
@@ -134,6 +104,12 @@ void main() async {
         child: POSApp(),
       ),
     );
+    // Workmanager and Firebase plugin setup are useful after launch, but
+    // neither is needed to render the first screen. Start them after the
+    // first frame so a slow platform channel cannot hold the user on splash.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_initializeDeferredServices());
+    });
   } catch (e, stackTrace) {
     debugPrint('╔═══════════════════════════════════════════════════════════╗');
     debugPrint('║ CRITICAL INITIALIZATION ERROR                             ║');
@@ -148,6 +124,45 @@ void main() async {
         child: POSApp(),
       ),
     );
+  }
+}
+
+Future<void> _initializeDeferredServices() async {
+  await Future.wait([
+    _initializeBackgroundSync(),
+    _initializeNotifications(),
+  ]);
+}
+
+Future<void> _initializeBackgroundSync() async {
+  debugPrint('[main] Initializing background sync after first frame...');
+  try {
+    await BackgroundSyncService.initialize()
+        .timeout(const Duration(seconds: 15));
+    debugPrint('[main] Background sync initialized successfully');
+  } catch (e, stackTrace) {
+    debugPrint('[main] Background sync init failed (non-critical): $e');
+    debugPrint('[main] Stack trace: $stackTrace');
+  }
+}
+
+Future<void> _initializeNotifications() async {
+  debugPrint('[main] Initializing notifications after first frame...');
+  try {
+    final notificationService = getIt<NotificationService>();
+    await notificationService.initialize().timeout(const Duration(seconds: 15));
+    // Re-register the token on every cold start if the user already
+    // granted permission previously — FCM tokens can rotate, and this
+    // keeps the backend's copy fresh without asking again.
+    if (await notificationService.hasPermission()) {
+      await notificationService
+          .registerToken()
+          .timeout(const Duration(seconds: 10));
+    }
+    debugPrint('[main] Notifications initialized successfully');
+  } catch (e, stackTrace) {
+    debugPrint('[main] Notification init failed (non-critical): $e');
+    debugPrint('[main] Stack trace: $stackTrace');
   }
 }
 
@@ -221,8 +236,7 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
 
   void _openFromNotification(Map<String, dynamic> data) {
     if (!mounted) return;
-    final route =
-        routeForNotification((data['type'] ?? '').toString(), data);
+    final route = routeForNotification((data['type'] ?? '').toString(), data);
     try {
       ref.read(appRouterProvider).push(route);
     } catch (e) {
@@ -239,16 +253,31 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
   }
 
   /// The living app icon only changes as the app goes to the background, so the
-  /// launcher never redraws it under the user's thumb. A no-op unless the
-  /// owner switched it on in Settings.
+  /// launcher never redraws it under the user's thumb. It is enabled by
+  /// default and can be turned off in Settings.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.paused) return;
-    if (!getIt.isRegistered<AppIconService>()) return;
-    unawaited(getIt<AppIconService>().refresh().then<void>(
-      (_) {},
-      onError: (Object e) => debugPrint('[AppIcon] refresh failed: $e'),
-    ));
+    if (state == AppLifecycleState.paused) {
+      if (!getIt.isRegistered<AppIconService>()) return;
+      unawaited(getIt<AppIconService>().refresh().then<void>(
+            (_) {},
+            onError: (Object e) => debugPrint('[AppIcon] refresh failed: $e'),
+          ));
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed) {
+      // Let the lifecycle lock settle first. Refreshing tenant configuration
+      // while a session is being locked would waste a request and could delay
+      // the unlock route.
+      Future<void>.delayed(const Duration(milliseconds: 700), () {
+        if (!mounted || !getIt.isRegistered<AuthService>()) return;
+        final authService = getIt<AuthService>();
+        if (authService.isAuthenticated) {
+          unawaited(authService.refreshTenantSettings());
+        }
+      });
+    }
   }
 
   @override
@@ -300,31 +329,32 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
               systemNavigationBarContrastEnforced: false,
             ),
             child: AnimatedBuilder(
-            animation: updateService,
-            builder: (context, _) => MediaQuery(
-              data: MediaQuery.of(context)
-                  .copyWith(textScaler: TextScaler.noScaling),
-              child: FeatureAnnouncementHost(
-                service: featureService,
-                child: OptionalUpdatePromptHost(
-                  updateService: updateService,
-                  child: Stack(
-                    children: [
-                      child!,
-                      if (updateService.isSettlingAfterLogin &&
-                          !updateService.isForceUpdateRequired &&
-                          !updateService.isPostLoginUpdateRequired)
-                        const Positioned.fill(child: _LoginSettlingSplash()),
-                      if (updateService.isForceUpdateRequired ||
-                          updateService.isPostLoginUpdateRequired)
-                        Positioned.fill(
-                          child: ForcedUpdateGate(updateService: updateService),
-                        ),
-                    ],
+              animation: updateService,
+              builder: (context, _) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.noScaling),
+                child: FeatureAnnouncementHost(
+                  service: featureService,
+                  child: OptionalUpdatePromptHost(
+                    updateService: updateService,
+                    child: Stack(
+                      children: [
+                        child!,
+                        if (updateService.isSettlingAfterLogin &&
+                            !updateService.isForceUpdateRequired &&
+                            !updateService.isPostLoginUpdateRequired)
+                          const Positioned.fill(child: _LoginSettlingSplash()),
+                        if (updateService.isForceUpdateRequired ||
+                            updateService.isPostLoginUpdateRequired)
+                          Positioned.fill(
+                            child:
+                                ForcedUpdateGate(updateService: updateService),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
             ),
           );
         },

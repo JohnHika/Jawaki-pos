@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -6,6 +5,7 @@ import '../../../../core/services/stock_request_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/motion.dart';
 
 /// Stock Requests List Screen - For managers to view and approve stock requests
@@ -105,7 +105,8 @@ class _StockRequestsListScreenState
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return Scaffold(
       appBar: const BrandedAppBar(
@@ -261,10 +262,12 @@ class _StockRequestsListScreenState
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
-    final panelFill =
-        isDark ? DesignColors.darkSurface : DesignColors.surfaceBorder.withValues(alpha: 0.25);
+    final panelFill = isDark
+        ? DesignColors.darkSurface
+        : DesignColors.surfaceBorder.withValues(alpha: 0.25);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -274,205 +277,234 @@ class _StockRequestsListScreenState
           onTap: () => _showRequestDetails(request),
           child: Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
+            decoration: BoxDecoration(
+              color: surface,
+              border: Border.all(color: border),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+            ),
             child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header Row
-            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Priority Badge
-                _buildPriorityBadge(priority),
-                const SizedBox(width: 10),
+                // Header Row
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Priority Badge
+                    _buildPriorityBadge(priority),
+                    const SizedBox(width: 10),
 
-                // Product Info
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    // Product Info
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            productName,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: titleColor,
+                                ),
+                          ),
+                          if (productSku.isNotEmpty)
+                            Text(
+                              'SKU: $productSku',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(color: tertiaryColor),
+                            ),
+                        ],
+                      ),
+                    ),
+
+                    // Status Badge
+                    _buildStatusBadge(requestStatus),
+                  ],
+                ),
+
+                const SizedBox(height: 14),
+
+                // Quantity & Stock Info
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: panelFill,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
                     children: [
-                      Text(
-                        productName,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: titleColor,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Requested',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color: secondaryColor,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '$quantity $unit',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyLarge
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: titleColor,
+                                  ),
+                            ),
+                          ],
                         ),
                       ),
-                      if (productSku.isNotEmpty)
-                        Text(
-                          'SKU: $productSku',
-                          style: Theme.of(context).textTheme.labelSmall
-                              ?.copyWith(color: tertiaryColor),
+                      Container(width: 1, height: 44, color: border),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Current Stock',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color: secondaryColor,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '$currentStock $unit',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyLarge
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: currentStock == 0
+                                        ? DesignColors.error
+                                        : currentStock < quantity
+                                            ? DesignColors.warning
+                                            : DesignColors.success,
+                                  ),
+                            ),
+                          ],
                         ),
+                      ),
                     ],
                   ),
                 ),
 
-                // Status Badge
-                _buildStatusBadge(requestStatus),
-              ],
-            ),
-
-            const SizedBox(height: 14),
-
-            // Quantity & Stock Info
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: panelFill,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Requested',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: secondaryColor,
-                              fontWeight: FontWeight.w500,
-                          ),
+                if (reason != null && reason.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    reason,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: secondaryColor,
+                          fontStyle: FontStyle.italic,
+                          height: 1.3,
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '$quantity $unit',
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: titleColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(width: 1, height: 44, color: border),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Current Stock',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: secondaryColor,
-                              fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '$currentStock $unit',
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: currentStock == 0
-                              ? DesignColors.error
-                              : currentStock < quantity
-                              ? DesignColors.warning
-                              : DesignColors.success,
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                 ],
-              ),
-            ),
 
-            if (reason != null && reason.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(
-                reason,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: secondaryColor,
-                    fontStyle: FontStyle.italic,
-                    height: 1.3,
-                ),
-              ),
-            ],
+                const SizedBox(height: 12),
 
-            const SizedBox(height: 12),
-
-            // Footer Row
-            Row(
-              children: [
-                Icon(Icons.person_outline_rounded, size: 14, color: tertiaryColor),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    requesterName,
-                    style: Theme.of(context).textTheme.labelSmall
-                        ?.copyWith(color: tertiaryColor),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Icon(Icons.store_outlined, size: 14, color: tertiaryColor),
-                const SizedBox(width: 4),
-                Text(branchName,
-                    style: Theme.of(context).textTheme.labelSmall
-                        ?.copyWith(color: tertiaryColor)),
-                const SizedBox(width: 12),
-                Icon(Icons.access_time_rounded, size: 14, color: tertiaryColor),
-                const SizedBox(width: 4),
-                Text(_formatDate(createdAt),
-                    style: Theme.of(context).textTheme.labelSmall
-                        ?.copyWith(color: tertiaryColor)),
-              ],
-            ),
-
-            // Action Buttons for Pending Requests
-            if (requestStatus == 'PENDING') ...[
-              const SizedBox(height: DesignSpacing.lg + 2),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _rejectRequest(id),
-                      icon: const Icon(Icons.close_rounded, size: 18),
-                      label: const Text('Reject'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: DesignColors.error,
-                        side: const BorderSide(color: DesignColors.error),
-                        shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(DesignSpacing.radiusMd),
-                        ),
-                        // >=44px tap target.
-                        minimumSize: const Size(64, DesignSpacing.xl + 24),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                // Footer Row
+                Row(
+                  children: [
+                    Icon(Icons.person_outline_rounded,
+                        size: 14, color: tertiaryColor),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        requesterName,
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelSmall
+                            ?.copyWith(color: tertiaryColor),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    const SizedBox(width: 12),
+                    Icon(Icons.store_outlined, size: 14, color: tertiaryColor),
+                    const SizedBox(width: 4),
+                    Text(branchName,
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelSmall
+                            ?.copyWith(color: tertiaryColor)),
+                    const SizedBox(width: 12),
+                    Icon(Icons.access_time_rounded,
+                        size: 14, color: tertiaryColor),
+                    const SizedBox(width: 4),
+                    Text(_formatDate(createdAt),
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelSmall
+                            ?.copyWith(color: tertiaryColor)),
+                  ],
+                ),
+
+                // Action Buttons for Pending Requests
+                if (requestStatus == 'PENDING') ...[
+                  const SizedBox(height: DesignSpacing.lg + 2),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _rejectRequest(id),
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                          label: const Text('Reject'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: DesignColors.error,
+                            side: const BorderSide(color: DesignColors.error),
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(DesignSpacing.radiusMd),
+                            ),
+                            // >=44px tap target.
+                            minimumSize: const Size(64, DesignSpacing.xl + 24),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: DesignSpacing.md),
+                      Expanded(
+                        child: GradientButton(
+                          label: 'Approve',
+                          icon: Icons.check_rounded,
+                          onPressed: () => _approveRequest(id),
+                          gradient: const [DesignColors.success],
+                          height: DesignSpacing.xl + 24,
+                          borderRadius: DesignSpacing.radiusMd,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: DesignSpacing.md),
-                  Expanded(
+                ],
+
+                // Mark as Fulfilled button for Approved Requests
+                if (requestStatus == 'APPROVED') ...[
+                  const SizedBox(height: DesignSpacing.lg + 2),
+                  SizedBox(
+                    width: double.infinity,
                     child: GradientButton(
-                      label: 'Approve',
-                      icon: Icons.check_rounded,
-                      onPressed: () => _approveRequest(id),
-                      gradient: const [DesignColors.success],
+                      label: 'Mark as Fulfilled',
+                      icon: Icons.done_all_rounded,
+                      onPressed: () => _fulfillRequest(id),
+                      gradient: const [DesignColors.info],
                       height: DesignSpacing.xl + 24,
                       borderRadius: DesignSpacing.radiusMd,
                     ),
                   ),
                 ],
-              ),
-            ],
-
-            // Mark as Fulfilled button for Approved Requests
-            if (requestStatus == 'APPROVED') ...[
-              const SizedBox(height: DesignSpacing.lg + 2),
-              SizedBox(
-                width: double.infinity,
-                child: GradientButton(
-                  label: 'Mark as Fulfilled',
-                  icon: Icons.done_all_rounded,
-                  onPressed: () => _fulfillRequest(id),
-                  gradient: const [DesignColors.info],
-                  height: DesignSpacing.xl + 24,
-                  borderRadius: DesignSpacing.radiusMd,
-                ),
-              ),
-            ],
-          ],
+              ],
             ),
           ),
         ),
@@ -517,10 +549,10 @@ class _StockRequestsListScreenState
           Text(
             priority.toUpperCase(),
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: color,
-                letterSpacing: 0.5,
-            ),
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                  letterSpacing: 0.5,
+                ),
           ),
         ],
       ),
@@ -602,164 +634,165 @@ class _StockRequestsListScreenState
         final secondaryColor = isDark
             ? DesignColors.darkTextSecondary
             : DesignColors.textSecondary;
-        final tertiaryColor = isDark
-            ? DesignColors.darkTextTertiary
-            : DesignColors.textTertiary;
+        final tertiaryColor =
+            isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
         final panelFill = isDark
             ? DesignColors.darkSurfaceElevated
             : DesignColors.surfaceBorder.withValues(alpha: 0.2);
 
         return Padding(
-        padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Request Details',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: titleColor,
-                        letterSpacing: -0.3,
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Request Details',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: titleColor,
+                            letterSpacing: -0.3,
+                          ),
                     ),
                   ),
-                ),
-                Builder(builder: (closeContext) {
-                  final closeColor =
-                      Theme.of(closeContext).brightness == Brightness.dark
-                          ? DesignColors.darkTextPrimary
-                          : DesignColors.textPrimary;
-                  return Container(
-                    // >=44px tap target with ink ripple for closing the sheet.
-                    width: DesignSpacing.xl + 24,
-                    height: DesignSpacing.xl + 24,
-                    decoration: BoxDecoration(
-                      color: panelFill,
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusMd),
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
+                  Builder(builder: (closeContext) {
+                    final closeColor =
+                        Theme.of(closeContext).brightness == Brightness.dark
+                            ? DesignColors.darkTextPrimary
+                            : DesignColors.textPrimary;
+                    return Container(
+                      // >=44px tap target with ink ripple for closing the sheet.
+                      width: DesignSpacing.xl + 24,
+                      height: DesignSpacing.xl + 24,
+                      decoration: BoxDecoration(
+                        color: panelFill,
                         borderRadius:
                             BorderRadius.circular(DesignSpacing.radiusMd),
-                        onTap: () => Navigator.pop(sheetContext),
-                        child: Center(
-                          child: Icon(Icons.close,
-                              size: 18, color: closeColor),
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusMd),
+                          onTap: () => Navigator.pop(sheetContext),
+                          child: Center(
+                            child:
+                                Icon(Icons.close, size: 18, color: closeColor),
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                }),
-              ],
-            ),
-            const SizedBox(height: 20),
+                    );
+                  }),
+                ],
+              ),
+              const SizedBox(height: 20),
 
-            // Product Info
-            Row(
-              children: [
+              // Product Info
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: DesignColors.brand.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.inventory_2_rounded,
+                        color: DesignColors.brand, size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        request['productName'] ?? '',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: titleColor,
+                            ),
+                      ),
+                      Text(
+                        'SKU: ${request['productSku'] ?? ''}',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: tertiaryColor),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+              const LabelDivider(label: 'DETAILS'),
+
+              _detailRow(
+                Icons.numbers_rounded,
+                'Requested Quantity',
+                '${request['quantity']} ${request['unit']}',
+                secondaryColor,
+                tertiaryColor,
+                titleColor,
+                panelFill,
+              ),
+              const SizedBox(height: 10),
+              _detailRow(
+                Icons.store_rounded,
+                'Branch',
+                request['branchName'] ?? '',
+                secondaryColor,
+                tertiaryColor,
+                titleColor,
+                panelFill,
+              ),
+              const SizedBox(height: 10),
+              _detailRow(
+                Icons.person_rounded,
+                'Requested By',
+                request['requestedByName'] ?? '',
+                secondaryColor,
+                tertiaryColor,
+                titleColor,
+                panelFill,
+              ),
+              const SizedBox(height: 10),
+              _detailRow(
+                Icons.calendar_today_rounded,
+                'Requested On',
+                DateFormat('MMM d, yyyy - hh:mm a').format(
+                  _asDate(request['createdAt']),
+                ),
+                secondaryColor,
+                tertiaryColor,
+                titleColor,
+                panelFill,
+              ),
+
+              if (request['reason'] != null &&
+                  (request['reason'] as String).isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const LabelDivider(label: 'REASON'),
+                const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: DesignColors.brand.withValues(alpha: 0.1),
+                    color: panelFill,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.inventory_2_rounded,
-                      color: DesignColors.brand, size: 22),
-                ),
-                const SizedBox(width: 14),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      request['productName'] ?? '',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: titleColor,
-                      ),
-                    ),
-                    Text(
-                      'SKU: ${request['productSku'] ?? ''}',
-                      style: Theme.of(context).textTheme.bodySmall
-                          ?.copyWith(color: tertiaryColor),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-            const LabelDivider(label: 'DETAILS'),
-
-            _detailRow(
-              Icons.numbers_rounded,
-              'Requested Quantity',
-              '${request['quantity']} ${request['unit']}',
-              secondaryColor,
-              tertiaryColor,
-              titleColor,
-              panelFill,
-            ),
-            const SizedBox(height: 10),
-            _detailRow(
-              Icons.store_rounded,
-              'Branch',
-              request['branchName'] ?? '',
-              secondaryColor,
-              tertiaryColor,
-              titleColor,
-              panelFill,
-            ),
-            const SizedBox(height: 10),
-            _detailRow(
-              Icons.person_rounded,
-              'Requested By',
-              request['requestedByName'] ?? '',
-              secondaryColor,
-              tertiaryColor,
-              titleColor,
-              panelFill,
-            ),
-            const SizedBox(height: 10),
-            _detailRow(
-              Icons.calendar_today_rounded,
-              'Requested On',
-              DateFormat('MMM d, yyyy - hh:mm a').format(
-                _asDate(request['createdAt']),
-              ),
-              secondaryColor,
-              tertiaryColor,
-              titleColor,
-              panelFill,
-            ),
-
-            if (request['reason'] != null &&
-                (request['reason'] as String).isNotEmpty) ...[
-              const SizedBox(height: 16),
-              const LabelDivider(label: 'REASON'),
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: panelFill,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  request['reason'] as String,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: secondaryColor,
-                      height: 1.4,
+                  child: Text(
+                    request['reason'] as String,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: secondaryColor,
+                          height: 1.4,
+                        ),
                   ),
                 ),
-              ),
+              ],
             ],
-          ],
-        ),
+          ),
         );
       }),
     );
@@ -792,17 +825,17 @@ class _StockRequestsListScreenState
               Text(
                 label,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: tertiaryColor,
-                    fontWeight: FontWeight.w500,
-                ),
+                      color: tertiaryColor,
+                      fontWeight: FontWeight.w500,
+                    ),
               ),
               const SizedBox(height: 2),
               Text(
                 value,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: titleColor,
-                ),
+                      fontWeight: FontWeight.w600,
+                      color: titleColor,
+                    ),
               ),
             ],
           ),
@@ -814,16 +847,11 @@ class _StockRequestsListScreenState
   /// A readable reason for a failed approve/reject/fulfil, never a raw
   /// exception dump.
   String _failureText(Object error) {
-    if (error is DioException) {
-      final data = error.response?.data;
-      final message = data is Map ? data['message'] : null;
-      final text = message is List ? message.join(', ') : message?.toString();
-      if (text != null && text.trim().isNotEmpty) return text;
-      if (error.response == null) {
-        return "Couldn't reach the server. Check your connection and try again.";
-      }
+    final reason = apiErrorMessage(error);
+    if (reason == 'Something went wrong. Please try again.') {
+      return "Couldn't update this request. Please try again.";
     }
-    return "Couldn't update this request. Please try again.";
+    return reason;
   }
 
   Future<void> _approveRequest(String requestId) async {

@@ -51,7 +51,7 @@ class _FakeAuth extends Fake implements AuthService {
   Future<String?> getAccessTokenWithFallback() async => _token;
 
   @override
-  Future<void> refreshTokens() async {
+  Future<void> refreshTokens({String? expectedTenantId}) async {
     final res = await dio.post('/auth/refresh', data: {'refreshToken': 'r'});
     _token = res.data['accessToken'] as String;
   }

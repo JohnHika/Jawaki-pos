@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart';
@@ -5,8 +7,10 @@ import 'package:drift/drift.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/storage_service.dart';
+import '../../../../core/utils/business_layout_search.dart';
 
 // Products, POS, and Inventory can mount together during navigation or startup.
 // Share one refresh per shop/branch/API so they don't all download and replace
@@ -44,6 +48,7 @@ Future<List<Map<String, dynamic>>> _productsToPosMaps(
       'sku': product.sku,
       'name': product.name,
       'description': product.description,
+      'metadata': _decodeProductMetadata(product.metadata),
       'categoryId': product.categoryId,
       'price': product.price,
       'costPrice': product.costPrice,
@@ -178,15 +183,13 @@ ProductsCompanion? _productToCompanion(Map<String, dynamic> product) {
   final id = product['id']?.toString();
   final name = product['name']?.toString();
   final sku = product['sku']?.toString();
-  final categoryId = product['categoryId']?.toString();
+  // Products are allowed to have no category. Keep them in the local cache
+  // with an empty sentinel so POS and the catalogue don't silently drop them.
+  final categoryId = product['categoryId']?.toString().trim() ?? '';
   final priceValue =
       product['price'] ?? product['currentPrice'] ?? product['basePrice'];
 
-  if (id == null ||
-      name == null ||
-      sku == null ||
-      categoryId == null ||
-      priceValue == null) {
+  if (id == null || name == null || sku == null || priceValue == null) {
     return null;
   }
 
@@ -195,6 +198,7 @@ ProductsCompanion? _productToCompanion(Map<String, dynamic> product) {
     sku: sku,
     name: name,
     description: Value(product['description']?.toString()),
+    metadata: Value(_encodeProductMetadata(product['metadata'])),
     categoryId: categoryId,
     price: (priceValue as num).toDouble(),
     costPrice: Value(
@@ -211,6 +215,31 @@ ProductsCompanion? _productToCompanion(Map<String, dynamic> product) {
     createdAt: _parseTimestamp(product['createdAt']),
     updatedAt: _parseTimestamp(product['updatedAt']),
   );
+}
+
+String _encodeProductMetadata(Object? value) {
+  if (value is Map) {
+    return jsonEncode(Map<String, dynamic>.from(value));
+  }
+  if (value is String && value.trim().isNotEmpty) {
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is Map) return jsonEncode(Map<String, dynamic>.from(decoded));
+    } catch (_) {
+      // Older API responses may not contain JSON metadata.
+    }
+  }
+  return '{}';
+}
+
+Map<String, dynamic> _decodeProductMetadata(String value) {
+  try {
+    final decoded = jsonDecode(value);
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
+  } catch (_) {
+    // Malformed old cache rows are treated as having no extra details.
+  }
+  return const {};
 }
 
 /// The catalog endpoint embeds each product's current stock for the
@@ -242,7 +271,8 @@ LocalStockCompanion? _stockToCompanion(
   );
 }
 
-Future<void> syncCatalogCacheFromApi() async {
+Future<void> syncCatalogCacheFromApi(
+    {void Function()? onProductsCached}) async {
   final connectivity = getIt<ConnectivityService>();
   // Connectivity is initialized before the app is shown. Reuse a confirmed
   // online state immediately; only repeat the platform check when the cached
@@ -269,6 +299,7 @@ Future<void> syncCatalogCacheFromApi() async {
   final existingSync = _catalogSyncsInFlight[scopeKey];
   if (existingSync != null) {
     await existingSync;
+    onProductsCached?.call();
     return;
   }
 
@@ -279,6 +310,7 @@ Future<void> syncCatalogCacheFromApi() async {
     tenantId: tenantId,
     branchId: branchId,
     apiBaseUrl: apiBaseUrl,
+    onProductsCached: onProductsCached,
   );
   _catalogSyncsInFlight[scopeKey] = sync;
   try {
@@ -297,6 +329,7 @@ Future<void> _performCatalogSync({
   required String? tenantId,
   required String? branchId,
   required String apiBaseUrl,
+  void Function()? onProductsCached,
 }) async {
   bool isSameCatalogScope() =>
       storageService.getTenantId() == tenantId &&
@@ -325,8 +358,57 @@ Future<void> _performCatalogSync({
         debugPrint('[CatalogSync] Stored ${categoryItems.length} categories');
       },
       syncProducts: () async {
-        final productsResponse =
-            await apiClient.getAllProducts(branchId: branchId);
+        var publishedInitialCatalogPage = false;
+        var cachedPagesSincePublish = 0;
+        final productsResponse = await apiClient.getAllProducts(
+          branchId: branchId,
+          onPageFetched: (page) async {
+            final pageMaps = page
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .toList(growable: false);
+            final pageProducts = pageMaps
+                .map(_productToCompanion)
+                .whereType<ProductsCompanion>()
+                .toList(growable: false);
+            final pageProductIds =
+                pageProducts.map((product) => product.id.value).toSet();
+            if (pageProducts.isEmpty || !isSameCatalogScope()) return;
+
+            final pageTiers = pageMaps
+                .expand(_pricingTiersToCompanions)
+                .where((tier) => pageProductIds.contains(tier.productId.value))
+                .toList(growable: false);
+            final pageStock = branchId == null
+                ? const <LocalStockCompanion>[]
+                : pageMaps
+                    .where((product) =>
+                        pageProductIds.contains(product['id']?.toString()))
+                    .map((product) => _stockToCompanion(product, branchId))
+                    .whereType<LocalStockCompanion>()
+                    .toList(growable: false);
+
+            await database.cacheCatalogPage(
+              items: pageProducts,
+              tierItems: pageTiers,
+              stockItems: pageStock,
+              branchId: branchId,
+            );
+            cachedPagesSincePublish++;
+            // Publish the first page immediately, then expose further pages
+            // in small batches. Re-querying the entire product list after
+            // every page repeats tier and stock lookups while the sync is
+            // still downloading; waiting until the full catalog finishes
+            // hides newly cached products for large shops.
+            if ((!publishedInitialCatalogPage ||
+                    cachedPagesSincePublish >= 4) &&
+                isSameCatalogScope()) {
+              publishedInitialCatalogPage = true;
+              cachedPagesSincePublish = 0;
+              onProductsCached?.call();
+            }
+          },
+        );
         final productMaps = productsResponse
             .whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item))
@@ -517,22 +599,46 @@ final categoriesProvider = FutureProvider<List<Map<String, dynamic>>>((
 
 final productSuggestionsProvider =
     StreamProvider.autoDispose.family<List<Product>, String>((ref, query) {
-  return getIt<AppDatabase>().watchProductSuggestions(query);
+  final layout = ref.watch(businessLayoutProvider);
+  return getIt<AppDatabase>()
+      .watchProductSuggestions(query)
+      .map((products) => products
+          .where((product) => businessLayoutProductMatchesSearch(
+                name: product.name,
+                code: product.sku,
+                metadata: product.metadata,
+                layout: layout,
+                query: query,
+              ))
+          .toList(growable: false));
 });
 
 // Filtered products provider
-final filteredProductsProvider =
-    FutureProvider.family<List<Map<String, dynamic>>, FilterParams>((
+// Search text is part of FilterParams, so each keystroke can create another
+// family instance. Dispose inactive results instead of retaining every prior
+// search's product, tier, and stock maps for the life of the app.
+final filteredProductsProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, FilterParams>((
   ref,
   params,
 ) async {
   final database = getIt<AppDatabase>();
+  final layout = ref.watch(businessLayoutProvider);
   final searchQuery = params.searchQuery?.trim();
 
   List<Product> products;
 
   if (searchQuery != null && searchQuery.isNotEmpty) {
-    products = await database.searchProducts(searchQuery);
+    final candidates = await database.searchProducts(searchQuery);
+    products = candidates
+        .where((product) => businessLayoutProductMatchesSearch(
+              name: product.name,
+              code: product.sku,
+              metadata: product.metadata,
+              layout: layout,
+              query: searchQuery,
+            ))
+        .toList(growable: false);
   } else if (params.categoryId != null) {
     products = await database.getProductsByCategory(params.categoryId!);
   } else {

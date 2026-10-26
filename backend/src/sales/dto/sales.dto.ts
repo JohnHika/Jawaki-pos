@@ -15,6 +15,7 @@ import {
   ArrayMinSize,
   ArrayMaxSize,
   IsBoolean,
+  IsNotEmpty,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -33,9 +34,9 @@ export class CreateSaleItemDto {
   @Type(() => Number)
   quantity: number;
 
-  @ApiPropertyOptional({ description: 'Override unit price' })
+  @ApiPropertyOptional({ description: 'Price per base unit; bulk-tier prices may require fractional cents' })
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Price must have up to 2 decimal places' })
+  @IsNumber({ maxDecimalPlaces: 8 }, { message: 'Price must have up to 8 decimal places' })
   @Min(0, { message: 'Price cannot be negative' })
   @Max(10000000, { message: 'Price cannot exceed 10,000,000' })
   @Type(() => Number)
@@ -97,7 +98,9 @@ export class CreateSaleDto {
 
   @ApiPropertyOptional({ description: 'Customer ID' })
   @IsOptional()
-  @IsUUID('4', { message: 'Customer ID must be a valid UUID' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(80)
   customerId?: string;
 
   @ApiProperty({ type: [CreateSaleItemDto] })
