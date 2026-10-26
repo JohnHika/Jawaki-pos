@@ -45,6 +45,9 @@ class _FakeAuth extends Fake implements AuthService {
   String? get accessToken => _token;
 
   @override
+  bool get isLocked => false;
+
+  @override
   String? get deviceId => null;
 
   @override
