@@ -2941,7 +2941,7 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                     icon: Icons.login_rounded,
                     title: 'Primary sign-in method',
                     subtitle:
-                        'Your preferred option is highlighted. Biometrics unlock a remembered session; full sign-in still needs an account.',
+                        'Choosing biometrics also asks you to unlock when you return. Biometrics restore a remembered session; first sign-in still needs an account.',
                     trailing: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         value: _primaryLoginMethod == 'biometric' &&
@@ -2974,7 +2974,14 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                             ? null
                             : (value) {
                                 if (value != null) {
-                                  setState(() => _primaryLoginMethod = value);
+                                  setState(() {
+                                    _primaryLoginMethod = value;
+                                    if (value == 'biometric' &&
+                                        _biometricEnabled &&
+                                        widget.biometricAvailable) {
+                                      _requireUnlockOnResume = true;
+                                    }
+                                  });
                                 }
                               },
                       ),
