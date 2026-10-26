@@ -1057,6 +1057,7 @@ class SettingsScreen extends ConsumerWidget {
     final authService = getIt<AuthService>();
     final biometricAvailable =
         await authService.isDeviceAuthenticationAvailable();
+    final primaryLoginMethod = storage.getPrimaryLoginMethod();
 
     if (!context.mounted) return;
 
@@ -1077,6 +1078,7 @@ class SettingsScreen extends ConsumerWidget {
           biometricAvailable: biometricAvailable,
           requireUnlockOnResume: requireUnlockOnResume,
           autoLockMinutes: autoLockMinutes,
+          primaryLoginMethod: primaryLoginMethod,
           scrollController: scrollController,
         ),
       ),
@@ -2775,6 +2777,7 @@ class _SecuritySettingsSheet extends StatefulWidget {
   final bool biometricAvailable;
   final bool requireUnlockOnResume;
   final int autoLockMinutes;
+  final String primaryLoginMethod;
   final ScrollController scrollController;
 
   const _SecuritySettingsSheet({
@@ -2782,6 +2785,7 @@ class _SecuritySettingsSheet extends StatefulWidget {
     required this.biometricAvailable,
     required this.requireUnlockOnResume,
     required this.autoLockMinutes,
+    required this.primaryLoginMethod,
     required this.scrollController,
   });
 
@@ -2793,6 +2797,7 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
   late bool _biometricEnabled;
   late bool _requireUnlockOnResume;
   late int _autoLockMinutes;
+  late String _primaryLoginMethod;
   bool _isConfirmingBiometric = false;
 
   @override
@@ -2801,6 +2806,7 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
     _biometricEnabled = widget.biometricEnabled;
     _requireUnlockOnResume = widget.requireUnlockOnResume;
     _autoLockMinutes = widget.autoLockMinutes;
+    _primaryLoginMethod = widget.primaryLoginMethod;
   }
 
   /// Turning biometric login on/off takes effect immediately (not deferred
@@ -2813,6 +2819,9 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
     if (!enabling) {
       setState(() => _biometricEnabled = false);
       await getIt<StorageService>().setBiometricEnabled(false);
+      if (_primaryLoginMethod == 'biometric') {
+        setState(() => _primaryLoginMethod = 'pin');
+      }
       return;
     }
 
@@ -2877,13 +2886,58 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                       ?.copyWith(fontWeight: FontWeight.w800)),
               const SizedBox(height: 18),
               GroupedCard(
+                margin: const EdgeInsets.only(bottom: DesignSpacing.md),
+                children: [
+                  SettingsRow(
+                    icon: Icons.login_rounded,
+                    title: 'Primary sign-in method',
+                    subtitle: 'Your preferred option is highlighted. Biometrics unlock a remembered session; full sign-in still needs an account.',
+                    trailing: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _primaryLoginMethod == 'biometric' &&
+                                !(_biometricEnabled && widget.biometricAvailable)
+                            ? 'pin'
+                            : _primaryLoginMethod,
+                        isDense: true,
+                        borderRadius: BorderRadius.circular(16),
+                        items: [
+                          const DropdownMenuItem(
+                            value: 'email',
+                            child: Text('Email'),
+                          ),
+                          const DropdownMenuItem(
+                            value: 'google',
+                            child: Text('Google'),
+                          ),
+                          const DropdownMenuItem(
+                            value: 'pin',
+                            child: Text('PIN'),
+                          ),
+                          if (widget.biometricAvailable && _biometricEnabled)
+                            const DropdownMenuItem(
+                              value: 'biometric',
+                              child: Text('Biometric'),
+                            ),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => _primaryLoginMethod = value);
+                          }
+                        },
+                      ),
+                    ),
+                    showChevron: false,
+                  ),
+                ],
+              ),
+              GroupedCard(
                 children: [
                   SettingsRow(
                     icon: Icons.security_rounded,
                     title: 'Fingerprint or face unlock',
                     subtitle: widget.biometricAvailable
-                        ? "Use your phone's fingerprint, face, PIN or pattern to open the app"
-                        : 'Not available on this phone',
+                        ? "Use an enrolled fingerprint or face; PIN and pattern are not biometric sign-in."
+                        : 'Set up fingerprint or face recognition in Android settings first.',
                     enabled:
                         widget.biometricAvailable && !_isConfirmingBiometric,
                     trailing: _isConfirmingBiometric
@@ -2952,6 +3006,12 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                     await storage
                         .setRequireUnlockOnResume(_requireUnlockOnResume);
                     await storage.setAutoLockMinutes(_autoLockMinutes);
+                    await storage.setPrimaryLoginMethod(
+                      _primaryLoginMethod == 'biometric' &&
+                              !(_biometricEnabled && widget.biometricAvailable)
+                          ? 'pin'
+                          : _primaryLoginMethod,
+                    );
                     if (context.mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(

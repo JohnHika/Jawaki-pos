@@ -16,6 +16,48 @@ import '../theme/design_system.dart';
 /// [StaggeredItem] for the two canonical patterns.
 bool reducedMotion(BuildContext c) => MediaQuery.disableAnimationsOf(c);
 
+/// A restrained depth-and-fade entrance for high-attention identity controls.
+/// The small perspective turn gives login and biometric surfaces a tactile
+/// arrival without a springy, game-like bounce. Reduced-motion users get a
+/// short opacity-only reveal.
+class AuthEntrance extends StatelessWidget {
+  const AuthEntrance({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduced = reducedMotion(context);
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: reduced
+          ? const Duration(milliseconds: 180)
+          : const Duration(milliseconds: 720),
+      curve: DesignAnimation.smooth,
+      child: child,
+      builder: (context, value, child) {
+        final progress = Curves.easeOutCubic.transform(value);
+        final depth = reduced ? 0.0 : (1 - progress);
+        final matrix = Matrix4.identity()
+          ..setEntry(3, 2, 0.0012)
+          ..rotateX(depth * 0.08)
+          ..rotateY(depth * -0.14);
+        return Opacity(
+          opacity: progress,
+          child: Padding(
+            padding: EdgeInsets.only(top: depth * (reduced ? 0 : 10)),
+            child: Transform(
+              alignment: Alignment.center,
+              transform: matrix,
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// A tiny handle over the entrance effects a widget asked for, so the
 /// reduced-motion branch can reuse the exact same effect list.
 typedef EntranceEffects = List<Effect> Function();

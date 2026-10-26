@@ -48,6 +48,27 @@ void main() {
     });
   });
 
+  group('appIconChangeReason', () {
+    test('explains the signal behind each automatic look', () {
+      expect(
+        appIconChangeReason(AppIconVariant.streak, automaticEnabled: true),
+        contains('three days in a row'),
+      );
+      expect(
+        appIconChangeReason(AppIconVariant.alert, automaticEnabled: true),
+        contains('out of stock'),
+      );
+      expect(
+        appIconChangeReason(AppIconVariant.gold, automaticEnabled: true),
+        contains('new sales record'),
+      );
+      expect(
+        appIconChangeReason(AppIconVariant.standard, automaticEnabled: false),
+        contains('turned off'),
+      );
+    });
+  });
+
   group('signalsFromDailyTotals', () {
     final now = DateTime(2026, 10, 16, 9);
 

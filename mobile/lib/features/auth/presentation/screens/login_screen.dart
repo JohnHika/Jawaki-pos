@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:axon_pos/core/config/google_auth_config.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
@@ -36,6 +35,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   bool _biometricAvailable = false;
   bool _deviceAuthenticationAvailable = false;
   bool _showPasswordFallback = false;
+  String _primaryLoginMethod = 'email';
 
   // Dynamic company branding
   String? _companyName;
@@ -81,6 +81,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     final savedTenant = storage.getTenantSlug();
 
     _rememberMe = rememberLogin;
+    _primaryLoginMethod = storage.getPrimaryLoginMethod();
+    _showPasswordFallback = _primaryLoginMethod == 'email';
     if ((rememberedTenant ?? savedTenant)?.isNotEmpty == true) {
       _tenantSlugController.text = rememberedTenant ?? savedTenant!;
       _onSlugChanged(_tenantSlugController.text);
@@ -173,6 +175,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       setState(() {
         _deviceAuthenticationAvailable = deviceAvailable;
         _biometricAvailable = ready && enabled;
+        if (_primaryLoginMethod == 'biometric' && !ready) {
+          // Biometrics only reopen a remembered session; a full sign-in still
+          // needs a credential, so make that route the visible fallback.
+          _showPasswordFallback = true;
+        }
       });
     }
   }
@@ -254,7 +261,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     }
 
     try {
-      final googleSignIn = GoogleSignIn(serverClientId: googleWebClientId);
+      // Always show the chooser even when Google cached the last account.
+      // This clears only the plugin session, not the device's Google accounts.
+      await googleSignIn.signOut();
       final account = await googleSignIn.signIn();
       if (account == null) return;
 
@@ -445,7 +454,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     if (!_biometricAvailable) {
       showGlassSnackBar(
         context,
-        'Sign in once, then enable biometrics in Settings > Security for this company.',
+        getIt<StorageService>().isBiometricEnabled()
+            ? 'Biometrics unlock a remembered session. Sign in with your account to start a new session.'
+            : 'Sign in once, then enable biometrics in Settings > Security for this company.',
         icon: Icons.info_outline_rounded,
         color: DesignColors.info,
       );
@@ -574,23 +585,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                     child: child,
                                   );
                                 },
-                                child: Container(
-                                  width: isSmallScreen ? 72 : 88,
-                                  height: isSmallScreen ? 72 : 88,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Colors.white,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color:
-                                            Colors.black.withValues(alpha: 0.2),
-                                        blurRadius: 16,
-                                        offset: const Offset(0, 4),
+                                child: AuthEntrance(
+                                  child: Container(
+                                    width: isSmallScreen ? 72 : 88,
+                                    height: isSmallScreen ? 72 : 88,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Colors.white,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black
+                                              .withValues(alpha: 0.2),
+                                          blurRadius: 16,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: ClipOval(
+                                      child: _buildLogo(
+                                        isSmallScreen ? 72 : 88,
                                       ),
-                                    ],
-                                  ),
-                                  child: ClipOval(
-                                    child: _buildLogo(isSmallScreen ? 72 : 88),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -750,20 +765,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       label: 'PIN',
                       onTap: () => context.push('/pin-login'),
                       isDark: isDark,
+                      selected: _primaryLoginMethod == 'pin',
                     ),
                   ),
                   if (_deviceAuthenticationAvailable) ...[
                     const SizedBox(width: 12),
                     Expanded(
-                      child: _buildAltLoginButton(
-                        icon: Icons.fingerprint_rounded,
-                        label: _biometricAvailable
-                            ? 'Biometric'
-                            : 'Set up biometric',
-                        onTap: authState.isLoading
-                            ? () {}
-                            : () => _handleBiometricLogin(),
-                        isDark: isDark,
+                      child: AuthEntrance(
+                        child: _buildAltLoginButton(
+                          icon: Icons.fingerprint_rounded,
+                          label: _biometricAvailable
+                              ? 'Biometric'
+                              : getIt<StorageService>().isBiometricEnabled()
+                                  ? 'Biometric unlock'
+                                  : 'Set up biometric',
+                          onTap: authState.isLoading
+                              ? () {}
+                              : () => _handleBiometricLogin(),
+                          isDark: isDark,
+                          selected: _primaryLoginMethod == 'biometric',
+                        ),
                       ),
                     ),
                   ],
@@ -853,15 +874,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   ),
                   side: BorderSide(
-                    color: isDark
-                        ? DesignColors.darkBorder
-                        : DesignColors.surfaceBorder,
+                    color: _primaryLoginMethod == 'google'
+                        ? DesignColors.accent
+                        : isDark
+                            ? DesignColors.darkBorder
+                            : DesignColors.surfaceBorder,
+                    width: _primaryLoginMethod == 'google' ? 1.8 : 1,
                   ),
                 ),
               ),
               const SizedBox(height: DesignSpacing.sm),
               Text(
-                'Use the Google account already registered for this business.',
+                'Choose the Google account linked to this business.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                       color: isDark
@@ -1267,6 +1291,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     required String label,
     required VoidCallback onTap,
     bool isDark = false,
+    bool selected = false,
   }) {
     return Material(
       color: Colors.transparent,
@@ -1281,11 +1306,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
             color: isDark
-                ? DesignColors.darkSurfaceElevated
-                : DesignColors.surfaceSubtle,
+                ? (selected
+                    ? DesignColors.accent.withValues(alpha: 0.16)
+                    : DesignColors.darkSurfaceElevated)
+                : (selected
+                    ? DesignColors.accent.withValues(alpha: 0.1)
+                    : DesignColors.surfaceSubtle),
             border: Border.all(
-              color:
-                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+              color: selected
+                  ? DesignColors.accent
+                  : isDark
+                      ? DesignColors.darkBorder
+                      : DesignColors.surfaceBorder,
+              width: selected ? 1.8 : 1,
             ),
           ),
           child: Column(
@@ -1294,9 +1327,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             children: [
               Icon(
                 icon,
-                color: isDark
-                    ? DesignColors.darkTextSecondary
-                    : DesignColors.textSecondary,
+                color: selected
+                    ? DesignColors.accent
+                    : isDark
+                        ? DesignColors.darkTextSecondary
+                        : DesignColors.textSecondary,
                 size: 22,
               ),
               const SizedBox(height: DesignSpacing.sm - 2),

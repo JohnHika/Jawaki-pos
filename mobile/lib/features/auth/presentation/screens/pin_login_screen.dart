@@ -60,6 +60,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   String _errorMessage = '';
   late final _WorkspaceIdentity _workspaceIdentity;
   bool _biometricAvailable = false;
+  bool _autoBiometricAttempted = false;
   String _appVersion = '';
 
   void _onNumberPressed(String number) {
@@ -293,9 +294,19 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   Future<void> _checkBiometric() async {
     final ready =
         await ref.read(authControllerProvider.notifier).isBiometricAvailable();
-    final enabled = getIt<StorageService>().isBiometricEnabled();
+    final storage = getIt<StorageService>();
+    final enabled = storage.isBiometricEnabled();
     if (mounted) {
       setState(() => _biometricAvailable = ready && enabled);
+      if (ready &&
+          enabled &&
+          storage.getPrimaryLoginMethod() == 'biometric' &&
+          !_autoBiometricAttempted) {
+        _autoBiometricAttempted = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_handleBiometricLogin());
+        });
+      }
     }
   }
 
@@ -362,7 +373,9 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                 // Logo — first-mount stagger (see StaggeredItem)
                 StaggeredItem(
                   itemKey: 'pin-logo',
-                  child: _buildLogoSection(isSmallScreen),
+                  child: AuthEntrance(
+                    child: _buildLogoSection(isSmallScreen),
+                  ),
                 ),
 
                 SizedBox(
@@ -951,46 +964,48 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     return Column(
       children: [
         if (_biometricAvailable) ...[
-          Semantics(
-            button: true,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: authState.isLoading ? null : _handleBiometricLogin,
-                borderRadius:
-                    BorderRadius.circular(DesignSpacing.radiusFull),
-                child: Container(
-                  constraints: const BoxConstraints(minHeight: 48),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: DesignSpacing.lg - 2,
-                    vertical: DesignSpacing.sm + 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _fg.withValues(alpha: 0.1),
-                    borderRadius:
-                        BorderRadius.circular(DesignSpacing.radiusFull),
-                    border: Border.all(
-                      color: _fg.withValues(alpha: 0.16),
+          AuthEntrance(
+            child: Semantics(
+              button: true,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: authState.isLoading ? null : _handleBiometricLogin,
+                  borderRadius:
+                      BorderRadius.circular(DesignSpacing.radiusFull),
+                  child: Container(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: DesignSpacing.lg - 2,
+                      vertical: DesignSpacing.sm + 2,
                     ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.fingerprint_rounded,
-                        color: _fg.withValues(alpha: 0.82),
-                        size: DesignSpacing.xl,
+                    decoration: BoxDecoration(
+                      color: _fg.withValues(alpha: 0.1),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusFull),
+                      border: Border.all(
+                        color: _fg.withValues(alpha: 0.16),
                       ),
-                      const SizedBox(width: DesignSpacing.sm),
-                      Text(
-                        'Use biometric unlock',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: _fg.withValues(alpha: 0.86),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.fingerprint_rounded,
+                          color: _fg.withValues(alpha: 0.82),
+                          size: DesignSpacing.xl,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: DesignSpacing.sm),
+                        Text(
+                          'Use biometric unlock',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: _fg.withValues(alpha: 0.86),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

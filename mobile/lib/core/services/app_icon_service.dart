@@ -72,6 +72,25 @@ AppIconVariant chooseAppIcon(AppIconSignals s) {
 String _dayKey(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+String appIconChangeReason(
+  AppIconVariant variant, {
+  required bool automaticEnabled,
+}) {
+  if (!automaticEnabled && variant == AppIconVariant.standard) {
+    return 'Automatic icon changes are off, so Counterbase returned to its everyday icon.';
+  }
+  return switch (variant) {
+    AppIconVariant.standard =>
+      'Your shop has no current record day, sales streak or out-of-stock alert.',
+    AppIconVariant.streak =>
+      'Your shop has recorded sales for at least three days in a row.',
+    AppIconVariant.alert =>
+      'One or more products are out of stock, so the icon is showing a stock alert.',
+    AppIconVariant.gold =>
+      'Today is a new sales record, so the icon is celebrating your milestone.',
+  };
+}
+
 /// Works out the streak and record day from the shop's own sales.
 ///
 /// [dailyTotals] / [dailyCounts] map a day (yyyy-MM-dd) to that day's takings
@@ -200,8 +219,10 @@ class AppIconService {
 
     if (!(prefs.getBool(enabledPref) ?? true)) {
       if (active == AppIconVariant.standard) return active;
-      await _apply(AppIconVariant.standard, prefs);
-      return AppIconVariant.standard;
+      if (await _apply(AppIconVariant.standard, prefs)) {
+        return AppIconVariant.standard;
+      }
+      return current();
     }
 
     final now = _clock();
@@ -214,8 +235,8 @@ class AppIconService {
         now.millisecondsSinceEpoch - lastChange < minGap.inMilliseconds;
     if (!force && recently) return active;
 
-    await _apply(target, prefs);
-    return target;
+    if (await _apply(target, prefs)) return target;
+    return current();
   }
 
   Future<AppIconSignals> loadSignals(DateTime now, SharedPreferences prefs) async {
@@ -249,14 +270,20 @@ class AppIconService {
     );
   }
 
-  Future<void> _apply(AppIconVariant variant, SharedPreferences prefs) async {
+  Future<bool> _apply(AppIconVariant variant, SharedPreferences prefs) async {
     try {
-      await _channel.invokeMethod<bool>('setIcon', {'key': variant.key});
+      final applied =
+          await _channel.invokeMethod<bool>('setIcon', {'key': variant.key});
+      if (applied != true) return false;
+      if (await current() != variant) return false;
       await prefs.setInt(changedAtPref, _clock().millisecondsSinceEpoch);
+      return true;
     } on MissingPluginException {
       // Not Android (or a test without the channel): nothing to switch.
+      return false;
     } on PlatformException catch (e) {
       debugPrint('[AppIcon] switch to ${variant.key} failed: ${e.message}');
+      return false;
     }
   }
 }

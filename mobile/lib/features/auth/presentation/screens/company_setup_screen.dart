@@ -5,8 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-
 import 'package:axon_pos/core/config/google_auth_config.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
@@ -216,8 +214,8 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
       _errorMessage = null;
     });
     try {
-      final account =
-          await GoogleSignIn(serverClientId: googleWebClientId).signIn();
+      await googleSignIn.signOut();
+      final account = await googleSignIn.signIn();
       if (account == null) return;
       final verifiedEmail = account.email.trim();
       if (verifiedEmail.isEmpty) {

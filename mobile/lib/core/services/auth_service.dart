@@ -28,7 +28,7 @@ class AuthService implements LifecycleLockAuth {
   final StorageService _storage;
   final ApiClient _apiClient;
   final AppDatabase _database;
-  final LocalAuthentication _localAuth = LocalAuthentication();
+  final LocalAuthentication _localAuth;
 
   final StreamController<AuthStatus> _authStatusController =
       StreamController<AuthStatus>.broadcast();
@@ -57,9 +57,11 @@ class AuthService implements LifecycleLockAuth {
     required StorageService storage,
     required ApiClient apiClient,
     required AppDatabase database,
+    LocalAuthentication? localAuth,
   })  : _storage = storage,
         _apiClient = apiClient,
-        _database = database {
+        _database = database,
+        _localAuth = localAuth ?? LocalAuthentication() {
     // Note: Auth initialization is now done explicitly in main.dart
     // to avoid async operations in constructor which can cause crashes
     _updateStatus(AuthStatus.unknown);
@@ -748,7 +750,8 @@ class AuthService implements LifecycleLockAuth {
     try {
       final canCheck = await _localAuth.canCheckBiometrics;
       final isSupported = await _localAuth.isDeviceSupported();
-      return canCheck && isSupported;
+      if (!canCheck || !isSupported) return false;
+      return (await _localAuth.getAvailableBiometrics()).isNotEmpty;
     } catch (e) {
       debugPrint('[AuthService] Device auth availability check failed: $e');
       return false;
@@ -766,13 +769,14 @@ class AuthService implements LifecycleLockAuth {
       final canCheck = await _localAuth.canCheckBiometrics;
       final isSupported = await _localAuth.isDeviceSupported();
       if (!canCheck || !isSupported) return false;
+      if ((await _localAuth.getAvailableBiometrics()).isEmpty) return false;
 
       return await _localAuth.authenticate(
         localizedReason:
             'Confirm your fingerprint or face to enable biometric login',
         options: const AuthenticationOptions(
           stickyAuth: true,
-          biometricOnly: false,
+          biometricOnly: true,
         ),
       );
     } catch (e) {
@@ -789,15 +793,18 @@ class AuthService implements LifecycleLockAuth {
       debugPrint(
           '[AuthService] Biometric check - canCheck: $canCheck, isSupported: $isSupported');
 
-      if (canCheck && isSupported) {
-        final availableBiometrics = await getAvailableBiometrics();
-        debugPrint('[AuthService] Available biometrics: $availableBiometrics');
-      }
+      final availableBiometrics = canCheck && isSupported
+          ? await getAvailableBiometrics()
+          : const <BiometricType>[];
+      debugPrint('[AuthService] Available biometrics: $availableBiometrics');
 
       final storedAccessToken = await _storage.getAccessToken();
       final hasStoredSession = _storage.getUser() != null &&
           (storedAccessToken?.isNotEmpty ?? false);
-      return canCheck && isSupported && hasStoredSession;
+      return canCheck &&
+          isSupported &&
+          availableBiometrics.isNotEmpty &&
+          hasStoredSession;
     } catch (e) {
       debugPrint('[AuthService] Biometric availability check failed: $e');
       return false;
@@ -821,11 +828,16 @@ class AuthService implements LifecycleLockAuth {
         return false;
       }
 
+      if (!await isBiometricAvailable()) {
+        debugPrint('[AuthService] No enrolled biometric or saved session');
+        return false;
+      }
+
       final didAuthenticate = await _localAuth.authenticate(
         localizedReason: 'Sign in to your POS workspace',
         options: const AuthenticationOptions(
           stickyAuth: true,
-          biometricOnly: false, // Allow PIN/pattern fallback
+          biometricOnly: true,
         ),
       );
 

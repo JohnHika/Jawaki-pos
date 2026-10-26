@@ -259,10 +259,22 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
       if (!getIt.isRegistered<AppIconService>()) return;
-      unawaited(getIt<AppIconService>().refresh().then<void>(
-            (_) {},
-            onError: (Object e) => debugPrint('[AppIcon] refresh failed: $e'),
-          ));
+      unawaited(() async {
+        try {
+          final icons = getIt<AppIconService>();
+          final previous = await icons.current();
+          final current = await icons.refresh();
+          if (previous != current &&
+              getIt.isRegistered<NotificationService>()) {
+            await getIt<NotificationService>().showAppIconChangedNotification(
+              variant: current,
+              automaticEnabled: await icons.isEnabled(),
+            );
+          }
+        } catch (e) {
+          debugPrint('[AppIcon] refresh failed: $e');
+        }
+      }());
       return;
     }
 

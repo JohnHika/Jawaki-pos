@@ -136,13 +136,16 @@ class _LivingIconCardState extends State<LivingIconCard> {
               ),
             ],
           ),
-          const SizedBox(height: DesignSpacing.md),
-          Wrap(
-            spacing: DesignSpacing.md,
-            runSpacing: DesignSpacing.sm,
-            children: [
-              for (final v in AppIconVariant.values) _VariantChip(variant: v),
-            ],
+          const SizedBox(height: DesignSpacing.sm),
+          Text(
+            _enabled
+                ? _current.blurb
+                : 'Automatic icon changes are paused. Your current icon stays in place.',
+            key: const ValueKey('living-icon-reason'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: muted,
+              height: 1.35,
+            ),
           ),
           if (_notice != null) ...[
             const SizedBox(height: DesignSpacing.sm),
@@ -157,9 +160,11 @@ class _LivingIconCardState extends State<LivingIconCard> {
           ],
           const SizedBox(height: DesignSpacing.sm),
           Text(
-            'This is worked out on your phone from your own sales and stock; '
-            'nothing is sent anywhere. The icon changes at most once every '
-            '20 hours. '
+            'Counterbase chooses the icon from your shop activity. It changes '
+            'automatically and explains each change in a notification when '
+            'app notifications are allowed. '
+            'The decision stays on this phone, and the icon changes at most '
+            'once every 20 hours. '
             'On some phones the home-screen shortcut disappears when it '
             'changes, so use Add to home screen to put it back.',
             style: theme.textTheme.bodySmall?.copyWith(color: muted, height: 1.35),
@@ -185,42 +190,5 @@ class _LivingIconCardState extends State<LivingIconCard> {
     } catch (_) {
       return widget.service != null;
     }
-  }
-}
-
-class _VariantChip extends StatelessWidget {
-  const _VariantChip({required this.variant});
-
-  final AppIconVariant variant;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Tooltip(
-      message: variant.blurb,
-      child: SizedBox(
-        width: 84,
-        child: Column(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Image.asset(
-                variant.previewAsset,
-                width: 52,
-                height: 52,
-                errorBuilder: (_, __, ___) => const SizedBox(width: 52, height: 52),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              variant.title,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              style: theme.textTheme.labelSmall,
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

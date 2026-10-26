@@ -35,6 +35,7 @@ class StorageService implements LifecycleLockStorage {
   static const String keyRequireUnlockOnResume =
       'setting_require_unlock_on_resume';
   static const String keyAutoLockMinutes = 'setting_auto_lock_minutes';
+  static const String keyPrimaryLoginMethod = 'setting_primary_login_method';
   static const String keyAuthLocked = 'auth_locked';
   static const String keySupplierDataMigrated = 'supplier_data_migrated_v1';
   static const String keyFinanceSnapshotPrefix = 'finance_snapshot_v1';
@@ -560,6 +561,23 @@ class StorageService implements LifecycleLockStorage {
   Future<void> setBiometricEnabled(bool enabled) async {
     _checkInitialized();
     await _prefs!.setBool(keyBiometricEnabled, enabled);
+  }
+
+  /// Preferred method is a hint; alternate sign-in routes always remain
+  /// available so a lost sensor or changed account never locks someone out.
+  String getPrimaryLoginMethod() {
+    const supported = {'email', 'google', 'pin', 'biometric'};
+    final saved = _prefs?.getString(keyPrimaryLoginMethod) ?? 'email';
+    return supported.contains(saved) ? saved : 'email';
+  }
+
+  Future<void> setPrimaryLoginMethod(String method) async {
+    _checkInitialized();
+    const supported = {'email', 'google', 'pin', 'biometric'};
+    if (!supported.contains(method)) {
+      throw ArgumentError.value(method, 'method', 'Unsupported login method');
+    }
+    await _prefs!.setString(keyPrimaryLoginMethod, method);
   }
 
   /// New trusted devices stay signed in across normal app switching by

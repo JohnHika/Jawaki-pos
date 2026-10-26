@@ -9,6 +9,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../network/api_client.dart';
+import 'app_icon_service.dart';
 import 'storage_service.dart';
 
 /// Handles push notification setup: Firebase init, permission request, FCM
@@ -52,11 +53,12 @@ class NotificationService {
   static const _defaultChannel = AndroidNotificationChannel(
     'axon_pos_default_channel',
     'Counterbase Alerts',
-    description: 'Stock requests, inventory, sales and sync alerts',
+    description: 'Shop activity, app identity, sales and sync alerts',
     importance: Importance.high,
   );
 
   bool _initialized = false;
+  bool _localInitialized = false;
   String? _registeredToken;
 
   // Tapping a notification (system tray, or the local one shown while the
@@ -109,12 +111,33 @@ class NotificationService {
     _initialized = true;
 
     try {
+      await _initializeLocalNotifications();
+    } catch (e) {
+      debugPrint('[NotificationService] Local notification init failed: $e');
+    }
+
+    try {
       await Firebase.initializeApp();
     } catch (e) {
       debugPrint('[NotificationService] Firebase init failed: $e');
-      return;
+      return; // Local notifications still work without Firebase/FCM.
     }
 
+    FirebaseMessaging.onMessage.listen(_showForegroundNotification);
+    // Tapped while the app was in the background...
+    FirebaseMessaging.onMessageOpenedApp.listen(
+        (message) => _emitOpen(Map<String, dynamic>.from(message.data)));
+    // ...or tapped to launch the app from a fully closed state.
+    try {
+      final initial = await FirebaseMessaging.instance.getInitialMessage();
+      if (initial != null) {
+        _emitOpen(Map<String, dynamic>.from(initial.data));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _initializeLocalNotifications() async {
+    if (_localInitialized) return;
     await _localNotifications.initialize(
       const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
@@ -132,21 +155,34 @@ class NotificationService {
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(_defaultChannel);
+    _localInitialized = true;
+  }
 
-    FirebaseMessaging.onMessage.listen(_showForegroundNotification);
-    // Tapped while the app was in the background...
-    FirebaseMessaging.onMessageOpenedApp.listen(
-        (message) => _emitOpen(Map<String, dynamic>.from(message.data)));
-    // ...or tapped to launch the app from a fully closed state.
+  /// Shows the reason the launcher identity changed. This remains independent
+  /// from Firebase so a local icon update can still be explained offline.
+  Future<void> showAppIconChangedNotification({
+    required AppIconVariant variant,
+    required bool automaticEnabled,
+  }) async {
     try {
-      final initial = await FirebaseMessaging.instance.getInitialMessage();
-      if (initial != null) {
-        // Initialization now runs after the first frame. Emit directly when
-        // the app is already listening, or preserve the event for the cold
-        // start listener when initialization happened earlier.
-        _emitOpen(Map<String, dynamic>.from(initial.data));
-      }
-    } catch (_) {}
+      await _initializeLocalNotifications();
+      await _localNotifications.show(
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        'Counterbase icon updated',
+        appIconChangeReason(variant, automaticEnabled: automaticEnabled),
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            _defaultChannel.id,
+            _defaultChannel.name,
+            channelDescription: _defaultChannel.description,
+            importance: Importance.defaultImportance,
+            priority: Priority.defaultPriority,
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[NotificationService] App icon notice failed: $e');
+    }
   }
 
   /// True if the OS has actually granted notification permission — separate

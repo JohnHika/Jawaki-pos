@@ -55,17 +55,17 @@ void main() {
 
   final switchFinder = find.byKey(const ValueKey('living-icon-switch'));
 
-  testWidgets('starts on, explains itself and lists every icon',
+  testWidgets('starts on and explains automatic icon changes without a picker',
       (tester) async {
     await pump(tester, service());
     expect(find.text('Living app icon'), findsOneWidget);
     expect(tester.widget<Switch>(switchFinder).value, isTrue);
-    for (final v in AppIconVariant.values) {
-      expect(find.text(v.title), findsOneWidget);
-    }
-    expect(find.textContaining('nothing is sent anywhere'), findsOneWidget);
+    expect(find.text('The everyday Counterbase icon.'), findsOneWidget);
+    expect(find.textContaining('decision stays on this phone'), findsOneWidget);
     expect(find.textContaining('20 hours'), findsOneWidget);
     expect(find.text('Add to home screen'), findsOneWidget);
+    expect(find.text('On a streak'), findsNothing);
+    expect(find.text('Record day'), findsNothing);
   });
 
   testWidgets(
