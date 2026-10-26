@@ -13,6 +13,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/sync_service.dart';
+import '../../../../core/services/update_check_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
@@ -71,6 +72,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   String? _historyLoadError;
   bool _customerNeedsSync = false;
   bool _statementServiceNeedsUpdate = false;
+  bool _checkingForAppUpdate = false;
   bool _automaticCustomerSyncAttempted = false;
   bool _loading = true;
   bool _busy = false;
@@ -86,6 +88,63 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   String? _linkKey;
 
   ApiClient get _api => getIt<ApiClient>();
+
+  static const _statementServiceUpdateMessage =
+      'This statement service needs an update. Your customer and debt are safe. '
+      'Check for a Counterbase app update; if you are already up to date, contact support.';
+
+  String _loadErrorMessage(
+    Object error, {
+    required bool customerNeedsSync,
+    required bool serviceNeedsUpdate,
+  }) {
+    if (customerNeedsSync) {
+      return 'This customer or their latest sale has not synced yet.';
+    }
+    if (serviceNeedsUpdate) return _statementServiceUpdateMessage;
+    if (error is StateError) return error.message.toString();
+    return apiErrorMessage(error);
+  }
+
+  Future<void> _checkForAppUpdate() async {
+    if (_checkingForAppUpdate) return;
+    setState(() => _checkingForAppUpdate = true);
+    try {
+      final updates = getIt<UpdateCheckService>();
+      await updates.checkForUpdates(force: true);
+      if (!mounted) return;
+      if (updates.hasOptionalUpdateAvailable) {
+        await updates.showCachedOptionalUpdateDialog(context);
+      } else if (updates.errorMessage != null) {
+        setState(() => _message = updates.errorMessage);
+      } else if (!updates.isForceUpdateRequired &&
+          !updates.isPostLoginUpdateRequired) {
+        setState(() => _message =
+            'Counterbase is up to date. If statement sending still fails, contact support.');
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _message =
+            'Could not check for an update. Try again from Settings.');
+      }
+    } finally {
+      if (mounted) setState(() => _checkingForAppUpdate = false);
+    }
+  }
+
+  Widget _buildCheckForAppUpdateButton() => TextButton.icon(
+        onPressed: _checkingForAppUpdate ? null : _checkForAppUpdate,
+        icon: _checkingForAppUpdate
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.system_update_alt_rounded),
+        label: Text(
+          _checkingForAppUpdate ? 'Checking…' : 'Check for app update',
+        ),
+      );
 
   @override
   void initState() {
@@ -126,9 +185,11 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
         _loading = false;
         _customerNeedsSync = customerNeedsSync;
         _statementServiceNeedsUpdate = statementServiceNeedsUpdate(e);
-        _loadError = customerNeedsSync
-            ? 'This customer or their latest sale has not synced yet.'
-            : apiErrorMessage(e);
+        _loadError = _loadErrorMessage(
+          e,
+          customerNeedsSync: customerNeedsSync,
+          serviceNeedsUpdate: _statementServiceNeedsUpdate,
+        );
       });
       // Only a customer-specific 404 can be repaired by flushing queued data.
       // UUID validation and missing-route errors need a server update; retrying
@@ -230,9 +291,11 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
         _statementServiceNeedsUpdate = statementServiceNeedsUpdate(e);
         _loadError = customerNeedsSync
             ? 'This customer record has not reached the workspace yet. Sync the customer and try again.'
-            : e is StateError
-                ? e.message.toString()
-                : apiErrorMessage(e);
+            : _loadErrorMessage(
+                e,
+                customerNeedsSync: false,
+                serviceNeedsUpdate: _statementServiceNeedsUpdate,
+              );
       });
     }
   }
@@ -274,7 +337,15 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
       // Refresh "sent before" so the new link shows up.
       await _loadSentLinks();
     } catch (e) {
-      if (mounted) setState(() => _message = apiErrorMessage(e));
+      if (mounted) {
+        final serviceNeedsUpdate = statementServiceNeedsUpdate(e);
+        setState(() {
+          _statementServiceNeedsUpdate = serviceNeedsUpdate;
+          _message = serviceNeedsUpdate
+              ? _statementServiceUpdateMessage
+              : apiErrorMessage(e);
+        });
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -402,15 +473,26 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
                         borderRadius:
                             BorderRadius.circular(DesignSpacing.radiusMd),
                       ),
-                      child: Row(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(Icons.system_update_alt_rounded,
-                              color: DesignColors.warning),
-                          const SizedBox(width: DesignSpacing.sm),
-                          Expanded(
-                            child: Text(_loadError!,
-                                style: Theme.of(context).textTheme.bodyMedium),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.system_update_alt_rounded,
+                                  color: DesignColors.warning),
+                              const SizedBox(width: DesignSpacing.sm),
+                              Expanded(
+                                child: Text(_loadError!,
+                                    style:
+                                        Theme.of(context).textTheme.bodyMedium),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: DesignSpacing.xs),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: _buildCheckForAppUpdateButton(),
                           ),
                         ],
                       ),
@@ -572,6 +654,11 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
                           ? DesignColors.success
                           : DesignColors.error,
                       fontWeight: FontWeight.w600)),
+              if (_statementServiceNeedsUpdate)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _buildCheckForAppUpdateButton(),
+                ),
             ],
             if (_historyLoadError != null) ...[
               const SizedBox(height: DesignSpacing.md),
