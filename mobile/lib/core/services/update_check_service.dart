@@ -129,7 +129,8 @@ class UpdateCheckService extends ChangeNotifier {
 
   static const MethodChannel _installerChannel =
       MethodChannel('pos_mobile/installer');
-  static const Duration _checkInterval = Duration(hours: 6);
+  static const Duration _checkInterval = Duration(hours: 1);
+  static const Duration _retryInterval = Duration(minutes: 5);
 
   final ApiClient _apiClient;
 
@@ -186,13 +187,15 @@ class UpdateCheckService extends ChangeNotifier {
     if (_isChecking) return isForceUpdateRequired || hasOptionalUpdateAvailable;
 
     final now = DateTime.now();
-    if (!force &&
-        _cachedUpdate != null &&
-        _lastCheckTime != null &&
-        now.difference(_lastCheckTime!) < _checkInterval) {
-      final currentVersion = await _resolveCurrentVersion();
-      _applyManifest(_cachedUpdate!, currentVersion);
-      return isForceUpdateRequired || hasOptionalUpdateAvailable;
+    if (!force && _lastCheckTime != null) {
+      final interval = _cachedUpdate == null ? _retryInterval : _checkInterval;
+      if (now.difference(_lastCheckTime!) < interval) {
+        if (_cachedUpdate != null) {
+          final currentVersion = await _resolveCurrentVersion();
+          _applyManifest(_cachedUpdate!, currentVersion);
+        }
+        return isForceUpdateRequired || hasOptionalUpdateAvailable;
+      }
     }
 
     _isChecking = true;

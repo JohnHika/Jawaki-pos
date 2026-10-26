@@ -173,6 +173,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     final txns = asInt(summary['totalTransactions']);
     final cashSales = asDouble(summary['cashSales']);
     final mpesaSales = asDouble(summary['mpesaSales']);
+    final cardSales = asDouble(summary['cardSales']);
     final creditSales = asDouble(summary['creditSales']);
     final cashMode = cash['mode']?.toString();
     final physicalCash = cash['expectedPhysicalCash'] ??
@@ -295,6 +296,12 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                 summaryUnavailable
                     ? 'Unavailable'
                     : _currencyFmt.format(mpesaSales),
+                isDark),
+            _summaryRow(
+                'Card',
+                summaryUnavailable
+                    ? 'Unavailable'
+                    : _currencyFmt.format(cardSales),
                 isDark),
             _summaryRow(
                 'Credit',

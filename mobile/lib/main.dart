@@ -267,6 +267,11 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
     }
 
     if (state == AppLifecycleState.resumed) {
+      // POS devices can stay open for days. Recheck the public release
+      // manifest when the app returns to the foreground so a build published
+      // during a long shift appears without requiring a manual Settings visit.
+      unawaited(getIt<UpdateCheckService>().checkForUpdates(force: false));
+
       // Let the lifecycle lock settle first. Refreshing tenant configuration
       // while a session is being locked would waste a request and could delay
       // the unlock route.
