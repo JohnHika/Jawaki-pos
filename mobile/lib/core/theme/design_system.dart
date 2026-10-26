@@ -1141,12 +1141,12 @@ class EmptyState extends StatelessWidget {
 /// Compact warning for cached content that could not be refreshed.
 class InlineRetryNotice extends StatelessWidget {
   final String message;
-  final VoidCallback onRetry;
+  final VoidCallback? onRetry;
 
   const InlineRetryNotice({
     super.key,
     required this.message,
-    required this.onRetry,
+    this.onRetry,
   });
 
   @override
@@ -1165,12 +1165,14 @@ class InlineRetryNotice extends StatelessWidget {
           Expanded(
             child: Text(message, style: Theme.of(context).textTheme.bodySmall),
           ),
-          const SizedBox(width: DesignSpacing.xs),
-          TextButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh_rounded, size: 18),
-            label: const Text('Try again'),
-          ),
+          if (onRetry != null) ...[
+            const SizedBox(width: DesignSpacing.xs),
+            TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Try again'),
+            ),
+          ],
         ],
       ),
     );

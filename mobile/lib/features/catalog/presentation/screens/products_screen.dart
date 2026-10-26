@@ -9,6 +9,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/utils/api_message.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../../core/utils/business_layout_search.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../sales/presentation/providers/catalog_provider.dart'
@@ -386,11 +387,15 @@ class ProductsScreen extends ConsumerWidget {
                         icon: Icons.sync_problem_rounded,
                         title:
                             'Couldn\'t load your ${businessLayout.productsLabel.toLowerCase()} catalog',
-                        subtitle: 'Check your connection and try again.',
+                        subtitle: loadErrorSubtitle(syncAsync.error),
                         iconColor: DesignColors.error,
-                        actionLabel: 'Retry',
-                        onAction: () =>
-                            ref.invalidate(_catalogSyncProvider(currentUserId)),
+                        actionLabel: isPermissionDenied(syncAsync.error)
+                            ? null
+                            : 'Retry',
+                        onAction: isPermissionDenied(syncAsync.error)
+                            ? null
+                            : () => ref.invalidate(
+                                _catalogSyncProvider(currentUserId)),
                       );
                     }
                     return EmptyState(
@@ -522,9 +527,12 @@ class ProductsScreen extends ConsumerWidget {
                               DesignSpacing.sm,
                             ),
                             child: InlineRetryNotice(
-                              message:
-                                  'Product categories are unavailable. You can still browse and sell your saved products.',
-                              onRetry: () => ref.invalidate(categoriesProvider),
+                              message: isPermissionDenied(categoriesAsync.error)
+                                  ? 'Your role cannot view product categories. You can still browse and sell your saved products.'
+                                  : 'Product categories are unavailable. ${loadErrorSubtitle(categoriesAsync.error)} You can still browse and sell your saved products.',
+                              onRetry: isPermissionDenied(categoriesAsync.error)
+                                  ? null
+                                  : () => ref.invalidate(categoriesProvider),
                             ),
                           ),
                         Expanded(child: productResults),
@@ -548,10 +556,12 @@ class ProductsScreen extends ConsumerWidget {
                 error: (e, _) => EmptyState(
                   icon: Icons.inventory_2_outlined,
                   title: 'Couldn\'t load products',
-                  subtitle: 'Check your connection and try again.',
+                  subtitle: loadErrorSubtitle(e),
                   iconColor: DesignColors.error,
-                  actionLabel: 'Retry',
-                  onAction: () => ref.invalidate(_productsProvider),
+                  actionLabel: isPermissionDenied(e) ? null : 'Retry',
+                  onAction: isPermissionDenied(e)
+                      ? null
+                      : () => ref.invalidate(_productsProvider),
                 ),
               ),
             ),
@@ -1256,10 +1266,12 @@ class _CategoryManagementSheet extends ConsumerWidget {
               error: (e, _) => EmptyState(
                 icon: Icons.category_outlined,
                 title: 'Couldn\'t load categories',
-                subtitle: 'Check your connection and try again.',
+                subtitle: loadErrorSubtitle(e),
                 iconColor: DesignColors.error,
-                actionLabel: 'Retry',
-                onAction: () => ref.invalidate(categoriesProvider),
+                actionLabel: isPermissionDenied(e) ? null : 'Retry',
+                onAction: isPermissionDenied(e)
+                    ? null
+                    : () => ref.invalidate(categoriesProvider),
               ),
             ),
           ),
