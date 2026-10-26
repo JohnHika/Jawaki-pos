@@ -141,10 +141,6 @@ export class AppUpdatesService {
     const buildNumber = this.readNumber(
       this.config.get<string>("ANDROID_APP_BUILD_NUMBER"),
     );
-    const manifestUrl = this.config
-      .get<string>("ANDROID_APP_MANIFEST_URL", "")
-      .trim();
-
     return {
       platform: "android",
       latestVersion,
@@ -168,15 +164,10 @@ export class AppUpdatesService {
         this.config.get<string>("ANDROID_APP_RELEASE_NOTES", ""),
       ),
       publishedAt: this.config.get<string>("ANDROID_APP_PUBLISHED_AT") || null,
-      updateSources: manifestUrl
-        ? [
-            {
-              name: "Cloudflare R2",
-              url: manifestUrl,
-              priority: "primary",
-            },
-          ]
-        : undefined,
+      updateSources: this.buildUpdateSources(
+        this.config.get<string>("ANDROID_APP_APK_URL", ""),
+        "",
+      ),
     };
   }
 
@@ -218,43 +209,85 @@ export class AppUpdatesService {
       publishedAt:
         this.readString(remoteManifest.publishedAt) ||
         fallbackManifest.publishedAt,
-      updateSources: this.buildUpdateSources(
-        this.readString(remoteManifest.apkUrl),
-        fallbackManifest.apkUrl,
-      ),
+      updateSources:
+        this.readUpdateSources(remoteManifest.updateSources) ??
+        this.buildUpdateSources(
+          this.readString(remoteManifest.apkUrl),
+          fallbackManifest.apkUrl,
+        ),
     };
   }
 
   private buildUpdateSources(
-    primaryApkUrl: string | null,
-    fallbackApkUrl: string,
+    primaryApkUrl: string | null | undefined,
+    fallbackApkUrl: string | null | undefined,
   ): UpdateSource[] {
-    const manifestUrl = this.config
-      .get<string>("ANDROID_APP_MANIFEST_URL", "")
-      .trim();
-    const githubRepo = this.config.get<string>(
-      "GITHUB_REPO",
-      "JohnHika/Jawaki-pos",
-    );
+    const sources: UpdateSource[] = [];
+    const add = (
+      rawUrl: string | null | undefined,
+      priority: UpdateSource["priority"],
+    ) => {
+      const url = this.readApkDownloadUrl(rawUrl);
+      if (!url || sources.some((source) => source.url === url)) return;
+
+      sources.push({
+        name: this.getDownloadSourceName(url),
+        url,
+        priority,
+      });
+    };
+
+    add(primaryApkUrl, "primary");
+    add(fallbackApkUrl, "secondary");
+
+    return sources;
+  }
+
+  private readUpdateSources(value: unknown): UpdateSource[] | undefined {
+    if (!Array.isArray(value)) return undefined;
 
     const sources: UpdateSource[] = [];
+    for (const item of value) {
+      if (!item || typeof item !== "object") continue;
+      const source = item as Record<string, unknown>;
+      const url = this.readApkDownloadUrl(this.readString(source.url));
+      if (!url || sources.some((candidate) => candidate.url === url)) continue;
 
-    if (manifestUrl) {
       sources.push({
-        name: "Cloudflare R2",
-        url: manifestUrl,
-        priority: "primary",
+        name: this.readString(source.name) || this.getDownloadSourceName(url),
+        url,
+        priority: source.priority === "secondary" ? "secondary" : "primary",
       });
     }
 
-    // Add GitHub Packages as secondary source
-    sources.push({
-      name: "GitHub Packages",
-      url: `https://github.com/${githubRepo}/releases`,
-      priority: "secondary",
-    });
+    return sources.length > 0 ? sources : undefined;
+  }
 
-    return sources;
+  private readApkDownloadUrl(rawUrl: string | null | undefined): string | null {
+    const candidate = rawUrl?.trim();
+    if (!candidate) return null;
+
+    try {
+      const url = new URL(candidate);
+      if (
+        (url.protocol !== "https:" && url.protocol !== "http:") ||
+        !url.pathname.toLowerCase().endsWith(".apk")
+      ) {
+        return null;
+      }
+      return url.toString();
+    } catch {
+      return null;
+    }
+  }
+
+  private getDownloadSourceName(rawUrl: string): string {
+    const host = new URL(rawUrl).hostname.toLowerCase();
+    if (host === "github.com" || host.endsWith(".github.com")) {
+      return "GitHub Releases";
+    }
+    if (host.endsWith(".r2.dev")) return "Cloudflare R2";
+    return "APK download";
   }
 
   private async getLatestGitHubReleaseManifest(
@@ -334,7 +367,7 @@ export class AppUpdatesService {
       ),
       publishedAt:
         this.readString(release.published_at) || fallbackManifest.publishedAt,
-      updateSources: this.buildUpdateSources(null, apkUrl),
+      updateSources: this.buildUpdateSources(apkUrl, ""),
     };
   }
 

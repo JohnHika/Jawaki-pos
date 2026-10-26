@@ -78,12 +78,12 @@ describe("AppUpdatesService", () => {
       updateSources: [
         {
           name: "Cloudflare R2",
-          url: "https://pub.example.r2.dev/android/latest.json",
+          url: "https://pub.example.r2.dev/releases/1.0.4/app-release.apk",
           priority: "primary",
         },
         {
-          name: "GitHub Packages",
-          url: "https://github.com/JohnHika/Jawaki-pos/releases",
+          name: "APK download",
+          url: "https://downloads.example.com/app-release.apk",
           priority: "secondary",
         },
       ],
@@ -154,8 +154,8 @@ describe("AppUpdatesService", () => {
       publishedAt: null,
       updateSources: [
         {
-          name: "Cloudflare R2",
-          url: "https://pub.example.r2.dev/android/latest.json",
+          name: "APK download",
+          url: "https://downloads.example.com/app-release.apk",
           priority: "primary",
         },
       ],
