@@ -2339,10 +2339,7 @@ class AppDatabase extends _$AppDatabase {
       'COUNT(*) AS total_transactions, '
       'COALESCE(SUM(total), 0) AS total_sales, '
       'COALESCE(SUM(tax), 0) AS total_tax, '
-      'COALESCE(SUM(discount), 0) AS total_discount, '
-      "COALESCE(SUM(CASE WHEN UPPER(payment_method) = 'CASH' THEN total ELSE 0 END), 0) AS cash_sales, "
-      "COALESCE(SUM(CASE WHEN UPPER(payment_method) = 'MPESA' THEN total ELSE 0 END), 0) AS mpesa_sales, "
-      "COALESCE(SUM(CASE WHEN UPPER(payment_method) = 'CREDIT' THEN total ELSE 0 END), 0) AS credit_sales "
+      'COALESCE(SUM(discount), 0) AS total_discount '
       'FROM pending_sales '
       'WHERE branch_id = ? AND created_at >= ? AND created_at < ? '
       "AND UPPER(status) = 'COMPLETED'",
@@ -2353,6 +2350,53 @@ class AppDatabase extends _$AppDatabase {
       ],
     ).getSingle();
 
+    // A split sale is stored locally as one SPLIT row with its CASH/CREDIT
+    // tenders in payment_reference. Counting only rows whose payment method
+    // is exactly CASH or CREDIT silently dropped both parts from offline End
+    // of Day totals. Load the day's methods in one query and reconcile every
+    // split against its sale total before including its tender breakdown.
+    final paymentRows = await customSelect(
+      'SELECT payment_method, total, payment_reference FROM pending_sales '
+      'WHERE branch_id = ? AND created_at >= ? AND created_at < ? '
+      "AND UPPER(status) = 'COMPLETED'",
+      variables: [
+        Variable.withString(branchId),
+        Variable.withDateTime(startOfDay),
+        Variable.withDateTime(endOfDay),
+      ],
+    ).get();
+    var cashSalesCents = 0;
+    var mpesaSalesCents = 0;
+    var cardSalesCents = 0;
+    var creditSalesCents = 0;
+    for (final sale in paymentRows) {
+      final method = sale.read<String>('payment_method').trim().toUpperCase();
+      final totalCents = _amountToCents(sale.read<double>('total'));
+      switch (method) {
+        case 'CASH':
+          cashSalesCents += totalCents;
+        case 'MPESA':
+          mpesaSalesCents += totalCents;
+        case 'CREDIT':
+          creditSalesCents += totalCents;
+        case 'PESAPAL':
+        case 'TOURISTTAP':
+        case 'CARD':
+          cardSalesCents += totalCents;
+        case 'SPLIT':
+          final split = _splitTenderCents(
+            sale.readNullable<String>('payment_reference'),
+            expectedTotalCents: totalCents,
+          );
+          cashSalesCents += split['CASH'] ?? 0;
+          creditSalesCents += split['CREDIT'] ?? 0;
+        default:
+          throw FormatException(
+            'Cannot reconcile local End of Day payment method "$method".',
+          );
+      }
+    }
+
     return {
       'date':
           '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
@@ -2360,12 +2404,77 @@ class AppDatabase extends _$AppDatabase {
       'totalTransactions': row.read<int>('total_transactions'),
       'totalTax': row.read<double>('total_tax'),
       'totalDiscount': row.read<double>('total_discount'),
-      'cashSales': row.read<double>('cash_sales'),
-      'mpesaSales': row.read<double>('mpesa_sales'),
-      'cardSales': 0.0,
-      'creditSales': row.read<double>('credit_sales'),
+      'cashSales': cashSalesCents / 100,
+      'mpesaSales': mpesaSalesCents / 100,
+      'cardSales': cardSalesCents / 100,
+      'creditSales': creditSalesCents / 100,
       'outstandingBalance': 0.0,
     };
+  }
+
+  int _amountToCents(double amount) {
+    if (!amount.isFinite || amount < 0) {
+      throw const FormatException('A local sale has an invalid amount.');
+    }
+    return (amount * 100).round();
+  }
+
+  Map<String, int> _splitTenderCents(
+    String? rawReference, {
+    required int expectedTotalCents,
+  }) {
+    if (rawReference == null || rawReference.trim().isEmpty) {
+      throw const FormatException(
+        'A local split sale is missing its payment breakdown.',
+      );
+    }
+
+    final decoded = jsonDecode(rawReference);
+    if (decoded is! List || decoded.isEmpty) {
+      throw const FormatException(
+        'A local split sale has an invalid payment breakdown.',
+      );
+    }
+
+    final result = <String, int>{};
+    var tenderTotalCents = 0;
+    for (final entry in decoded) {
+      if (entry is! Map) {
+        throw const FormatException(
+          'A local split sale has an invalid tender.',
+        );
+      }
+      final method = entry['method']?.toString().trim().toUpperCase() ?? '';
+      if (method != 'CASH' && method != 'CREDIT') {
+        throw const FormatException(
+          'A local split sale has an unsupported tender method.',
+        );
+      }
+      final rawAmount = entry['amount'];
+      final amount = rawAmount is num
+          ? rawAmount.toDouble()
+          : double.tryParse(rawAmount?.toString() ?? '');
+      if (amount == null || !amount.isFinite || amount <= 0) {
+        throw const FormatException(
+          'A local split sale has an invalid tender amount.',
+        );
+      }
+      final cents = _amountToCents(amount);
+      if (cents <= 0) {
+        throw const FormatException(
+          'A local split sale has a tender below one cent.',
+        );
+      }
+      result.update(method, (value) => value + cents, ifAbsent: () => cents);
+      tenderTotalCents += cents;
+    }
+
+    if (tenderTotalCents != expectedTotalCents) {
+      throw const FormatException(
+        'A local split sale does not balance to its recorded total.',
+      );
+    }
+    return result;
   }
 
   /// Weekly summary for analytics dashboard.
