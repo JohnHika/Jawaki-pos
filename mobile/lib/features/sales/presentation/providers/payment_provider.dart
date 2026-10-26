@@ -123,6 +123,24 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
 
   bool _isCurrentSession(int generation) => generation == _sessionGeneration;
 
+  /// Payment methods can be triggered from more than one UI surface. Keep the
+  /// transaction lock here as well as in the screen so a fast double tap or a
+  /// second caller cannot create another sale while the first is being saved.
+  /// A pending provider charge also locks cash, credit, and split until its
+  /// reference is resolved; only an M-Pesa retry may reuse that request.
+  bool _blockPaymentStart({bool allowPendingMerchantRetry = false}) {
+    if (state.isProcessing) return true;
+    if (!allowPendingMerchantRetry && _pendingMpesaRequestId != null) {
+      state = state.copyWith(
+        isProcessing: false,
+        error:
+            'An earlier M-Pesa payment is still open. Check it before taking another payment.',
+      );
+      return true;
+    }
+    return false;
+  }
+
   void acknowledgeMerchantPayment(String reference, String status) {
     if (state.currentTransactionId != reference) return;
     if (status == 'COMPLETED') {
@@ -150,6 +168,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     double discountAmount = 0,
     String? couponCode,
   }) async {
+    if (_blockPaymentStart()) return null;
     final sessionGeneration = _sessionGeneration;
     state = state.copyWith(isProcessing: true, error: null);
 
@@ -213,6 +232,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String? customerId,
     String? couponCode,
   }) async {
+    if (_blockPaymentStart(allowPendingMerchantRetry: true)) return null;
     final sessionGeneration = _sessionGeneration;
     final previousReference = state.currentTransactionId;
     state = state.copyWith(isProcessing: true, error: null);
@@ -397,6 +417,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     double discountAmount = 0,
     String? couponCode,
   }) async {
+    if (_blockPaymentStart()) return null;
     final sessionGeneration = _sessionGeneration;
     state = state.copyWith(isProcessing: true, error: null);
 
@@ -461,6 +482,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     double discountAmount = 0,
     String? couponCode,
   }) async {
+    if (_blockPaymentStart()) return null;
     final sessionGeneration = _sessionGeneration;
     state = state.copyWith(isProcessing: true, error: null);
 
@@ -640,8 +662,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       customerId,
       extras,
     );
-    if (!_isCurrentSession(sessionGeneration) || !_connectivity.isOnline)
+    if (!_isCurrentSession(sessionGeneration) || !_connectivity.isOnline) {
       return;
+    }
 
     // The outbox is durable now. A server delay or outage must not block the
     // cashier from seeing the locally saved receipt; the periodic worker will
