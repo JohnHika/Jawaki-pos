@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/providers/business_layout_provider.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
@@ -61,9 +62,11 @@ class ReportsScreen extends ConsumerWidget {
                 child: EmptyState(
                   icon: Icons.error_outline_rounded,
                   title: 'Could not load summary',
-                  subtitle: 'Check your connection and try again.',
-                  actionLabel: 'Retry',
-                  onAction: () => ref.invalidate(dashboardSummaryProvider),
+                  subtitle: loadErrorSubtitle(e),
+                  actionLabel: isPermissionDenied(e) ? null : 'Retry',
+                  onAction: isPermissionDenied(e)
+                      ? null
+                      : () => ref.invalidate(dashboardSummaryProvider),
                 ),
               ),
             ),

@@ -7,6 +7,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../finance/presentation/screens/finance_screen.dart'
@@ -168,10 +169,12 @@ class RestockSuggestionsScreen extends ConsumerWidget {
         error: (e, _) => EmptyState(
           icon: Icons.error_outline_rounded,
           title: 'Could not load restock suggestions',
-          subtitle: 'Check your connection and try again.',
+          subtitle: loadErrorSubtitle(e),
           iconColor: DesignColors.error,
-          actionLabel: 'Retry',
-          onAction: () => ref.invalidate(_restockSuggestionsProvider),
+          actionLabel: isPermissionDenied(e) ? null : 'Retry',
+          onAction: isPermissionDenied(e)
+              ? null
+              : () => ref.invalidate(_restockSuggestionsProvider),
         ),
       ),
     );

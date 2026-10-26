@@ -10,6 +10,7 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/providers/tenant_provider.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../ai/presentation/screens/ai_chat_service.dart';
 
 /// Everything the calendar day-detail screen needs for one date, sourced
@@ -94,10 +95,12 @@ class DaySummaryScreen extends ConsumerWidget {
                 child: EmptyState(
                   icon: Icons.error_outline_rounded,
                   title: "Couldn't load this day",
-                  subtitle: 'Check your connection and try again.',
+                  subtitle: loadErrorSubtitle(e),
                   iconColor: DesignColors.error,
-                  actionLabel: 'Retry',
-                  onAction: () => ref.invalidate(_daySummaryProvider(date)),
+                  actionLabel: isPermissionDenied(e) ? null : 'Retry',
+                  onAction: isPermissionDenied(e)
+                      ? null
+                      : () => ref.invalidate(_daySummaryProvider(date)),
                 ),
               ),
             ],
@@ -211,9 +214,10 @@ class DaySummaryScreen extends ConsumerWidget {
                   children: sales.asMap().entries.map((entry) {
                     final isLast = entry.key == sales.length - 1;
                     final sale = entry.value as Map<String, dynamic>;
-                    final createdAt = DateTime.tryParse(
-                            sale['createdAt']?.toString() ?? '')?.toLocal() ??
-                        date;
+                    final createdAt =
+                        DateTime.tryParse(sale['createdAt']?.toString() ?? '')
+                                ?.toLocal() ??
+                            date;
                     final total = (sale['totalAmount'] as num?) ?? 0;
                     final receiptNumber =
                         sale['receiptNumber']?.toString() ?? '';

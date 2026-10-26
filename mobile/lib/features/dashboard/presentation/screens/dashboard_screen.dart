@@ -24,6 +24,7 @@ import '../../../finance/presentation/end_of_day_prompt.dart';
 import '../widgets/staff_invite_nudge.dart';
 import '../../../accountability/presentation/widgets/shop_attention_card.dart';
 import '../../../../core/utils/format.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../notifications/presentation/widgets/notification_bell.dart';
 import '../../../news/presentation/providers/news_provider.dart';
@@ -331,17 +332,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 ),
             ]
           : const [],
-      error: (_, __) => needsSummary
+      error: (error, _) => needsSummary
           ? [
               Padding(
                 padding: const EdgeInsets.all(DesignSpacing.xl),
                 child: EmptyState(
                   icon: Icons.error_outline_rounded,
                   title: 'Couldn\'t load summary',
-                  subtitle: 'Check your connection and try again.',
+                  subtitle: loadErrorSubtitle(error),
                   iconColor: DesignColors.error,
-                  actionLabel: 'Retry',
-                  onAction: () => ref.invalidate(_dashboardSummaryProvider),
+                  actionLabel: isPermissionDenied(error) ? null : 'Retry',
+                  onAction: isPermissionDenied(error)
+                      ? null
+                      : () => ref.invalidate(_dashboardSummaryProvider),
                 ),
               ),
             ]
@@ -662,10 +665,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     child: EmptyState(
                       icon: Icons.error_outline_rounded,
                       title: 'Couldn\'t load recent sales',
-                      subtitle: 'Check your connection and try again.',
+                      subtitle: loadErrorSubtitle(e),
                       iconColor: DesignColors.error,
-                      actionLabel: 'Retry',
-                      onAction: () => ref.invalidate(_recentSalesProvider),
+                      actionLabel: isPermissionDenied(e) ? null : 'Retry',
+                      onAction: isPermissionDenied(e)
+                          ? null
+                          : () => ref.invalidate(_recentSalesProvider),
                     ),
                   ),
                 ),

@@ -7,6 +7,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import 'finance_screen.dart' show FinanceScreen;
@@ -251,10 +252,12 @@ class _CashFlowScreenState extends ConsumerState<CashFlowScreen> {
         error: (e, _) => EmptyState(
           icon: Icons.error_outline_rounded,
           title: 'Could not load cash flow',
-          subtitle: 'Check your connection and try again.',
+          subtitle: loadErrorSubtitle(e),
           iconColor: DesignColors.error,
-          actionLabel: 'Retry',
-          onAction: () => ref.invalidate(_availableCashProvider),
+          actionLabel: isPermissionDenied(e) ? null : 'Retry',
+          onAction: isPermissionDenied(e)
+              ? null
+              : () => ref.invalidate(_availableCashProvider),
         ),
       ),
     );
