@@ -33,6 +33,7 @@ class StatementRepliesScreen extends ConsumerWidget {
         child: claims.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) {
+            final needsOnlineWorkspace = statementNeedsOnlineWorkspace(e);
             final serviceNeedsUpdate = statementServiceNeedsUpdate(e);
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -42,16 +43,24 @@ class StatementRepliesScreen extends ConsumerWidget {
                   padding:
                       const EdgeInsets.symmetric(vertical: DesignSpacing.xl),
                   child: EmptyState(
-                    icon: Icons.mark_chat_read_outlined,
-                    title: serviceNeedsUpdate
-                        ? 'Debt replies need a service update'
-                        : "Couldn't load customer replies",
-                    subtitle: serviceNeedsUpdate
-                        ? 'The Counterbase service connected to this app does not support debt replies yet. Update the service, then pull down to refresh.'
-                        : apiErrorMessage(e),
+                    icon: needsOnlineWorkspace
+                        ? Icons.cloud_off_rounded
+                        : Icons.mark_chat_read_outlined,
+                    title: needsOnlineWorkspace
+                        ? 'Replies need the online workspace'
+                        : serviceNeedsUpdate
+                            ? 'Debt replies need a service update'
+                            : "Couldn't load customer replies",
+                    subtitle: needsOnlineWorkspace
+                        ? 'Customer replies are available when this app is connected to your online Counterbase workspace. Your sales and debts remain saved on this device.'
+                        : serviceNeedsUpdate
+                            ? 'The Counterbase service connected to this app does not support debt replies yet. Update the service, then pull down to refresh.'
+                            : apiErrorMessage(e),
                     iconColor: DesignColors.warning,
-                    actionLabel: serviceNeedsUpdate ? null : 'Try again',
-                    onAction: serviceNeedsUpdate
+                    actionLabel: (serviceNeedsUpdate || needsOnlineWorkspace)
+                        ? null
+                        : 'Try again',
+                    onAction: (serviceNeedsUpdate || needsOnlineWorkspace)
                         ? null
                         : () => ref.invalidate(statementClaimsProvider),
                   ),

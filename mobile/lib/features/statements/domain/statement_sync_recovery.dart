@@ -30,6 +30,20 @@ bool statementServiceNeedsUpdate(Object error) {
       ).hasMatch(message);
 }
 
+/// Replies are cloud-backed and cannot be fetched from the phone's local
+/// server. Avoid offering a retry that will return the same response until
+/// the app is connected to the online workspace.
+bool statementNeedsOnlineWorkspace(Object error) {
+  if (error is! DioException || error.response?.statusCode != 503) {
+    return false;
+  }
+
+  final message = _messageFromPayload(error.response?.data);
+  return message.toLowerCase().contains(
+        'connect to the online counterbase workspace',
+      );
+}
+
 String _messageFromPayload(Object? payload) {
   if (payload is String) return payload;
   if (payload is List) {
