@@ -95,6 +95,10 @@ class SettingsScreen extends ConsumerWidget {
     // today. Keep the menu honest until those endpoints are fully migrated to
     // granular permission keys.
     final isBillingAdmin = legacyRole == 'ADMIN';
+    // Layout customization is tenant-wide, so use the same granular permission
+    // enforced by BusinessLayoutScreen instead of tying it to billing's legacy
+    // role check.
+    final canManageBusinessLayout = perms.has('branches.tenant.update');
 
     final taxPercent = getIt<AuthService>().taxRatePercent;
     final taxSubtitle = taxPercent > 0
@@ -112,7 +116,7 @@ class SettingsScreen extends ConsumerWidget {
         id: 'business',
         title: 'My business',
         entries: [
-          if (isBillingAdmin)
+          if (canManageBusinessLayout)
             SettingsEntry(
               id: 'business-layout',
               icon: Icons.tune_rounded,
