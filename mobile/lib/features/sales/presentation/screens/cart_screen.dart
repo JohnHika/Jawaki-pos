@@ -354,9 +354,34 @@ class CartScreen extends ConsumerWidget {
     });
   }
 
-  void _holdSale(BuildContext context, WidgetRef ref, CartState cart) {
+  Future<void> _holdSale(
+      BuildContext context, WidgetRef ref, CartState cart) async {
     if (cart.items.isEmpty) return;
-    ref.read(parkedSalesProvider.notifier).park(cart);
+    try {
+      await ref.read(parkedSalesProvider.notifier).park(cart);
+    } catch (_) {
+      if (context.mounted) {
+        showGlassSnackBar(
+          context,
+          'Could not save the held sale. Your cart is still here.',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+      }
+      return;
+    }
+    if (!context.mounted) return;
+    final currentCart = ref.read(cartProvider);
+    if (!identical(currentCart, cart)) {
+      if (currentCart.items.isEmpty) return;
+      showGlassSnackBar(
+        context,
+        'Sale saved. Your updated cart is still open.',
+        icon: Icons.info_outline_rounded,
+        color: DesignColors.warning,
+      );
+      return;
+    }
     ref.read(cartProvider.notifier).clear();
     showGlassSnackBar(
       context,

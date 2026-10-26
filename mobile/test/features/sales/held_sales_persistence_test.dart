@@ -56,7 +56,8 @@ void main() {
     expect(otherBranch.state, isEmpty);
 
     final saleId = restored.state.single.id;
-    expect(restored.resume(saleId)?.items.single.quantity, 2);
+    final resumedCart = await restored.resume(saleId);
+    expect(resumedCart?.items.single.quantity, 2);
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(ParkedSalesNotifier(
       storage: storage,

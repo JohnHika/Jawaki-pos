@@ -25,6 +25,7 @@ const String _githubPackagesTokenEnv =
     String.fromEnvironment('GITHUB_TOKEN', defaultValue: '');
 const String _githubPackagesReleaseApi =
     'https://api.github.com/repos/JohnHika/Jawaki-pos/releases';
+const int _minimumSafeAndroidBuildNumber = 2021;
 
 class UpdateSource {
   const UpdateSource({
@@ -382,7 +383,9 @@ class UpdateCheckService extends ChangeNotifier {
   }
 
   /// Get the latest Android update from GitHub Packages releases
-  Future<AppUpdateInfo?> _getLatestGitHubPackagesUpdate() async {
+  Future<AppUpdateInfo?> _getLatestGitHubPackagesUpdate({
+    int? matchingBuildNumber,
+  }) async {
     try {
       // Use GitHub API to get the latest release
       final dio = Dio(BaseOptions(
@@ -406,9 +409,17 @@ class UpdateCheckService extends ChangeNotifier {
         return null;
       }
 
-      // Parse the releases and find the latest APK
+      // Only production releases can be used as update candidates. GitHub
+      // keeps drafts and prereleases in the same API response, and an older
+      // debug-signed APK can still have a perfectly valid download URL.
       final releases = response.data as List;
+      final candidates = <AppUpdateInfo>[];
       for (final release in releases) {
+        if (release is! Map ||
+            release['draft'] == true ||
+            release['prerelease'] == true) {
+          continue;
+        }
         final assets = release['assets'] as List?;
         if (assets == null || assets.isEmpty) continue;
 
@@ -418,41 +429,59 @@ class UpdateCheckService extends ChangeNotifier {
 
         if (tagName == null) continue;
 
-        // Look for APK asset
+        // Production workflow publishes this exact APK asset. Avoid other
+        // APKs that could be debug or split-package artifacts.
         for (final asset in assets) {
+          if (asset is! Map) continue;
           final name = asset['name'] as String?;
           final browserDownloadUrl = asset['browser_download_url'] as String?;
 
-          if (name != null &&
-              browserDownloadUrl != null &&
-              name.endsWith('.apk')) {
-            // Extract version from tag_name (e.g., "v1.0.3+2004" or "1.0.3+2004")
-            final version =
-                tagName.startsWith('v') ? tagName.substring(1) : tagName;
-
-            final apkUrl = _resolveGitHubPackagesApkUrl(browserDownloadUrl);
-
-            return AppUpdateInfo(
-              latestVersion: version,
-              releaseName: 'Counterbase ${_stripBuildSuffix(version)}',
-              buildNumber: _extractBuildNumber(version),
-              minSupportedVersion:
-                  '0.0.0', // GitHub Packages doesn't support min version
-              forceUpdate:
-                  false, // GitHub Packages always allows optional updates
-              apkUrl: apkUrl,
-              releaseNotes: body?.trim() ?? '',
-              publishedAt:
-                  publishedAt != null ? DateTime.parse(publishedAt) : null,
-            );
+          if (name?.toLowerCase() != 'app-release.apk' ||
+              browserDownloadUrl == null ||
+              browserDownloadUrl.trim().isEmpty) {
+            continue;
           }
+
+          final version =
+              tagName.startsWith('v') ? tagName.substring(1) : tagName;
+          final buildNumber = _extractBuildNumber(version);
+          if (buildNumber == null ||
+              buildNumber < _minimumSafeAndroidBuildNumber ||
+              (matchingBuildNumber != null &&
+                  buildNumber != matchingBuildNumber)) {
+            continue;
+          }
+
+          candidates.add(AppUpdateInfo(
+            latestVersion: version,
+            releaseName: 'Counterbase ${_stripBuildSuffix(version)}',
+            buildNumber: buildNumber,
+            minSupportedVersion: '0.0.0',
+            forceUpdate: false,
+            apkUrl: _resolveGitHubPackagesApkUrl(browserDownloadUrl),
+            releaseNotes: body?.trim() ?? '',
+            publishedAt:
+                publishedAt != null ? DateTime.tryParse(publishedAt) : null,
+          ));
+          break;
         }
       }
 
-      if (!kReleaseMode) {
-        debugPrint('[UpdateCheck] No APK found in GitHub Packages releases');
+      if (candidates.isEmpty) {
+        if (!kReleaseMode) {
+          debugPrint(
+            matchingBuildNumber == null
+                ? '[UpdateCheck] No safe production APK found in GitHub releases'
+                : '[UpdateCheck] No safe GitHub APK found for build $matchingBuildNumber',
+          );
+        }
+        return null;
       }
-      return null;
+
+      candidates.sort(
+        (a, b) => b.buildNumber!.compareTo(a.buildNumber!),
+      );
+      return candidates.first;
     } catch (error) {
       if (!kReleaseMode) {
         debugPrint(
@@ -757,7 +786,25 @@ class UpdateCheckService extends ChangeNotifier {
       ),
     );
 
-    final downloadUrls = <String>[_resolveDownloadUrl(update.apkUrl)];
+    final downloadUrls = <String>[];
+    void addDownloadUrl(String rawUrl) {
+      final normalized = _resolveDownloadUrl(rawUrl.trim());
+      if (normalized.isNotEmpty && !downloadUrls.contains(normalized)) {
+        downloadUrls.add(normalized);
+      }
+    }
+
+    // Keep apkUrl first for older manifests, then use any explicit mirror
+    // URLs. New manifests point legacy clients at GitHub and let this client
+    // retry Cloudflare R2 if GitHub is unreachable.
+    addDownloadUrl(update.apkUrl);
+    final sources = update.updateSources ?? const <UpdateSource>[];
+    for (final source in sources.where((item) => item.priority == 'primary')) {
+      addDownloadUrl(source.url);
+    }
+    for (final source in sources.where((item) => item.priority != 'primary')) {
+      addDownloadUrl(source.url);
+    }
 
     // Reuse a complete APK from an earlier attempt when its source still
     // responds. A cancelled/partial download is removed and fetched again.
@@ -848,7 +895,9 @@ class UpdateCheckService extends ChangeNotifier {
       '${update.latestVersion}|${update.buildNumber ?? ''}|${update.apkUrl.trim()}';
 
   Future<String?> _githubFallbackUrlForUpdate(AppUpdateInfo update) async {
-    final githubUpdate = await _getLatestGitHubPackagesUpdate();
+    final githubUpdate = await _getLatestGitHubPackagesUpdate(
+      matchingBuildNumber: update.buildNumber,
+    );
     if (githubUpdate != null &&
         _isSameUpdateRelease(update, githubUpdate) &&
         githubUpdate.apkUrl.trim().isNotEmpty) {

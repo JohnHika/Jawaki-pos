@@ -12,9 +12,12 @@ The feature has three layers:
    selling defaults. Up to three optional profiles can add relevant item
    fields, dashboard figures, shortcuts, and work areas for mixed shops.
 2. **Checkout style** — grid or compact list, category filters, favourites,
-   and customer lookup. Owners can also show, hide, and reorder the existing
-   POS toolbar actions (customer, favourites, held sales, hold sale, and cart).
-   The cart stays available so staff can always complete checkout.
+   and customer lookup. Owners can also show, hide, and reorder POS actions for
+   customer lookup, favourites, held sales, holding a sale, cart, price list,
+   inventory, stock counts, reports, payments, and receipts. The first three
+   available actions stay on the toolbar; additional actions are in its More
+   menu so the counter remains usable on phone screens. Navigation actions
+   continue to check the signed-in staff member's existing permissions.
 3. **Workspace layout** — opening screen, visible modules, shortcut order and
    names, product details, dashboard sections, and dashboard figures.
 
@@ -32,7 +35,26 @@ During setup or later in Settings, a merchant can combine a primary profile
 with up to three complementary profiles. For example, a bookshop can add
 stationery or a grocery can add a bakery counter. The primary profile keeps
 control of terminology and selling defaults; extra profiles add relevant
-product details, dashboard figures, and work areas.
+product details, dashboard figures, work areas, and recommended POS actions.
+Merchants can edit the combined actions before saving. When they remove a
+complementary profile, its profile-only work areas, fields, shortcuts, and
+dashboard recommendations are removed; choices shared with a remaining
+profile keep their enabled state and order, and unrelated custom choices
+remain.
+
+POS shortcuts that open a work area stay in sync with app visibility. Adding a
+screen shortcut also makes that work area visible in the app; hiding a work
+area removes its POS shortcut. Staff permissions continue to control whether
+the signed-in user can open it.
+
+Owners can also create up to 12 named **quick product pages** in Layout actions,
+with up to 32 existing products on each page. Examples include Textbooks,
+Popular stationery, or Fast movers. Pages are stored in the shop's existing
+tenant settings, so they follow the shop between devices. They filter the
+existing product browser; selecting an item still goes through the normal cart,
+price, stock, and payment safeguards. Removed or inactive catalog items do not
+appear. A merchant can reorder, rename, edit, or remove pages without changing
+catalog records.
 
 Layout settings are presentation defaults. They do not change prices, stock,
 payment routing, data, or staff permissions. Hidden modules keep their data and
@@ -70,22 +92,20 @@ settings and are available from onboarding and Layout actions.
 
 ## POS customization patterns and next work
 
-Established POS products commonly let owners arrange frequently used items and
-actions into tiles, group those tiles into pages, and reuse a saved layout across
-locations. Shopify's POS editor supports product, variant, collection, discount,
-fee, and action tiles, plus phone/tablet previews. Square's item grid supports
-item, variation, category, custom-amount, and shortcut tiles. These are useful
-patterns for Counterbase, provided every action continues to respect the logged
-in staff member's existing permissions.
+Established POS products let owners arrange frequently used items and actions
+into tiles and pages. Shopify documents product, variant, collection, discount,
+fee, and action tiles, with reusable templates, location assignment, and phone
+or tablet previews. Square documents item, variation, category, custom amount,
+and shortcut tiles, plus syncing a layout across locations. These patterns are
+useful when every tile keeps the signed-in staff member's existing permission,
+price, stock, and payment checks.
 
-Counterbase currently adapts shop profiles, catalog fields and search,
-navigation, the opening screen, dashboard content, and the POS grid/list,
-category, and favourites controls. POS product cards can be starred from either
-view to populate the favourites list. The next product expansion is a visual
-multi-page POS editor: item/category tiles and safe action shortcuts, with a
-preview before applying. Saved named layouts and branch assignment should
-follow so one business can run different counters without changing every
-branch's experience at once.
+Counterbase adapts trade profiles, catalog fields and search, terminology,
+navigation, the opening screen, dashboard content, product grid/list, category
+filters, favourites, toolbar actions, and named quick product pages. Product
+cards can be starred from either view. Quick pages curate real catalog products
+but do not create new sale types, bypass checkout rules, or grant access to
+hidden work areas.
 
 Reference patterns: [Shopify smart-grid templates](https://help.shopify.com/en/manual/sell-in-person/shopify-pos/customize-pos/smart-grid-management),
 [Shopify tile editor](https://help.shopify.com/en/manual/sell-in-person/shopify-pos/customize-pos/smart-grid-management/edit),
@@ -95,17 +115,45 @@ Reference patterns: [Shopify smart-grid templates](https://help.shopify.com/en/m
 
 The strongest next steps are:
 
-1. **A configurable POS quick grid.** The toolbar actions can now be ordered
-   and tailored by trade profile. Next, support product, category, and safe
-   action tiles across multiple pages. Let merchants reorder them and preview
-   phone and tablet layouts before saving. Enforce existing staff permissions
-   for every action.
+1. **Tile types and category pages.** Extend product pages to include category
+   tiles and existing safe actions, then preview the phone and tablet view.
+   Every action must route through its current permission and transaction
+   validation. Keep custom-amount tiles out until discount, tax, and audit
+   behavior are explicitly defined.
 2. **Reusable named layouts and branch overrides.** Let an owner save a
    configured layout, reuse it at another branch, and assign a different trade
    setup to a branch when needed. Keep a workspace default for new branches.
-3. **Deeper trade workflows.** Expand only where the underlying domain behavior
-   exists: ISBN-led book lookup and reorders; wholesale pack pricing; grocery
-   batch and expiry handling; or hospitality modifiers and kitchen tickets.
+3. **Industry actions that have real domain support.** Bookshops could add
+   ISBN lookup and reorder workflows; Kamukunji wholesalers could add purchase
+   intake, landed cost, and carton pricing; grocery shops could add tracked
+   batch and expiry controls; fashion could add size and colour variants;
+   cafes could add modifiers and kitchen tickets; pharmacies could add audited
+   batch, expiry, and prescription workflows. These require product and
+   transaction models, validation, and reporting before exposing them as
+   profile actions. A label or metadata field alone is not enough.
 4. **Setup recommendations.** After catalog import, suggest useful categories,
    searchable fields, and quick items based on the merchant's catalog. Explain
    each suggestion and require the owner to apply it.
+
+## Trade-specific layout recipes
+
+These are starting points for the profiles, not promises that every listed
+specialized workflow already exists:
+
+| Trade | Profile defaults that fit | Next domain workflow to build |
+| --- | --- | --- |
+| Bookshop | ISBN/barcode search, author/publisher/class/edition details, reader wording, stock and price-list shortcuts | ISBN catalog lookup, textbook lists, and supplier reorder suggestions |
+| Kamukunji wholesaler | Case/carton/pallet tiers, import/container and partner work areas, receivables and stock focus | Purchase intake, landed-cost allocation, and supplier payment reconciliation |
+| Grocery / mini market | Fast item search, category and favourite selling, units by weight/volume, stock counts | Batch and expiry tracking, wastage, and weighed-item barcode flows |
+| Cafe / takeaway | Menu wording, portions, guest lookup, coupons and fast sale actions | Modifiers, order notes, kitchen tickets, and pickup status |
+| Fashion | Size/colour metadata, compact SKU search, customer and price-list actions | First-class variants with stock per size/colour and exchanges |
+| Electronics | Model/part search, serial/warranty metadata, partner and price-list shortcuts | Serial-number capture, warranty claims, and repair/service history |
+| Pharmacy / health shop | Product code search, batch/expiry details, stock counts, supplier focus | Controlled inventory, prescription checks, batch recalls, and audit trails |
+| Service counter | Service codes, session/hour/day units, client wording, payments and receipts | Appointment scheduling, staff availability, and service completion tracking |
+
+Custom actions should be assembled from supported product capabilities and
+permission-checked routes. Each profile can recommend a different home screen,
+dashboard, terminology, product fields, units, and shortcut order; owners can
+combine up to three related profiles and override those choices. Profile
+selection remains reversible and must never silently change sale, stock, price,
+payment, or staff-permission records.

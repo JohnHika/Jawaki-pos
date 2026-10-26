@@ -89,6 +89,8 @@ class EndOfDayScreen extends ConsumerStatefulWidget {
 }
 
 class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
+  bool _isClosing = false;
+
   @override
   Widget build(BuildContext context) {
     final permissions = ref.watch(permissionsProvider);
@@ -340,17 +342,19 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
           itemKey: 'eod-close-cta',
           index: closed ? 3 : 2,
           child: GradientButton(
-            label: summaryError != null
-                ? 'Reconnect to verify sales'
-                : closeError != null
-                    ? 'Connect to check close status'
-                    : !cashStatusKnown
-                        ? 'Reconnect to verify till cash'
-                        : closed
-                            ? 'Re-close day'
-                            : 'Close end of day',
+            label: _isClosing
+                ? 'Closing…'
+                : summaryError != null
+                    ? 'Reconnect to verify sales'
+                    : closeError != null
+                        ? 'Connect to check close status'
+                        : !cashStatusKnown
+                            ? 'Reconnect to verify till cash'
+                            : closed
+                                ? 'Re-close day'
+                                : 'Close end of day',
             icon: Icons.check_circle_outline_rounded,
-            onPressed: canClose
+            onPressed: canClose && !_isClosing
                 ? () => _showCloseSheet(
                       expectedCash,
                       businessDate: businessDate,
@@ -404,160 +408,193 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     double? expectedCash, {
     required String businessDate,
   }) async {
+    if (_isClosing || !mounted) return;
     final branchId = getIt<AuthService>().branchId;
     if (branchId == null) return;
 
     final countController = TextEditingController();
     final notesController = TextEditingController();
 
-    final confirmed = await showModalBottomSheet<bool>(
-      useRootNavigator: true,
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (ctx, setSheetState) {
-          final isDark = Theme.of(ctx).brightness == Brightness.dark;
-          final counted = _parseCashCount(countController.text);
-          final discrepancy = (counted != null && expectedCash != null)
-              ? counted - expectedCash
-              : null;
-          return Padding(
-            padding: EdgeInsets.fromLTRB(
-                DesignSpacing.xl,
-                DesignSpacing.xs,
-                DesignSpacing.xl,
-                DesignSpacing.xl + MediaQuery.of(ctx).viewInsets.bottom),
-            child: SafeArea(
-              top: false,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Close end of day',
-                        style: Theme.of(ctx)
-                            .textTheme
-                            .titleLarge
-                            ?.copyWith(fontWeight: FontWeight.w800)),
-                    const SizedBox(height: DesignSpacing.xs),
-                    Text(
-                      expectedCash != null
-                          ? 'Closing business day $businessDate. System expects ${_currencyFmt.format(expectedCash)} in the till. Count it to finalize the day.'
-                          : 'Closing business day $businessDate. Count the cash in the till to finalize the day.',
-                      style: TextStyle(
-                          color: isDark
-                              ? DesignColors.darkTextSecondary
-                              : DesignColors.textSecondary),
-                    ),
-                    const SizedBox(height: DesignSpacing.lg),
-                    TextField(
-                      controller: countController,
-                      autofocus: true,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [
-                        TextInputFormatter.withFunction((oldValue, newValue) {
-                          final text = newValue.text;
-                          return text.isEmpty ||
-                                  RegExp(r'^(?:\d{0,12}(?:\.\d{0,2})?|\.\d{0,2})$')
-                                      .hasMatch(text)
-                              ? newValue
-                              : oldValue;
-                        }),
-                      ],
-                      decoration: const InputDecoration(
-                        labelText: 'Counted cash in till (KES)',
-                        prefixIcon: Icon(Icons.payments_outlined),
+    bool? confirmed;
+    double? countedCash;
+    String? closeNotes;
+    try {
+      confirmed = await showModalBottomSheet<bool>(
+        useRootNavigator: true,
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final isDark = Theme.of(ctx).brightness == Brightness.dark;
+            final counted = _parseCashCount(countController.text);
+            final discrepancy = (counted != null && expectedCash != null)
+                ? counted - expectedCash
+                : null;
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                  DesignSpacing.xl,
+                  DesignSpacing.xs,
+                  DesignSpacing.xl,
+                  DesignSpacing.xl + MediaQuery.of(ctx).viewInsets.bottom),
+              child: SafeArea(
+                top: false,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Close end of day',
+                          style: Theme.of(ctx)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w800)),
+                      const SizedBox(height: DesignSpacing.xs),
+                      Text(
+                        expectedCash != null
+                            ? 'Closing business day $businessDate. System expects ${_currencyFmt.format(expectedCash)} in the till. Count it to finalize the day.'
+                            : 'Closing business day $businessDate. Count the cash in the till to finalize the day.',
+                        style: TextStyle(
+                            color: isDark
+                                ? DesignColors.darkTextSecondary
+                                : DesignColors.textSecondary),
                       ),
-                      onChanged: (_) => setSheetState(() {}),
-                    ),
-                    const SizedBox(height: DesignSpacing.md),
-                    TextField(
-                      controller: notesController,
-                      decoration: const InputDecoration(
-                        labelText: 'Notes (optional)',
-                        prefixIcon: Icon(Icons.notes_rounded),
+                      const SizedBox(height: DesignSpacing.lg),
+                      TextField(
+                        controller: countController,
+                        autofocus: true,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: [
+                          TextInputFormatter.withFunction((oldValue, newValue) {
+                            final text = newValue.text;
+                            return text.isEmpty ||
+                                    RegExp(r'^(?:\d{0,12}(?:\.\d{0,2})?|\.\d{0,2})$')
+                                        .hasMatch(text)
+                                ? newValue
+                                : oldValue;
+                          }),
+                        ],
+                        decoration: const InputDecoration(
+                          labelText: 'Counted cash in till (KES)',
+                          prefixIcon: Icon(Icons.payments_outlined),
+                        ),
+                        onChanged: (_) => setSheetState(() {}),
                       ),
-                      maxLines: 2,
-                    ),
-                    if (discrepancy != null) ...[
                       const SizedBox(height: DesignSpacing.md),
-                      Container(
-                        padding: const EdgeInsets.all(DesignSpacing.md),
-                        decoration: BoxDecoration(
-                          color: (discrepancy.abs() < 0.01
+                      TextField(
+                        controller: notesController,
+                        decoration: const InputDecoration(
+                          labelText: 'Notes (optional)',
+                          prefixIcon: Icon(Icons.notes_rounded),
+                        ),
+                        maxLines: 2,
+                      ),
+                      if (discrepancy != null) ...[
+                        const SizedBox(height: DesignSpacing.md),
+                        Container(
+                          padding: const EdgeInsets.all(DesignSpacing.md),
+                          decoration: BoxDecoration(
+                            color: (discrepancy.abs() < 0.01
+                                    ? DesignColors.success
+                                    : discrepancy < 0
+                                        ? DesignColors.error
+                                        : DesignColors.warning)
+                                .withValues(alpha: 0.1),
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusMd),
+                          ),
+                          child: Text(
+                            discrepancy.abs() < 0.01
+                                ? 'Matches expected cash'
+                                : discrepancy < 0
+                                    ? 'Shortfall: ${_currencyFmt.format(discrepancy.abs())}'
+                                    : 'Overage: ${_currencyFmt.format(discrepancy)}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: discrepancy.abs() < 0.01
                                   ? DesignColors.success
                                   : discrepancy < 0
                                       ? DesignColors.error
-                                      : DesignColors.warning)
-                              .withValues(alpha: 0.1),
-                          borderRadius:
-                              BorderRadius.circular(DesignSpacing.radiusMd),
-                        ),
-                        child: Text(
-                          discrepancy.abs() < 0.01
-                              ? 'Matches expected cash'
-                              : discrepancy < 0
-                                  ? 'Shortfall: ${_currencyFmt.format(discrepancy.abs())}'
-                                  : 'Overage: ${_currencyFmt.format(discrepancy)}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: discrepancy.abs() < 0.01
-                                ? DesignColors.success
-                                : discrepancy < 0
-                                    ? DesignColors.error
-                                    : DesignColors.warning,
+                                      : DesignColors.warning,
+                            ),
                           ),
+                        ),
+                      ],
+                      const SizedBox(height: DesignSpacing.lg),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(64, DesignSpacing.huge),
+                          ),
+                          onPressed: counted == null
+                              ? null
+                              : () => Navigator.pop(sheetContext, true),
+                          child: const Text('Confirm & close day'),
                         ),
                       ),
                     ],
-                    const SizedBox(height: DesignSpacing.lg),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(64, DesignSpacing.huge),
-                        ),
-                        onPressed: counted == null
-                            ? null
-                            : () => Navigator.pop(sheetContext, true),
-                        child: const Text('Confirm & close day'),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          );
-        },
-      ),
-    );
+            );
+          },
+        ),
+      );
+      if (confirmed == true) {
+        countedCash = _parseCashCount(countController.text);
+        final notes = notesController.text.trim();
+        closeNotes = notes.isEmpty ? null : notes;
+      }
+    } finally {
+      countController.dispose();
+      notesController.dispose();
+    }
 
-    if (confirmed != true || !mounted) return;
-    final counted = _parseCashCount(countController.text);
-    if (counted == null) return;
+    if (confirmed != true || !mounted || countedCash == null) return;
+    setState(() => _isClosing = true);
 
     try {
       await getIt<ApiClient>().closeEndOfDay(
         branchId,
-        countedCash: counted,
+        countedCash: countedCash,
         // Close the exact branch-local business date returned with the report.
         date: businessDate,
-        notes: notesController.text.trim().isEmpty
-            ? null
-            : notesController.text.trim(),
+        notes: closeNotes,
       );
-      ref.invalidate(_eodProvider);
       if (mounted) {
+        ref.invalidate(_eodProvider);
         showGlassSnackBar(context, 'End of day closed',
             icon: Icons.check_circle_rounded, color: DesignColors.success);
       }
     } catch (e) {
       if (mounted) {
-        showGlassSnackBar(context, apiErrorMessage(e),
-            icon: Icons.error_outline_rounded, color: DesignColors.error);
+        // The server may have committed the close even if its response was
+        // lost. Refresh the authoritative status so a safe retry does not
+        // leave the screen claiming that the day is still open.
+        ref.invalidate(_eodProvider);
+        var closeConfirmed = false;
+        try {
+          final refreshed = await ref.read(_eodProvider.future);
+          closeConfirmed = refreshed['close'] is Map<String, dynamic>;
+        } catch (_) {
+          // The screen's refreshed error state remains the source of truth.
+        }
+        if (!mounted) return;
+        showGlassSnackBar(
+          context,
+          closeConfirmed
+              ? 'End of day closed. The confirmation response was delayed.'
+              : 'Close status refreshed. Check the latest status before retrying. ${apiErrorMessage(e)}',
+          icon: closeConfirmed
+              ? Icons.check_circle_rounded
+              : Icons.info_outline_rounded,
+          color: closeConfirmed ? DesignColors.success : DesignColors.warning,
+        );
       }
+    } finally {
+      if (mounted) setState(() => _isClosing = false);
     }
   }
 }

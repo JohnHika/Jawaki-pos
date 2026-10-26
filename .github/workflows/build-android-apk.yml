@@ -293,6 +293,9 @@ jobs:
           BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
           RELEASE_PATH: ${{ steps.version.outputs.release_path }}
           R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GIT_TAG_VERSION: ${{ steps.version.outputs.git_tag_version }}
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
         run: |
@@ -394,6 +397,12 @@ jobs:
           full_version = os.environ['FULL_VERSION']
           release_path = os.environ['RELEASE_PATH'].strip('/')
           base_url = os.environ['R2_PUBLIC_BASE_URL'].rstrip('/')
+          r2_apk_url = f'{base_url}/{release_path}/app-release.apk'
+          github_apk_url = (
+              f"{os.environ['GITHUB_SERVER_URL'].rstrip('/')}/"
+              f"{os.environ['GITHUB_REPOSITORY']}/releases/download/"
+              f"v{os.environ['GIT_TAG_VERSION']}/app-release.apk"
+          )
 
           min_supported_version = str(workflow_inputs.get('min_supported_version') or '').strip()
           if not min_supported_version:
@@ -432,7 +441,14 @@ jobs:
               'minSupportedVersion': min_supported_version,
               'minSupportedBuildNumber': min_supported_build_number,
               'forceUpdate': force_update,
-              'apkUrl': f'{base_url}/{release_path}/app-release.apk',
+              # Older installed clients only read apkUrl. Point them at GitHub
+              # because the R2 hostname failed DNS on some customer networks.
+              # New clients also receive the R2 mirror as an explicit fallback.
+              'apkUrl': github_apk_url,
+              'updateSources': [
+                  {'name': 'GitHub Releases', 'url': github_apk_url, 'priority': 'primary'},
+                  {'name': 'Cloudflare R2', 'url': r2_apk_url, 'priority': 'secondary'},
+              ],
               'releaseNotes': release_notes,
               'publishedAt': datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z'),
           }
@@ -472,6 +488,38 @@ jobs:
             --endpoint-url "$R2_ENDPOINT" \
             --content-type "application/vnd.android.package-archive"
 
+      - name: Create GitHub Release
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
+        uses: softprops/action-gh-release@v3.0.2
+        with:
+          tag_name: v${{ steps.version.outputs.git_tag_version }}
+          target_commitish: ${{ github.sha }}
+          name: Counterbase Android ${{ steps.version.outputs.semantic_version }}
+          body: |
+            ## Counterbase Android Update
+
+            **Release:** ${{ steps.version.outputs.release_name }}
+            **Internal build:** ${{ steps.version.outputs.build_number }}
+            **Source:** GitHub Releases with Cloudflare R2 mirror
+
+            ### Download
+            - [Cloudflare R2](${{ env.R2_PUBLIC_BASE_URL }}/${{ steps.version.outputs.release_path }}/app-release.apk)
+            - [GitHub Release](${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.git_tag_version }})
+
+            ### Update Sources
+            1. **GitHub Releases**: Direct APK URL used by legacy app updaters
+            2. **Cloudflare R2**: Manifest and APK mirror used by current clients
+
+            ${{ steps.manifest.outputs.release_notes || 'Automated Android build from GitHub Actions.' }}
+          files: |
+            mobile/build/app/outputs/flutter-apk/app-release.apk
+            ${{ steps.manifest.outputs.latest_manifest_path }}
+          make_latest: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Publish update manifest to Cloudflare R2
         if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
         shell: bash
@@ -492,6 +540,8 @@ jobs:
           export RELEASE_PATH="$(printf '%s' "$RELEASE_PATH" | tr -d '\r\n')"
           export LATEST_MANIFEST_PATH="$(printf '%s' "$LATEST_MANIFEST_PATH" | tr -d '\r\n')"
 
+          # Publish latest only after the GitHub asset exists so older app
+          # versions can immediately install from the non-R2 download URL.
           aws s3 cp \
             "$LATEST_MANIFEST_PATH" \
             "s3://$CF_R2_BUCKET/android/latest.json" \
@@ -504,38 +554,6 @@ jobs:
             "s3://$CF_R2_BUCKET/$RELEASE_PATH/latest.json" \
             --endpoint-url "$R2_ENDPOINT" \
             --content-type "application/json"
-
-      - name: Create GitHub Release
-        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
-        uses: softprops/action-gh-release@v3.0.2
-        with:
-          tag_name: v${{ steps.version.outputs.git_tag_version }}
-          target_commitish: ${{ github.sha }}
-          name: Counterbase Android ${{ steps.version.outputs.semantic_version }}
-          body: |
-            ## Counterbase Android Update
-
-            **Release:** ${{ steps.version.outputs.release_name }}
-            **Internal build:** ${{ steps.version.outputs.build_number }}
-            **Source:** Dual (Cloudflare R2 + GitHub Releases)
-
-            ### Download
-            - [Cloudflare R2](${{ env.R2_PUBLIC_BASE_URL }}/${{ steps.version.outputs.release_path }}/app-release.apk)
-            - [GitHub Release](${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.git_tag_version }})
-
-            ### Update Sources
-            1. **Cloudflare R2** (Primary): `${{ env.R2_PUBLIC_BASE_URL }}/android/latest.json`
-            2. **GitHub Releases** (Secondary): GitHub Releases API
-
-            ${{ steps.manifest.outputs.release_notes || 'Automated Android build from GitHub Actions.' }}
-          files: |
-            mobile/build/app/outputs/flutter-apk/app-release.apk
-            ${{ steps.manifest.outputs.latest_manifest_path }}
-          make_latest: true
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Write publish summary
         if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
@@ -559,6 +577,6 @@ jobs:
             echo "- GitHub Release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v$GIT_TAG_VERSION"
             echo
             echo "### Update Sources"
-            echo "1. **Cloudflare R2** (Primary) - in-app updater"
-            echo "2. **GitHub Packages** (Secondary) - fallback direct download"
+            echo "1. **GitHub Releases** - direct APK URL for legacy app updaters"
+            echo "2. **Cloudflare R2** - manifest and APK mirror for current clients"
           } >> "$GITHUB_STEP_SUMMARY"

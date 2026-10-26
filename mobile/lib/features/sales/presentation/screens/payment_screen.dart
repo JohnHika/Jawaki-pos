@@ -40,6 +40,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   Map<String, dynamic>? _payoutAccount;
   bool _paystackPayoutVerified = false;
   bool _checkingPayoutStatus = true;
+  bool _isPreparingPayment = false;
 
   bool get _canAcceptMpesa =>
       _payoutStatus == 'ACTIVE' && _paystackPayoutVerified;
@@ -202,17 +203,25 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     final businessLayout = ref.watch(businessLayoutProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final shopName = ref.watch(tenantIdentityProvider).companyName;
-    final canChangePaymentMethod =
-        paymentState.currentTransactionId == null && !paymentState.isProcessing;
+    final canChangePaymentMethod = paymentState.currentTransactionId == null &&
+        !paymentState.isProcessing &&
+        !_isPreparingPayment;
 
     return Scaffold(
       appBar: AppBar(
         leadingWidth: 68,
-        leading: AppBackButton(
-          color:
-              isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
-          isDark: isDark,
-          onPressed: () => context.pop(),
+        leading: Opacity(
+          opacity: paymentState.isProcessing ? 0.45 : 1,
+          child: IgnorePointer(
+            ignoring: paymentState.isProcessing,
+            child: AppBackButton(
+              color: isDark
+                  ? DesignColors.darkTextPrimary
+                  : DesignColors.textPrimary,
+              isDark: isDark,
+              onPressed: () => context.pop(),
+            ),
+          ),
         ),
         title: Text(
           'Payment',
@@ -348,7 +357,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       : 'Requires a verified business payout account',
               color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.mpesa,
-              onTap: paymentState.isProcessing
+              onTap: paymentState.isProcessing || _isPreparingPayment
                   ? null
                   : () => _selectMpesa(
                         cart.total,
@@ -477,10 +486,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           child: GradientButton(
             label: _getButtonText(paymentState),
             icon: Icons.payment_rounded,
-            onPressed: _selectedMethod == null || paymentState.isProcessing
+            onPressed: _selectedMethod == null ||
+                    paymentState.isProcessing ||
+                    _isPreparingPayment
                 ? null
                 : _processPayment,
-            isLoading: paymentState.isProcessing,
+            isLoading: paymentState.isProcessing || _isPreparingPayment,
             height: 56,
             borderRadius: DesignSpacing.radiusLg,
           ),
@@ -490,6 +501,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   }
 
   String _getButtonText(PaymentState paymentState) {
+    if (_isPreparingPayment && !paymentState.isProcessing) {
+      return 'Checking sale…';
+    }
     switch (_selectedMethod) {
       case PaymentMethod.cash:
         return 'Confirm Cash Payment';
@@ -510,14 +524,20 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     double total, {
     required bool hasPendingRequest,
   }) async {
+    if (_isPreparingPayment || ref.read(paymentProvider).isProcessing) return;
     if (!_canAcceptMpesa) {
       await _showPayoutNotReady();
       return;
     }
     setState(() => _selectedMethod = PaymentMethod.mpesa);
     if (hasPendingRequest) return;
-    final ready = await _showMpesaDetailsSheet(total);
-    if (ready && mounted) await _processPayment();
+    setState(() => _isPreparingPayment = true);
+    try {
+      final ready = await _showMpesaDetailsSheet(total);
+      if (ready && mounted) await _processPaymentWhileLocked();
+    } finally {
+      if (mounted) setState(() => _isPreparingPayment = false);
+    }
   }
 
   Future<bool> _showMpesaDetailsSheet(double total) async {
@@ -734,7 +754,85 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     );
   }
 
+  Future<bool> _ensureCartStockAvailable() async {
+    final checks = await ref.read(cartProvider.notifier).validateCartStock();
+    final unavailable = checks
+        .where((check) => check['available'] != true)
+        .toList(growable: false);
+    if (unavailable.isEmpty) return true;
+    if (!mounted) return false;
+
+    final returnToCart = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Stock changed'),
+        content: SizedBox(
+          width: 440,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Update this cart before taking payment. Current stock is checked again at checkout.',
+              ),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 280),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: unavailable.length,
+                  separatorBuilder: (_, __) => const Divider(height: 10),
+                  itemBuilder: (context, index) {
+                    final issue = unavailable[index];
+                    final requested =
+                        (issue['requestedQuantity'] as num?)?.toDouble();
+                    final stock = (issue['currentStock'] as num?)?.toDouble();
+                    final detail = requested == null
+                        ? issue['message']?.toString() ?? 'Stock unavailable'
+                        : '${issue['message']} Requested ${_formatCheckoutQuantity(requested)}, available ${stock == null ? 'unknown' : _formatCheckoutQuantity(stock)}.';
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(issue['productName']?.toString() ?? 'Item'),
+                      subtitle: Text(detail),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Stay here'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Edit cart'),
+          ),
+        ],
+      ),
+    );
+    if (returnToCart == true && mounted) context.pop();
+    return false;
+  }
+
   Future<void> _processPayment({bool rulesChecked = false}) async {
+    if (_selectedMethod == null ||
+        _isPreparingPayment ||
+        ref.read(paymentProvider).isProcessing) {
+      return;
+    }
+    setState(() => _isPreparingPayment = true);
+    try {
+      await _processPaymentWhileLocked(rulesChecked: rulesChecked);
+    } finally {
+      if (mounted) setState(() => _isPreparingPayment = false);
+    }
+  }
+
+  Future<void> _processPaymentWhileLocked({bool rulesChecked = false}) async {
     if (_selectedMethod == null) return;
 
     if (ref.read(paymentProvider.notifier).hasUnresolvedMerchantPayment &&
@@ -775,6 +873,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       cart = ref.read(cartProvider);
     }
 
+    // Quantity and stock can change while an item sits in the cart or while a
+    // held sale is parked. Check the current branch cache before collecting
+    // cash, starting M-Pesa, or recording credit.
+    if (!await _ensureCartStockAvailable() || !mounted) return;
+    cart = ref.read(cartProvider);
+
     // The shop's price, discount and credit rules. Checked once per sale (the
     // M-Pesa details sheet re-enters this method) and before any money moves.
     if (!rulesChecked) {
@@ -812,7 +916,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         if (!_isKenyanPhone(_phoneController.text)) {
           final ready = await _showMpesaDetailsSheet(cart.total);
           if (!ready || !mounted) return;
-          await _processPayment(rulesChecked: true);
+          await _processPaymentWhileLocked(rulesChecked: true);
           return;
         }
         result = await paymentNotifier.processMpesaPayment(
@@ -849,7 +953,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         break;
       case PaymentMethod.split:
         final tenders = await _showSplitPaymentSheet(cart.total);
-        if (tenders == null) return; // cancelled
+        if (tenders == null || !mounted) return; // cancelled or screen closed
         // Keep a defensive recovery for callers which bypass preselection.
         if (cart.customerId == null) {
           final customer = await _showCustomerPicker();
@@ -1528,3 +1632,10 @@ class _PaymentMethodTile extends StatelessWidget {
     );
   }
 }
+
+String _formatCheckoutQuantity(double value) => value == value.roundToDouble()
+    ? value.toInt().toString()
+    : value
+        .toStringAsFixed(3)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');

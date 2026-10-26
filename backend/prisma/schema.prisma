@@ -128,6 +128,7 @@ model MerchantCharge {
   receivablePaymentId String?
   status         String   @default("PENDING")
   providerStatus String?
+  settlementToken String?
   saleId         String?  @unique
   receiptNumber  String?
   createdAt      DateTime @default(now())

@@ -157,10 +157,9 @@ final _eodStatusProvider =
     FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   final branchId = getIt<AuthService>().branchId;
   if (branchId == null) return null;
-  final now = DateTime.now();
-  final today =
-      '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-  return getIt<ApiClient>().getDailyClose(branchId, date: today);
+  // Let the backend resolve "today" using the branch timezone so this card
+  // agrees with End of Day when a device clock or timezone differs.
+  return getIt<ApiClient>().getDailyClose(branchId);
 });
 
 /// Real AI-generated brief for the dashboard, replacing the previous

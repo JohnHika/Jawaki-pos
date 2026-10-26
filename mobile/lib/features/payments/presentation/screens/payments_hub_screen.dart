@@ -161,14 +161,17 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
       }
       return;
     }
-    final now = DateTime.now();
-    final today =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     final api = getIt<ApiClient>();
     Map<String, dynamic> summary;
     try {
       summary = await api
-          .getSalesDailySummary(branchId, today)
+          // The backend determines the current business day from the
+          // branch timezone. A phone clock or timezone can differ and make
+          // the Payments hub disagree with the dashboard and End of Day.
+          .getSalesTodaySummary(
+            branchId,
+            requestTimeout: const Duration(seconds: 6),
+          )
           .timeout(const Duration(seconds: 6));
     } catch (_) {
       if (!mounted || generation != _serverRefreshGeneration) return;

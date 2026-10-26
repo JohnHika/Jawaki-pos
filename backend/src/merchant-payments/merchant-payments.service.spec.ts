@@ -21,6 +21,7 @@ describe('MerchantPaymentsService', () => {
       },
       merchantCharge: {
         create: jest.fn().mockResolvedValue({}),
+        aggregate: jest.fn().mockResolvedValue({ _sum: { amount: 0 } }),
         findFirst: jest.fn(),
         findUnique: jest.fn(),
         update: jest.fn(),
@@ -46,6 +47,7 @@ describe('MerchantPaymentsService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'payment-1' }),
       },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
     prisma.$transaction = jest.fn((callback) => callback(prisma));
     const paystack: any = {
@@ -76,6 +78,23 @@ describe('MerchantPaymentsService', () => {
       finance,
       service: new MerchantPaymentsService(prisma, paystack, sales, undefined, finance),
     };
+  }
+
+  function mockCharge(prisma: any, charge: any) {
+    prisma.merchantCharge.findFirst.mockImplementation(async () => charge);
+    prisma.merchantCharge.findUnique.mockImplementation(async () => ({
+      ...charge,
+    }));
+    prisma.merchantCharge.updateMany.mockImplementation(
+      async ({ data }: any) => {
+        Object.assign(charge, data);
+        return { count: 1 };
+      },
+    );
+    prisma.merchantCharge.update.mockImplementation(async ({ data }: any) => {
+      Object.assign(charge, data);
+      return { ...charge };
+    });
   }
 
   it('refuses to charge a customer until that shop has an active payout account', async () => {
@@ -205,10 +224,7 @@ describe('MerchantPaymentsService', () => {
       saleId: null, receiptNumber: null, salePayload: {}, branchId: 'branch-1',
       cashierId: 'cashier-1',
     };
-    prisma.merchantCharge.findFirst.mockResolvedValue(charge);
-    prisma.merchantCharge.findUnique.mockResolvedValue(charge);
-    prisma.merchantCharge.updateMany.mockResolvedValue({ count: 1 });
-    prisma.merchantCharge.update.mockImplementation(async ({ data }) => ({ ...charge, ...data }));
+    mockCharge(prisma, charge);
     paystack.verifyTransaction.mockResolvedValue({
       reference: 'CBDUE_ref', status: 'success', amount: 25000, currency: 'KES',
       subaccount: { subaccount_code: 'ACCT_shop1' },
@@ -245,9 +261,7 @@ describe('MerchantPaymentsService', () => {
       providerStatus: null, saleId: null, receiptNumber: null, salePayload: sale,
       cashierId: 'cashier-1',
     };
-    prisma.merchantCharge.findFirst.mockResolvedValue(charge);
-    prisma.merchantCharge.findUnique.mockResolvedValue(charge);
-    prisma.merchantCharge.update.mockImplementation(async ({ data }) => ({ ...charge, ...data }));
+    mockCharge(prisma, charge);
     paystack.verifyTransaction.mockResolvedValue({
       reference: 'CBSALE_ref', status: 'success', amount: 50000, currency: 'KES',
       subaccount: { subaccount_code: 'ACCT_other' },
@@ -265,9 +279,7 @@ describe('MerchantPaymentsService', () => {
       providerStatus: null, saleId: null, receiptNumber: null, salePayload: sale,
       cashierId: 'cashier-1',
     };
-    prisma.merchantCharge.findFirst.mockResolvedValue(charge);
-    prisma.merchantCharge.findUnique.mockResolvedValue(charge);
-    prisma.merchantCharge.update.mockImplementation(async ({ data }) => ({ ...charge, ...data }));
+    mockCharge(prisma, charge);
     paystack.verifyTransaction.mockResolvedValue({
       reference: 'CBSALE_ref', status: 'success', amount: 50000, currency: 'KES',
       subaccount: { subaccount_code: 'ACCT_shop1' },

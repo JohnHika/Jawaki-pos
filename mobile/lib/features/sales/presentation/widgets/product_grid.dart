@@ -19,6 +19,7 @@ class ProductGrid extends ConsumerWidget {
   const ProductGrid({
     super.key,
     this.productsOverride,
+    this.productPageIds,
     this.catalogRefreshing = false,
     this.catalogSyncFailed = false,
     this.isOffline = false,
@@ -28,6 +29,10 @@ class ProductGrid extends ConsumerWidget {
   /// When supplied, renders an already-selected catalog subset such as the
   /// cashier's favorites instead of querying the full catalog again.
   final List<Map<String, dynamic>>? productsOverride;
+
+  /// When set, the full local catalog is narrowed to this merchant-curated POS
+  /// page. Product cards retain the normal cart, pricing, and stock behavior.
+  final List<String>? productPageIds;
   final bool catalogRefreshing;
   final bool catalogSyncFailed;
   final bool isOffline;
@@ -67,7 +72,13 @@ class ProductGrid extends ConsumerWidget {
 
     return visibleProducts.when(
       data: (products) {
-        if (products.isEmpty) {
+        final pageIds = productPageIds?.toSet();
+        final displayedProducts = pageIds == null
+            ? products
+            : products
+                .where((product) => pageIds.contains(product['id']?.toString()))
+                .toList(growable: false);
+        if (displayedProducts.isEmpty) {
           if (catalogRefreshing) {
             return _loadingGrid(
               context,
@@ -106,11 +117,20 @@ class ProductGrid extends ConsumerWidget {
               onAction: onRetryCatalog,
             );
           }
+          if (productPageIds != null && !hasActiveFilter) {
+            return const EmptyState(
+              icon: Icons.grid_view_rounded,
+              title: 'No available products on this page',
+              subtitle:
+                  'Some items may be inactive or removed. Update the page in Settings → Layout actions.',
+              iconColor: DesignColors.warning,
+            );
+          }
           return _EmptyState(catalogName: catalogName);
         }
-        // Photos make tall cards worthwhile; without them the empty image block
-        // just wastes space, so use shorter cards and fit ~50% more per screen.
-        final hasPhotos = products.any((p) => p['imageUrl'] != null);
+        // Photos make taller cards worthwhile. Text-only cards still need enough
+        // height for price and stock at phone widths without clipping controls.
+        final hasPhotos = displayedProducts.any((p) => p['imageUrl'] != null);
         // Larger system text makes the name/price/stock block taller, so the
         // card has to grow with it or its column overflows (seen at 360dp with
         // the text at 130%).
@@ -121,7 +141,7 @@ class ProductGrid extends ConsumerWidget {
             context,
             ListView.separated(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-              itemCount: products.length,
+              itemCount: displayedProducts.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (context, index) => CascadeScale(
                 index: index,
@@ -131,7 +151,7 @@ class ProductGrid extends ConsumerWidget {
                 child: SizedBox(
                   height: (104 * growth).toDouble(),
                   child: _ProductCard(
-                    product: products[index],
+                    product: displayedProducts[index],
                     compact: true,
                     listMode: true,
                   ),
@@ -151,11 +171,11 @@ class ProductGrid extends ConsumerWidget {
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount:
                   productGridColumns(MediaQuery.sizeOf(context).width),
-              childAspectRatio: (hasPhotos ? 0.78 : 1.12) / growth,
+              childAspectRatio: (hasPhotos ? 0.78 : 0.95) / growth,
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
             ),
-            itemCount: products.length,
+            itemCount: displayedProducts.length,
             // Keep the POS cards responsive: a short entrance animation adds
             // polish without holding the first visible products behind a long
             // stagger.
@@ -164,8 +184,8 @@ class ProductGrid extends ConsumerWidget {
               step: const Duration(milliseconds: 8),
               duration: const Duration(milliseconds: 180),
               maxAnimated: 8,
-              child:
-                  _ProductCard(product: products[index], compact: !hasPhotos),
+              child: _ProductCard(
+                  product: displayedProducts[index], compact: !hasPhotos),
             ),
           ),
           catalogName: catalogName,
@@ -378,6 +398,7 @@ class _ProductCard extends ConsumerWidget {
     if (listMode) {
       return GlassCard(
         onTap: () => _addToCart(context, ref),
+        animatePress: false,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         borderRadius: 15,
         tint: isDark
@@ -547,6 +568,7 @@ class _ProductCard extends ConsumerWidget {
 
     return GlassCard(
       onTap: () => _addToCart(context, ref),
+      animatePress: false,
       padding: EdgeInsets.zero,
       borderRadius: 16,
       blur: quantityInCart > 0 ? 12 : 6,
@@ -615,22 +637,6 @@ class _ProductCard extends ConsumerWidget {
                     ),
                   ),
 
-                // Quick add: one tap puts one in the cart; once it is in the
-                // cart the same spot becomes a - qty + stepper. Tapping the card
-                // itself still opens the full sheet (box or pack units, price).
-                if (!isOutOfStock)
-                  Positioned(
-                    right: 6,
-                    bottom: 6,
-                    child: _QuickAddControl(
-                      productName: productName,
-                      quantityLabel: quantityLabel,
-                      inCart: quantityInCart > 0,
-                      onAdd: () => _quickAdd(context, ref),
-                      onMore: () => _step(context, ref, 1),
-                      onLess: () => _step(context, ref, -1),
-                    ),
-                  ),
                 Positioned(
                   top: 6,
                   right: 6,
@@ -695,34 +701,58 @@ class _ProductCard extends ConsumerWidget {
                       ),
                     ),
                   ],
-                  const Spacer(),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(
-                        formatMoney(price),
-                        style: DesignType.numeric(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: DesignColors.accent,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              formatMoney(price),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: DesignType.numeric(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: DesignColors.accent,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              trackInventory
+                                  ? '${_ProductCard._formatCount(stock)} ${pluralizeUnit(unit, stock)} in stock'
+                                  : 'Stock not tracked',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: isOutOfStock
+                                    ? DesignColors.error
+                                    : (isDark
+                                        ? DesignColors.darkTextTertiary
+                                        : DesignColors.textTertiary),
+                                fontWeight: isOutOfStock
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
+                      if (!isOutOfStock) ...[
+                        const SizedBox(width: 6),
+                        _QuickAddControl(
+                          productName: productName,
+                          quantityLabel: quantityLabel,
+                          inCart: quantityInCart > 0,
+                          onAdd: () => _quickAdd(context, ref),
+                          onMore: () => _step(context, ref, 1),
+                          onLess: () => _step(context, ref, -1),
+                        ),
+                      ],
                     ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    trackInventory
-                        ? '${_ProductCard._formatCount(stock)} ${pluralizeUnit(unit, stock)} in stock'
-                        : 'Stock not tracked',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: isOutOfStock
-                          ? DesignColors.error
-                          : (isDark
-                              ? DesignColors.darkTextTertiary
-                              : DesignColors.textTertiary),
-                      fontWeight:
-                          isOutOfStock ? FontWeight.w700 : FontWeight.w500,
-                    ),
                   ),
                 ],
               ),
@@ -771,6 +801,7 @@ class _ProductCard extends ConsumerWidget {
           productName: productName,
           sku: product['sku'] as String? ?? '',
           unitPrice: base.price,
+          catalogUnitPrice: base.price,
           quantity: 1,
           notes: base.unitTypeLabel,
           saleUnit: base.unit,
@@ -860,11 +891,15 @@ class _ProductCard extends ConsumerWidget {
           final unitPrice = double.parse(
             ((overridePrice ?? tier.price) / conversion).toStringAsFixed(8),
           );
+          final catalogUnitPrice = double.parse(
+            (tier.price / conversion).toStringAsFixed(8),
+          );
           final result = existingItem != null
               ? await ref.read(cartProvider.notifier).updateQuantity(
                     productId,
                     baseQty,
                     unitPrice: unitPrice,
+                    catalogUnitPrice: catalogUnitPrice,
                     notes: tier.unitTypeLabel,
                     saleUnit: tier.unit,
                     saleQuantity: qty.toDouble(),
@@ -875,6 +910,7 @@ class _ProductCard extends ConsumerWidget {
                     productName: productName,
                     sku: sku,
                     unitPrice: unitPrice,
+                    catalogUnitPrice: catalogUnitPrice,
                     quantity: baseQty,
                     notes: tier.unitTypeLabel,
                     saleUnit: tier.unit,
@@ -945,12 +981,12 @@ class _QuickAddControl extends StatelessWidget {
         button: true,
         label: 'Add $productName to cart',
         child: Material(
-          key: const ValueKey('quick-add'),
           color: DesignColors.accent,
           elevation: 3,
           shadowColor: DesignColors.accent.withValues(alpha: 0.5),
           shape: const CircleBorder(),
           child: InkWell(
+            key: const ValueKey('quick-add'),
             customBorder: const CircleBorder(),
             onTap: onAdd,
             child: const SizedBox(
@@ -1576,9 +1612,11 @@ class _QuantitySheetState extends State<_QuantitySheet> {
               blur: 6,
               tint: DesignColors.accent.withValues(alpha: 0.06),
               borderColor: DesignColors.accent.withValues(alpha: 0.12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.center,
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

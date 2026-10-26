@@ -650,25 +650,45 @@ final filteredProductsProvider = FutureProvider.autoDispose
 
 // Favorites provider
 class FavoritesNotifier extends StateNotifier<Set<String>> {
-  final AppDatabase _database;
+  final AppDatabase? _database;
 
-  FavoritesNotifier(this._database) : super({}) {
+  FavoritesNotifier(AppDatabase database)
+      : _database = database,
+        super({}) {
     _loadFavorites();
   }
 
+  /// Empty, in-memory implementation for widgets that don't need persisted
+  /// favourites (for example POS card interaction tests).
+  FavoritesNotifier.emptyForTesting()
+      : _database = null,
+        super({});
+
   Future<void> _loadFavorites() async {
-    final favorites = await _database
+    final database = _database;
+    if (database == null) return;
+    final favorites = await database
         .customSelect('SELECT product_id FROM favorite_products')
         .get();
     state = favorites.map((f) => f.read<String>('product_id')).toSet();
   }
 
   Future<void> toggle(String productId) async {
+    final database = _database;
+    if (database == null) {
+      if (state.contains(productId)) {
+        final updated = {...state}..remove(productId);
+        state = updated;
+      } else {
+        state = {...state, productId};
+      }
+      return;
+    }
     if (state.contains(productId)) {
-      await _database.removeFavorite(productId);
+      await database.removeFavorite(productId);
       state = {...state}..remove(productId);
     } else {
-      await _database.addFavorite(productId);
+      await database.addFavorite(productId);
       state = {...state, productId};
     }
   }

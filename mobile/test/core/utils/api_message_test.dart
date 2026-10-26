@@ -18,7 +18,7 @@ void main() {
         404,
         {'message': 'Cannot POST /api/v1/mpesa/parse'},
       )),
-      'This feature is temporarily unavailable. Update Counterbase and try again.',
+      'This feature is unavailable right now. Please try again later.',
     );
   });
 
@@ -44,7 +44,7 @@ void main() {
           },
         },
       )),
-      'The statement service needs an update before it can handle this customer record. Try again after the server is updated.',
+      'Statement sharing needs a service update before it can accept this customer record. Try again after the update is applied.',
     );
   });
 

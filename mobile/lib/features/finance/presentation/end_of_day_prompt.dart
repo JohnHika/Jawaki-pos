@@ -72,9 +72,9 @@ class EndOfDayPrompt {
     final nowMinutes = now.hour * 60 + now.minute;
     if (nowMinutes < closeMinutes) return; // not closing time yet
 
-    // 3. Already closed today? Then don't ask.
+    // 3. Already closed for the branch's current business day? Then don't ask.
     try {
-      final existing = await api.getDailyClose(branchId, date: today);
+      final existing = await api.getDailyClose(branchId);
       if (existing != null) {
         _promptedForDay = today; // treat as handled
         return;

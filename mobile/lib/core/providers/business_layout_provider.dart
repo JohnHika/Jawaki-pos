@@ -184,20 +184,44 @@ class BusinessLayoutPosAction {
     required this.label,
     required this.description,
     required this.icon,
+    this.path,
   });
 
   final String id;
   final String label;
   final String description;
   final IconData icon;
+
+  /// Existing work area to open. Actions without a path operate on the cart.
+  final String? path;
+}
+
+/// A merchant-curated page of products for the POS catalog. Pages are stored
+/// with the shop layout so the same counter shortcuts appear on each device.
+class BusinessLayoutProductPage {
+  const BusinessLayoutProductPage({
+    required this.id,
+    required this.name,
+    required this.productIds,
+  });
+
+  final String id;
+  final String name;
+  final List<String> productIds;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'productIds': productIds,
+      };
 }
 
 const _defaultPosQuickActions = <String>[
   'customer',
   'favorites',
+  'cart',
   'held_sales',
   'hold_sale',
-  'cart',
 ];
 
 const businessLayoutPosActions = <BusinessLayoutPosAction>[
@@ -231,7 +255,56 @@ const businessLayoutPosActions = <BusinessLayoutPosAction>[
     description: 'Always available so the team can finish checkout.',
     icon: Icons.shopping_cart_outlined,
   ),
+  BusinessLayoutPosAction(
+    id: 'price_list',
+    label: 'Price list',
+    description: 'Look up product prices and share the shop price list.',
+    icon: Icons.sell_outlined,
+    path: '/price-list',
+  ),
+  BusinessLayoutPosAction(
+    id: 'inventory',
+    label: 'Stock control',
+    description: 'Check stock and inventory activity.',
+    icon: Icons.warehouse_outlined,
+    path: '/inventory',
+  ),
+  BusinessLayoutPosAction(
+    id: 'stock_counts',
+    label: 'Stock counts',
+    description: 'Open a stock count while serving at the counter.',
+    icon: Icons.fact_check_outlined,
+    path: '/stock-counts',
+  ),
+  BusinessLayoutPosAction(
+    id: 'reports',
+    label: 'Reports',
+    description: 'Review shop performance and sales reports.',
+    icon: Icons.analytics_outlined,
+    path: '/reports',
+  ),
+  BusinessLayoutPosAction(
+    id: 'payments',
+    label: 'Payments',
+    description: 'Review payment activity and payout setup.',
+    icon: Icons.payments_outlined,
+    path: '/payments',
+  ),
+  BusinessLayoutPosAction(
+    id: 'receipts',
+    label: 'Receipts',
+    description: 'Find completed sales and receipts.',
+    icon: Icons.receipt_long_outlined,
+    path: '/receipts',
+  ),
 ];
+
+BusinessLayoutPosAction? businessLayoutPosAction(String id) {
+  for (final action in businessLayoutPosActions) {
+    if (action.id == id) return action;
+  }
+  return null;
+}
 
 const businessLayoutCheckoutStyles = <BusinessLayoutCheckoutStyle>[
   BusinessLayoutCheckoutStyle(
@@ -647,9 +720,10 @@ const businessLayoutPresets = <BusinessLayoutPreset>[
     defaultPosQuickActions: [
       'favorites',
       'customer',
+      'cart',
       'held_sales',
       'hold_sale',
-      'cart',
+      'price_list',
     ],
     defaultDashboardMetrics: [
       'itemsSold',
@@ -679,6 +753,14 @@ const businessLayoutPresets = <BusinessLayoutPreset>[
           key: 'genre', label: 'Genre', hint: 'e.g. History'),
       BusinessLayoutProductField(
           key: 'language', label: 'Language', hint: 'Book language'),
+      BusinessLayoutProductField(
+          key: 'subject', label: 'Subject', hint: 'e.g. Mathematics'),
+      BusinessLayoutProductField(
+          key: 'schoolLevel',
+          label: 'School level',
+          hint: 'e.g. Grade 6 or Form 2'),
+      BusinessLayoutProductField(
+          key: 'series', label: 'Series', hint: 'Textbook or book series'),
     ],
   ),
   BusinessLayoutPreset(
@@ -695,12 +777,15 @@ const businessLayoutPresets = <BusinessLayoutPreset>[
     posSearchHint: 'Find an item by name, code or barcode',
     priorityPaths: ['/', '/dashboard', '/products', '/finance', '/inventory'],
     defaultVisiblePaths: _kamkunjiActionPaths,
+    defaultPosProductView: 'list',
+    defaultShowPosFavorites: false,
     defaultPosQuickActions: [
+      'customer',
+      'cart',
       'held_sales',
       'hold_sale',
-      'cart',
-      'customer',
-      'favorites',
+      'price_list',
+      'inventory',
     ],
     defaultDashboardMetrics: [
       'revenue',
@@ -964,6 +1049,15 @@ const businessLayoutPresets = <BusinessLayoutPreset>[
     priorityPaths: ['/', '/inventory', '/finance', '/products', '/customers'],
     defaultVisiblePaths: _wholesaleActionPaths,
     defaultPosProductView: 'list',
+    defaultPosQuickActions: [
+      'customer',
+      'cart',
+      'held_sales',
+      'hold_sale',
+      'price_list',
+      'inventory',
+      'reports',
+    ],
     defaultActionLabels: {
       '/': 'Wholesale sale',
       '/dashboard': 'Business overview',
@@ -1408,6 +1502,7 @@ class BusinessLayoutConfig {
     this.showPosFavorites,
     this.showPosCustomer,
     this.posQuickActions,
+    this.posProductPages = const [],
     this.dashboardMetrics,
     this.dashboardSections,
     this.productFieldKeys,
@@ -1436,6 +1531,7 @@ class BusinessLayoutConfig {
   final bool? showPosFavorites;
   final bool? showPosCustomer;
   final List<String>? posQuickActions;
+  final List<BusinessLayoutProductPage> posProductPages;
   final List<String>? dashboardMetrics;
   final List<String>? dashboardSections;
   final List<String>? productFieldKeys;
@@ -1485,18 +1581,25 @@ class BusinessLayoutConfig {
   List<String> get effectivePosQuickActions {
     final available =
         businessLayoutPosActions.map((action) => action.id).toSet();
-    final configured = posQuickActions ?? preset.defaultPosQuickActions;
+    final configured = posQuickActions ??
+        businessLayoutDefaultPosQuickActions(profileId, additionalProfileIds);
     final selected = configured
         .where(available.contains)
         .where((id) => id != 'favorites' || effectiveShowPosFavorites)
         .where((id) => id != 'customer' || effectiveShowPosCustomer)
+        // Hidden work areas must not reappear as POS toolbar shortcuts.
+        .where((id) {
+          final path = businessLayoutPosAction(id)?.path;
+          return path == null || isActionVisible(path);
+        })
         .toSet()
         .toList(growable: false);
     if (selected.isNotEmpty) return selected;
     return const ['cart'];
   }
 
-  bool isActionVisible(String path) => !hiddenPaths.contains(path);
+  bool isActionVisible(String path) =>
+      !businessLayoutCanHideAction(path) || !hiddenPaths.contains(path);
   List<String> get effectiveDashboardMetrics {
     final available = businessLayoutDashboardMetrics.map((metric) => metric.id);
     final configured = dashboardMetrics ?? preset.defaultDashboardMetrics;
@@ -1573,7 +1676,7 @@ class BusinessLayoutConfig {
   }
 
   Map<String, dynamic> toJson() => {
-        'version': 11,
+        'version': 12,
         'profileId': profileId,
         'additionalProfileIds': additionalProfileIds,
         'priorityPaths': priorityPaths,
@@ -1588,6 +1691,9 @@ class BusinessLayoutConfig {
         'showPosFavorites': effectiveShowPosFavorites,
         'showPosCustomer': effectiveShowPosCustomer,
         'posQuickActions': effectivePosQuickActions,
+        'posProductPages': posProductPages
+            .map((page) => page.toJson())
+            .toList(growable: false),
         'dashboardMetrics': effectiveDashboardMetrics,
         'dashboardSections': effectiveDashboardSections,
         if (productFieldKeys != null) 'productFieldKeys': productFieldKeys,
@@ -1658,6 +1764,24 @@ List<String> businessLayoutDefaultHiddenPaths(
       .toList(growable: false);
 }
 
+/// Recommended visible work areas for a primary profile and complementary
+/// trades. POS and Settings stay visible for every profile.
+List<String> businessLayoutDefaultVisiblePaths(
+  String? primaryProfileId,
+  Iterable<String> additionalProfileIds,
+) {
+  final hidden = businessLayoutDefaultHiddenPaths(
+    primaryProfileId,
+    additionalProfileIds,
+  ).toSet();
+  return businessLayoutActions
+      .where((action) =>
+          businessLayoutCanHideAction(action.path) &&
+          !hidden.contains(action.path))
+      .map((action) => action.path)
+      .toList(growable: false);
+}
+
 List<String> businessLayoutDefaultProductFieldKeys(
   String? primaryProfileId,
   Iterable<String> additionalProfileIds, {
@@ -1687,6 +1811,22 @@ List<String> businessLayoutDefaultDashboardMetrics(
   }.toList(growable: false);
 }
 
+/// Recommended POS actions for a primary profile and complementary trades.
+/// Preserve the primary profile's order, then append only new actions from
+/// each additional profile.
+List<String> businessLayoutDefaultPosQuickActions(
+  String? primaryProfileId,
+  Iterable<String> additionalProfileIds,
+) {
+  final profiles = [
+    businessLayoutPreset(primaryProfileId),
+    ...businessLayoutAdditionalPresets(primaryProfileId, additionalProfileIds),
+  ];
+  return <String>{
+    for (final profile in profiles) ...profile.defaultPosQuickActions,
+  }.toList(growable: false);
+}
+
 List<String> businessLayoutDefaultDashboardSections(
   String? primaryProfileId,
   Iterable<String> additionalProfileIds,
@@ -1698,6 +1838,38 @@ List<String> businessLayoutDefaultDashboardSections(
   return <String>{
     for (final profile in profiles) ...profile.defaultDashboardSections,
   }.toList(growable: false);
+}
+
+/// Reconciles a merchant's saved ordering when complementary profiles change.
+///
+/// Values recommended by both the old and new profile sets keep the merchant's
+/// current enabled/disabled state and order. Recommendations that no longer
+/// apply are removed, newly recommended values are appended, and unrelated
+/// merchant additions stay in place. The serialized layout does not track
+/// where each individual choice came from, so this is the least surprising
+/// way to apply changed recommendations without resetting the whole layout.
+List<String> businessLayoutReconcileRecommendations({
+  required Iterable<String> current,
+  required Iterable<String> previousRecommendations,
+  required Iterable<String> nextRecommendations,
+}) {
+  final previousValues = previousRecommendations.toList(growable: false);
+  final nextValues = nextRecommendations.toList(growable: false);
+  final previous = previousValues.toSet();
+  final next = nextValues.toSet();
+  final result = <String>[];
+  final seen = <String>{};
+
+  for (final value in current) {
+    if (previous.contains(value) && !next.contains(value)) continue;
+    if (seen.add(value)) result.add(value);
+  }
+
+  for (final value in nextValues) {
+    if (!previous.contains(value) && seen.add(value)) result.add(value);
+  }
+
+  return result;
 }
 
 BusinessLayoutPreset businessLayoutPreset(String? id) {
@@ -1854,6 +2026,39 @@ BusinessLayoutConfig businessLayoutFromUser(Map<String, dynamic>? user) {
           .toSet()
           .toList(growable: false)
       : null;
+  final rawPosProductPages = layout['posProductPages'];
+  final posProductPages = <BusinessLayoutProductPage>[];
+  if (rawPosProductPages is List) {
+    final seenPageIds = <String>{};
+    final seenPageNames = <String>{};
+    for (final rawPage in rawPosProductPages) {
+      if (rawPage is! Map || posProductPages.length >= 12) continue;
+      final id = rawPage['id']?.toString().trim() ?? '';
+      final name = rawPage['name']?.toString().trim() ?? '';
+      final rawProductIds = rawPage['productIds'];
+      if (!RegExp(r'^[A-Za-z0-9_-]{1,64}$').hasMatch(id) ||
+          name.isEmpty ||
+          name.length > 28 ||
+          rawProductIds is! List) {
+        continue;
+      }
+      if (!seenPageIds.add(id) || !seenPageNames.add(name.toLowerCase())) {
+        continue;
+      }
+      final productIds = rawProductIds
+          .map((productId) => productId.toString().trim())
+          .where((productId) => productId.isNotEmpty && productId.length <= 80)
+          .toSet()
+          .take(32)
+          .toList(growable: false);
+      if (productIds.isEmpty) continue;
+      posProductPages.add(BusinessLayoutProductPage(
+        id: id,
+        name: name,
+        productIds: productIds,
+      ));
+    }
+  }
   final startPath = rawStartPath != null &&
           paths.contains(rawStartPath) &&
           !hiddenPaths.contains(rawStartPath)
@@ -1889,6 +2094,7 @@ BusinessLayoutConfig businessLayoutFromUser(Map<String, dynamic>? user) {
         ? layout['showPosCustomer'] as bool
         : null,
     posQuickActions: posQuickActions,
+    posProductPages: posProductPages,
     dashboardMetrics: dashboardMetrics.isEmpty ? null : dashboardMetrics,
     dashboardSections: dashboardSections.isEmpty ? null : dashboardSections,
     productFieldKeys: productFieldKeys,
@@ -1896,10 +2102,16 @@ BusinessLayoutConfig businessLayoutFromUser(Map<String, dynamic>? user) {
   );
 }
 
-/// Keep POS and Settings discoverable so a shop can always trade and undo a
-/// layout change. Other areas can be hidden without changing permissions.
+/// Keep POS, AI and Settings discoverable so a shop can always trade, reach
+/// its primary assistant, and undo a layout change. Other areas can be hidden
+/// without changing permissions.
 bool businessLayoutCanHideAction(String path) =>
-    path != '/' && path != '/settings';
+    path != '/' && path != '/ai' && path != '/settings';
+
+/// Whether the current staff member may open an existing app work area.
+/// Layout shortcuts use this check so a shop profile never adds access.
+bool businessLayoutCanOpenPath(RolePermissions permissions, String path) =>
+    _canOpenLayoutStartPath(permissions, path);
 
 bool _canOpenLayoutStartPath(RolePermissions permissions, String path) {
   return switch (path) {

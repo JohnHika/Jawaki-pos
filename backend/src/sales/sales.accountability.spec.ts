@@ -100,6 +100,7 @@ describe('SalesService + accountability', () => {
     }) as any;
 
   it('records a below-cost sale for the owner without stopping it (default FLAG mode)', async () => {
+    permissions = ['sales.price_override'];
     const sale = await service.createSale(userId, tenantId, cheapSale());
     expect(sale).toBeDefined();
 
@@ -160,13 +161,19 @@ describe('SalesService + accountability', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('works unchanged when no accountability layer is supplied', async () => {
+  it('accepts catalog-priced sales when no accountability layer is supplied', async () => {
     const bare = new SalesService(
       prisma,
       { get: jest.fn(), set: jest.fn() } as any,
       { recordEntry: jest.fn() } as any,
       { createRetailReceivableForSale: jest.fn() } as any,
     );
-    await expect(bare.createSale(userId, tenantId, cheapSale())).resolves.toBeDefined();
+    await expect(
+      bare.createSale(userId, tenantId, {
+        ...cheapSale(),
+        items: [{ productId, quantity: 1, unitPrice: 500 }],
+        paidAmount: 500,
+      }),
+    ).resolves.toBeDefined();
   });
 });

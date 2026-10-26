@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
@@ -35,6 +36,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
   late bool _showPosFavorites;
   late bool _showPosCustomer;
   late List<String> _posQuickActions;
+  late List<BusinessLayoutProductPage> _posProductPages;
   late List<String> _dashboardMetrics;
   late List<String> _dashboardSections;
   late List<String> _productFieldKeys;
@@ -74,6 +76,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
       _showPosFavorites = config.effectiveShowPosFavorites;
       _showPosCustomer = config.effectiveShowPosCustomer;
       _posQuickActions = [...config.effectivePosQuickActions];
+      _posProductPages = [...config.posProductPages];
       _dashboardMetrics = [...config.effectiveDashboardMetrics];
       _dashboardSections = [...config.effectiveDashboardSections];
       _productFieldKeys =
@@ -99,6 +102,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
       showPosFavorites: _showPosFavorites,
       showPosCustomer: _showPosCustomer,
       posQuickActions: _posQuickActions,
+      posProductPages: _posProductPages,
       dashboardMetrics: _dashboardMetrics,
       dashboardSections: _dashboardSections,
       productFieldKeys: _productFieldKeys,
@@ -237,7 +241,10 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                                         _showPosCustomer =
                                             preset.defaultShowPosCustomer;
                                         _posQuickActions = [
-                                          ...preset.defaultPosQuickActions,
+                                          ...businessLayoutDefaultPosQuickActions(
+                                            _profileId,
+                                            _additionalProfileIds,
+                                          ),
                                         ];
                                         _dashboardMetrics = [
                                           ...businessLayoutDefaultDashboardMetrics(
@@ -731,6 +738,10 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                                           if (enabled != true) return;
                                           setState(() {
                                             _posQuickActions.add(action.id);
+                                            final path = action.path;
+                                            if (path != null) {
+                                              _hiddenPaths.remove(path);
+                                            }
                                             if (action.id == 'customer') {
                                               _showPosCustomer = true;
                                             } else if (action.id ==
@@ -740,6 +751,117 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                                           });
                                         },
                                 )),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isDark
+                            ? DesignColors.darkBorder
+                            : DesignColors.surfaceBorderLight,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Quick product pages',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Build named till pages from products you sell often, such as Textbooks, Stationery, or Fast movers. Pages sync with this shop and use the same stock and price checks as the full catalog.',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: secondary, height: 1.35),
+                        ),
+                        if (_posProductPages.isEmpty) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            'No quick pages yet. Your regular product catalog stays available on the POS.',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: secondary),
+                          ),
+                        ],
+                        const SizedBox(height: 6),
+                        ..._posProductPages.asMap().entries.map((entry) {
+                          final page = entry.value;
+                          return ListTile(
+                            key: ValueKey('pos-product-page-${page.id}'),
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.grid_view_rounded,
+                                color: DesignColors.accent),
+                            title: Text(page.name),
+                            subtitle: Text(
+                              '${page.productIds.length} products · shown as a POS page',
+                            ),
+                            onTap: !canEditLayout
+                                ? null
+                                : () => _editPosProductPage(page),
+                            trailing: SizedBox(
+                              width: 144,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Move ${page.name} up',
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: !canEditLayout || entry.key == 0
+                                        ? null
+                                        : () =>
+                                            _movePosProductPage(entry.key, -1),
+                                    icon:
+                                        const Icon(Icons.arrow_upward_rounded),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Move ${page.name} down',
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: !canEditLayout ||
+                                            entry.key ==
+                                                _posProductPages.length - 1
+                                        ? null
+                                        : () =>
+                                            _movePosProductPage(entry.key, 1),
+                                    icon: const Icon(
+                                        Icons.arrow_downward_rounded),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Remove ${page.name}',
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: !canEditLayout
+                                        ? null
+                                        : () => setState(() => _posProductPages
+                                            .removeAt(entry.key)),
+                                    icon: const Icon(
+                                        Icons.delete_outline_rounded),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed:
+                              !canEditLayout || _posProductPages.length >= 12
+                                  ? null
+                                  : () => _editPosProductPage(),
+                          icon: const Icon(Icons.add_rounded),
+                          label: Text(_posProductPages.length >= 12
+                              ? 'Page limit reached'
+                              : 'Create a product page'),
+                        ),
                       ],
                     ),
                   ),
@@ -1210,8 +1332,12 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                                   _showPosCustomer =
                                       selectedPreset.defaultShowPosCustomer;
                                   _posQuickActions = [
-                                    ...selectedPreset.defaultPosQuickActions,
+                                    ...businessLayoutDefaultPosQuickActions(
+                                      _profileId,
+                                      _additionalProfileIds,
+                                    ),
                                   ];
+                                  _posProductPages.clear();
                                   _dashboardMetrics = [
                                     ...businessLayoutDefaultDashboardMetrics(
                                       _profileId,
@@ -1315,6 +1441,9 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
       } else {
         _hiddenPaths.add(path);
         _priorityPaths.remove(path);
+        _posQuickActions.removeWhere(
+          (id) => businessLayoutPosAction(id)?.path == path,
+        );
         if (_startPath == path) {
           _startPath = _priorityPaths.isEmpty ? null : _priorityPaths.first;
         }
@@ -1750,44 +1879,170 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
   }
 
   void _applyAdditionalProfiles(List<String> profileIds) {
-    final added = businessLayoutAdditionalPresets(_profileId, profileIds)
-        .where((profile) => !_additionalProfileIds.contains(profile.id))
-        .toList(growable: false);
+    final previousProfileIds = [..._additionalProfileIds];
     final normalized = businessLayoutAdditionalPresets(_profileId, profileIds)
         .map((profile) => profile.id)
         .toList(growable: false);
+    final previousVisibleRecommendations = businessLayoutDefaultVisiblePaths(
+      _profileId,
+      previousProfileIds,
+    ).toSet();
+    final nextVisibleRecommendations = businessLayoutDefaultVisiblePaths(
+      _profileId,
+      normalized,
+    ).toSet();
     setState(() {
-      _additionalProfileIds = normalized;
-      for (final profile in added) {
-        for (final path in profile.defaultVisiblePaths) {
-          _hiddenPaths.remove(path);
-        }
-        for (final path in profile.priorityPaths) {
-          if (!_hiddenPaths.contains(path) && !_priorityPaths.contains(path)) {
-            _priorityPaths.add(path);
-          }
-        }
-        for (final metric in profile.defaultDashboardMetrics) {
-          if (!_dashboardMetrics.contains(metric)) {
-            _dashboardMetrics.add(metric);
-          }
-        }
-        for (final section in profile.defaultDashboardSections) {
-          if (!_dashboardSections.contains(section)) {
-            _dashboardSections.add(section);
-          }
-        }
-      }
-      for (final fieldKey in businessLayoutDefaultProductFieldKeys(
-        _profileId,
-        _additionalProfileIds,
-        customFields: _customProductFields,
+      for (final path in previousVisibleRecommendations.difference(
+        nextVisibleRecommendations,
       )) {
-        if (!_productFieldKeys.contains(fieldKey)) {
-          _productFieldKeys.add(fieldKey);
-        }
+        if (!_hiddenPaths.contains(path)) _hiddenPaths.add(path);
+      }
+      for (final path in nextVisibleRecommendations.difference(
+        previousVisibleRecommendations,
+      )) {
+        _hiddenPaths.remove(path);
+      }
+
+      final previousPriorityRecommendations =
+          businessLayoutDefaultPriorityPaths(_profileId, previousProfileIds);
+      final nextPriorityRecommendations =
+          businessLayoutDefaultPriorityPaths(_profileId, normalized)
+              .where((path) => !_hiddenPaths.contains(path));
+      _priorityPaths = businessLayoutReconcileRecommendations(
+        current: _priorityPaths,
+        previousRecommendations: previousPriorityRecommendations,
+        nextRecommendations: nextPriorityRecommendations,
+      );
+
+      _dashboardMetrics = businessLayoutReconcileRecommendations(
+        current: _dashboardMetrics,
+        previousRecommendations: businessLayoutDefaultDashboardMetrics(
+          _profileId,
+          previousProfileIds,
+        ),
+        nextRecommendations: businessLayoutDefaultDashboardMetrics(
+          _profileId,
+          normalized,
+        ),
+      );
+      _dashboardSections = businessLayoutReconcileRecommendations(
+        current: _dashboardSections,
+        previousRecommendations: businessLayoutDefaultDashboardSections(
+          _profileId,
+          previousProfileIds,
+        ),
+        nextRecommendations: businessLayoutDefaultDashboardSections(
+          _profileId,
+          normalized,
+        ),
+      );
+      _posQuickActions = businessLayoutReconcileRecommendations(
+        current: _posQuickActions,
+        previousRecommendations: businessLayoutDefaultPosQuickActions(
+          _profileId,
+          previousProfileIds,
+        ),
+        nextRecommendations: businessLayoutDefaultPosQuickActions(
+          _profileId,
+          normalized,
+        ),
+      );
+      _showPosFavorites = _posQuickActions.contains('favorites');
+      _showPosCustomer = _posQuickActions.contains('customer');
+
+      final previousProductFieldRecommendations =
+          businessLayoutDefaultProductFieldKeys(
+        _profileId,
+        previousProfileIds,
+      );
+      final nextProductFieldRecommendations =
+          businessLayoutDefaultProductFieldKeys(_profileId, normalized);
+      _productFieldKeys = businessLayoutReconcileRecommendations(
+        current: _productFieldKeys,
+        previousRecommendations: previousProductFieldRecommendations,
+        nextRecommendations: nextProductFieldRecommendations,
+      );
+
+      _additionalProfileIds = normalized;
+      final validPriorityPaths = _priorityPaths.toSet();
+      if (_startPath != null && !validPriorityPaths.contains(_startPath)) {
+        _startPath = _priorityPaths.firstOrNull;
       }
       _startPath ??= _priorityPaths.firstOrNull;
+    });
+  }
+
+  Future<void> _editPosProductPage([
+    BusinessLayoutProductPage? existing,
+  ]) async {
+    List<Map<String, dynamic>> products;
+    try {
+      final cachedProducts = await getIt<AppDatabase>().getAllProducts();
+      products = cachedProducts
+          .where((product) => product.isActive)
+          .map((product) => {
+                'id': product.id,
+                'name': product.name,
+                'sku': product.sku,
+              })
+          .toList(growable: false);
+    } catch (_) {
+      if (mounted) {
+        showGlassSnackBar(
+          context,
+          'Could not load the saved product catalog. Refresh it and try again.',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    if (products.isEmpty) {
+      showGlassSnackBar(
+        context,
+        'Sync this shop’s catalog on the POS first, then create a quick page.',
+        icon: Icons.inventory_2_outlined,
+        color: DesignColors.warning,
+      );
+      return;
+    }
+
+    final page = await showDialog<BusinessLayoutProductPage>(
+      context: context,
+      builder: (context) => _PosProductPageEditor(
+        products: products,
+        existing: existing,
+      ),
+    );
+    if (!mounted || page == null) return;
+    final duplicateName = _posProductPages.any((item) =>
+        item.id != page.id &&
+        item.name.toLowerCase() == page.name.toLowerCase());
+    if (duplicateName) {
+      showGlassSnackBar(
+        context,
+        'Each quick page needs a different name.',
+        icon: Icons.info_outline_rounded,
+      );
+      return;
+    }
+    setState(() {
+      final index = _posProductPages.indexWhere((item) => item.id == page.id);
+      if (index < 0) {
+        if (_posProductPages.length < 12) _posProductPages.add(page);
+      } else {
+        _posProductPages[index] = page;
+      }
+    });
+  }
+
+  void _movePosProductPage(int index, int offset) {
+    final target = index + offset;
+    if (target < 0 || target >= _posProductPages.length) return;
+    setState(() {
+      final page = _posProductPages.removeAt(index);
+      _posProductPages.insert(target, page);
     });
   }
 
@@ -1810,6 +2065,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
         showPosFavorites: _showPosFavorites,
         showPosCustomer: _showPosCustomer,
         posQuickActions: [..._posQuickActions],
+        posProductPages: [..._posProductPages],
         dashboardMetrics: [..._dashboardMetrics],
         dashboardSections: [..._dashboardSections],
         productFieldKeys: [..._productFieldKeys],
@@ -2000,4 +2256,158 @@ class _PermissionNotice extends StatelessWidget {
           'Only team members with permission to manage shop settings can change this shared layout.',
         ),
       );
+}
+
+class _PosProductPageEditor extends StatefulWidget {
+  const _PosProductPageEditor({
+    required this.products,
+    this.existing,
+  });
+
+  final List<Map<String, dynamic>> products;
+  final BusinessLayoutProductPage? existing;
+
+  @override
+  State<_PosProductPageEditor> createState() => _PosProductPageEditorState();
+}
+
+class _PosProductPageEditorState extends State<_PosProductPageEditor> {
+  late final TextEditingController _nameController;
+  final Set<String> _selectedProductIds = {};
+  String _search = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.existing?.name ?? '');
+    final availableIds = widget.products
+        .map((product) => product['id']?.toString())
+        .whereType<String>()
+        .toSet();
+    _selectedProductIds.addAll(
+      (widget.existing?.productIds ?? const <String>[])
+          .where(availableIds.contains)
+          .take(32),
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final name = _nameController.text.trim();
+    if (name.isEmpty || _selectedProductIds.isEmpty) return;
+    final existing = widget.existing;
+    Navigator.of(context).pop(BusinessLayoutProductPage(
+      id: existing?.id ??
+          'page_${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}',
+      name: name,
+      productIds: _selectedProductIds.toList(growable: false),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _search.trim().toLowerCase();
+    final availableHeight = MediaQuery.sizeOf(context).height -
+        MediaQuery.viewInsetsOf(context).bottom -
+        220;
+    final visibleProducts = widget.products.where((product) {
+      if (query.isEmpty) return true;
+      final name = product['name']?.toString().toLowerCase() ?? '';
+      final code = product['sku']?.toString().toLowerCase() ?? '';
+      return name.contains(query) || code.contains(query);
+    }).toList(growable: false);
+
+    return AlertDialog(
+      title:
+          Text(widget.existing == null ? 'Create POS page' : 'Edit POS page'),
+      content: SizedBox(
+        width: 520,
+        height: availableHeight.clamp(180.0, 520.0).toDouble(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _nameController,
+              maxLength: 28,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Page name',
+                hintText: 'e.g. Textbooks or Fast movers',
+                counterText: '',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              onChanged: (value) => setState(() => _search = value),
+              decoration: const InputDecoration(
+                labelText: 'Find products',
+                prefixIcon: Icon(Icons.search_rounded),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${_selectedProductIds.length} of 32 products selected',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            const SizedBox(height: 4),
+            Expanded(
+              child: visibleProducts.isEmpty
+                  ? const Center(child: Text('No products match that search.'))
+                  : ListView.builder(
+                      itemCount: visibleProducts.length,
+                      itemBuilder: (context, index) {
+                        final product = visibleProducts[index];
+                        final id = product['id']?.toString() ?? '';
+                        final selected = _selectedProductIds.contains(id);
+                        final canSelect =
+                            selected || _selectedProductIds.length < 32;
+                        return CheckboxListTile(
+                          value: selected,
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            product['name']?.toString() ?? 'Unnamed product',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(product['sku']?.toString() ?? ''),
+                          onChanged: !canSelect || id.isEmpty
+                              ? null
+                              : (checked) => setState(() {
+                                    if (checked == true) {
+                                      _selectedProductIds.add(id);
+                                    } else {
+                                      _selectedProductIds.remove(id);
+                                    }
+                                  }),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed:
+              _nameController.text.trim().isEmpty || _selectedProductIds.isEmpty
+                  ? null
+                  : _save,
+          child: const Text('Save page'),
+        ),
+      ],
+    );
+  }
 }

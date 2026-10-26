@@ -4,6 +4,7 @@ import 'package:axon_pos/features/sales/presentation/widgets/product_grid.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 Map<String, dynamic> _product(
   String id,
@@ -23,7 +24,8 @@ Map<String, dynamic> _product(
       'pricingTiers': pricingTiers,
     };
 
-Future<Map<String, dynamic>> _anyStock(String productId, double quantity) async =>
+Future<Map<String, dynamic>> _anyStock(
+        String productId, double quantity) async =>
     {'available': true, 'message': 'ok', 'currentStock': 99};
 
 late CartNotifier _cart;
@@ -32,22 +34,30 @@ Future<void> _pumpGrid(
   WidgetTester tester,
   List<Map<String, dynamic>> products,
 ) async {
+  SharedPreferences.setMockInitialValues({});
+  // Exercise the catalog at a common phone size instead of flutter_test's
+  // wide 800x600 desktop viewport, which compresses card controls together.
+  tester.view.physicalSize = const Size(1080, 2400);
+  tester.view.devicePixelRatio = 3;
   _cart = CartNotifier(stockValidator: _anyStock);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         cartProvider.overrideWith((ref) => _cart),
         filteredProductsProvider.overrideWith((ref, params) async => products),
+        favoritesProvider.overrideWith(
+          (ref) => FavoritesNotifier.emptyForTesting(),
+        ),
       ],
-      child: const MaterialApp(
-        home: Scaffold(body: ProductGrid()),
-      ),
+      child: const MaterialApp(home: Scaffold(body: ProductGrid())),
     ),
   );
   await tester.pumpAndSettle();
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   testWidgets(
       'every in-stock product has a quick add, an out-of-stock one does not',
       (tester) async {
@@ -66,7 +76,6 @@ void main() {
   testWidgets('one tap adds one straight to the cart, no sheet',
       (tester) async {
     await _pumpGrid(tester, [_product('1', 'Maize flour')]);
-
     await tester.tap(find.byKey(const ValueKey('quick-add')));
     await tester.pumpAndSettle();
 
@@ -214,6 +223,9 @@ void main() {
       ProviderScope(
         overrides: [
           cartProvider.overrideWith((ref) => _cart),
+          favoritesProvider.overrideWith(
+            (ref) => FavoritesNotifier.emptyForTesting(),
+          ),
           filteredProductsProvider.overrideWith(
             (ref, params) async => [_product('1', 'Maize flour', stock: 1)],
           ),

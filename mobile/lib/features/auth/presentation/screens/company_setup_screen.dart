@@ -83,13 +83,8 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   bool _showAllBusinessLayouts = false;
   String _businessLayoutId = 'general_retail';
   List<String> _additionalBusinessLayoutIds = [];
-  List<String> _posQuickActions = [
-    'customer',
-    'favorites',
-    'held_sales',
-    'hold_sale',
-    'cart',
-  ];
+  List<String> _posQuickActions =
+      businessLayoutDefaultPosQuickActions('general_retail', const []);
   String _businessLayoutSearch = '';
   String? _errorMessage;
   String? _challengeId;
@@ -144,10 +139,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
           preset: preset,
           additionalProfileIds: _additionalBusinessLayoutIds,
           priorityPaths: priorityPaths,
-          hiddenPaths: businessLayoutDefaultHiddenPaths(
-            _businessLayoutId,
-            _additionalBusinessLayoutIds,
-          ),
+          hiddenPaths: _businessLayoutHiddenPaths(),
           startPath: priorityPaths.firstOrNull,
           posQuickActions: _posQuickActions,
           showPosFavorites: _posQuickActions.contains('favorites'),
@@ -169,6 +161,20 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     );
   }
 
+  List<String> _businessLayoutHiddenPaths() {
+    final hidden = businessLayoutDefaultHiddenPaths(
+      _businessLayoutId,
+      _additionalBusinessLayoutIds,
+    ).toSet();
+    // A screen selected as a POS shortcut should also be reachable elsewhere
+    // in the app after the merchant finishes setup.
+    for (final id in _posQuickActions) {
+      final path = businessLayoutPosAction(id)?.path;
+      if (path != null) hidden.remove(path);
+    }
+    return hidden.toList(growable: false);
+  }
+
   Future<void> _chooseAdditionalBusinessProfiles() async {
     final selected = await showBusinessLayoutProfilePicker(
       context,
@@ -176,7 +182,21 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
       selectedProfileIds: _additionalBusinessLayoutIds,
     );
     if (selected == null || !mounted) return;
-    setState(() => _additionalBusinessLayoutIds = selected);
+    final previousProfileIds = [..._additionalBusinessLayoutIds];
+    setState(() {
+      _additionalBusinessLayoutIds = selected;
+      _posQuickActions = businessLayoutReconcileRecommendations(
+        current: _posQuickActions,
+        previousRecommendations: businessLayoutDefaultPosQuickActions(
+          _businessLayoutId,
+          previousProfileIds,
+        ),
+        nextRecommendations: businessLayoutDefaultPosQuickActions(
+          _businessLayoutId,
+          selected,
+        ),
+      );
+    });
   }
 
   String? _optional(TextEditingController controller) {
@@ -467,7 +487,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Counterbase will tailor the POS, product details, customer wording, dashboard and shortcuts. Adjust the full layout later in Settings → Layout actions.',
+              'Counterbase will tailor the POS, product details, customer wording, dashboard and shortcuts. Adjust the layout later in Settings → Layout actions, then create fast product pages after adding your catalog.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: context.themed(DesignColors.darkTextTertiary),
                     height: 1.4,
@@ -549,7 +569,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                           _businessLayoutId = preset.id;
                           _additionalBusinessLayoutIds.remove(preset.id);
                           _posQuickActions = [
-                            ...preset.defaultPosQuickActions,
+                            ...businessLayoutDefaultPosQuickActions(
+                              _businessLayoutId,
+                              _additionalBusinessLayoutIds,
+                            ),
                           ];
                         }),
                         child: AnimatedContainer(
@@ -694,10 +717,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                   preset: preset,
                   additionalProfileIds: _additionalBusinessLayoutIds,
                   priorityPaths: priorityPaths,
-                  hiddenPaths: businessLayoutDefaultHiddenPaths(
-                    _businessLayoutId,
-                    _additionalBusinessLayoutIds,
-                  ),
+                  hiddenPaths: _businessLayoutHiddenPaths(),
                   startPath: priorityPaths.firstOrNull,
                   posQuickActions: _posQuickActions,
                   showPosFavorites: _posQuickActions.contains('favorites'),
@@ -749,38 +769,43 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                   const SizedBox(height: 4),
                   ...businessLayoutPosActions.map((action) {
                     final enabled = _posQuickActions.contains(action.id);
-                    return SwitchListTile.adaptive(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                      title: Text(
-                        action.label,
-                        style: TextStyle(
-                          color: context.themed(DesignColors.darkTextPrimary),
-                          fontWeight: FontWeight.w600,
+                    return Material(
+                      color: Colors.transparent,
+                      child: SwitchListTile.adaptive(
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 4),
+                        title: Text(
+                          action.label,
+                          style: TextStyle(
+                            color: context.themed(DesignColors.darkTextPrimary),
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      subtitle: Text(
-                        action.id == 'cart'
-                            ? 'Always available to finish checkout.'
-                            : action.description,
-                        style: TextStyle(
-                          color: context.themed(DesignColors.darkTextTertiary),
+                        subtitle: Text(
+                          action.id == 'cart'
+                              ? 'Always available to finish checkout.'
+                              : action.description,
+                          style: TextStyle(
+                            color:
+                                context.themed(DesignColors.darkTextTertiary),
+                          ),
                         ),
-                      ),
-                      secondary: Icon(action.icon,
-                          color: context.themed(DesignColors.brand)),
-                      value: enabled,
-                      activeTrackColor: DesignColors.brand,
-                      onChanged: action.id == 'cart'
-                          ? null
-                          : (value) => setState(() {
-                                if (value) {
-                                  if (!_posQuickActions.contains(action.id)) {
-                                    _posQuickActions.add(action.id);
+                        secondary: Icon(action.icon,
+                            color: context.themed(DesignColors.brand)),
+                        value: enabled,
+                        activeTrackColor: DesignColors.brand,
+                        onChanged: action.id == 'cart'
+                            ? null
+                            : (value) => setState(() {
+                                  if (value) {
+                                    if (!_posQuickActions.contains(action.id)) {
+                                      _posQuickActions.add(action.id);
+                                    }
+                                  } else {
+                                    _posQuickActions.remove(action.id);
                                   }
-                                } else {
-                                  _posQuickActions.remove(action.id);
-                                }
-                              }),
+                                }),
+                      ),
                     );
                   }),
                 ],

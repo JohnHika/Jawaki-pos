@@ -2,11 +2,17 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:axon_pos/core/utils/load_error.dart';
 
-DioException _err(int? status) => DioException(
+DioException _err(
+  int? status, {
+  DioExceptionType type = DioExceptionType.unknown,
+}) =>
+    DioException(
       requestOptions: RequestOptions(path: '/x'),
+      type: type,
       response: status == null
           ? null
-          : Response(requestOptions: RequestOptions(path: '/x'), statusCode: status),
+          : Response(
+              requestOptions: RequestOptions(path: '/x'), statusCode: status),
     );
 
 void main() {
@@ -21,7 +27,12 @@ void main() {
   });
 
   test('network failures hint connection and unknown errors stay generic', () {
-    expect(loadErrorSubtitle(_err(null)), contains('connection'));
+    expect(
+      loadErrorSubtitle(_err(null, type: DioExceptionType.connectionError)),
+      contains('internet'),
+    );
+    expect(loadErrorSubtitle(_err(null)),
+        'Something went wrong. Please try again.');
     expect(loadErrorSubtitle(Exception('x')),
         'Something went wrong. Please try again.');
     expect(isPermissionDenied(null), isFalse);

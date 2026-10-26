@@ -476,6 +476,7 @@ class GlassCard extends StatelessWidget {
   final Color? borderColor;
   final List<BoxShadow>? boxShadow;
   final VoidCallback? onTap;
+  final bool animatePress;
   final LinearGradient? gradient;
 
   const GlassCard({
@@ -489,6 +490,7 @@ class GlassCard extends StatelessWidget {
     this.borderColor,
     this.boxShadow,
     this.onTap,
+    this.animatePress = true,
     this.gradient,
   });
 
@@ -536,18 +538,18 @@ class GlassCard extends StatelessWidget {
     );
 
     if (onTap != null) {
-      return PressableCard(
-        onTap: onTap,
-        child: Material(
-          color: Colors.transparent,
+      final tappableCard = Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(borderRadius),
+        child: InkWell(
+          onTap: onTap,
           borderRadius: BorderRadius.circular(borderRadius),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(borderRadius),
-            child: card,
-          ),
+          child: card,
         ),
       );
+      return animatePress
+          ? PressableCard(onTap: onTap, child: tappableCard)
+          : tappableCard;
     }
 
     return card;

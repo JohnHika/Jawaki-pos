@@ -1812,9 +1812,10 @@ export class SalesService {
       where: { id: branchId, tenantId },
       select: { timezone: true },
     });
+    if (!branch) throw new NotFoundException("Branch not found");
     const { start: startOfDay, end: endOfDay } = getDayBoundsInTimezone(
       date,
-      branch?.timezone ?? "Africa/Nairobi",
+      branch.timezone ?? "Africa/Nairobi",
     );
 
     const [sales, refunds] = await Promise.all([
@@ -1839,6 +1840,16 @@ export class SalesService {
             },
           ],
         },
+        include: {
+          payments: { select: { method: true, amount: true, status: true } },
+          retailReceivable: {
+            select: {
+              originalAmount: true,
+              outstandingAmount: true,
+              status: true,
+            },
+          },
+        },
       }),
       this.prisma.refund.findMany({
         where: {
@@ -1857,12 +1868,50 @@ export class SalesService {
     const voidedSales = sales.filter((s) => s.status === SaleStatus.VOIDED);
 
     // Calculate credit sales and outstanding balances
-    const creditSales = completedSales.filter(
-      (s) => s.paymentMethod === PaymentMethod.CREDIT,
+    const totalOutstanding = completedSales.reduce(
+      (sum, sale) => sum + this.getSaleOutstandingBalance(sale),
+      0,
     );
-    const totalOutstanding = creditSales.reduce((sum, s) => {
-      const outstanding = (s.metadata as any)?.outstandingBalance ?? 0;
-      return sum + Number(outstanding);
+    const creditSales = completedSales.reduce((sum, sale) => {
+      if (
+        sale.paymentMethod !== PaymentMethod.CREDIT &&
+        sale.paymentMethod !== PaymentMethod.SPLIT
+      ) {
+        return sum;
+      }
+      if (sale.retailReceivable) {
+        return sum + Number(sale.retailReceivable.originalAmount);
+      }
+      if (sale.paymentMethod === PaymentMethod.SPLIT) {
+        return (
+          sum +
+          (sale.payments ?? [])
+            .filter((payment) => payment.method === PaymentMethod.CREDIT)
+            .reduce((total, payment) => total + Number(payment.amount), 0)
+        );
+      }
+      return (
+        sum + Math.max(Number(sale.totalAmount) - Number(sale.paidAmount), 0)
+      );
+    }, 0);
+
+    const cashSales = completedSales.reduce((sum, sale) => {
+      if (sale.paymentMethod === PaymentMethod.CASH) {
+        return sum + Number(sale.totalAmount);
+      }
+      if (sale.paymentMethod === PaymentMethod.SPLIT) {
+        return (
+          sum +
+          (sale.payments ?? [])
+            .filter(
+              (payment) =>
+                payment.method === PaymentMethod.CASH &&
+                payment.status === PaymentStatus.COMPLETED,
+            )
+            .reduce((total, payment) => total + Number(payment.amount), 0)
+        );
+      }
+      return sum;
     }, 0);
 
     return {
@@ -1877,17 +1926,18 @@ export class SalesService {
         (sum, s) => sum + Number(s.discountAmount),
         0,
       ),
-      cashSales: completedSales
-        .filter((s) => s.paymentMethod === PaymentMethod.CASH)
-        .reduce((sum, s) => sum + Number(s.totalAmount), 0),
+      cashSales,
       mpesaSales: completedSales
         .filter((s) => s.paymentMethod === PaymentMethod.MPESA)
         .reduce((sum, s) => sum + Number(s.totalAmount), 0),
-      cardSales: 0,
-      creditSales: creditSales.reduce(
-        (sum, s) => sum + Number(s.totalAmount),
-        0,
-      ),
+      cardSales: completedSales
+        .filter(
+          (sale) =>
+            sale.paymentMethod === PaymentMethod.PESAPAL ||
+            sale.paymentMethod === PaymentMethod.TOURISTTAP,
+        )
+        .reduce((sum, sale) => sum + Number(sale.totalAmount), 0),
+      creditSales,
       outstandingBalance: totalOutstanding,
       voidedCount: voidedSales.length,
       refundedAmount: refunds.reduce((sum, r) => sum + Number(r.amount), 0),
@@ -1922,8 +1972,24 @@ export class SalesService {
 
     const where: any = {
       branch: { tenantId },
-      paymentMethod: PaymentMethod.CREDIT,
+      paymentMethod: { in: [PaymentMethod.CREDIT, PaymentMethod.SPLIT] },
       status: SaleStatus.COMPLETED,
+      OR: [
+        {
+          retailReceivable: {
+            is: {
+              status: { in: [ReceivableStatus.OPEN, ReceivableStatus.PARTIAL] },
+              outstandingAmount: { gt: 0 },
+            },
+          },
+        },
+        {
+          AND: [
+            { retailReceivable: { is: null } },
+            { metadata: { path: ["outstandingBalance"], gt: 0 } },
+          ],
+        },
+      ],
     };
 
     if (branchId) where.branchId = branchId;
@@ -1938,31 +2004,36 @@ export class SalesService {
     if (createdAt) where.createdAt = createdAt;
 
     // Filter for sales with outstanding balance
-    const sales = await this.prisma.sale.findMany({
-      where,
-      include: {
-        branch: { select: { name: true } },
-        user: { select: { firstName: true, lastName: true } },
-        customer: { select: { name: true, phone: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      skip,
-      take: limit,
-    });
-
-    // Filter to only those with outstanding balance
-    const salesWithOutstanding = sales.filter((s) => {
-      const outstanding = (s.metadata as any)?.outstandingBalance ?? 0;
-      return Number(outstanding) > 0;
-    });
-
-    const total = salesWithOutstanding.length;
+    const [sales, total] = await Promise.all([
+      this.prisma.sale.findMany({
+        where,
+        include: {
+          branch: {
+            select: { name: true, code: true, address: true, phone: true },
+          },
+          user: { select: { firstName: true, lastName: true } },
+          customer: { select: { name: true, phone: true } },
+          items: { include: { product: { select: { sku: true } } } },
+          retailReceivable: {
+            select: { outstandingAmount: true, dueDate: true, status: true },
+          },
+          payments: {
+            select: { method: true, amount: true, transactionId: true },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+      this.prisma.sale.count({ where }),
+    ]);
 
     return {
-      items: salesWithOutstanding.map((s) => ({
+      items: sales.map((s) => ({
         ...this.formatSale(s, true),
-        outstandingBalance: (s.metadata as any)?.outstandingBalance ?? 0,
-        dueDate: (s.metadata as any)?.dueDate,
+        outstandingBalance: this.getSaleOutstandingBalance(s),
+        dueDate:
+          s.retailReceivable?.dueDate ?? (s.metadata as any)?.dueDate ?? null,
       })),
       total,
       page,
@@ -1976,20 +2047,40 @@ export class SalesService {
     const sales = await this.prisma.sale.findMany({
       where: {
         branch: { tenantId },
-        paymentMethod: PaymentMethod.CREDIT,
+        paymentMethod: { in: [PaymentMethod.CREDIT, PaymentMethod.SPLIT] },
         status: SaleStatus.COMPLETED,
+        OR: [
+          {
+            retailReceivable: {
+              is: {
+                status: {
+                  in: [ReceivableStatus.OPEN, ReceivableStatus.PARTIAL],
+                },
+                outstandingAmount: { gt: 0 },
+              },
+            },
+          },
+          {
+            AND: [
+              { retailReceivable: { is: null } },
+              { metadata: { path: ["outstandingBalance"], gt: 0 } },
+            ],
+          },
+        ],
       },
       include: {
         customer: { select: { id: true, name: true, phone: true } },
+        retailReceivable: {
+          select: { outstandingAmount: true, status: true },
+        },
       },
       orderBy: { createdAt: "desc" },
     });
 
     // Only sales that still have an outstanding balance
-    const salesWithOutstanding = sales.filter((s) => {
-      const outstanding = (s.metadata as any)?.outstandingBalance ?? 0;
-      return Number(outstanding) > 0;
-    });
+    const salesWithOutstanding = sales.filter(
+      (sale) => this.getSaleOutstandingBalance(sale) > 0,
+    );
 
     // Group by customerId; sales with no linked customer fall into a shared bucket.
     const UNLINKED_KEY = "unlinked";
@@ -2006,9 +2097,7 @@ export class SalesService {
     >();
 
     for (const sale of salesWithOutstanding) {
-      const outstanding = Number(
-        (sale.metadata as any)?.outstandingBalance ?? 0,
-      );
+      const outstanding = this.getSaleOutstandingBalance(sale);
       const key = sale.customerId ?? UNLINKED_KEY;
       const existing = grouped.get(key);
       if (existing) {
@@ -2188,5 +2277,29 @@ export class SalesService {
     }
 
     return result;
+  }
+
+  private getSaleOutstandingBalance(sale: any): number {
+    const receivable = sale.retailReceivable;
+    if (receivable) {
+      if (
+        receivable.status !== ReceivableStatus.OPEN &&
+        receivable.status !== ReceivableStatus.PARTIAL
+      ) {
+        return 0;
+      }
+      return Math.max(0, Number(receivable.outstandingAmount) || 0);
+    }
+
+    const metadataBalance = Number(
+      (sale.metadata as any)?.outstandingBalance ?? Number.NaN,
+    );
+    if (Number.isFinite(metadataBalance)) {
+      return Math.max(0, metadataBalance);
+    }
+    if (sale.paymentMethod === PaymentMethod.CREDIT) {
+      return Math.max(Number(sale.totalAmount) - Number(sale.paidAmount), 0);
+    }
+    return 0;
   }
 }

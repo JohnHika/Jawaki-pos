@@ -23,6 +23,7 @@ import '../widgets/search_bar_widget.dart';
 import '../widgets/cart_summary_bar.dart';
 import '../../../../core/utils/format.dart';
 import '../../../accountability/data/till_guard_service.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../coupons/data/coupon_service.dart';
 
 class POSScreen extends ConsumerStatefulWidget {
@@ -35,9 +36,11 @@ class POSScreen extends ConsumerStatefulWidget {
 class _POSScreenState extends ConsumerState<POSScreen> {
   bool _showFavorites = false;
   bool _catalogRefreshing = true;
-  bool _catalogSyncStarted = false;
   bool _catalogSyncFailed = false;
   bool _isOffline = false;
+  String? _selectedProductPageId;
+  String? _resumingHeldSaleId;
+  Completer<void>? _catalogRefreshCompleter;
   StreamSubscription<ConnectionStatus>? _connectivitySubscription;
 
   @override
@@ -76,9 +79,15 @@ class _POSScreenState extends ConsumerState<POSScreen> {
   }
 
   Future<void> _refreshCatalog() async {
-    if (!mounted || _catalogSyncStarted) return;
+    if (!mounted) return;
+    final inFlight = _catalogRefreshCompleter;
+    if (inFlight != null) {
+      await inFlight.future;
+      return;
+    }
+    final completer = Completer<void>();
+    _catalogRefreshCompleter = completer;
     setState(() {
-      _catalogSyncStarted = true;
       _catalogRefreshing = true;
       _catalogSyncFailed = false;
     });
@@ -96,17 +105,21 @@ class _POSScreenState extends ConsumerState<POSScreen> {
       });
     } catch (_) {
       failed = true;
+    } finally {
+      if (mounted) {
+        ref.invalidate(categoriesProvider);
+        ref.invalidate(filteredProductsProvider);
+        ref.invalidate(favoriteProductsProvider);
+        setState(() {
+          _catalogRefreshing = false;
+          _catalogSyncFailed = failed;
+        });
+      }
+      if (identical(_catalogRefreshCompleter, completer)) {
+        _catalogRefreshCompleter = null;
+      }
+      if (!completer.isCompleted) completer.complete();
     }
-
-    if (!mounted) return;
-    ref.invalidate(categoriesProvider);
-    ref.invalidate(filteredProductsProvider);
-    ref.invalidate(favoriteProductsProvider);
-    setState(() {
-      _catalogSyncStarted = false;
-      _catalogRefreshing = false;
-      _catalogSyncFailed = failed;
-    });
   }
 
   @override
@@ -122,29 +135,68 @@ class _POSScreenState extends ConsumerState<POSScreen> {
       if (!next.effectiveShowPosFavorites && _showFavorites && mounted) {
         setState(() => _showFavorites = false);
       }
+      if (_selectedProductPageId != null &&
+          !next.posProductPages
+              .any((page) => page.id == _selectedProductPageId) &&
+          mounted) {
+        setState(() => _selectedProductPageId = null);
+      }
     });
     final showFavorites =
         businessLayout.effectiveShowPosFavorites && _showFavorites;
+    final selectedProductPage = businessLayout.posProductPages
+        .where((page) => page.id == _selectedProductPageId)
+        .firstOrNull;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final posQuickActionWidgets = businessLayout.effectivePosQuickActions
-        .map((id) => _buildPosQuickAction(
-              context,
+    final configuredPosActions = businessLayout.effectivePosQuickActions
+        .map((id) => MapEntry(
               id,
-              businessLayout: businessLayout,
-              cart: cart,
-              parkedSales: parkedSales,
-              showFavorites: showFavorites,
-              isDark: isDark,
+              _buildPosQuickAction(
+                context,
+                id,
+                businessLayout: businessLayout,
+                cart: cart,
+                parkedSales: parkedSales,
+                showFavorites: showFavorites,
+                isDark: isDark,
+              ),
             ))
-        .whereType<Widget>()
+        .where((entry) => entry.value != null)
         .toList(growable: false);
+    // Keep the toolbar calm on phones even when the owner enables many
+    // counter actions. The rest stay one tap away in the overflow menu.
+    final visiblePosActions = configuredPosActions.take(3).toList();
+    final overflowPosActions = configuredPosActions.skip(3).toList();
 
     return Scaffold(
       appBar: BrandedAppBar(
         title: businessLayout.actionLabel('/', 'POS'),
         showBackButton: false,
         actions: [
-          ...posQuickActionWidgets,
+          ...visiblePosActions.map((entry) => entry.value!),
+          if (overflowPosActions.isNotEmpty)
+            PopupMenuButton<String>(
+              tooltip: 'More POS actions',
+              icon: const Icon(Icons.more_horiz_rounded),
+              onSelected: (id) => _activatePosQuickAction(context, id),
+              itemBuilder: (menuContext) => overflowPosActions.map((entry) {
+                final action = businessLayoutPosAction(entry.key);
+                final label = entry.key == 'held_sales'
+                    ? 'Held sales (${parkedSales.length})'
+                    : action == null
+                        ? entry.key
+                        : businessLayout.actionLabel(
+                            action.path ?? '', action.label);
+                return PopupMenuItem<String>(
+                  value: entry.key,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(action?.icon ?? Icons.bolt_rounded),
+                    title: Text(label),
+                  ),
+                );
+              }).toList(growable: false),
+            ),
           const SizedBox(width: DesignSpacing.xs),
         ],
       ),
@@ -246,7 +298,9 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        showFavorites ? 'Favorites' : 'Sell',
+                        showFavorites
+                            ? 'Favorites'
+                            : selectedProductPage?.name ?? 'Sell',
                         style: TextStyle(
                           fontSize: DesignType.chatBody + 1,
                           fontWeight: FontWeight.w800,
@@ -258,7 +312,9 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       Text(
                         showFavorites
                             ? 'Saved ${businessLayout.productsLabel.toLowerCase()}'
-                            : 'Choose ${businessLayout.productsLabel.toLowerCase()} to start a sale',
+                            : selectedProductPage != null
+                                ? '${selectedProductPage.productIds.length} quick items'
+                                : 'Choose ${businessLayout.productsLabel.toLowerCase()} to start a sale',
                         style: TextStyle(
                           fontSize: 10,
                           color: isDark
@@ -305,6 +361,8 @@ class _POSScreenState extends ConsumerState<POSScreen> {
           const SearchBarWidget(),
           if (!showFavorites && businessLayout.effectiveShowPosCategories)
             const CategoryChips(),
+          if (!showFavorites && businessLayout.posProductPages.isNotEmpty)
+            _productPagePicker(businessLayout),
           Expanded(
             child: showFavorites
                 ? Consumer(
@@ -332,6 +390,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                     },
                   )
                 : ProductGrid(
+                    productPageIds: selectedProductPage?.productIds,
                     catalogRefreshing: _catalogRefreshing,
                     catalogSyncFailed: _catalogSyncFailed,
                     isOffline: _isOffline,
@@ -339,6 +398,40 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                   ),
           ),
           if (cart.itemCount > 0) const CartSummaryBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _productPagePicker(BusinessLayoutConfig layout) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SizedBox(
+      height: 48,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        children: [
+          ChoiceChip(
+            label: Text('All ${layout.productsLabel.toLowerCase()}'),
+            selected: _selectedProductPageId == null,
+            onSelected: (_) => setState(() {
+              _selectedProductPageId = null;
+              ref.read(selectedCategoryProvider.notifier).state = null;
+            }),
+          ),
+          ...layout.posProductPages.map((page) => Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: ChoiceChip(
+                  label: Text(page.name),
+                  selected: _selectedProductPageId == page.id,
+                  selectedColor:
+                      DesignColors.accent.withValues(alpha: isDark ? .22 : .14),
+                  onSelected: (_) => setState(() {
+                    _selectedProductPageId = page.id;
+                    ref.read(selectedCategoryProvider.notifier).state = null;
+                  }),
+                ),
+              )),
         ],
       ),
     );
@@ -382,6 +475,22 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     required bool showFavorites,
     required bool isDark,
   }) {
+    final destination = businessLayoutPosAction(id);
+    final path = destination?.path;
+    if (path != null) {
+      final permissions = ref.read(permissionsProvider);
+      if (!businessLayout.isActionVisible(path) ||
+          !businessLayoutCanOpenPath(permissions, path)) {
+        return null;
+      }
+      return _topAction(
+        destination!.icon,
+        businessLayout.actionLabel(path, destination.label),
+        () => context.push(path),
+        isDark,
+      );
+    }
+
     switch (id) {
       case 'customer':
         if (!businessLayout.effectiveShowPosCustomer) return null;
@@ -401,6 +510,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
           () {
             setState(() {
               _showFavorites = !_showFavorites;
+              if (_showFavorites) _selectedProductPageId = null;
               if (_showFavorites) {
                 ref.read(selectedCategoryProvider.notifier).state = null;
               }
@@ -461,6 +571,34 @@ class _POSScreenState extends ConsumerState<POSScreen> {
         );
       default:
         return null;
+    }
+  }
+
+  void _activatePosQuickAction(BuildContext context, String id) {
+    switch (id) {
+      case 'customer':
+        _showCustomerDialog(context);
+      case 'favorites':
+        setState(() {
+          _showFavorites = !_showFavorites;
+          if (_showFavorites) _selectedProductPageId = null;
+          if (_showFavorites) {
+            ref.read(selectedCategoryProvider.notifier).state = null;
+          }
+        });
+      case 'held_sales':
+        _showParkedSalesSheet(context);
+      case 'hold_sale':
+        _parkCurrentSale(context);
+      case 'cart':
+        context.push('/cart');
+      default:
+        final path = businessLayoutPosAction(id)?.path;
+        if (path != null &&
+            ref.read(businessLayoutProvider).isActionVisible(path) &&
+            businessLayoutCanOpenPath(ref.read(permissionsProvider), path)) {
+          context.push(path);
+        }
     }
   }
 
@@ -638,10 +776,34 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     ));
   }
 
-  void _parkCurrentSale(BuildContext context) {
+  Future<void> _parkCurrentSale(BuildContext context) async {
     final cart = ref.read(cartProvider);
     if (cart.items.isEmpty) return;
-    ref.read(parkedSalesProvider.notifier).park(cart);
+    try {
+      await ref.read(parkedSalesProvider.notifier).park(cart);
+    } catch (error) {
+      if (mounted && context.mounted) {
+        showGlassSnackBar(
+          context,
+          'Could not save the held sale. Your cart is still here. ${apiErrorMessage(error)}',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+      }
+      return;
+    }
+    if (!mounted || !context.mounted) return;
+    final currentCart = ref.read(cartProvider);
+    if (!identical(currentCart, cart)) {
+      if (currentCart.items.isEmpty) return;
+      showGlassSnackBar(
+        context,
+        'Sale saved. Your cart changed while it was saving, so the updated cart is still open.',
+        icon: Icons.info_outline_rounded,
+        color: DesignColors.warning,
+      );
+      return;
+    }
     ref.read(cartProvider.notifier).clear();
     showGlassSnackBar(context, 'Sale held',
         icon: Icons.pause_circle_filled_rounded, color: DesignColors.warning);
@@ -726,21 +888,37 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                 tooltip: 'Delete held sale',
                                 icon: const Icon(Icons.delete_outline_rounded,
                                     color: DesignColors.error),
-                                onPressed: () async {
-                                  final confirmed = await showConfirmDialog(
-                                    ctx,
-                                    title: 'Discard Held Sale',
-                                    message:
-                                        'Discard "${s.label}"? This sale will be permanently removed.',
-                                    confirmLabel: 'Discard',
-                                    confirmColor: DesignColors.error,
-                                  );
-                                  if (confirmed == true) {
-                                    ref
-                                        .read(parkedSalesProvider.notifier)
-                                        .remove(s.id);
-                                  }
-                                }),
+                                onPressed: _resumingHeldSaleId != null
+                                    ? null
+                                    : () async {
+                                        final confirmed =
+                                            await showConfirmDialog(
+                                          ctx,
+                                          title: 'Discard Held Sale',
+                                          message:
+                                              'Discard "${s.label}"? This sale will be permanently removed.',
+                                          confirmLabel: 'Discard',
+                                          confirmColor: DesignColors.error,
+                                        );
+                                        if (confirmed == true && ctx.mounted) {
+                                          try {
+                                            await ref
+                                                .read(parkedSalesProvider
+                                                    .notifier)
+                                                .remove(s.id);
+                                          } catch (error) {
+                                            if (ctx.mounted) {
+                                              showGlassSnackBar(
+                                                ctx,
+                                                'Could not discard the held sale. It is still saved. ${apiErrorMessage(error)}',
+                                                icon:
+                                                    Icons.error_outline_rounded,
+                                                color: DesignColors.error,
+                                              );
+                                            }
+                                          }
+                                        }
+                                      }),
                           ]),
                           onTap: () {
                             _resumeHeldSale(ctx, ref, s);
@@ -753,15 +931,228 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     ));
   }
 
-  void _resumeHeldSale(BuildContext context, WidgetRef ref, ParkedSale sale) {
-    final current = ref.read(cartProvider);
-    if (current.items.isNotEmpty) {
-      ref.read(parkedSalesProvider.notifier).park(current);
+  Future<void> _resumeHeldSale(
+    BuildContext context,
+    WidgetRef ref,
+    ParkedSale sale,
+  ) async {
+    if (_resumingHeldSaleId != null) return;
+    setState(() => _resumingHeldSaleId = sale.id);
+    try {
+      var catalogRefreshed = false;
+      if (getIt<ConnectivityService>().currentStatus !=
+          ConnectionStatus.offline) {
+        await _refreshCatalog();
+        catalogRefreshed = !_catalogSyncFailed;
+      }
+      if (!mounted || !context.mounted) return;
+
+      final cartNotifier = ref.read(cartProvider.notifier);
+      final review = await cartNotifier.reviewHeldSale(sale.cart);
+      if (!mounted || !context.mounted) return;
+
+      var cartToResume = review.cart;
+      if (review.priceChanges.isNotEmpty) {
+        final canKeepSavedPrices =
+            await TillGuardService.instance.canOverridePrice();
+        if (!mounted || !context.mounted) return;
+        final updatedPrices = cartNotifier.applyCurrentHeldSalePrices(review);
+        final decision = await _showHeldSalePriceReview(
+          context,
+          review,
+          updatedPrices,
+          canKeepSavedPrices: canKeepSavedPrices,
+        );
+        if (decision == null || !mounted || !context.mounted) return;
+        if (decision == _HeldSalePriceDecision.useCurrentPrices) {
+          cartToResume = updatedPrices;
+        }
+      }
+
+      final catalogConfirmed = catalogRefreshed && review.catalogDataComplete;
+      if (!catalogConfirmed || review.stockIssues.isNotEmpty) {
+        final proceed = await _showHeldSaleStockReview(
+          context,
+          review,
+          catalogConfirmed: catalogConfirmed,
+        );
+        if (proceed != true || !mounted || !context.mounted) return;
+      }
+
+      // Keep the held sale intact if the sheet was dismissed or another
+      // cashier action already removed it while catalog checks were running.
+      if (!ref.read(parkedSalesProvider).any((item) => item.id == sale.id)) {
+        return;
+      }
+      final current = ref.read(cartProvider);
+      final cartSessionGeneration = cartNotifier.sessionGeneration;
+      final resumed = await ref
+          .read(parkedSalesProvider.notifier)
+          .resumeHeldSale(
+            sale.id,
+            current,
+            reviewedCart: cartToResume,
+            installCart: (saved) =>
+                cartNotifier.restoreFromSession(saved, cartSessionGeneration),
+          );
+      if (!resumed || !mounted || !context.mounted) return;
+      Navigator.of(context).pop();
+    } catch (error) {
+      if (mounted && context.mounted) {
+        showGlassSnackBar(
+          context,
+          'Could not review this held sale. It is still saved; try again.',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+      }
+      debugPrint('[HeldSales] Resume review failed: $error');
+    } finally {
+      if (mounted) setState(() => _resumingHeldSaleId = null);
     }
-    final resumed = ref.read(parkedSalesProvider.notifier).resume(sale.id);
-    if (resumed != null) {
-      ref.read(cartProvider.notifier).restoreFrom(resumed);
-    }
-    Navigator.pop(context);
+  }
+
+  Future<_HeldSalePriceDecision?> _showHeldSalePriceReview(
+    BuildContext context,
+    HeldSaleReview review,
+    CartState currentPriceCart, {
+    required bool canKeepSavedPrices,
+  }) {
+    final changes = review.priceChanges;
+    return showDialog<_HeldSalePriceDecision>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Catalog prices changed'),
+        content: SizedBox(
+          width: 440,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Review these items before checkout. The cart subtotal changes from '
+                'KES ${review.cart.subtotal.toStringAsFixed(2)} to '
+                'KES ${currentPriceCart.subtotal.toStringAsFixed(2)}.',
+              ),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 260),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: changes.length,
+                  separatorBuilder: (_, __) => const Divider(height: 12),
+                  itemBuilder: (context, index) {
+                    final change = changes[index];
+                    final factor = change.item.unitConversionFactor ?? 1;
+                    final unit = change.item.saleUnit ?? 'unit';
+                    final saved = change.item.unitPrice * factor;
+                    final current = change.currentCatalogUnitPrice * factor;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(change.item.productName),
+                      subtitle: Text(
+                        'Saved KES ${saved.toStringAsFixed(2)} per $unit · '
+                        'Current KES ${current.toStringAsFixed(2)} per $unit',
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          if (canKeepSavedPrices)
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext)
+                  .pop(_HeldSalePriceDecision.keepSavedPrices),
+              child: const Text('Keep held prices'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext)
+                .pop(_HeldSalePriceDecision.useCurrentPrices),
+            child: const Text('Use current prices'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _showHeldSaleStockReview(
+    BuildContext context,
+    HeldSaleReview review, {
+    required bool catalogConfirmed,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Review held sale before checkout'),
+        content: SizedBox(
+          width: 440,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!catalogConfirmed) ...[
+                const Text(
+                  'The latest catalog and stock could not be fully confirmed. Review the available device data before charging.',
+                ),
+                if (review.stockIssues.isNotEmpty) const SizedBox(height: 10),
+              ],
+              if (review.stockIssues.isEmpty)
+                const Text(
+                  'Review the cart before checkout. The catalog could not confirm every current detail.',
+                )
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 280),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: review.stockIssues.length,
+                    separatorBuilder: (_, __) => const Divider(height: 10),
+                    itemBuilder: (context, index) {
+                      final issue = review.stockIssues[index];
+                      final stock = issue.currentStock;
+                      final quantityDetail = stock == null
+                          ? ''
+                          : ' Requested ${_formatHeldQuantity(issue.requestedQuantity)}, available ${_formatHeldQuantity(stock)}.';
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text(issue.productName),
+                        subtitle: Text('${issue.message}$quantityDetail'),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep on hold'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Open to review'),
+          ),
+        ],
+      ),
+    );
   }
 }
+
+enum _HeldSalePriceDecision { useCurrentPrices, keepSavedPrices }
+
+String _formatHeldQuantity(double value) => value == value.roundToDouble()
+    ? value.toInt().toString()
+    : value
+        .toStringAsFixed(3)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');

@@ -827,48 +827,63 @@ export class MerchantPaymentsService {
     try {
       verified = await this.paystack.verifyTransaction(reference);
     } catch {
-      return this.presentCharge(charge);
+      const current = await this.prisma.merchantCharge.findUnique({
+        where: { reference },
+      });
+      return this.presentCharge(current!);
     }
+
+    // Provider checks can overlap with a webhook or another status request.
+    // A delayed non-success response must never overwrite a charge already
+    // being settled or completed by the other request.
+    const updateUnsettled = async (
+      data: Prisma.MerchantChargeUpdateManyMutationInput,
+    ) => {
+      await this.prisma.merchantCharge.updateMany({
+        where: {
+          id: charge.id,
+          status: { in: ["PENDING", "NEEDS_REVIEW"] },
+        },
+        data,
+      });
+      const current = await this.prisma.merchantCharge.findUnique({
+        where: { reference },
+      });
+      return this.presentCharge(current!);
+    };
+
     if (
       verified.reference !== reference ||
       verified.currency !== "KES" ||
       verified.amount !== Math.round(Number(charge.amount) * 100)
     ) {
-      const reviewed = await this.prisma.merchantCharge.update({
-        where: { reference },
-        data: {
-          status: "NEEDS_REVIEW",
-          providerStatus: "verification_mismatch",
-        },
+      return updateUnsettled({
+        status: "NEEDS_REVIEW",
+        providerStatus: "verification_mismatch",
       });
-      return this.presentCharge(reviewed);
     }
     if (verified.status !== "success") {
       const finalFailure = ["failed", "abandoned", "reversed"].includes(
         verified.status,
       );
-      const updated = await this.prisma.merchantCharge.update({
-        where: { reference },
-        data: {
-          status: finalFailure ? "FAILED" : "PENDING",
-          providerStatus: verified.status,
-        },
+      return updateUnsettled({
+        status: finalFailure ? "FAILED" : "PENDING",
+        providerStatus: verified.status,
       });
-      return this.presentCharge(updated);
     }
     const providerSubaccount =
       typeof verified.subaccount === "string"
         ? verified.subaccount
         : verified.subaccount?.subaccount_code;
     if (providerSubaccount !== charge.subaccountCode) {
-      const reviewed = await this.prisma.merchantCharge.update({
-        where: { reference },
-        data: { status: "NEEDS_REVIEW", providerStatus: "settlement_mismatch" },
+      return updateUnsettled({
+        status: "NEEDS_REVIEW",
+        providerStatus: "settlement_mismatch",
       });
-      return this.presentCharge(reviewed);
     }
 
     const stale = new Date(Date.now() - 60_000);
+    const settlementToken = randomBytes(24).toString("hex");
     const claimed = await this.prisma.merchantCharge.updateMany({
       where: {
         id: charge.id,
@@ -877,7 +892,11 @@ export class MerchantPaymentsService {
           { status: "SETTLING", updatedAt: { lt: stale } },
         ],
       },
-      data: { status: "SETTLING", providerStatus: "success" },
+      data: {
+        status: "SETTLING",
+        providerStatus: "success",
+        settlementToken,
+      },
     });
     if (!claimed.count) {
       const current = await this.prisma.merchantCharge.findUnique({
@@ -904,6 +923,12 @@ export class MerchantPaymentsService {
           notes: "Paystack M-Pesa debt collection",
           offlineId: `paystack-${reference}`,
         };
+        if (!(await this.ownsSettlement(reference, settlementToken))) {
+          const current = await this.prisma.merchantCharge.findUnique({
+            where: { reference },
+          });
+          return this.presentCharge(current!);
+        }
         const payment =
           charge.receivableType === "retail"
             ? await this.finance.recordRetailPayment(
@@ -920,10 +945,11 @@ export class MerchantPaymentsService {
                 paymentDto,
                 true,
               );
-        const completed = await this.prisma.merchantCharge.update({
-          where: { reference },
-          data: { status: "COMPLETED", receivablePaymentId: payment.id },
-        });
+        const completed = await this.completeMerchantCharge(
+          reference,
+          settlementToken,
+          { receivablePaymentId: payment.id },
+        );
         return this.presentCharge(completed);
       }
 
@@ -941,45 +967,123 @@ export class MerchantPaymentsService {
           ...(taxRatePercentSnapshot != null ? { taxRatePercentSnapshot } : {}),
         },
       );
-      const completed = await this.prisma.$transaction(async (tx) => {
-        const payment = await tx.payment.findFirst({
-          where: { saleId: sale.id, transactionId: reference },
-          select: { id: true },
-        });
-        if (!payment) {
-          await tx.payment.create({
-            data: {
-              saleId: sale.id,
-              method: PaymentMethod.MPESA,
-              amount: charge.amount,
-              status: PaymentStatus.COMPLETED,
-              transactionId: reference,
-              paidAt: new Date(),
-            },
-          });
-        }
-        return tx.merchantCharge.update({
-          where: { reference },
-          data: {
-            status: "COMPLETED",
-            saleId: sale.id,
-            receiptNumber: sale.receiptNumber,
-          },
-        });
-      });
+      const completed = await this.completeMerchantSaleCharge(
+        reference,
+        settlementToken,
+        sale,
+        charge.amount,
+      );
       return this.presentCharge(completed);
     } catch {
       // The customer's payment is real. Preserve it for reconciliation if
       // stock or a database error prevents receipt creation after the charge.
-      const reviewed = await this.prisma.merchantCharge.update({
-        where: { reference },
+      await this.prisma.merchantCharge.updateMany({
+        where: {
+          id: charge.id,
+          status: "SETTLING",
+          settlementToken,
+        },
         data: {
           status: "NEEDS_REVIEW",
           providerStatus: "paid_receipt_pending",
+          settlementToken: null,
         },
       });
-      return this.presentCharge(reviewed);
+      const current = await this.prisma.merchantCharge.findUnique({
+        where: { reference },
+      });
+      return this.presentCharge(current!);
     }
+  }
+
+  private async ownsSettlement(reference: string, settlementToken: string) {
+    const current = await this.prisma.merchantCharge.findUnique({
+      where: { reference },
+      select: { status: true, settlementToken: true },
+    });
+    return (
+      current?.status === "SETTLING" &&
+      current.settlementToken === settlementToken
+    );
+  }
+
+  private async completeMerchantCharge(
+    reference: string,
+    settlementToken: string,
+    data: Prisma.MerchantChargeUpdateInput,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM merchant_charges WHERE reference = ${reference} FOR UPDATE`;
+      const current = await tx.merchantCharge.findUnique({
+        where: { reference },
+      });
+      if (!current) throw new NotFoundException("Payment was not found");
+      if (
+        current.status !== "SETTLING" ||
+        current.settlementToken !== settlementToken
+      ) {
+        return current;
+      }
+      return tx.merchantCharge.update({
+        where: { id: current.id },
+        data: {
+          ...data,
+          status: "COMPLETED",
+          settlementToken: null,
+        },
+      });
+    });
+  }
+
+  private async completeMerchantSaleCharge(
+    reference: string,
+    settlementToken: string,
+    sale: { id: string; receiptNumber: string },
+    amount: Prisma.Decimal,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM merchant_charges WHERE reference = ${reference} FOR UPDATE`;
+      const current = await tx.merchantCharge.findUnique({
+        where: { reference },
+      });
+      if (!current) throw new NotFoundException("Payment was not found");
+      if (
+        current.status !== "SETTLING" ||
+        current.settlementToken !== settlementToken
+      ) {
+        return current;
+      }
+
+      // Serialize the lookup-and-create pair by provider reference. A stale
+      // settlement lease may overlap a retry, and Payment.transactionId is
+      // indexed but intentionally not globally unique for other providers.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${reference}, 0))`;
+      const payment = await tx.payment.findFirst({
+        where: { saleId: sale.id, transactionId: reference },
+        select: { id: true },
+      });
+      if (!payment) {
+        await tx.payment.create({
+          data: {
+            saleId: sale.id,
+            method: PaymentMethod.MPESA,
+            amount,
+            status: PaymentStatus.COMPLETED,
+            transactionId: reference,
+            paidAt: new Date(),
+          },
+        });
+      }
+      return tx.merchantCharge.update({
+        where: { id: current.id },
+        data: {
+          status: "COMPLETED",
+          saleId: sale.id,
+          receiptNumber: sale.receiptNumber,
+          settlementToken: null,
+        },
+      });
+    });
   }
 
   private normalizePhone(value: string) {

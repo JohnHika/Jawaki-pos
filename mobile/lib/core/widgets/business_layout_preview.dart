@@ -191,6 +191,26 @@ class BusinessLayoutPreview extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           _PreviewSectionLabel(
+              label: 'QUICK PRODUCT PAGES', secondary: secondary),
+          const SizedBox(height: 6),
+          if (layout.posProductPages.isEmpty)
+            Text(
+              'Create pages for fast sellers after adding products to the catalog.',
+              style: theme.textTheme.bodySmall?.copyWith(color: secondary),
+            )
+          else
+            Wrap(
+              spacing: 7,
+              runSpacing: 6,
+              children: layout.posProductPages
+                  .map((page) => _PreviewChip(
+                        icon: Icons.grid_view_rounded,
+                        label: '${page.name} · ${page.productIds.length}',
+                      ))
+                  .toList(growable: false),
+            ),
+          const SizedBox(height: 14),
+          _PreviewSectionLabel(
               label: 'DASHBOARD SECTIONS', secondary: secondary),
           const SizedBox(height: 6),
           Wrap(

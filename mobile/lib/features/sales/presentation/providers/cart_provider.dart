@@ -30,6 +30,11 @@ class CartItem {
   final String? saleUnit;
   final double? saleQuantity;
   final double? unitConversionFactor;
+
+  /// Catalog price per base unit when this line was last selected or reviewed.
+  /// Kept separately from [unitPrice] so held sales can distinguish an old
+  /// catalog price from an intentional cashier override.
+  final double? catalogUnitPrice;
   final bool allowFractions;
 
   CartItem({
@@ -44,6 +49,7 @@ class CartItem {
     this.saleUnit,
     this.saleQuantity,
     this.unitConversionFactor,
+    this.catalogUnitPrice,
     this.allowFractions = false,
   }) : quantity = quantity.toDouble();
 
@@ -61,6 +67,7 @@ class CartItem {
     String? saleUnit,
     double? saleQuantity,
     double? unitConversionFactor,
+    double? catalogUnitPrice,
     bool? allowFractions,
   }) {
     return CartItem(
@@ -75,6 +82,7 @@ class CartItem {
       saleUnit: saleUnit ?? this.saleUnit,
       saleQuantity: saleQuantity ?? this.saleQuantity,
       unitConversionFactor: unitConversionFactor ?? this.unitConversionFactor,
+      catalogUnitPrice: catalogUnitPrice ?? this.catalogUnitPrice,
       allowFractions: allowFractions ?? this.allowFractions,
     );
   }
@@ -93,6 +101,7 @@ class CartItem {
       'saleUnit': saleUnit,
       'saleQuantity': saleQuantity,
       'unitConversionFactor': unitConversionFactor,
+      'catalogUnitPrice': catalogUnitPrice,
       'allowFractions': allowFractions,
     };
   }
@@ -208,6 +217,46 @@ class CartState {
   }
 }
 
+class HeldSalePriceChange {
+  const HeldSalePriceChange({
+    required this.item,
+    required this.currentCatalogUnitPrice,
+  });
+
+  final CartItem item;
+  final double currentCatalogUnitPrice;
+}
+
+class HeldSaleStockIssue {
+  const HeldSaleStockIssue({
+    required this.productName,
+    required this.requestedQuantity,
+    required this.message,
+    this.currentStock,
+  });
+
+  final String productName;
+  final double requestedQuantity;
+  final String message;
+  final double? currentStock;
+}
+
+class HeldSaleReview {
+  const HeldSaleReview({
+    required this.cart,
+    required this.priceChanges,
+    required this.stockIssues,
+    required this.catalogDataComplete,
+  });
+
+  final CartState cart;
+  final List<HeldSalePriceChange> priceChanges;
+  final List<HeldSaleStockIssue> stockIssues;
+
+  /// False when a product or its current stock/price could not be read locally.
+  final bool catalogDataComplete;
+}
+
 // ════════ PARKED / STASHED SALES ════════
 
 class ParkedSale {
@@ -237,7 +286,8 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
   final StorageService _storage;
   final String? _tenantId;
   final String? _branchId;
-  Future<void> _lastWrite = Future<void>.value();
+  Future<void> _mutationQueue = Future<void>.value();
+  final Map<CartState, Future<void>> _pendingParks = {};
 
   static double? _amount(Object? value) {
     final number = value is num
@@ -308,6 +358,7 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
               saleUnit: item['saleUnit']?.toString(),
               saleQuantity: _amount(item['saleQuantity']),
               unitConversionFactor: _amount(item['unitConversionFactor']),
+              catalogUnitPrice: _amount(item['catalogUnitPrice']),
               allowFractions: item['allowFractions'] == true,
             ));
           }
@@ -348,14 +399,22 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
     }
   }
 
-  void _persist() {
+  Future<T> _serializeMutation<T>(Future<T> Function() mutation) {
+    final operation = _mutationQueue.then((_) => mutation());
+    _mutationQueue = operation.then<void>((_) {}).catchError((Object error) {
+      debugPrint('[HeldSales] Mutation failed: $error');
+    });
+    return operation;
+  }
+
+  Future<void> _persist() async {
     final tenantId = _tenantId;
     final branchId = _branchId;
     if (tenantId == null ||
         tenantId.isEmpty ||
         branchId == null ||
         branchId.isEmpty) {
-      return;
+      throw StateError('Sign in to a branch before saving a held sale.');
     }
     final snapshot = jsonEncode({
       'version': 1,
@@ -379,47 +438,110 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
           },
       ],
     });
-    // Queue writes so a quick hold/resume sequence cannot restore an older
-    // snapshot after a newer one. Keep the queue usable after an I/O error.
-    _lastWrite = _lastWrite
-        .then((_) => _storage.saveHeldSalesSnapshot(
-              tenantId: tenantId,
-              branchId: branchId,
-              snapshot: snapshot,
-            ))
-        .catchError((Object error) {
-      debugPrint('[HeldSales] Could not save held sales: $error');
-    });
+    await _storage.saveHeldSalesSnapshot(
+      tenantId: tenantId,
+      branchId: branchId,
+      snapshot: snapshot,
+    );
   }
 
-  void park(CartState cart, {String? label}) {
-    if (cart.items.isEmpty) return;
-    final name = label ?? cart.customerName ?? 'Sale #${state.length + 1}';
-    state = [
-      ...state,
-      ParkedSale(
+  Future<void> park(CartState cart, {String? label}) {
+    final pending = _pendingParks[cart];
+    if (pending != null) return pending;
+
+    late final Future<void> operation;
+    operation = _serializeMutation(() async {
+      if (cart.items.isEmpty) return;
+      final previous = state;
+      final name = label ?? cart.customerName ?? 'Sale #${state.length + 1}';
+      final sale = ParkedSale(
         id: _uuid.v4(),
         label: name,
         cart: cart,
         parkedAt: DateTime.now(),
-      ),
-    ];
-    _persist();
+      );
+      state = [...state, sale];
+      try {
+        await _persist();
+      } catch (_) {
+        state = previous;
+        rethrow;
+      }
+    });
+    _pendingParks[cart] = operation;
+    operation.then((_) {
+      if (identical(_pendingParks[cart], operation)) {
+        _pendingParks.remove(cart);
+      }
+    }, onError: (Object _) {
+      if (identical(_pendingParks[cart], operation)) {
+        _pendingParks.remove(cart);
+      }
+    });
+    return operation;
   }
 
-  CartState? resume(String id) {
-    final index = state.indexWhere((s) => s.id == id);
-    if (index < 0) return null;
-    final sale = state[index];
-    state = state.where((s) => s.id != id).toList();
-    _persist();
-    return sale.cart;
-  }
+  Future<CartState?> resume(String id) => _serializeMutation(() async {
+        final index = state.indexWhere((sale) => sale.id == id);
+        if (index < 0) return null;
+        final previous = state;
+        final sale = state[index];
+        state = state.where((item) => item.id != id).toList();
+        try {
+          await _persist();
+          return sale.cart;
+        } catch (_) {
+          state = previous;
+          rethrow;
+        }
+      });
 
-  void remove(String id) {
-    state = state.where((s) => s.id != id).toList();
-    _persist();
-  }
+  /// Resumes a held sale and persists the held list as one operation. The
+  /// active cart is installed before the saved copy is removed; a failed save
+  /// restores both the previous held list and the previous active cart.
+  Future<bool> resumeHeldSale(
+    String id,
+    CartState current, {
+    required CartState reviewedCart,
+    required bool Function(CartState) installCart,
+  }) =>
+      _serializeMutation(() async {
+        final index = state.indexWhere((sale) => sale.id == id);
+        if (index < 0) return false;
+        if (!installCart(reviewedCart)) return false;
+        final previous = state;
+        final next = [...state]..removeAt(index);
+        if (current.items.isNotEmpty) {
+          next.add(ParkedSale(
+            id: _uuid.v4(),
+            label: current.customerName ?? 'Sale #${next.length + 1}',
+            cart: current,
+            parkedAt: DateTime.now(),
+          ));
+        }
+        state = next;
+        try {
+          await _persist();
+          return true;
+        } catch (_) {
+          state = previous;
+          installCart(current);
+          rethrow;
+        }
+      });
+
+  Future<void> remove(String id) => _serializeMutation(() async {
+        final previous = state;
+        final next = state.where((sale) => sale.id != id).toList();
+        if (next.length == state.length) return;
+        state = next;
+        try {
+          await _persist();
+        } catch (_) {
+          state = previous;
+          rethrow;
+        }
+      });
 }
 
 final parkedSalesProvider =
@@ -441,6 +563,8 @@ class CartNotifier extends StateNotifier<CartState> {
   AppDatabase get _database => getIt<AppDatabase>();
 
   int _sessionGeneration = 0;
+
+  int get sessionGeneration => _sessionGeneration;
 
   /// Replaces the database-backed stock check; used by tests.
   final Future<Map<String, dynamic>> Function(
@@ -469,7 +593,23 @@ class CartNotifier extends StateNotifier<CartState> {
     if (override != null) return override(productId, quantity);
     try {
       final product = await _database.getProduct(productId);
-      if (quantity % 1 != 0 && product?.allowFractions != true) {
+      if (product == null) {
+        return {
+          'available': false,
+          'message': 'Product is no longer available in this catalog.',
+          'currentStock': 0,
+          'required': quantity,
+        };
+      }
+      if (!product.isActive) {
+        return {
+          'available': false,
+          'message': 'Product is no longer active.',
+          'currentStock': 0,
+          'required': quantity,
+        };
+      }
+      if (quantity % 1 != 0 && !product.allowFractions) {
         return {
           'available': false,
           'message': 'This product is sold in whole units.',
@@ -478,7 +618,7 @@ class CartNotifier extends StateNotifier<CartState> {
           'required': quantity,
         };
       }
-      if (product != null && !product.trackInventory) {
+      if (!product.trackInventory) {
         return {
           'available': true,
           'message': 'Inventory tracking disabled',
@@ -544,6 +684,7 @@ class CartNotifier extends StateNotifier<CartState> {
     String? saleUnit,
     double? saleQuantity,
     double? unitConversionFactor,
+    double? catalogUnitPrice,
     bool allowFractions = false,
   }) async {
     final sessionGeneration = _sessionGeneration;
@@ -644,6 +785,7 @@ class CartNotifier extends StateNotifier<CartState> {
         quantity: nextQuantity,
         discount: _scaledDiscount(existing,
             quantity: nextQuantity, unitPrice: existing.unitPrice),
+        catalogUnitPrice: catalogUnitPrice,
         // Preserve a manually adjusted/tier price on the existing line.
         // This action adds quantity; it is not a repricing operation.
         saleQuantity: _quantityAtSupportedPrecision(
@@ -666,6 +808,7 @@ class CartNotifier extends StateNotifier<CartState> {
         saleUnit: saleUnit,
         saleQuantity: saleQuantity,
         unitConversionFactor: unitConversionFactor,
+        catalogUnitPrice: catalogUnitPrice,
         allowFractions: allowFractions,
       );
       state = state.copyWith(items: [...state.items, newItem]);
@@ -681,6 +824,7 @@ class CartNotifier extends StateNotifier<CartState> {
     String? saleUnit,
     double? saleQuantity,
     double? unitConversionFactor,
+    double? catalogUnitPrice,
   }) async {
     final sessionGeneration = _sessionGeneration;
     final quantityValue = _quantityAtSupportedPrecision(quantity);
@@ -753,6 +897,7 @@ class CartNotifier extends StateNotifier<CartState> {
                   ? quantityValue / conversion
                   : item.saleQuantity),
           unitConversionFactor: unitConversionFactor,
+          catalogUnitPrice: catalogUnitPrice,
         );
       }
       return item;
@@ -983,6 +1128,156 @@ class CartNotifier extends StateNotifier<CartState> {
   void restoreFrom(CartState saved) {
     state = saved;
   }
+
+  bool restoreFromSession(CartState saved, int expectedGeneration) {
+    if (expectedGeneration != _sessionGeneration) return false;
+    state = saved;
+    return true;
+  }
+
+  /// Refreshes the held cart's stock and catalog-price baseline before it is
+  /// returned to checkout. The caller decides whether to apply changed prices
+  /// so the cashier can review a material total change first.
+  Future<HeldSaleReview> reviewHeldSale(CartState saved) async {
+    final priceChanges = <HeldSalePriceChange>[];
+    final stockIssues = <HeldSaleStockIssue>[];
+    final refreshedItems = <CartItem>[];
+    var catalogDataComplete = true;
+
+    for (final item in saved.items) {
+      final product = await _database.getProduct(item.productId);
+      if (product == null) {
+        catalogDataComplete = false;
+        stockIssues.add(HeldSaleStockIssue(
+          productName: item.productName,
+          requestedQuantity: item.quantity,
+          message: 'This item is no longer available in the catalog.',
+        ));
+        refreshedItems.add(item);
+        continue;
+      }
+      if (item.quantity % 1 != 0 && !product.allowFractions) {
+        stockIssues.add(HeldSaleStockIssue(
+          productName: item.productName,
+          requestedQuantity: item.quantity,
+          message: 'This item is now sold in whole units.',
+        ));
+      }
+
+      final stockCheck = await _validateStockAvailability(
+        item.productId,
+        item.quantity,
+      );
+      if (stockCheck['available'] != true) {
+        final currentStock = (stockCheck['currentStock'] as num?)?.toDouble();
+        final message = stockCheck['message']?.toString() ??
+            'Current stock could not be confirmed.';
+        if (message.startsWith('Could not verify stock')) {
+          catalogDataComplete = false;
+        }
+        stockIssues.add(HeldSaleStockIssue(
+          productName: item.productName,
+          requestedQuantity: item.quantity,
+          currentStock: currentStock,
+          message: message,
+        ));
+      }
+
+      final currentCatalogUnitPrice = await _currentCatalogUnitPrice(
+        item: item,
+        product: product,
+      );
+      if (currentCatalogUnitPrice == null) {
+        catalogDataComplete = false;
+        stockIssues.add(HeldSaleStockIssue(
+          productName: item.productName,
+          requestedQuantity: item.quantity,
+          message:
+              'The saved sale unit is no longer configured. Reopen the item to choose a current unit.',
+        ));
+        refreshedItems.add(item);
+        continue;
+      }
+
+      final previousCatalogPrice = item.catalogUnitPrice ?? item.unitPrice;
+      if (_currencyCents(previousCatalogPrice) !=
+          _currencyCents(currentCatalogUnitPrice)) {
+        priceChanges.add(HeldSalePriceChange(
+          item: item,
+          currentCatalogUnitPrice: currentCatalogUnitPrice,
+        ));
+      }
+      refreshedItems.add(item.copyWith(
+        catalogUnitPrice: currentCatalogUnitPrice,
+      ));
+    }
+
+    return HeldSaleReview(
+      cart: saved.copyWith(items: refreshedItems),
+      priceChanges: priceChanges,
+      stockIssues: stockIssues,
+      catalogDataComplete: catalogDataComplete,
+    );
+  }
+
+  CartState applyCurrentHeldSalePrices(HeldSaleReview review) {
+    final pricesByItemId = {
+      for (final change in review.priceChanges)
+        change.item.id: change.currentCatalogUnitPrice,
+    };
+    return review.cart.copyWith(
+      items: [
+        for (final item in review.cart.items)
+          if (pricesByItemId.containsKey(item.id))
+            item.copyWith(
+              unitPrice: pricesByItemId[item.id]!,
+              catalogUnitPrice: pricesByItemId[item.id]!,
+              discount: _scaledDiscount(
+                item,
+                quantity: item.quantity,
+                unitPrice: pricesByItemId[item.id]!,
+              ),
+            )
+          else
+            item,
+      ],
+    );
+  }
+
+  Future<double?> _currentCatalogUnitPrice({
+    required CartItem item,
+    required Product product,
+  }) async {
+    final selectedUnit = item.saleUnit?.trim().toLowerCase();
+    final baseUnit = product.unit.trim().toLowerCase();
+    final conversion = item.unitConversionFactor;
+    if (selectedUnit == null ||
+        selectedUnit.isEmpty ||
+        selectedUnit == baseUnit) {
+      if (conversion != null && (conversion - 1).abs() > 0.000001) {
+        return null;
+      }
+      return product.price.isFinite && product.price >= 0
+          ? product.price
+          : null;
+    }
+
+    final tiers = await _database.getPricingTiersForProduct(item.productId);
+    for (final tier in tiers) {
+      if (tier.unit.trim().toLowerCase() != selectedUnit) continue;
+      if (!tier.price.isFinite ||
+          tier.price < 0 ||
+          tier.quantityPerUnit <= 0 ||
+          (conversion != null &&
+              (tier.quantityPerUnit - conversion).abs() > 0.000001)) {
+        return null;
+      }
+      return tier.price / tier.quantityPerUnit;
+    }
+    return null;
+  }
+
+  int _currencyCents(double amount) => (amount * 100).round();
 
   void clear() {
     state = const CartState();
