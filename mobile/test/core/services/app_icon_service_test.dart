@@ -64,7 +64,7 @@ void main() {
       );
       expect(
         appIconChangeReason(AppIconVariant.standard, automaticEnabled: false),
-        contains('turned off'),
+        contains('changes are off'),
       );
     });
   });
