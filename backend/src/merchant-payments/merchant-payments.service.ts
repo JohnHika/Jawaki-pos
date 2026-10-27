@@ -121,11 +121,13 @@ export class MerchantPaymentsService {
     let unchangedSubaccount: Awaited<
       ReturnType<PaystackService["getMerchantSubaccount"]>
     > | null = null;
+    const sameMaskedDestination =
+      existing?.bankCode === bank.code &&
+      existing?.accountLast4 === dto.accountNumber.slice(-4);
     if (
       existing &&
       typeof this.paystack.getMerchantSubaccount === "function" &&
-      existing.bankCode === bank.code &&
-      existing.accountLast4 === dto.accountNumber.slice(-4)
+      sameMaskedDestination
     ) {
       try {
         const providerAccount = await this.paystack.getMerchantSubaccount(
@@ -150,8 +152,13 @@ export class MerchantPaymentsService {
           unchangedSubaccount = providerAccount;
         }
       } catch {
-        // If Paystack cannot confirm the current destination, create a fresh
-        // subaccount below. Never mutate a route used by earlier charges.
+        // The masked account details match the saved route. If the provider
+        // lookup is temporarily unavailable, creating another route would
+        // make every retry add a duplicate merchant subaccount. Fail closed;
+        // the owner can retry once Paystack responds again.
+        throw new ServiceUnavailableException(
+          "Paystack could not verify your existing payout account. No duplicate account was created. Try again shortly.",
+        );
       }
     }
     const subaccount =

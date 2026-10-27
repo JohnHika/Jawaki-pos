@@ -225,6 +225,33 @@ describe('MerchantPaymentsService', () => {
     expect(written.create.accountName).toBe('SHOP ONE');
   });
 
+  it('does not create a duplicate payout subaccount when Paystack cannot recheck the saved destination', async () => {
+    const { prisma, paystack, service } = fixtures();
+    prisma.merchantPaymentAccount.findUnique.mockResolvedValue({
+      tenantId: 'shop-1',
+      status: 'PENDING_VERIFICATION',
+      provider: 'PAYSTACK',
+      currency: 'KES',
+      subaccountCode: 'ACCT_existing',
+      bankCode: '001',
+      bankName: 'Test Bank',
+      accountName: null,
+      accountLast4: '7890',
+    });
+    paystack.getMerchantSubaccount = jest
+      .fn()
+      .mockRejectedValue(new Error('temporary Paystack outage'));
+
+    await expect(service.configureAccount({
+      sub: 'owner-1', tenantId: 'shop-1', permissions: ['payments.manage_payout'],
+    }, {
+      bankCode: '001', accountNumber: '1234567890', confirmAccountOwnership: true,
+    })).rejects.toThrow('No duplicate account was created');
+
+    expect(paystack.createMerchantSubaccount).not.toHaveBeenCalled();
+    expect(prisma.merchantPaymentAccount.upsert).not.toHaveBeenCalled();
+  });
+
   it('does not activate a payout route if Paystack cannot resolve the account holder', async () => {
     const { prisma, paystack, service } = fixtures();
     paystack.createMerchantSubaccount.mockResolvedValue({
