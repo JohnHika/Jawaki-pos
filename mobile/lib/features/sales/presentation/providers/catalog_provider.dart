@@ -112,18 +112,64 @@ List<Map<String, dynamic>> _flattenCategories(List<dynamic> categories) {
 
   void walk(List<dynamic> nodes) {
     for (final node in nodes) {
-      if (node is! Map) continue;
+      if (node is! Map) {
+        throw const FormatException(
+          'The category catalog contains an invalid item.',
+        );
+      }
       final category = Map<String, dynamic>.from(node);
+      final id = category['id']?.toString().trim();
+      final name = category['name']?.toString().trim();
+      if (id == null || id.isEmpty || name == null || name.isEmpty) {
+        throw const FormatException(
+          'The category catalog contains an incomplete item.',
+        );
+      }
       final children = category.remove('children');
       flattened.add(category);
       if (children is List) {
         walk(children);
+      } else if (children != null) {
+        throw const FormatException(
+          'The category catalog hierarchy is invalid.',
+        );
       }
     }
   }
 
   walk(categories);
   return flattened;
+}
+
+/// Parses a complete API page before caching it. Silently dropping a malformed
+/// row is unsafe because the final refresh replaces the full local catalog;
+/// an incomplete payload could otherwise make valid saved products disappear.
+List<Map<String, dynamic>> _validatedProductMaps(List<dynamic> items) {
+  final products = <Map<String, dynamic>>[];
+  for (final item in items) {
+    if (item is! Map) {
+      throw const FormatException(
+        'The product catalog contains an invalid item.',
+      );
+    }
+
+    try {
+      final product = Map<String, dynamic>.from(item);
+      if (_productToCompanion(product) == null) {
+        throw const FormatException(
+          'The product catalog contains an incomplete item.',
+        );
+      }
+      products.add(product);
+    } on FormatException {
+      rethrow;
+    } catch (_) {
+      throw const FormatException(
+        'The product catalog contains an invalid item.',
+      );
+    }
+  }
+  return products;
 }
 
 CategoriesCompanion? _categoryToCompanion(Map<String, dynamic> category) {
@@ -346,6 +392,11 @@ Future<void> _performCatalogSync({
             .map(_categoryToCompanion)
             .whereType<CategoriesCompanion>()
             .toList();
+        if (categoryItems.length != flatCategories.length) {
+          throw const FormatException(
+            'The category catalog contains an incomplete item.',
+          );
+        }
 
         // Logout or switching shops while requests are in flight must not
         // repopulate the shared local tables with the previous shop's data.
@@ -363,10 +414,7 @@ Future<void> _performCatalogSync({
         final productsResponse = await apiClient.getAllProducts(
           branchId: branchId,
           onPageFetched: (page) async {
-            final pageMaps = page
-                .whereType<Map>()
-                .map((item) => Map<String, dynamic>.from(item))
-                .toList(growable: false);
+            final pageMaps = _validatedProductMaps(page);
             final pageProducts = pageMaps
                 .map(_productToCompanion)
                 .whereType<ProductsCompanion>()
@@ -409,15 +457,11 @@ Future<void> _performCatalogSync({
             }
           },
         );
-        final productMaps = productsResponse
-            .whereType<Map>()
-            .map((item) => Map<String, dynamic>.from(item))
-            .toList();
+        final productMaps = _validatedProductMaps(productsResponse);
 
         final productItems = productMaps
-            .map(_productToCompanion)
-            .whereType<ProductsCompanion>()
-            .toList();
+            .map((product) => _productToCompanion(product)!)
+            .toList(growable: false);
         if (!isSameCatalogScope()) {
           debugPrint('[CatalogSync] Skipped product cache write: shop changed');
           return;

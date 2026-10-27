@@ -1,7 +1,7 @@
 name: axon_pos
 description: Counterbase - Professional Point of Sale Platform by Arche Axon
 publish_to: 'none'
-version: 1.0.165+2208
+version: 1.0.166+2209
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -66,8 +66,6 @@ dependencies:
   # added for multi-format export; the original esc_pos_utils pins image
   # ^3.0.2 and conflicts with pdf.
   esc_pos_utils_plus: ^2.0.4
-  # TODO: Add bluetooth printing support with updated package
-
   # QR Code (for payments)
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.4.0

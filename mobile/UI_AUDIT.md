@@ -1,5 +1,9 @@
 # UI Audit Report - Levisa POS System
 
+> Historical snapshot from 2026-05-26. The screen states and release findings
+> below describe an older build and are not current verification. Re-audit the
+> live app before using this document to judge the present release.
+
 ## Phase 1: Baseline Visual Audit - COMPLETED ✓
 
 ### Screen 1: Login Screen
@@ -540,7 +544,7 @@ The login screen now presents a professional, polished interface with:
 **Issues Fixed:** 0 (this session - issues are backend/data related)
 
 **Login Successfully Completed:** ✅ Yes
-**Credential Validation:** admin@levisa.com / admin123
+**Credential Validation:** Test login succeeded; credentials intentionally omitted.
 
 ---
 
