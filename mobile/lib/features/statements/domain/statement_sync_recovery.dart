@@ -15,9 +15,9 @@ bool statementNeedsCustomerSync(Object error) {
           .hasMatch(message);
 }
 
-/// A UUID validation response or a missing statement route is a deployed API
-/// contract problem. Repeating the same request or syncing the customer cannot
-/// repair it, so the UI should show an update notice without a retry action.
+/// A UUID validation response or a missing statement route indicates the
+/// connected API does not yet match this client. Customer sync cannot repair
+/// the mismatch, but retrying after a service deployment can.
 bool statementServiceNeedsUpdate(Object error) {
   if (error is! DioException) return false;
 

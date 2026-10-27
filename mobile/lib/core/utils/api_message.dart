@@ -62,7 +62,7 @@ bool _isSafeExceptionMessage(String message) {
 String? _friendlyValidationMessage(String message) {
   if (RegExp(r'\bcustomerid\s+must\s+be\s+a\s+uuid\b', caseSensitive: false)
       .hasMatch(message)) {
-    return 'Statement sharing needs a service update before it can accept this customer record. Try again after the update is applied.';
+    return 'Statement sharing is temporarily unavailable. Your customer and their debt are safe. Try again shortly.';
   }
   return null;
 }

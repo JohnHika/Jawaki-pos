@@ -1,5 +1,11 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.170+2213 (October 27, 2026)
+
+### Make statement recovery clear and actionable
+- Replace misleading app-update advice with clear service-unavailable guidance that reassures staff their customer and debt remain safe.
+- Let staff retry statement previews, sharing actions, and customer replies after the connected service is available.
+
 ## v1.0.147+2190 (October 25, 2026)
 
 ### Make statement recovery clearer and restore cloud access after stopping phone server

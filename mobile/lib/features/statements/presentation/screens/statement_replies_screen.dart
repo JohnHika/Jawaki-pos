@@ -49,18 +49,16 @@ class StatementRepliesScreen extends ConsumerWidget {
                     title: needsOnlineWorkspace
                         ? 'Replies need the online workspace'
                         : serviceNeedsUpdate
-                            ? 'Debt replies need a service update'
+                            ? 'Debt replies are temporarily unavailable'
                             : "Couldn't load customer replies",
                     subtitle: needsOnlineWorkspace
                         ? 'Customer replies are available when this app is connected to your online Counterbase workspace. Your sales and debts remain saved on this device.'
                         : serviceNeedsUpdate
-                            ? 'The Counterbase service connected to this app does not support debt replies yet. Update the service, then pull down to refresh.'
+                            ? 'Customer replies could not be reached. Your sales and debts are safe. Try again shortly.'
                             : apiErrorMessage(e),
                     iconColor: DesignColors.warning,
-                    actionLabel: (serviceNeedsUpdate || needsOnlineWorkspace)
-                        ? null
-                        : 'Try again',
-                    onAction: (serviceNeedsUpdate || needsOnlineWorkspace)
+                    actionLabel: needsOnlineWorkspace ? null : 'Try again',
+                    onAction: needsOnlineWorkspace
                         ? null
                         : () => ref.invalidate(statementClaimsProvider),
                   ),

@@ -44,7 +44,7 @@ void main() {
           },
         },
       )),
-      'Statement sharing needs a service update before it can accept this customer record. Try again after the update is applied.',
+      'Statement sharing is temporarily unavailable. Your customer and their debt are safe. Try again shortly.',
     );
   });
 

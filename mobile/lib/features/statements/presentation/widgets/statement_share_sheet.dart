@@ -13,7 +13,6 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/sync_service.dart';
-import '../../../../core/services/update_check_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
@@ -72,7 +71,6 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   String? _historyLoadError;
   bool _customerNeedsSync = false;
   bool _statementServiceNeedsUpdate = false;
-  bool _checkingForAppUpdate = false;
   bool _automaticCustomerSyncAttempted = false;
   bool _loading = true;
   bool _busy = false;
@@ -86,12 +84,12 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   // statement twice (WhatsApp, then PDF) does not make a second link.
   Map<String, dynamic>? _link;
   String? _linkKey;
+  Future<void> Function()? _retryAction;
 
   ApiClient get _api => getIt<ApiClient>();
 
   static const _statementServiceUpdateMessage =
-      'This statement service needs an update. Your customer and debt are safe. '
-      'Check for a Counterbase app update; if you are already up to date, contact support.';
+      'Statement sharing is temporarily unavailable. Your customer and their debt are safe. Try again shortly.';
 
   String _loadErrorMessage(
     Object error, {
@@ -105,46 +103,6 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
     if (error is StateError) return error.message.toString();
     return apiErrorMessage(error);
   }
-
-  Future<void> _checkForAppUpdate() async {
-    if (_checkingForAppUpdate) return;
-    setState(() => _checkingForAppUpdate = true);
-    try {
-      final updates = getIt<UpdateCheckService>();
-      await updates.checkForUpdates(force: true);
-      if (!mounted) return;
-      if (updates.hasOptionalUpdateAvailable) {
-        await updates.showCachedOptionalUpdateDialog(context);
-      } else if (updates.errorMessage != null) {
-        setState(() => _message = updates.errorMessage);
-      } else if (!updates.isForceUpdateRequired &&
-          !updates.isPostLoginUpdateRequired) {
-        setState(() => _message =
-            'Counterbase is up to date. If statement sending still fails, contact support.');
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _message =
-            'Could not check for an update. Try again from Settings.');
-      }
-    } finally {
-      if (mounted) setState(() => _checkingForAppUpdate = false);
-    }
-  }
-
-  Widget _buildCheckForAppUpdateButton() => TextButton.icon(
-        onPressed: _checkingForAppUpdate ? null : _checkForAppUpdate,
-        icon: _checkingForAppUpdate
-            ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.system_update_alt_rounded),
-        label: Text(
-          _checkingForAppUpdate ? 'Checking…' : 'Check for app update',
-        ),
-      );
 
   @override
   void initState() {
@@ -164,6 +122,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
       _loading = true;
       _loadError = null;
       _statementServiceNeedsUpdate = false;
+      _retryAction = null;
     });
     // Statement history is useful, but it must not hold the balance preview
     // or the send actions hostage when that secondary request is unavailable.
@@ -331,6 +290,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
     setState(() {
       _busy = true;
       _message = null;
+      _retryAction = null;
     });
     try {
       await action();
@@ -341,6 +301,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
         final serviceNeedsUpdate = statementServiceNeedsUpdate(e);
         setState(() {
           _statementServiceNeedsUpdate = serviceNeedsUpdate;
+          _retryAction = serviceNeedsUpdate ? action : null;
           _message = serviceNeedsUpdate
               ? _statementServiceUpdateMessage
               : apiErrorMessage(e);
@@ -350,6 +311,21 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  Widget _buildStatementRetryButton({bool retryAction = false}) =>
+      TextButton.icon(
+        onPressed: _busy
+            ? null
+            : () {
+                if (retryAction && _retryAction != null) {
+                  unawaited(_run(_retryAction!));
+                } else {
+                  unawaited(_load());
+                }
+              },
+        icon: const Icon(Icons.refresh_rounded),
+        label: const Text('Try again'),
+      );
 
   Future<void> _whatsapp() => _run(() async {
         final link = await _ensureLink();
@@ -479,7 +455,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.system_update_alt_rounded,
+                              const Icon(Icons.cloud_off_rounded,
                                   color: DesignColors.warning),
                               const SizedBox(width: DesignSpacing.sm),
                               Expanded(
@@ -492,7 +468,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
                           const SizedBox(height: DesignSpacing.xs),
                           Align(
                             alignment: Alignment.centerRight,
-                            child: _buildCheckForAppUpdateButton(),
+                            child: _buildStatementRetryButton(),
                           ),
                         ],
                       ),
@@ -657,7 +633,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
               if (_statementServiceNeedsUpdate)
                 Align(
                   alignment: Alignment.centerRight,
-                  child: _buildCheckForAppUpdateButton(),
+                  child: _buildStatementRetryButton(retryAction: true),
                 ),
             ],
             if (_historyLoadError != null) ...[

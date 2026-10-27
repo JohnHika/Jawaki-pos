@@ -67,4 +67,39 @@ void main() {
       );
     });
   });
+
+  group('statementServiceNeedsUpdate', () {
+    test('recognizes legacy customer ID validation as API mismatch', () {
+      expect(
+        statementServiceNeedsUpdate(responseError(
+          400,
+          {
+            'error': {
+              'message': 'Validation failed: customerId must be a UUID',
+            },
+          },
+        )),
+        isTrue,
+      );
+    });
+
+    test('recognizes a missing statement endpoint', () {
+      expect(
+        statementServiceNeedsUpdate(responseError(
+          404,
+          {'message': 'Cannot GET /api/v1/statements/claims'},
+        )),
+        isTrue,
+      );
+    });
+
+    test('does not classify unrelated API errors as a statement mismatch', () {
+      expect(
+        statementServiceNeedsUpdate(
+          responseError(403, {'message': 'Forbidden resource'}),
+        ),
+        isFalse,
+      );
+    });
+  });
 }
