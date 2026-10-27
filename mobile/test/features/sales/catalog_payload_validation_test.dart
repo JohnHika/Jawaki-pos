@@ -61,4 +61,34 @@ void main() {
       );
     }
   });
+
+  test('treats missing tracked branch stock as zero only on full refresh', () {
+    final tracked = {'trackInventory': true};
+    final untracked = {'trackInventory': false};
+
+    expect(catalogStockQuantityForTesting(tracked), isNull);
+    expect(
+      catalogStockQuantityForTesting(
+        tracked,
+        missingTrackedStockAsZero: true,
+      ),
+      0,
+    );
+    expect(
+      catalogStockQuantityForTesting(
+        untracked,
+        missingTrackedStockAsZero: true,
+      ),
+      isNull,
+    );
+  });
+
+  test('rejects malformed stock quantities without touching cached data', () {
+    expect(
+      () => validateCatalogProductPayload([
+        _product()..['currentStock'] = double.infinity,
+      ]),
+      throwsA(isA<FormatException>()),
+    );
+  });
 }

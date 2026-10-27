@@ -160,6 +160,7 @@ List<Map<String, dynamic>> _validatedProductMaps(List<dynamic> items) {
           'The product catalog contains an incomplete item.',
         );
       }
+      _catalogStockQuantity(product);
       // The current catalog API always returns pricingTiers as an array,
       // including an empty array for products without bulk prices. If it is
       // missing or malformed, don't replace the previously usable tier cache.
@@ -181,6 +182,34 @@ List<Map<String, dynamic>> validateCatalogProductPayload(
   List<dynamic> items,
 ) =>
     _validatedProductMaps(items);
+
+double? _catalogStockQuantity(
+  Map<String, dynamic> product, {
+  bool missingTrackedStockAsZero = false,
+}) {
+  final currentStock = product['currentStock'];
+  if (currentStock == null) {
+    return missingTrackedStockAsZero && product['trackInventory'] == true
+        ? 0
+        : null;
+  }
+  if (currentStock is! num || !currentStock.isFinite) {
+    throw const FormatException(
+      'The product catalog contains an invalid stock quantity.',
+    );
+  }
+  return currentStock.toDouble();
+}
+
+@visibleForTesting
+double? catalogStockQuantityForTesting(
+  Map<String, dynamic> product, {
+  bool missingTrackedStockAsZero = false,
+}) =>
+    _catalogStockQuantity(
+      product,
+      missingTrackedStockAsZero: missingTrackedStockAsZero,
+    );
 
 CategoriesCompanion? _categoryToCompanion(Map<String, dynamic> category) {
   final id = category['id']?.toString();
@@ -338,21 +367,28 @@ Map<String, dynamic> _decodeProductMetadata(String value) {
 /// nothing in the app currently triggers. So a stock change made anywhere
 /// else (another device, a direct DB correction) would fetch correctly
 /// here but never reach `LocalStock`, leaving the POS screen stuck showing
-/// stale/zero stock. Writing it here, on every catalog refresh, closes
-/// that gap without needing the unused pull-sync trigger to exist.
+/// stale/zero stock. Full branch catalog refreshes also write zero when a
+/// tracked product has no server stock row, clearing any stale local count.
+/// Single-product writes keep missing stock unknown because mutation responses
+/// do not include branch stock. This closes the gap without relying on the
+/// unused pull-sync trigger.
 LocalStockCompanion? _stockToCompanion(
   Map<String, dynamic> product,
-  String branchId,
-) {
+  String branchId, {
+  bool missingTrackedStockAsZero = false,
+}) {
   final productId = product['id']?.toString();
-  final currentStock = product['currentStock'];
+  final currentStock = _catalogStockQuantity(
+    product,
+    missingTrackedStockAsZero: missingTrackedStockAsZero,
+  );
   if (productId == null || currentStock == null) return null;
 
   return LocalStockCompanion.insert(
     id: 'stock-$branchId-$productId',
     productId: productId,
     branchId: branchId,
-    quantity: (currentStock as num).toDouble(),
+    quantity: currentStock,
     updatedAt: DateTime.now(),
   );
 }
@@ -472,7 +508,11 @@ Future<void> _performCatalogSync({
                 : pageMaps
                     .where((product) =>
                         pageProductIds.contains(product['id']?.toString()))
-                    .map((product) => _stockToCompanion(product, branchId))
+                    .map((product) => _stockToCompanion(
+                          product,
+                          branchId,
+                          missingTrackedStockAsZero: true,
+                        ))
                     .whereType<LocalStockCompanion>()
                     .toList(growable: false);
 
@@ -521,7 +561,11 @@ Future<void> _performCatalogSync({
 
         if (branchId != null) {
           final stockItems = productMaps
-              .map((p) => _stockToCompanion(p, branchId))
+              .map((p) => _stockToCompanion(
+                    p,
+                    branchId,
+                    missingTrackedStockAsZero: true,
+                  ))
               .whereType<LocalStockCompanion>()
               .toList();
           if (stockItems.isNotEmpty && isSameCatalogScope()) {
