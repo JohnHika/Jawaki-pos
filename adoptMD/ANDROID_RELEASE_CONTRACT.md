@@ -12,7 +12,7 @@ This contract protects installed customer devices from APKs that cannot update i
   those installations cannot update in place to the Axon package.
 - Axon package migration boundary: `versionName=1.0.16`, `versionCode=2021`.
 - Axon customer baseline: package `com.archeaxon.axonpos`, build `2021` or newer.
-- Latest verified production release: `versionName=1.0.167`, `versionCode=2210`
+- Latest verified production release: `versionName=1.0.168`, `versionCode=2211`
 - Unsafe quarantined release: `v1.0.14-2017` was debug-signed and must stay prerelease/not-latest.
 
 ## Required Successor Rules
