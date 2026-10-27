@@ -1,5 +1,11 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.172+2215 (October 27, 2026)
+
+### Keep tax and logo settings honest after cloud saves
+- Report actionable server errors instead of always asking owners to check their connection.
+- Preserve a successful cloud update when the device cannot cache its tenant session, and explain that the device will refresh later.
+
 ## v1.0.171+2214 (October 27, 2026)
 
 ### Make business layout saves report the real outcome

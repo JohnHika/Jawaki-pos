@@ -1372,6 +1372,22 @@ class SettingsScreen extends ConsumerWidget {
 
   // ===== ADMIN-ONLY: BRANCH MANAGEMENT =====
   // ===== ADMIN-ONLY: TAX RATE =====
+  Future<bool> _cacheTenantUpdate(
+    WidgetRef ref,
+    Map<String, dynamic> tenantData,
+  ) async {
+    try {
+      await getIt<AuthService>().updateTenantSession(tenantData);
+      ref.read(authControllerProvider.notifier).refreshFromService();
+      return true;
+    } catch (_) {
+      // The server update is already committed. Refresh the in-memory tenant
+      // even if this device could not persist its local session snapshot.
+      ref.read(authControllerProvider.notifier).refreshFromService();
+      return false;
+    }
+  }
+
   void _showTaxRateDialog(BuildContext context, WidgetRef ref) {
     final controller = TextEditingController(
       text: getIt<AuthService>().taxRatePercent > 0
@@ -1456,36 +1472,38 @@ class SettingsScreen extends ConsumerWidget {
                   });
                   try {
                     final apiClient = getIt<ApiClient>();
-                    final authService = getIt<AuthService>();
                     final updated = await apiClient.updateCurrentTenant(
                       taxRatePercent: rate,
                       showTaxOnReceipt: showOnReceipt,
                     );
-                    await authService.updateTenantSession({
+                    final sessionCached = await _cacheTenantUpdate(ref, {
                       'id': updated['id'],
                       'name': updated['name'],
                       'settings': updated['settings'],
                     });
-                    ref
-                        .read(authControllerProvider.notifier)
-                        .refreshFromService();
                     if (dialogContext.mounted) {
                       Navigator.of(dialogContext).pop();
                     }
                     if (context.mounted) {
                       showGlassSnackBar(
                         context,
-                        rate > 0
-                            ? 'Tax rate set to ${rate.toStringAsFixed(rate % 1 == 0 ? 0 : 1)}%'
-                            : 'Tax removed — sales will not be taxed',
-                        icon: Icons.check_circle_rounded,
-                        color: DesignColors.success,
+                        sessionCached
+                            ? rate > 0
+                                ? 'Tax rate set to ${rate.toStringAsFixed(rate % 1 == 0 ? 0 : 1)}%'
+                                : 'Tax removed — sales will not be taxed'
+                            : 'Tax settings saved to this shop. This device could not cache the change; it will refresh from the workspace later.',
+                        icon: sessionCached
+                            ? Icons.check_circle_rounded
+                            : Icons.cloud_done_rounded,
+                        color: sessionCached
+                            ? DesignColors.success
+                            : DesignColors.warning,
                       );
                     }
-                  } catch (e) {
+                  } catch (exception) {
                     setDialogState(() {
                       isSaving = false;
-                      error = 'Could not save. Check your connection.';
+                      error = 'Could not save. ${apiErrorMessage(exception)}';
                     });
                   }
                 },
@@ -1652,7 +1670,6 @@ class SettingsScreen extends ConsumerWidget {
                         });
                         try {
                           final apiClient = getIt<ApiClient>();
-                          final authService = getIt<AuthService>();
                           final fileName = logoFile!.uri.pathSegments.isNotEmpty
                               ? logoFile!.uri.pathSegments.last
                               : 'company-logo.jpg';
@@ -1681,16 +1698,13 @@ class SettingsScreen extends ConsumerWidget {
                             logo: logoUrl,
                             logoPublicId: logoPublicId,
                           );
-                          await authService.updateTenantSession({
+                          final sessionCached = await _cacheTenantUpdate(ref, {
                             'id': updated['id'],
                             'name': updated['name'],
                             'logo': updated['logo'],
                             'logoPublicId': updated['logoPublicId'],
                             'settings': updated['settings'],
                           });
-                          ref
-                              .read(authControllerProvider.notifier)
-                              .refreshFromService();
 
                           if (dialogContext.mounted) {
                             Navigator.of(dialogContext).pop();
@@ -1698,17 +1712,23 @@ class SettingsScreen extends ConsumerWidget {
                           if (context.mounted) {
                             showGlassSnackBar(
                               context,
-                              vectorize
-                                  ? 'Logo updated with a crisp SVG version'
-                                  : 'Logo updated',
-                              icon: Icons.check_circle_rounded,
-                              color: DesignColors.success,
+                              sessionCached
+                                  ? vectorize
+                                      ? 'Logo updated with a crisp SVG version'
+                                      : 'Logo updated'
+                                  : 'Logo saved to this shop. This device could not cache the change; it will refresh from the workspace later.',
+                              icon: sessionCached
+                                  ? Icons.check_circle_rounded
+                                  : Icons.cloud_done_rounded,
+                              color: sessionCached
+                                  ? DesignColors.success
+                                  : DesignColors.warning,
                             );
                           }
                         } catch (e) {
                           setDialogState(() {
                             isSaving = false;
-                            error = 'Could not save. Check your connection.';
+                            error = 'Could not save. ${apiErrorMessage(e)}';
                           });
                         }
                       },
