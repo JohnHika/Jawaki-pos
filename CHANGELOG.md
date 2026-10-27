@@ -1,5 +1,11 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.171+2214 (October 27, 2026)
+
+### Make business layout saves report the real outcome
+- Show the API's actionable error when a workspace layout save fails.
+- Keep a server-confirmed layout save successful even if this device cannot persist its local session cache, and explain that the cache will refresh later.
+
 ## v1.0.170+2213 (October 27, 2026)
 
 ### Make statement recovery clear and actionable

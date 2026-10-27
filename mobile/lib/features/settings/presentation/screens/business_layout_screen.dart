@@ -7,6 +7,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/business_layout_preview.dart';
 import '../../../../core/widgets/business_layout_profile_picker.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -2074,11 +2075,26 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
       final updated = await getIt<ApiClient>().updateCurrentTenant(
         settings: {'businessLayout': layout.toJson()},
       );
-      await getIt<AuthService>().updateTenantSession({
-        'id': updated['id'],
-        'name': updated['name'],
-        'settings': updated['settings'],
-      });
+      try {
+        await getIt<AuthService>().updateTenantSession({
+          'id': updated['id'],
+          'name': updated['name'],
+          'settings': updated['settings'],
+        });
+      } catch (_) {
+        // The workspace update has already succeeded. Refresh the in-memory
+        // user snapshot even if this device could not persist its local cache.
+        ref.read(authControllerProvider.notifier).refreshFromService();
+        if (mounted) {
+          showGlassSnackBar(
+            context,
+            'Layout saved to this shop. This device could not cache the change; it will refresh from the workspace later.',
+            icon: Icons.cloud_done_rounded,
+            color: DesignColors.warning,
+          );
+        }
+        return;
+      }
       ref.read(authControllerProvider.notifier).refreshFromService();
       if (mounted) {
         showGlassSnackBar(
@@ -2088,11 +2104,11 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
           color: DesignColors.success,
         );
       }
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         showGlassSnackBar(
           context,
-          'Could not save the layout. Check your connection and try again.',
+          'Could not save the layout. ${apiErrorMessage(error)}',
           icon: Icons.error_outline_rounded,
           color: DesignColors.error,
         );
