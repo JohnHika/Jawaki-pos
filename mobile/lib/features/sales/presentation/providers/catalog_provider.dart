@@ -160,6 +160,10 @@ List<Map<String, dynamic>> _validatedProductMaps(List<dynamic> items) {
           'The product catalog contains an incomplete item.',
         );
       }
+      // The current catalog API always returns pricingTiers as an array,
+      // including an empty array for products without bulk prices. If it is
+      // missing or malformed, don't replace the previously usable tier cache.
+      _pricingTiersToCompanions(product);
       products.add(product);
     } on FormatException {
       rethrow;
@@ -171,6 +175,12 @@ List<Map<String, dynamic>> _validatedProductMaps(List<dynamic> items) {
   }
   return products;
 }
+
+@visibleForTesting
+List<Map<String, dynamic>> validateCatalogProductPayload(
+  List<dynamic> items,
+) =>
+    _validatedProductMaps(items);
 
 CategoriesCompanion? _categoryToCompanion(Map<String, dynamic> category) {
   final id = category['id']?.toString();
@@ -198,27 +208,57 @@ CategoriesCompanion? _categoryToCompanion(Map<String, dynamic> category) {
 List<ProductPricingTiersCompanion> _pricingTiersToCompanions(
   Map<String, dynamic> product,
 ) {
-  final productId = product['id']?.toString();
+  final productId = product['id']?.toString().trim();
   final rawTiers = product['pricingTiers'];
-  if (productId == null || rawTiers is! List) return [];
+  if (productId == null || productId.isEmpty || rawTiers is! List) {
+    throw const FormatException(
+      'The product pricing tiers are missing or invalid.',
+    );
+  }
 
   final companions = <ProductPricingTiersCompanion>[];
   for (var i = 0; i < rawTiers.length; i++) {
     final tier = rawTiers[i];
-    if (tier is! Map) continue;
-    final unit = tier['unit']?.toString();
+    if (tier is! Map) {
+      throw const FormatException(
+        'The product catalog contains an invalid pricing tier.',
+      );
+    }
+    final unitValue = tier['unit'];
+    final unit = unitValue is String ? unitValue.trim() : '';
     final quantityPerUnit = tier['quantityPerUnit'];
     final price = tier['price'];
-    if (unit == null || quantityPerUnit == null || price == null) continue;
+    final tierIdValue = tier['id'];
+    final sortOrderValue = tier['sortOrder'];
+    if (unit.isEmpty ||
+        unit.length > 20 ||
+        quantityPerUnit is! num ||
+        !quantityPerUnit.isFinite ||
+        quantityPerUnit <= 0 ||
+        price is! num ||
+        !price.isFinite ||
+        price < 0 ||
+        price > 10000000 ||
+        (tierIdValue != null &&
+            (tierIdValue is! String || tierIdValue.trim().isEmpty)) ||
+        (sortOrderValue != null &&
+            (sortOrderValue is! num ||
+                !sortOrderValue.isFinite ||
+                sortOrderValue < 0 ||
+                sortOrderValue % 1 != 0))) {
+      throw const FormatException(
+        'The product catalog contains an invalid pricing tier.',
+      );
+    }
 
     companions.add(
       ProductPricingTiersCompanion.insert(
-        id: tier['id']?.toString() ?? '$productId-tier-$i',
+        id: (tierIdValue as String?)?.trim() ?? '$productId-tier-$i',
         productId: productId,
         unit: unit,
-        quantityPerUnit: (quantityPerUnit as num).toDouble(),
-        price: (price as num).toDouble(),
-        sortOrder: Value((tier['sortOrder'] as num?)?.toInt() ?? i + 1),
+        quantityPerUnit: quantityPerUnit.toDouble(),
+        price: price.toDouble(),
+        sortOrder: Value((sortOrderValue as num?)?.toInt() ?? i + 1),
       ),
     );
   }
@@ -582,6 +622,9 @@ Future<void> upsertProductCacheFromApi(
     return;
   }
 
+  // Validate dependent pricing data before mutating either cache table.
+  final tierItems = _pricingTiersToCompanions(product);
+
   await database.insertProduct(item);
   if (!requestScopeIsCurrent()) return;
 
@@ -589,7 +632,7 @@ Future<void> upsertProductCacheFromApi(
   if (productId != null) {
     await database.replacePricingTiersForProduct(
       productId,
-      _pricingTiersToCompanions(product),
+      tierItems,
     );
     if (!requestScopeIsCurrent()) return;
   }
