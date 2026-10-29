@@ -5,14 +5,22 @@ on:
     branches: [main, update-feature]
     paths:
       - 'desktop/**'
+      - '.github/workflows/build-desktop-app.yml'
   pull_request:
     branches: [main, update-feature]
     paths:
       - 'desktop/**'
+      - '.github/workflows/build-desktop-app.yml'
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish these artifacts as a public desktop release
+        required: true
+        default: false
+        type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: desktop-app-${{ github.ref }}
@@ -72,7 +80,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev libsecret-1-dev ninja-build
+          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev libsecret-1-dev libsqlite3-dev ninja-build
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2.23.0
@@ -94,19 +102,69 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup --no-progress --limit-output
-          $env:APP_VERSION = '1.1.1'
+          $versionLine = Get-Content pubspec.yaml | Select-String -Pattern '^version:'
+          $env:APP_VERSION = (($versionLine.Line -split ':', 2)[1].Trim() -split '\+')[0]
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' windows\installer.iss
           Copy-Item build\windows\installer\CounterbaseDesktopSetup.exe "$env:RUNNER_TEMP/${{ matrix.artifact }}.exe"
 
       - name: Package macOS app
         if: matrix.platform == 'macos'
         working-directory: desktop
-        run: ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/Counterbase.app "$RUNNER_TEMP/${{ matrix.artifact }}.zip"
+        run: |
+          APP="build/macos/Build/Products/Release/Counterbase.app"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$RUNNER_TEMP/${{ matrix.artifact }}.zip"
+          STAGE="$(mktemp -d)"
+          cp -R "$APP" "$STAGE/Counterbase.app"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create -volname Counterbase -srcfolder "$STAGE" -ov -format UDZO "$RUNNER_TEMP/${{ matrix.artifact }}.dmg"
 
       - name: Package Linux app
         if: matrix.platform == 'linux'
         working-directory: desktop
-        run: tar -czf "$RUNNER_TEMP/${{ matrix.artifact }}.tar.gz" -C build/linux/x64/release bundle
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^version:[[:space:]]*\([0-9][^+[:space:]]*\).*/\1/p' pubspec.yaml | head -n 1)"
+          test -n "$VERSION"
+          BUNDLE="build/linux/x64/release/bundle"
+          tar -czf "$RUNNER_TEMP/${{ matrix.artifact }}.tar.gz" -C build/linux/x64/release bundle
+
+          PACKAGE_ROOT="build/linux/deb-root"
+          rm -rf "$PACKAGE_ROOT"
+          install -d "$PACKAGE_ROOT/DEBIAN" \
+            "$PACKAGE_ROOT/opt/counterbase" \
+            "$PACKAGE_ROOT/usr/bin" \
+            "$PACKAGE_ROOT/usr/share/applications" \
+            "$PACKAGE_ROOT/usr/share/icons/hicolor/512x512/apps"
+          cp -a "$BUNDLE/." "$PACKAGE_ROOT/opt/counterbase/"
+          install -m 0644 ../mobile/assets/images/axon_app_icon_512.png \
+            "$PACKAGE_ROOT/usr/share/icons/hicolor/512x512/apps/counterbase.png"
+          cat > "$PACKAGE_ROOT/usr/bin/counterbase" <<'EOF'
+          #!/bin/sh
+          exec /opt/counterbase/counterbase "$@"
+          EOF
+          chmod 0755 "$PACKAGE_ROOT/usr/bin/counterbase"
+          cat > "$PACKAGE_ROOT/usr/share/applications/counterbase.desktop" <<'EOF'
+          [Desktop Entry]
+          Name=Counterbase
+          Comment=Local-first point of sale
+          Exec=counterbase
+          Icon=counterbase
+          Terminal=false
+          Type=Application
+          Categories=Office;Finance;
+          EOF
+          cat > "$PACKAGE_ROOT/DEBIAN/control" <<EOF
+          Package: counterbase-desktop
+          Version: $VERSION
+          Section: office
+          Priority: optional
+          Architecture: amd64
+          Depends: libgtk-3-0, libsecret-1-0, libsqlite3-0
+          Maintainer: Arche Axon Intelligence
+          Description: Local-first Counterbase point-of-sale application
+          EOF
+          dpkg-deb --build --root-owner-group "$PACKAGE_ROOT" \
+            "$RUNNER_TEMP/${{ matrix.artifact }}.deb"
 
       - name: Upload downloadable desktop build
         uses: actions/upload-artifact@v7.0.1
@@ -118,10 +176,22 @@ jobs:
 
   publish:
     name: Publish desktop release
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - name: Checkout release source
+        uses: actions/checkout@v7.0.1
+
+      - name: Read desktop app version
+        id: desktop_version
+        run: |
+          VERSION="$(sed -n 's/^version:[[:space:]]*\([0-9][^+[:space:]]*\).*/\1/p' desktop/pubspec.yaml | head -n 1)"
+          test -n "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Download desktop packages
         uses: actions/download-artifact@v8.0.1
         with:
@@ -132,10 +202,10 @@ jobs:
       - name: Publish GitHub desktop release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: desktop-v1.1.1-${{ github.run_number }}
+          RELEASE_TAG: desktop-v${{ steps.desktop_version.outputs.version }}-${{ github.run_number }}
         run: |
           gh release create "$RELEASE_TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "Counterbase Desktop $RELEASE_TAG" \
-            --notes "Counterbase Desktop 1.1.1: new product name, live sign-in, catalog, customers, inventory, reports, product images, and cash sales. Built from the independent desktop project in desktop/."
+            --title "Counterbase Desktop ${{ steps.desktop_version.outputs.version }}" \
+            --notes "Counterbase Desktop: local workspace, on-device product and customer records, cash sales, inventory, and reports. Built from the downloadable desktop application in desktop/."
