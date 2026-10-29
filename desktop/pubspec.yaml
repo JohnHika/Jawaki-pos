@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.1.1+3
+version: 1.1.2+4
 
 environment:
   sdk: ^3.11.5
@@ -28,12 +28,19 @@ environment:
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
 dependencies:
+  crypto: ^3.0.8
+  cryptography: ^2.9.0
+  file_picker: ^13.3.0
   flutter:
     sdk: flutter
 
-  dio: ^5.9.0
   flutter_secure_storage: ^10.0.0
   intl: ^0.20.2
+  path: ^1.9.1
+  path_provider: ^2.1.6
+  sqflite_common: ^2.5.14
+  sqflite_common_ffi: 2.4.0+3
+  sqlite3: ^3.5.2
   uuid: ^4.5.2
 
 dev_dependencies:
@@ -57,6 +64,41 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/fonts/
+
+  fonts:
+    - family: CbDisplay
+      fonts:
+        - asset: assets/fonts/sora-400.ttf
+          weight: 400
+        - asset: assets/fonts/sora-600.ttf
+          weight: 600
+        - asset: assets/fonts/sora-700.ttf
+          weight: 700
+        - asset: assets/fonts/sora-800.ttf
+          weight: 800
+    - family: CbSans
+      fonts:
+        - asset: assets/fonts/jakarta-400.ttf
+          weight: 400
+        - asset: assets/fonts/jakarta-500.ttf
+          weight: 500
+        - asset: assets/fonts/jakarta-600.ttf
+          weight: 600
+        - asset: assets/fonts/jakarta-700.ttf
+          weight: 700
+    - family: CbMono
+      fonts:
+        - asset: assets/fonts/jbmono-400.ttf
+          weight: 400
+        - asset: assets/fonts/jbmono-500.ttf
+          weight: 500
+        - asset: assets/fonts/jbmono-600.ttf
+          weight: 600
+        - asset: assets/fonts/jbmono-700.ttf
+          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:
@@ -88,3 +130,8 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlcipher

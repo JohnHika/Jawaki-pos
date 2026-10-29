@@ -1,6 +1,6 @@
 #define MyAppName "Counterbase"
 #define MyAppPublisher "Arche Axon Intelligence"
-#define MyAppExeName "AxonPOS.exe"
+#define MyAppExeName "Counterbase.exe"
 
 [Setup]
 AppId={{0914856D-7D26-4BA9-8AF9-0BFE84C2AD21}

@@ -92,9 +92,9 @@ BEGIN
             VALUE "CompanyName", "Arche Axon Intelligence" "\0"
             VALUE "FileDescription", "Counterbase Desktop" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "AxonPOS" "\0"
+            VALUE "InternalName", "Counterbase" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 Arche Axon Intelligence. All rights reserved." "\0"
-            VALUE "OriginalFilename", "AxonPOS.exe" "\0"
+            VALUE "OriginalFilename", "Counterbase.exe" "\0"
             VALUE "ProductName", "Counterbase" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END

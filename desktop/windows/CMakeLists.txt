@@ -4,7 +4,12 @@ project(desktop LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "AxonPOS")
+set(BINARY_NAME "Counterbase")
+
+# Keep the Windows secure-storage namespace stable across the executable
+# branding change so existing database keys, PINs, and Gateway keys remain
+# readable after an app update.
+set(STORAGE_PREFIX "AxonPOS")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
