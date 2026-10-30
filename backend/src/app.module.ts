@@ -47,6 +47,7 @@ import { CouponsModule } from './coupons/coupons.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { StatementsModule } from './statements/statements.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
+import { DesktopLinkModule } from './desktop-link/desktop-link.module';
 import { AppController } from './app.controller';
 import { VercelCronController } from './vercel-cron.controller';
 
@@ -83,6 +84,7 @@ import { VercelCronController } from './vercel-cron.controller';
 
     // Feature Modules
     AuthModule,
+    DesktopLinkModule,
     BranchesModule,
     CatalogModule,
     SalesModule,
