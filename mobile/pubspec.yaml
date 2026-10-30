@@ -27,7 +27,9 @@ dependencies:
   sqlite3: ^2.4.0
   # SQLCipher must replace sqlite3_flutter_libs: both plugins register the
   # same native plugin class, and plain SQLite silently ignores PRAGMA key.
-  sqlcipher_flutter_libs: ^0.5.7
+  # 0.6.8 compiles the Android subproject against SDK 34 — 0.5.7 pinned
+  # compileSdkVersion 28, which fails AAPT linking (android:attr/lStar).
+  sqlcipher_flutter_libs: 0.6.8
   path_provider: ^2.1.1
   path: ^1.8.3
   
