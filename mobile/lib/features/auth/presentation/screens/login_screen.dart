@@ -1132,14 +1132,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 ),
               ),
 
-                            // Sign up for a new business
+                            // Sign up for a new business. /company-setup is
+                            // the local-first workspace-creation flow.
                             Align(
                               alignment: Alignment.center,
                               child: TextButton(
                                 style: TextButton.styleFrom(
                                   minimumSize: const Size(64, 48),
                                 ),
-                                onPressed: () => context.push('/company-signup'),
+                                onPressed: () => context.push('/company-setup'),
                                 child: Text(
                                   'Create a new business account',
                                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
