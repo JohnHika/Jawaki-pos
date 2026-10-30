@@ -11,6 +11,14 @@
   source-only until a separately reviewed release is requested.
 - The gateway hostname and Railway service are outside the POS retirement
   work and must not be changed.
+- On 2026-10-30 the `api.archeaxon.com` Vercel deployment alias was removed.
+  The custom hostname now returns Vercel 404 and is no longer routed to the
+  POS. The `counterbase-pos-api` project and its default `*.vercel.app`
+  aliases still exist pending the owner's planned project and database deletion.
+- A source string scan on 2026-10-30 found no hard-coded `api.archeaxon.com`,
+  Render, or `counterbase-pos-api` references in the mobile or desktop app
+  clients. Their only AI endpoint is the Axon Gateway; the GitHub API remains
+  for release discovery and downloads.
 
 ## Implemented in this source pass
 
@@ -662,6 +670,16 @@ The Windows build succeeded with the existing Developer Mode registry setting
 already enabled. This is a local preview package, not a signed installer or
 public release; Android production 1.0.172 remains unchanged.
 
+Vercel retirement verification on 2026-10-30 found that `api.archeaxon.com`
+had been aliased to the production `counterbase-pos-api` deployment. That alias
+was removed without deleting the purchased domain from the Vercel account,
+changing deployment protection, altering the Railway Gateway, or deleting the
+project. A follow-up request to `https://api.archeaxon.com/` returned HTTP 404,
+and `vercel alias ls` no longer listed it. The default project deployment
+aliases remain until the owner removes the project.
+The default `https://counterbase-pos-api.vercel.app/` still returns the POS
+dashboard (HTTP 200) and remains live until that project is deleted or paused.
+
 After the private-LAN desktop QR sign-in fix and archive-history audit, a fresh
 Windows x64 release build completed on 2026-10-30. The unsigned, unpublished
 portable preview is
@@ -671,4 +689,6 @@ The package contains 29 entries including `Counterbase.exe`, Flutter runtime,
 SQLCipher, the secure-storage plugin and application assets. Targeted Dart
 analysis reported no issues in the changed mobile archive and desktop workspace,
 pairing and application files. No tests were run, no phone build or production
-release was created, and no POS API or online payment service was contacted.
+release was created, and no POS API route or online payment service was used.
+The only request to the retired hostname was a read-only root-page GET to verify
+that the removed alias now returns HTTP 404.

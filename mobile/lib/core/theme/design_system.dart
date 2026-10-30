@@ -735,7 +735,20 @@ class _LoadingDotsState extends State<_LoadingDots>
     _controller = AnimationController(
       duration: const Duration(milliseconds: 1200),
       vsync: this,
-    )..repeat();
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reducedMotion(context)) {
+      if (_controller.isAnimating) {
+        _controller.stop();
+        _controller.reset();
+      }
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
   }
 
   @override
@@ -754,8 +767,10 @@ class _LoadingDotsState extends State<_LoadingDots>
           builder: (context, child) {
             final delay = index * 0.15;
             final value = ((_controller.value - delay) % 1.0).clamp(0.0, 1.0);
-            final scale =
-                0.4 + 0.6 * (1.0 - (value * 4 - 2).abs().clamp(0.0, 1.0));
+            final scale = reducedMotion(context)
+                ? 0.72
+                : 0.4 +
+                    0.6 * (1.0 - (value * 4 - 2).abs().clamp(0.0, 1.0));
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 3),
               child: Transform.scale(
@@ -1401,15 +1416,25 @@ class _PulseAnimationState extends State<PulseAnimation>
     _animation = Tween<double>(begin: 1.0, end: widget.scale).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
-    if (widget.active) _controller.repeat(reverse: true);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncMotion();
   }
 
   @override
   void didUpdateWidget(PulseAnimation oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.active && !_controller.isAnimating) {
+    _syncMotion();
+  }
+
+  void _syncMotion() {
+    final shouldAnimate = widget.active && !reducedMotion(context);
+    if (shouldAnimate && !_controller.isAnimating) {
       _controller.repeat(reverse: true);
-    } else if (!widget.active && _controller.isAnimating) {
+    } else if (!shouldAnimate && _controller.isAnimating) {
       _controller.stop();
       _controller.reset();
     }

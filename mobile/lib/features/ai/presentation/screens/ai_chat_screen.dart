@@ -1994,6 +1994,10 @@ class _TypewriterMarkdown extends StatefulWidget {
 }
 
 class _TypewriterMarkdownState extends State<_TypewriterMarkdown> {
+  // Keep the response reveal lively without making long answers wait on a
+  // word-by-word animation. After this short lead-in, show the full reply.
+  static const int _maxAnimatedWords = 56;
+
   late final List<String> _words;
   int _visibleWords = 0;
   Timer? _timer;
@@ -2018,7 +2022,16 @@ class _TypewriterMarkdownState extends State<_TypewriterMarkdown> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_revealedAll) return;
-    _startRevealing();
+    if (reducedMotion(context)) {
+      _timer?.cancel();
+      _timer = null;
+      setState(() {
+        _visibleWords = _words.length;
+        _revealedAll = true;
+      });
+    } else if (_timer == null) {
+      _startRevealing();
+    }
   }
 
   void _startRevealing() {
@@ -2031,14 +2044,25 @@ class _TypewriterMarkdownState extends State<_TypewriterMarkdown> {
     }
     // A steady, brisk cadence rather than trying to match any real token
     // rate — this is a UI affordance, not a simulation of the model.
+    final revealLimit = _words.length < _maxAnimatedWords
+        ? _words.length
+        : _maxAnimatedWords;
     _timer = Timer.periodic(const Duration(milliseconds: 18), (timer) {
       if (!mounted) {
         timer.cancel();
+        _timer = null;
         return;
       }
-      setState(() => _visibleWords++);
-      if (_visibleWords >= _words.length) {
+      setState(() {
+        _visibleWords++;
+        if (_visibleWords >= revealLimit) {
+          _visibleWords = _words.length;
+          _revealedAll = true;
+        }
+      });
+      if (_revealedAll) {
         timer.cancel();
+        _timer = null;
       }
     });
   }

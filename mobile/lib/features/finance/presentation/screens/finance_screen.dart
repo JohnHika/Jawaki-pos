@@ -16,6 +16,7 @@ import '../../../../core/services/supplier_receipt_ocr_service.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -2215,7 +2216,18 @@ class _AiScanOverlayState extends State<_AiScanOverlay>
   late final AnimationController _sweep = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1600),
-  )..repeat(reverse: true);
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reducedMotion(context)) {
+      if (_sweep.isAnimating) _sweep.stop();
+      _sweep.value = 0.5;
+    } else if (!_sweep.isAnimating) {
+      _sweep.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {

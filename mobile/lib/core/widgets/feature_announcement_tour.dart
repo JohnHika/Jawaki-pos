@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../services/feature_announcement_service.dart';
 import '../theme/design_system.dart';
+import 'motion.dart';
 
 /// A full-screen, animated feature announcement tour that shows a series
 /// of feature highlights with motion effects powered by [flutter_animate].
@@ -129,7 +130,20 @@ class _AnimatedFeatureCardState extends State<_AnimatedFeatureCard>
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000),
-    )..repeat(reverse: true);
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reducedMotion(context)) {
+      if (_pulseController.isAnimating) {
+        _pulseController.stop();
+        _pulseController.reset();
+      }
+    } else if (!_pulseController.isAnimating) {
+      _pulseController.repeat(reverse: true);
+    }
   }
 
   @override
@@ -142,6 +156,18 @@ class _AnimatedFeatureCardState extends State<_AnimatedFeatureCard>
   Widget build(BuildContext context) {
     final a = widget.announcement;
     final isLast = widget.stepNumber == widget.totalSteps;
+    final icon = Icon(a.icon, size: 44, color: a.accentColor);
+    final iconContent = reducedMotion(context)
+        ? icon
+        : icon
+            .animate()
+            .fadeIn(duration: 400.ms, curve: Curves.easeOut)
+            .scale(
+              begin: const Offset(0.6, 0.6),
+              end: Offset.zero,
+              duration: 500.ms,
+              curve: Curves.easeOutBack,
+            );
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -154,6 +180,7 @@ class _AnimatedFeatureCardState extends State<_AnimatedFeatureCard>
               // ── Icon container (pulsing glow) ────────────────
               AnimatedBuilder(
                 animation: _pulseController,
+                child: iconContent,
                 builder: (context, child) {
                   final glowValue = 0.6 + (_pulseController.value * 0.4);
                   return Container(
@@ -174,23 +201,8 @@ class _AnimatedFeatureCardState extends State<_AnimatedFeatureCard>
                         ),
                       ],
                     ),
-                    child: Icon(
-                      a.icon,
-                      size: 44,
-                      color: a.accentColor,
-                    ),
-                  )
-                      .animate()
-                      .fadeIn(
-                        duration: 400.ms,
-                        curve: Curves.easeOut,
-                      )
-                      .scale(
-                        begin: const Offset(0.6, 0.6),
-                        end: Offset.zero,
-                        duration: 500.ms,
-                        curve: Curves.easeOutBack,
-                      );
+                    child: child,
+                  );
                 },
               ),
               const SizedBox(height: 28),
@@ -306,6 +318,10 @@ class _AnimatedFeatureCardState extends State<_AnimatedFeatureCard>
         ],
       ),
     );
+
+    // Reduced motion removes translation, bounce, and scaling rather than
+    // merely shortening those effects.
+    if (reducedMotion(context)) return card;
 
     // Apply entrance animation based on type
     switch (a.animationType) {
