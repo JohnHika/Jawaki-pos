@@ -61,11 +61,11 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
     _entryController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1050),
-    )..forward();
+    );
     _flowController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3400),
-    )..repeat();
+    );
     _accountNumber.addListener(_onAccountNumberChanged);
     _load();
   }
@@ -75,9 +75,13 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
     super.didChangeDependencies();
     if (MediaQuery.disableAnimationsOf(context)) {
       _entryController.value = 1;
-      _flowController.stop();
-    } else if (!_flowController.isAnimating) {
-      _flowController.repeat();
+      if (_flowController.isAnimating) _flowController.stop();
+      _flowController.value = 0.5;
+    } else {
+      if (_entryController.status == AnimationStatus.dismissed) {
+        _entryController.forward();
+      }
+      if (!_flowController.isAnimating) _flowController.repeat();
     }
   }
 

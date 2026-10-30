@@ -40,7 +40,7 @@ class _LocalArchiveHistoryScreenState extends State<LocalArchiveHistoryScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Imported archive history')),
+        appBar: const BrandedAppBar(title: 'Imported archive history'),
         body: RefreshIndicator(
           onRefresh: _refresh,
           child: FutureBuilder<List<LocalArchiveHistorySummary>>(
@@ -171,7 +171,7 @@ class _LocalArchiveHistoryDetailScreenState
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Preserved shop records')),
+        appBar: const BrandedAppBar(title: 'Preserved shop records'),
         body: FutureBuilder<LocalArchiveHistoryDetail>(
           future: _detail,
           builder: (context, snapshot) {

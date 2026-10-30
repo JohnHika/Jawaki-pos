@@ -2097,7 +2097,7 @@ class _TypingIndicatorState extends State<_TypingIndicator>
     _controller = AnimationController(
       vsync: this,
       duration: DesignAnimation.slower + DesignAnimation.slower,
-    )..repeat();
+    );
   }
 
   @override

@@ -248,7 +248,6 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
       CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
     );
 
-    _pulseController.repeat(reverse: true);
   }
 
   Future<void> _loadConfiguredPinLength() async {
