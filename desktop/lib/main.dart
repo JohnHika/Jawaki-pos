@@ -4,6 +4,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'features/ai/desktop_ai_screen.dart';
+import 'core/desktop_link_client.dart';
+import 'core/desktop_qr_sign_in.dart';
 import 'core/desktop_workspace.dart';
 import 'core/desktop_archive_import.dart';
 import 'features/settings/desktop_archive_history_dialog.dart';
@@ -112,6 +114,115 @@ class _LoginScreenState extends State<_LoginScreen> {
   bool _busy = false;
   bool _obscure = true;
   String? _error;
+  // Phone sign-in is the fast path once a phone server is reachable; the
+  // PIN form stays available as fallback. Fresh workspaces still need the
+  // form (business/owner naming) before any phone pairing can adopt one.
+  bool _usePhoneSignIn = false;
+
+  /// Phones announce themselves on the LAN; this desktop has no way to
+  /// enumerate them, so the address is entered once (or pinned via env for
+  /// kiosk setups) and remembered in the OS credential store.
+  static const _phoneServerKey = 'counterbase_desktop_phone_server';
+  String? _phoneServer;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPhoneServer();
+  }
+
+  Future<void> _loadPhoneServer() async {
+    final stored = await widget.session.storageRead(_phoneServerKey);
+    final env = const String.fromEnvironment('COUNTERBASE_PHONE_SERVER');
+    final url = (stored?.isNotEmpty == true ? stored : env) ?? '';
+    if (!mounted || url.isEmpty) return;
+    if (!DesktopLinkClient.isPrivateNetworkBaseUrl(url)) {
+      setState(() {
+        _phoneServer = null;
+        _error =
+            'Saved phone address is not a private-network address. Enter the LAN address shown in the phone’s Backend Server settings.';
+      });
+      return;
+    }
+    setState(() {
+      _phoneServer = url;
+      // Only jump straight to the phone flow for an existing workspace.
+      _usePhoneSignIn = widget.session.hasWorkspace;
+    });
+  }
+
+  /// One-time phone address entry: the user reads it from the phone's
+  /// Settings → Backend Server screen (e.g. http://192.168.1.20:3000).
+  Future<void> _pickPhoneServer() async {
+    final controller = TextEditingController(text: _phoneServer ?? '');
+    final url = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Connect to your phone'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'In Counterbase on your phone, open Settings → Backend Server '
+              'and turn on server mode. Type the address it shows here.',
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Phone address',
+                hintText: 'http://192.168.1.20:3000',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Connect'),
+          ),
+        ],
+      ),
+    );
+    if (url == null || url.isEmpty) return;
+    final normalized = url.endsWith('/')
+        ? url.substring(0, url.length - 1)
+        : url;
+    if (!DesktopLinkClient.isPrivateNetworkBaseUrl(normalized)) {
+      setState(() {
+        _error =
+            'Enter the phone’s private-network address, such as http://192.168.1.20:3000.';
+      });
+      return;
+    }
+    await _savePhoneServer(normalized);
+    if (!mounted) return;
+    setState(() {
+      _phoneServer = normalized;
+      _usePhoneSignIn = true;
+      _error = null;
+    });
+  }
+
+  /// The phone approved: adopt the session and open the workspace.
+  Future<void> _finishPhoneSignIn(DesktopLinkSession linked) async {
+    try {
+      await widget.session.loginWithPhoneApproval(
+        displayName: linked.userName.isEmpty ? 'Owner' : linked.userName,
+        businessName: widget.session.businessName,
+      );
+    } on LocalWorkspaceFailure catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    }
+  }
+
+  Future<void> _savePhoneServer(String url) =>
+      widget.session.storageWrite(_phoneServerKey, url);
 
   @override
   void dispose() {
@@ -124,6 +235,7 @@ class _LoginScreenState extends State<_LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final isSetup = !widget.session.hasWorkspace;
+    final phoneAvailable = !isSetup;
     return Scaffold(
       body: Row(
         children: [
@@ -164,23 +276,19 @@ class _LoginScreenState extends State<_LoginScreen> {
                           ],
                         ),
                         const SizedBox(height: 40),
-                        CbTag(isSetup ? 'SET UP THIS DEVICE' : 'WELCOME BACK'),
-                        const SizedBox(height: 12),
-                        Text(
-                          isSetup
-                              ? 'Open your local workspace.'
-                              : 'Unlock ${widget.session.businessName}.',
-                          style: CbText.display.copyWith(fontSize: 26),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          isSetup
-                              ? 'Sales, products, customers and stock stay on this computer. No Counterbase online account, no POS server.'
-                              : 'Enter your owner PIN to open the workspace on this computer.',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        const SizedBox(height: 32),
-                        if (isSetup) ...[
+                        if (!phoneAvailable) ...[
+                          CbTag('SET UP THIS DEVICE'),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Open your local workspace.',
+                            style: CbText.display.copyWith(fontSize: 26),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Sales, products, customers and stock stay on this computer. No Counterbase online account, no POS server.',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 32),
                           TextFormField(
                             controller: _business,
                             textCapitalization: TextCapitalization.words,
@@ -206,75 +314,94 @@ class _LoginScreenState extends State<_LoginScreen> {
                                 : null,
                           ),
                           const SizedBox(height: 14),
-                        ],
-                        TextFormField(
-                          controller: _pin,
-                          keyboardType: TextInputType.number,
-                          maxLength: 6,
-                          obscureText: _obscure,
-                          style: CbText.data.copyWith(
-                            fontSize: 20,
-                            letterSpacing: 8,
+                        ] else if (_usePhoneSignIn) ...[
+                          DesktopQrSignIn(
+                            session: widget.session,
+                            phoneBaseUrl: _phoneServer ?? '',
+                            onBack: () =>
+                                setState(() => _usePhoneSignIn = false),
+                            onLinked: _finishPhoneSignIn,
                           ),
-                          onFieldSubmitted: (_) => _continue(),
-                          decoration: InputDecoration(
-                            labelText: isSetup
-                                ? 'Create a six-digit PIN'
-                                : 'Owner PIN',
-                            counterText: '',
-                            suffixIcon: IconButton(
-                              tooltip: _obscure ? 'Show PIN' : 'Hide PIN',
-                              onPressed: () =>
-                                  setState(() => _obscure = !_obscure),
-                              icon: Icon(
-                                _obscure
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                                size: 20,
+                        ] else ...[
+                          CbTag('WELCOME BACK'),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Unlock ${widget.session.businessName}.',
+                            style: CbText.display.copyWith(fontSize: 26),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Enter your owner PIN, or approve on your phone.',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 32),
+                          TextFormField(
+                            controller: _pin,
+                            keyboardType: TextInputType.number,
+                            maxLength: 6,
+                            obscureText: _obscure,
+                            style: CbText.data.copyWith(
+                              fontSize: 20,
+                              letterSpacing: 8,
+                            ),
+                            onFieldSubmitted: (_) => _continue(),
+                            decoration: InputDecoration(
+                              labelText: 'Owner PIN',
+                              counterText: '',
+                              suffixIcon: IconButton(
+                                tooltip: _obscure ? 'Show PIN' : 'Hide PIN',
+                                onPressed: () =>
+                                    setState(() => _obscure = !_obscure),
+                                icon: Icon(
+                                  _obscure
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                  size: 20,
+                                ),
                               ),
                             ),
+                            validator: (value) =>
+                                value == null ||
+                                    !RegExp(r'^\d{6}$').hasMatch(value)
+                                ? 'Enter all six digits'
+                                : null,
                           ),
-                          validator: (value) =>
-                              value == null ||
-                                  !RegExp(r'^\d{6}$').hasMatch(value)
-                              ? 'Enter all six digits'
-                              : null,
-                        ),
-                        if (_error != null) ...[
+                          if (_error != null) ...[
+                            const SizedBox(height: 14),
+                            Text(
+                              _error!,
+                              style: const TextStyle(color: CbInk.error),
+                            ),
+                          ],
+                          const SizedBox(height: 24),
+                          SizedBox(
+                            height: 52,
+                            child: FilledButton(
+                              onPressed: _busy ? null : _continue,
+                              child: _busy
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text('Unlock workspace'),
+                            ),
+                          ),
                           const SizedBox(height: 14),
+                          OutlinedButton.icon(
+                            onPressed: _pickPhoneServer,
+                            icon: const Icon(Icons.qr_code_2_rounded, size: 20),
+                            label: const Text('Sign in with your phone'),
+                          ),
+                          const SizedBox(height: 18),
                           Text(
-                            _error!,
-                            style: const TextStyle(color: CbInk.error),
+                            'Works without a Counterbase online account or POS server.',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
-                        const SizedBox(height: 24),
-                        SizedBox(
-                          height: 52,
-                          child: FilledButton(
-                            onPressed: _busy ? null : _continue,
-                            child: _busy
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : Text(
-                                    isSetup
-                                        ? 'Create local workspace'
-                                        : 'Unlock workspace',
-                                  ),
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                        Text(
-                          isSetup
-                              ? 'Shop records are encrypted on this computer.'
-                              : 'Works without a Counterbase online account or POS server.',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
                       ],
                     ),
                   ),

@@ -87,6 +87,14 @@ class DesktopSession extends ChangeNotifier {
   Future<bool> hasAxonGatewayKey() async =>
       (await _storage.read(key: _axonGatewayKey))?.trim().isNotEmpty == true;
 
+  /// Read access to the OS credential store for UI-level preferences that
+  /// must survive restarts without touching the encrypted database.
+  Future<String?> storageRead(String key) => _storage.read(key: key);
+
+  /// Write access to the OS credential store (see [storageRead]).
+  Future<void> storageWrite(String key, String value) =>
+      _storage.write(key: key, value: value);
+
   Future<String?> getAxonGatewayKey() async {
     final value = await _storage.read(key: _axonGatewayKey);
     final normalized = value?.trim();
@@ -336,6 +344,30 @@ class DesktopSession extends ChangeNotifier {
 
   Future<void> signOut() async {
     _authenticated = false;
+    notifyListeners();
+  }
+
+  /// Phone-approved unlock: the shop's phone confirmed this person against
+  /// the phone server, so no local PIN prompt is needed. On a fresh
+  /// workspace it provisions the profile from the approved account.
+  Future<void> loginWithPhoneApproval({
+    required String displayName,
+    required String businessName,
+  }) async {
+    final ready = await _storage.read(key: _workspaceReadyKey) == '1';
+    if (!ready || _businessName == null || _ownerName == null) {
+      // First sign-in on this computer: adopt the phone identity.
+      await workspace.saveWorkspaceProfile(
+        businessName: businessName,
+        ownerName: displayName,
+      );
+      _businessName = businessName;
+      _ownerName = displayName;
+      await _storage.write(key: _workspaceReadyKey, value: '1');
+      _hasWorkspace = true;
+    }
+    await _clearPinAttempts();
+    _authenticated = true;
     notifyListeners();
   }
 

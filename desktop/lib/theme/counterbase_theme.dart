@@ -127,8 +127,9 @@ class CbTag extends StatelessWidget {
   );
 }
 
-/// The Counterbase mark, mirroring mobile's auth logo: a circle lifted on
-/// the elevated surface with an accent ring (pin_login_screen pattern).
+/// The Counterbase mark, mirroring mobile's auth logo: the Axon cube
+/// launcher artwork inside a white circle lifted on a soft shadow
+/// (login_screen pattern).
 class CbLogoMark extends StatelessWidget {
   const CbLogoMark({super.key, this.size = 36});
 
@@ -140,13 +141,21 @@ class CbLogoMark extends StatelessWidget {
     height: size,
     decoration: BoxDecoration(
       shape: BoxShape.circle,
-      color: CbInk.surfaceElevated,
-      border: Border.all(
-        color: CbInk.accent.withValues(alpha: 0.5),
-        width: 2,
+      color: Colors.white,
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.2),
+          blurRadius: size * 0.2,
+          offset: Offset(0, size * 0.05),
+        ),
+      ],
+    ),
+    child: ClipOval(
+      child: Image.asset(
+        'assets/images/axon_app_icon_512.png',
+        fit: BoxFit.cover,
       ),
     ),
-    child: Icon(Icons.bolt_rounded, color: CbInk.accent, size: size * 0.55),
   );
 }
 
