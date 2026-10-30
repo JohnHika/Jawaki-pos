@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:axon_pos/core/auth/app_roles.dart';
+import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/services/connectivity_service.dart';
 import 'package:axon_pos/core/theme/axon_ai_icon.dart';
@@ -39,7 +40,8 @@ void main() {
 
       _expectFinitePage(tester, harness, 'POS');
       expect(find.byType(SubscriptionRestrictedBanner), findsNothing);
-      expect(find.text('Offline Mode'), findsNothing);
+      // Offline banner text changed from "Offline Mode" to "Offline mode" in a8bef26.
+      expect(find.text('Offline mode'), findsNothing);
       await _exerciseNavigation(tester, harness);
     });
   }
@@ -92,7 +94,7 @@ void main() {
     );
 
     _expectFinitePage(tester, harness, 'POS');
-    expect(find.text('Offline Mode').hitTestable(), findsOneWidget);
+      expect(find.text('Offline mode').hitTestable(), findsOneWidget);
     expect(find.text('Subscription paused').hitTestable(), findsOneWidget);
     await _exerciseNavigation(tester, harness);
     final offlineHeight = harness.constraints['POS']!.maxHeight;
@@ -101,7 +103,7 @@ void main() {
     await tester.pumpAndSettle();
 
     _expectFinitePage(tester, harness, 'POS');
-    expect(find.text('Offline Mode'), findsNothing);
+      expect(find.text('Offline mode'), findsNothing);
     expect(find.text('Subscription paused').hitTestable(), findsOneWidget);
     expect(harness.constraints['POS']!.maxHeight, greaterThan(offlineHeight));
     await _exerciseNavigation(tester, harness);
@@ -123,7 +125,9 @@ Future<_HomeHarness> _pumpHome(
   // A scope isolates the fake without initializing database/platform services.
   getIt.pushNewScope();
   getIt.registerSingleton<ConnectivityService>(connectivity);
-  final constraints = <String, BoxConstraints>{};
+    // Register fake AuthService to avoid "Object/factory with type AuthService is not registered" error.
+    getIt.registerSingleton<AuthService>(_FakeAuthService());
+    final constraints = <String, BoxConstraints>{};
   final router = GoRouter(
     initialLocation: '/',
     routes: [
@@ -158,7 +162,7 @@ Future<_HomeHarness> _pumpHome(
     overrides: [
       permissionsProvider.overrideWithValue(
         RolePermissions(
-          const ['products.view', 'sales.create', 'customers.view'],
+          const ['products.view', 'sales.create', 'customers.view', 'ai.chat'],
         ),
       ),
       userRoleProvider.overrideWithValue('ADMIN'),
@@ -262,6 +266,22 @@ class _HomeHarness {
   final GoRouter router;
   final _FakeConnectivityService connectivity;
   final Map<String, BoxConstraints> constraints;
+}
+
+// Fake AuthService for widget tests - avoids "Object/factory with type AuthService is not registered" error.
+class _FakeAuthService extends Fake implements AuthService {
+  final _statusController = StreamController<AuthStatus>.broadcast();
+
+  @override
+  bool get isAuthenticated => true;
+  @override
+  bool get isLocked => false;
+  @override
+  bool get isLocalWorkspace => false;
+  @override
+  Map<String, dynamic>? get currentUser => null;
+  @override
+  Stream<AuthStatus> get authStatusStream => _statusController.stream;
 }
 
 // Implements rather than constructs the platform-backed ConnectivityService.

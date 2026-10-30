@@ -82,7 +82,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Admin'), findsOneWidget);
-    expect(find.text('Online'), findsOneWidget);
+    // Status label renamed in a8bef26: "Online" → "Network connected".
+    expect(find.text('Network connected'), findsOneWidget);
     expect(find.textContaining('MAMANJERI', findRichText: true), findsOneWidget);
     expect(find.byKey(const ValueKey('settings-copy-company-code')),
         findsOneWidget);

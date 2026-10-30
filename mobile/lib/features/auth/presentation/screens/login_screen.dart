@@ -617,7 +617,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                               itemKey: 'login-title',
                               index: 1,
                               child: Text(
-                                _companyName ?? 'Join your business',
+                                _companyName ?? 'Arxon Axon',
                                 style: theme.textTheme.headlineLarge?.copyWith(
                                   color: isDark
                                       ? Colors.white
@@ -1131,6 +1131,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   ),
                 ),
               ),
+
+                            // Sign up for a new business
+                            Align(
+                              alignment: Alignment.center,
+                              child: TextButton(
+                                style: TextButton.styleFrom(
+                                  minimumSize: const Size(64, 48),
+                                ),
+                                onPressed: () => context.push('/company-signup'),
+                                child: Text(
+                                  'Create a new business account',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        color: DesignColors.accent,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                ),
+                              ),
+                            ),
 
               const SizedBox(height: DesignSpacing.sm),
             ],

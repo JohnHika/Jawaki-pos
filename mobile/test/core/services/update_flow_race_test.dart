@@ -1,40 +1,17 @@
 import 'dart:async';
 
-import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class _ManifestApi extends ApiClient {
-  _ManifestApi(this.manifest) : super(Dio());
+class _ManifestLoader {
+  _ManifestLoader(this.manifest);
   final Map<String, dynamic> manifest;
 
-  @override
-  Future<Map<String, dynamic>> getLatestAndroidUpdate() async => manifest;
-}
-
-class _UnavailableManifestApi extends ApiClient {
-  _UnavailableManifestApi() : super(Dio());
-
-  @override
-  Future<Map<String, dynamic>> getLatestAndroidUpdate() async {
-    throw DioException(
-      requestOptions: RequestOptions(path: '/app-updates/android/latest'),
-      type: DioExceptionType.connectionError,
-    );
-  }
-}
-
-class _DeferredManifestApi extends ApiClient {
-  _DeferredManifestApi() : super(Dio());
-
-  final Completer<Map<String, dynamic>> manifest =
-      Completer<Map<String, dynamic>>();
-
-  @override
-  Future<Map<String, dynamic>> getLatestAndroidUpdate() => manifest.future;
+  // a8bef26: UpdateCheckService ignores apiClient; updates load through
+  // githubReleaseLoader instead.
+  Future<AppUpdateInfo?> load() async => AppUpdateInfo.fromJson(manifest);
 }
 
 Map<String, dynamic> _manifest({required int build, String version = '1.0.56'}) => {
@@ -65,8 +42,9 @@ void main() {
     test('the update answer is known before checkAfterLogin returns',
         () async {
       _runningBuild(2098);
+      final loader = _ManifestLoader(_manifest(build: 2099));
       final updates =
-          UpdateCheckService(apiClient: _ManifestApi(_manifest(build: 2099)));
+          UpdateCheckService(githubReleaseLoader: loader.load);
 
       updates.beginPostLoginCheck();
       expect(updates.isSettlingAfterLogin, isTrue);
@@ -83,8 +61,9 @@ void main() {
     test('an up-to-date build lets the user straight in and clears the splash',
         () async {
       _runningBuild(2099, version: '1.0.56');
+      final loader = _ManifestLoader(_manifest(build: 2099));
       final updates =
-          UpdateCheckService(apiClient: _ManifestApi(_manifest(build: 2099)));
+          UpdateCheckService(githubReleaseLoader: loader.load);
 
       updates.beginPostLoginCheck();
       await updates.checkAfterLogin();
@@ -95,8 +74,9 @@ void main() {
 
     test('a failed sign-in cannot leave the settling splash up', () async {
       _runningBuild(2098);
+      final loader = _ManifestLoader(_manifest(build: 2099));
       final updates =
-          UpdateCheckService(apiClient: _ManifestApi(_manifest(build: 2099)));
+          UpdateCheckService(githubReleaseLoader: loader.load);
 
       updates.beginPostLoginCheck();
       expect(updates.isSettlingAfterLogin, isTrue);
@@ -108,7 +88,6 @@ void main() {
   test('a failed update check is not reported as up to date', () async {
     _runningBuild(2098);
     final updates = UpdateCheckService(
-      apiClient: _UnavailableManifestApi(),
       githubReleaseLoader: () async => null,
     );
 
@@ -123,8 +102,12 @@ void main() {
 
   test('a second update check waits for the active check to finish', () async {
     _runningBuild(2098);
-    final api = _DeferredManifestApi();
-    final updates = UpdateCheckService(apiClient: api);
+    final manifest = Completer<Map<String, dynamic>>();
+    final updates = UpdateCheckService(
+      githubReleaseLoader: () => manifest.future.then<AppUpdateInfo?>(
+        (m) => AppUpdateInfo.fromJson(m),
+      ),
+    );
     var secondCheckReturned = false;
 
     final firstCheck = updates.checkForUpdates(force: true);
@@ -135,7 +118,7 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     expect(secondCheckReturned, isFalse);
-    api.manifest.complete(_manifest(build: 2099));
+    manifest.complete(_manifest(build: 2099));
 
     expect(await firstCheck, isTrue);
     expect(await secondCheck, isTrue);
@@ -149,8 +132,9 @@ void main() {
     }) async {
       SharedPreferences.setMockInitialValues(prefs);
       _runningBuild(2099, version: '1.0.56');
+      final loader = _ManifestLoader(_manifest(build: 2099));
       final updates =
-          UpdateCheckService(apiClient: _ManifestApi(_manifest(build: 2099)));
+          UpdateCheckService(githubReleaseLoader: loader.load);
       await updates.prepareLaunch(endSession: () async => log.add('signed out'));
       return updates;
     }
@@ -187,8 +171,9 @@ void main() {
         'pending_update_notice_release_notes': '',
       });
       _runningBuild(2099, version: '1.0.56');
+      final loader = _ManifestLoader(_manifest(build: 2099));
       final updates =
-          UpdateCheckService(apiClient: _ManifestApi(_manifest(build: 2099)));
+          UpdateCheckService(githubReleaseLoader: loader.load);
 
       await updates.prepareLaunch(
         endSession: () async => throw Exception('offline'),

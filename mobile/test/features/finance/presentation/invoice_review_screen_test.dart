@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
@@ -12,6 +14,24 @@ import 'package:flutter_test/flutter_test.dart';
 class _Auth extends Fake implements AuthService {
   @override
   String? get branchId => 'branch-1';
+
+  @override
+  bool get isAuthenticated => true;
+
+  @override
+  bool get isLocked => false;
+
+  @override
+  // Exercise the cloud save path (api.createSupplierInvoice).
+  bool get isLocalWorkspace => false;
+
+  @override
+  Map<String, dynamic>? get currentUser => null;
+
+  final _statusController = StreamController<AuthStatus>.broadcast();
+
+  @override
+  Stream<AuthStatus> get authStatusStream => _statusController.stream;
 }
 
 class _Net extends Fake implements ConnectivityService {
@@ -64,12 +84,15 @@ void main() {
   setUp(() {
     api = _Api();
     popped = null;
+    // A scope shadows the cloud-mode AuthService stub from
+    // flutter_test_config.dart instead of colliding with it.
+    getIt.pushNewScope();
     getIt.registerSingleton<AuthService>(_Auth());
     getIt.registerSingleton<ConnectivityService>(_Net());
     getIt.registerSingleton<ApiClient>(api);
   });
 
-  tearDown(() async => getIt.reset());
+  tearDown(() async => getIt.popScope());
 
   Future<void> open(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1080, 7200);

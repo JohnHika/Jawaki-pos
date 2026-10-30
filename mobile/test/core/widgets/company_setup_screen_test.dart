@@ -21,7 +21,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Step 2 of 4'), findsOneWidget);
-    expect(find.text('Meet the owner'), findsOneWidget);
+    // Renamed from "Meet the owner" in a8bef26.
+    expect(find.text('About the owner'), findsOneWidget);
     expect(find.text('First name'), findsOneWidget);
     expect(find.text('Continue'), findsOneWidget);
   });

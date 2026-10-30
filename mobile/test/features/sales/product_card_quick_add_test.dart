@@ -244,7 +244,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_cart.state.items.single.quantity, 1);
-    expect(find.textContaining('Only 1 unit'), findsOneWidget);
+    // Message now names the product's own unit (changed in a8bef26).
+    expect(find.textContaining('Only 1 piece'), findsOneWidget);
   });
   testWidgets('the stepper fits a narrow phone with large text',
       (tester) async {

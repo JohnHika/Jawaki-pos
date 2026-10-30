@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:axon_pos/features/auth/presentation/screens/company_choice_screen.dart';
 
 void main() {
+  // a8bef26 made the first-launch screen local-first: it offers workspace
+  // creation only, with no cloud "Join an existing business" route.
   testWidgets('entry screen presents a motion launchpad and clear next steps',
       (tester) async {
     final router = GoRouter(
@@ -34,8 +36,9 @@ void main() {
 
     expect(find.textContaining('Your business,'), findsOneWidget);
     expect(find.text('Create your workspace'), findsOneWidget);
-    expect(find.text('Join an existing business'), findsOneWidget);
     expect(find.byKey(const ValueKey('entry-motion-field')), findsOneWidget);
+    // The local-first edition has no second (join) card.
+    expect(find.text('Join an existing business'), findsNothing);
 
     await tester.tap(find.text('Create your workspace'));
     await tester.pumpAndSettle();
@@ -43,7 +46,7 @@ void main() {
     expect(find.text('company setup destination'), findsOneWidget);
   });
 
-  testWidgets('Join existing business preserves a back route to start',
+  testWidgets('local-only note explains records stay on the device',
       (tester) async {
     final router = GoRouter(
       initialLocation: '/',
@@ -53,9 +56,9 @@ void main() {
           builder: (context, state) => const CompanyChoiceScreen(),
         ),
         GoRoute(
-          path: '/login',
+          path: '/company-setup',
           builder: (context, state) => const Scaffold(
-            body: Text('login destination'),
+            body: Text('company setup destination'),
           ),
         ),
       ],
@@ -63,19 +66,10 @@ void main() {
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pump(const Duration(milliseconds: 450));
-    final joinAction = find.ancestor(
-      of: find.text('Join an existing business'),
-      matching: find.byType(InkWell),
+
+    expect(
+      find.textContaining('stored locally on this device'),
+      findsOneWidget,
     );
-    await tester.tap(joinAction);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
-
-    expect(find.text('login destination'), findsOneWidget);
-
-    router.pop();
-    await tester.pump(const Duration(milliseconds: 500));
-
-    expect(find.text('Create your workspace'), findsOneWidget);
   });
 }

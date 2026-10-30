@@ -10,8 +10,11 @@ Future<void> _pump(WidgetTester tester) async {
     tester.view.resetDevicePixelRatio();
   });
   await tester.pumpWidget(const MaterialApp(
-    home: Scaffold(body: AddCustomerForm()),
-  ));
+    home: Scaffold(
+        // Credit is permission-gated since a8bef26; these tests exercise the credit flow.
+        body: AddCustomerForm(allowInitialCredit: true),
+      ),
+    ));
   await tester.pump();
 }
 

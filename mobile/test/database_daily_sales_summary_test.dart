@@ -83,7 +83,8 @@ void main() {
     expect(summary['cardSales'], 20.0);
   });
 
-  test('does not report an unbalanced split as valid daily totals', () async {
+  test('reports an unbalanced split as unreconciled, not cash or credit',
+      () async {
     await addSale(
       id: 'bad-split',
       total: 100,
@@ -94,9 +95,23 @@ void main() {
       ]),
     );
 
-    await expectLater(
-      database.getDailySalesSummary('branch-1', DateTime(2026, 10, 26)),
-      throwsA(isA<FormatException>()),
+    // a8bef26: a split that does not balance no longer fails the whole End
+    // of Day report — it is surfaced as unreconciled and folded into neither
+    // cash nor credit, so the till is never quietly overstated.
+    final summary = await database.getDailySalesSummary(
+      'branch-1',
+      DateTime(2026, 10, 26),
+    );
+
+    expect(summary['totalSales'], 100.0);
+    expect(summary['cashSales'], 0.0);
+    expect(summary['creditSales'], 0.0);
+    expect(summary['otherSales'], 100.0);
+    final otherMethods = summary['otherPaymentMethods'] as List<dynamic>;
+    expect(
+      otherMethods.whereType<Map>().any((m) =>
+          m['method'] == 'SPLIT (UNRECONCILED)' && m['amount'] == 100.0),
+      isTrue,
     );
   });
 }

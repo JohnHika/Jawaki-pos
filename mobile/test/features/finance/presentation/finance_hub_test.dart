@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:axon_pos/core/auth/app_roles.dart';
+import 'package:axon_pos/core/di/injection.dart';
+import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/features/finance/domain/finance_models.dart';
 import 'package:axon_pos/features/finance/presentation/providers/finance_hub_controller.dart';
 import 'package:axon_pos/features/finance/presentation/screens/finance_screen.dart';
@@ -9,8 +11,33 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+class _FakeAuthService extends Fake implements AuthService {
+  @override
+  bool get isAuthenticated => true;
+  @override
+  bool get isLocked => false;
+  @override
+  bool get isLocalWorkspace => false;
+  @override
+  Map<String, dynamic>? get currentUser => null;
+
+  final _statusController = StreamController<AuthStatus>.broadcast();
+
+  @override
+  Stream<AuthStatus> get authStatusStream => _statusController.stream;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    // FinanceScreen resolves the local-workspace flag through GetIt (added in
+    // a8bef26); a scope keeps the fake isolated per test.
+    getIt.pushNewScope();
+    getIt.registerSingleton<AuthService>(_FakeAuthService());
+  });
+
+  tearDown(() async => getIt.popScope());
 
   group('FinanceHubController', () {
     test('publishes the cached snapshot before the background refresh resolves',
@@ -161,7 +188,8 @@ void main() {
     await tester.tap(create, warnIfMissed: false);
     await tester.pumpAndSettle();
     expect(find.text('Description is required'), findsOneWidget);
-    expect(find.text('Amount must be greater than zero'), findsOneWidget);
+    // Message reworded in a8bef26.
+    expect(find.text('Enter a valid amount greater than zero'), findsOneWidget);
 
     await tester.enterText(
         find.byKey(const Key('peer-description')), 'Stock transfer');

@@ -70,6 +70,31 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     }
   }
 
+
+  /// Shows a modal bottom sheet and resolves only after its exit animation
+  /// has finished. [showModalBottomSheet] resolves at pop time, while the
+  /// sheet's builder keeps rebuilding during the closing transition � so
+  /// disposing a TextEditingController right after awaiting it crashes with
+  /// "used after being disposed". Awaiting the route's `completed` future
+  /// (which fires only after the transition ends) closes that window.
+  Future<T?> _showSheetUntilFullyClosed<T>(WidgetBuilder builder) async {
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final localizations = MaterialLocalizations.of(context);
+    final route = ModalBottomSheetRoute<T>(
+      builder: builder,
+      capturedThemes:
+          InheritedTheme.capture(from: context, to: navigator.context),
+      isScrollControlled: true,
+      showDragHandle: true,
+      barrierLabel: localizations.scrimLabel,
+      barrierOnTapHint:
+          localizations.scrimOnTapHint(localizations.bottomSheetLabel),
+      modalBarrierColor: Theme.of(context).bottomSheetTheme.modalBarrierColor,
+    );
+    final result = await navigator.push(route);
+    await route.completed;
+    return result;
+  }
   @override
   Widget build(BuildContext context) {
     final hub = ref.watch(financeHubProvider);
@@ -434,12 +459,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final name = TextEditingController();
     final contact = TextEditingController();
     String? error;
-    await showModalBottomSheet<void>(
-      useRootNavigator: true,
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => StatefulBuilder(
+    await _showSheetUntilFullyClosed<void>(
+      (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) => _SheetFrame(
           title: 'Add other shop',
           children: <Widget>[
@@ -477,12 +498,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     String? descriptionError;
     String? amountError;
     String? shopError;
-    await showModalBottomSheet<void>(
-      useRootNavigator: true,
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => StatefulBuilder(
+    await _showSheetUntilFullyClosed<void>(
+      (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) => _SheetFrame(
           title: 'Add debt',
           children: <Widget>[
@@ -559,12 +576,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final offlineId = const Uuid().v4();
     String? error;
     bool saving = false;
-    final recorded = await showModalBottomSheet<bool>(
-      useRootNavigator: true,
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => StatefulBuilder(
+    final recorded = await _showSheetUntilFullyClosed<bool>(
+      (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) => _SheetFrame(
           title: title,
           children: <Widget>[
@@ -749,12 +762,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final phoneController = TextEditingController();
     String? error;
     bool saving = false;
-    await showModalBottomSheet<void>(
-      useRootNavigator: true,
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => StatefulBuilder(
+    await _showSheetUntilFullyClosed<void>(
+      (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) => Form(
           key: formKey,
           child: _SheetFrame(
@@ -1006,12 +1015,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     String fundingSource = 'CASH_TILL';
     String? error;
     bool saving = false;
-    await showModalBottomSheet<void>(
-      useRootNavigator: true,
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => StatefulBuilder(
+    await _showSheetUntilFullyClosed<void>(
+      (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) => Form(
           key: formKey,
           child: _SheetFrame(
@@ -1189,12 +1194,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     String? error;
     bool saving = false;
 
-    final recorded = await showModalBottomSheet<bool>(
-      useRootNavigator: true,
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => StatefulBuilder(
+    final recorded = await _showSheetUntilFullyClosed<bool>(
+      (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) {
           final items = groups[selectedKey]!;
           final amount = double.tryParse(amountController.text) ?? 0;

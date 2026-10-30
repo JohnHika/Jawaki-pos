@@ -659,25 +659,30 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
               child: Theme(
                 data: Theme.of(context)
                     .copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  key: const PageStorageKey('setup-layout-advanced-options'),
-                  tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-                  childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  leading: Icon(Icons.tune_rounded,
-                      color: context.themed(DesignColors.brand)),
-                  title: Text(
-                    'Fine-tune your workspace',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: context.themed(DesignColors.darkTextPrimary),
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                  subtitle: Text(
-                    'Optional · extra profiles, preview and POS shortcuts',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: context.themed(DesignColors.darkTextTertiary),
-                        ),
-                  ),
+                // ExpansionTile's internal ListTile paints ink on the nearest
+                // Material; the surrounding DecoratedBox would hide it.
+                child: Material(
+                  color: Colors.transparent,
+                  child: ExpansionTile(
+                    key: const PageStorageKey('setup-layout-advanced-options'),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                    childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    leading: Icon(Icons.tune_rounded,
+                        color: context.themed(DesignColors.brand)),
+                    title: Text(
+                      'Fine-tune your workspace',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            color: context.themed(DesignColors.darkTextPrimary),
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    subtitle: Text(
+                      'Optional · extra profiles, preview and POS shortcuts',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: context
+                                .themed(DesignColors.darkTextTertiary),
+                          ),
+                    ),
                   children: [
                     Align(
                       alignment: Alignment.centerLeft,
@@ -851,6 +856,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                       ),
                     ),
                   ],
+                  ),
                 ),
               ),
             ),
@@ -1386,19 +1392,25 @@ class _OptionalLocationDetails extends StatelessWidget {
           borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
           border: Border.all(color: context.themed(DesignColors.darkBorder)),
         ),
-        child: ExpansionTile(
-          title: const Text('Add location details'),
-          subtitle: const Text('Optional · useful on receipts'),
-          leading: const Icon(Icons.add_location_alt_outlined,
-              color: DesignColors.accent),
-          shape: const Border(),
-          collapsedShape: const Border(),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 8, 16, 18),
-          children: [
-            address,
-            const SizedBox(height: 16),
-            phone,
-          ],
+        // The ExpansionTile's internal ListTile paints its ink on the nearest
+        // Material; without this the DecoratedBox background hides it and
+        // widget tests assert on the visibility.
+        child: Material(
+          color: Colors.transparent,
+          child: ExpansionTile(
+            title: const Text('Add location details'),
+            subtitle: const Text('Optional · useful on receipts'),
+            leading: const Icon(Icons.add_location_alt_outlined,
+                color: DesignColors.accent),
+            shape: const Border(),
+            collapsedShape: const Border(),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 8, 16, 18),
+            children: [
+              address,
+              const SizedBox(height: 16),
+              phone,
+            ],
+          ),
         ),
       );
 }

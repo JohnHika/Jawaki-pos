@@ -3,12 +3,29 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:axon_pos/core/di/injection.dart';
+import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/features/finance/domain/finance_models.dart';
 import 'package:axon_pos/features/finance/presentation/providers/finance_hub_controller.dart';
 import 'package:axon_pos/features/finance/presentation/screens/finance_screen.dart';
 import 'package:axon_pos/core/auth/app_roles.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 import 'package:go_router/go_router.dart';
+
+class _FakeAuthService extends Fake implements AuthService {
+  final _statusController = StreamController<AuthStatus>.broadcast();
+
+  @override
+  bool get isAuthenticated => true;
+  @override
+  bool get isLocked => false;
+  @override
+  bool get isLocalWorkspace => false;
+  @override
+  Map<String, dynamic>? get currentUser => null;
+  @override
+  Stream<AuthStatus> get authStatusStream => _statusController.stream;
+}
 
 FinanceSnapshot _snapshot({
   String branchId = 'branch-1',
@@ -190,6 +207,15 @@ Widget _host(FinanceHubController controller) => ProviderScope(
     );
 
 void main() {
+  setUp(() {
+    // FinanceScreen resolves the local-workspace flag through GetIt (added in
+    // a8bef26); a scope keeps the fake isolated per test.
+    getIt.pushNewScope();
+    getIt.registerSingleton<AuthService>(_FakeAuthService());
+  });
+
+  tearDown(() async => getIt.popScope());
+
   testWidgets(
     'cached snapshot renders totals immediately while refresh is in flight',
     (tester) async {

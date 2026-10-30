@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,8 +9,26 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:axon_pos/core/network/api_client.dart';
+import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/features/billing/domain/entitlement_service.dart';
 import 'package:axon_pos/features/billing/presentation/screens/subscription_billing_screen.dart';
+
+class _FakeAuthService extends Fake implements AuthService {
+  @override
+  bool get isAuthenticated => true;
+  @override
+  bool get isLocked => false;
+  // Cloud workspace: refreshEntitlement must do the live fetch.
+  @override
+  bool get isLocalWorkspace => false;
+  @override
+  Map<String, dynamic>? get currentUser => {'role': 'ADMIN'};
+
+  final _statusController = StreamController<AuthStatus>.broadcast();
+
+  @override
+  Stream<AuthStatus> get authStatusStream => _statusController.stream;
+}
 
 /// Manual ApiClient spy that records calls and returns canned data.
 class _SpyApiClient extends ApiClient {
@@ -81,6 +101,10 @@ void main() {
       getIt.unregister<EntitlementService>();
     }
     getIt.registerSingleton<EntitlementService>(EntitlementService());
+    // a8bef26: refreshEntitlement() checks AuthService.isLocalWorkspace
+    // before fetching; register a cloud-workspace fake so the live fetch runs.
+    if (getIt.isRegistered<AuthService>()) getIt.unregister<AuthService>();
+    getIt.registerSingleton<AuthService>(_FakeAuthService());
   });
 
   tearDown(() {
@@ -90,6 +114,7 @@ void main() {
     if (getIt.isRegistered<EntitlementService>()) {
       getIt.unregister<EntitlementService>();
     }
+    if (getIt.isRegistered<AuthService>()) getIt.unregister<AuthService>();
   });
 
   GoRouter billingTestRouter() => GoRouter(
