@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../widgets/motion.dart';
 import '../widgets/motion_kit.dart';
+import '../widgets/workspace_image.dart';
 
 /// ═══════════════════════════════════════════════════════════════
 /// AXON POS DESIGN SYSTEM — v2
@@ -2502,23 +2503,12 @@ class TenantBrandMark extends StatelessWidget {
         ),
       ),
       child: ClipOval(
-        child: Image.network(
-          url,
+        child: WorkspaceImage(
+          source: url,
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) =>
-              AxonLogoTitle(logoSize: size * 0.8),
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return Center(
-              child: SizedBox(
-                width: size * 0.42,
-                height: size * 0.42,
-                child: const CircularProgressIndicator(strokeWidth: 1.6),
-              ),
-            );
-          },
+          placeholder: AxonLogoTitle(logoSize: size * 0.8),
         ),
       ),
     );

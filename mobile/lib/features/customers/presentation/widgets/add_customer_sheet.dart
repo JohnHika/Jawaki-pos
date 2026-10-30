@@ -27,7 +27,9 @@ class AddedCustomer {
 /// are taking today. Everything else stays out of the way.
 Future<AddedCustomer?> showAddCustomerSheet(
   BuildContext context, {
-  bool allowInitialCredit = true,
+  // Credit creation is privileged: callers must explicitly opt in after
+  // checking the current user's credit-override permission.
+  bool allowInitialCredit = false,
   String customerSingular = 'Customer',
 }) {
   return GlassBottomSheet.show<AddedCustomer>(
@@ -45,7 +47,7 @@ Future<AddedCustomer?> showAddCustomerSheet(
 class AddCustomerForm extends StatefulWidget {
   const AddCustomerForm({
     super.key,
-    this.allowInitialCredit = true,
+    this.allowInitialCredit = false,
     this.customerSingular = 'Customer',
   });
 
@@ -115,6 +117,10 @@ class _AddCustomerFormState extends State<AddCustomerForm> {
     final amount = _onCredit
         ? (double.tryParse(_creditAmount.text.trim().replaceAll(',', '')) ?? 0)
         : 0.0;
+    if (amount > 0 && !widget.allowInitialCredit) {
+      setState(() => _error = 'Your role cannot add opening credit.');
+      return;
+    }
     if (_onCredit && amount > 0 && _dueDate == null) {
       setState(() => _error = 'Pick when the first payment is due.');
       return;
@@ -127,50 +133,66 @@ class _AddCustomerFormState extends State<AddCustomerForm> {
     final name = _name.text.trim();
     try {
       final db = getIt<AppDatabase>();
-      final customerId = await db.insertOrGetCustomer(
-        const Uuid().v4(),
-        name,
-        phone: _phone.text.trim(),
-        location: _location.text.trim(),
-        notes: _notes.text.trim(),
-        initialBalance: amount,
-      );
-      // Queue the customer so the branch's other devices see them too.
-      try {
-        await getIt<SyncService>().queueSyncItem(
-          tableName: 'customers',
-          recordId: customerId,
-          action: SyncAction.create,
-          eventType: SyncEventType.customerCreated,
-          data: {
-            'id': customerId,
-            'name': name,
-            'phone': _phone.text.trim(),
-            'address': _location.text.trim(),
-            'notes': _notes.text.trim(),
-          },
-          deviceId: getIt<StorageService>().getDeviceId() ?? '',
-          userId: getIt<AuthService>().userId ?? '',
-        );
-      } catch (_) {
-        // Non-fatal: the customer is saved here and the periodic sync retries.
-      }
+      late final String customerId;
+      late final String customerName;
+      var customerCreated = true;
       if (amount > 0 && _dueDate != null) {
-        await db.addCustomerInstallment(
-          customerId,
-          amount,
-          _dueDate!,
-          note: 'Initial credit sale',
+        customerId = await db.createCustomerWithInitialCredit(
+          id: const Uuid().v4(),
+          name: name,
+          phone: _phone.text.trim(),
+          location: _location.text.trim(),
+          notes: _notes.text.trim(),
+          amount: amount,
+          dueDate: _dueDate!,
         );
+        customerName = name;
+      } else {
+        final outcome = await db.insertOrGetCustomerWithStatus(
+          const Uuid().v4(),
+          name,
+          phone: _phone.text.trim(),
+          location: _location.text.trim(),
+          notes: _notes.text.trim(),
+        );
+        customerId = outcome.id;
+        customerName = outcome.name;
+        customerCreated = outcome.created;
+      }
+      // Queue the customer so the branch's other devices see them too.
+      final auth = getIt<AuthService>();
+      if (!auth.isLocalWorkspace && customerCreated) {
+        try {
+          await getIt<SyncService>().queueSyncItem(
+            tableName: 'customers',
+            recordId: customerId,
+            action: SyncAction.create,
+            eventType: SyncEventType.customerCreated,
+            data: {
+              'id': customerId,
+              'name': name,
+              'phone': _phone.text.trim(),
+              'address': _location.text.trim(),
+              'notes': _notes.text.trim(),
+            },
+            deviceId: getIt<StorageService>().getDeviceId() ?? '',
+            userId: auth.userId ?? '',
+          );
+        } catch (_) {
+          // Non-fatal: the customer is saved here and a connected workspace
+          // can retry sync later.
+        }
       }
       if (!mounted) return;
-      Navigator.of(context).pop(AddedCustomer(id: customerId, name: name));
-    } catch (_) {
+      Navigator.of(context)
+          .pop(AddedCustomer(id: customerId, name: customerName));
+    } catch (saveError) {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error =
-            'Could not save this ${widget.customerSingular.toLowerCase()}. Please try again.';
+        _error = saveError is StateError
+            ? saveError.message.toString()
+            : 'Could not save this ${widget.customerSingular.toLowerCase()}. Please try again.';
       });
     }
   }

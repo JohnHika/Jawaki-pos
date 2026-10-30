@@ -4,9 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/app_roles.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 
-/// A business layout is a tenant-wide preset for terminology, checkout,
-/// product fields, dashboard focus and visible work areas. It never grants
-/// permissions or changes sales, inventory, or billing rules.
+/// A business layout is an installation-local preset for terminology,
+/// checkout, product fields, dashboard focus and visible work areas. It never
+/// grants permissions or changes sales or inventory rules.
 class BusinessLayoutPreset {
   const BusinessLayoutPreset({
     required this.id,
@@ -2135,7 +2135,7 @@ bool _canOpenLayoutStartPath(RolePermissions permissions, String path) {
     '/referrals' => permissions.has('referrals.view'),
     '/partners' =>
       permissions.isAdmin || permissions.role == AppRole.storeManager,
-    '/ai' => true,
+    '/ai' => permissions.has('ai.chat'),
     _ => false,
   };
 }

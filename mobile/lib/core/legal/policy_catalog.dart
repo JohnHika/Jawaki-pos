@@ -24,6 +24,7 @@ class PolicyDocument {
 }
 
 const kPolicyEffectiveDate = '22 October 2026';
+const kStandalonePolicyEffectiveDate = '28 October 2026';
 const kPolicyContactEmail = 'support@archeaxon.com';
 
 const kPolicyVersions = <String, String>{
@@ -84,7 +85,8 @@ const kPolicyDocuments = <PolicyDocument>[
     type: 'PRIVACY_NOTICE',
     title: 'Privacy Notice',
     version: '2026-10-23-v1',
-    summary: 'What information Counterbase handles and how to exercise your rights.',
+    summary:
+        'What information Counterbase handles and how to exercise your rights.',
     sections: [
       PolicySection('1. About this notice',
           'Arche Axon provides Counterbase. For workspace accounts, billing, security, and support information, Arche Axon decides why and how that information is used. For retail customer and business records that a shop enters into Counterbase, the shop generally decides the purpose and Counterbase processes the information to provide the software.'),
@@ -111,7 +113,8 @@ const kPolicyDocuments = <PolicyDocument>[
     type: 'DATA_PROCESSING_ADDENDUM',
     title: 'Data Processing Addendum',
     version: '2026-10-22-v1',
-    summary: 'How Counterbase processes shop customer and staff data for a workspace.',
+    summary:
+        'How Counterbase processes shop customer and staff data for a workspace.',
     sections: [
       PolicySection('1. Roles',
           'For information a shop enters about its own retail customers, staff, suppliers, and business operations, the shop is the controller and Arche Axon is the processor. For Counterbase account administration, billing, security, and support records, Arche Axon may act as an independent controller as described in the Privacy Notice.'),
@@ -134,7 +137,8 @@ const kPolicyDocuments = <PolicyDocument>[
     type: 'BILLING_TERMS',
     title: 'Subscription, Billing & Refunds',
     version: '2026-10-23-v1',
-    summary: 'Activation, trial, monthly prices, invoice payment, and refund requests.',
+    summary:
+        'Activation, trial, monthly prices, invoice payment, and refund requests.',
     sections: [
       PolicySection('Activation and trial',
           'The one-time workspace activation payment is KES 35,000. After activation, the workspace receives a seven-day trial. Choosing a plan records which service tier continues after the trial; the app displays the plan price before you confirm.'),
@@ -176,7 +180,8 @@ const kPolicyDocuments = <PolicyDocument>[
     type: 'MERCHANT_PAYMENT_TERMS',
     title: 'Merchant Payments & Settlement',
     version: '2026-10-22-v1',
-    summary: 'Terms for routing shop M-Pesa sales through Paystack to your bank.',
+    summary:
+        'Terms for routing shop M-Pesa sales through Paystack to your bank.',
     sections: [
       PolicySection('Separate from your Counterbase plan',
           'Product-sale payments belong to your shop and are separate from the KES 35,000 Counterbase activation fee and the monthly Counterbase subscription. Connecting a payout account does not pay or change your Counterbase plan.'),
@@ -192,8 +197,80 @@ const kPolicyDocuments = <PolicyDocument>[
   ),
 ];
 
-PolicyDocument? policyDocument(String slug) {
-  for (final document in kPolicyDocuments) {
+/// Standalone wording is kept separate from the retired hosted-service terms.
+/// It describes only behavior implemented by the downloadable local-first app.
+const kStandalonePolicyDocuments = <PolicyDocument>[
+  PolicyDocument(
+    slug: 'terms',
+    type: 'TERMS_OF_SERVICE',
+    title: 'Terms of Service',
+    version: '2026-10-28-local-v2',
+    summary: 'Terms for using the standalone Counterbase app on your device.',
+    sections: [
+      PolicySection('1. Who these terms cover',
+          'These terms are between you and Arche Axon for your use of the standalone Counterbase app. If you create a workspace for a business, you confirm that you are allowed to act for that business. You are responsible for the people you allow to use your device and workspace.'),
+      PolicySection('2. Device-based service',
+          'The standalone edition stores and uses shop records on the device where they are entered. It does not connect to the retired Counterbase online POS service and does not automatically sync records with another device. Features can depend on your device, operating system, and local network.'),
+      PolicySection('3. Your records and backups',
+          'You retain your rights in the business and customer records you enter. You are responsible for keeping your device and owner PIN safe and for creating and protecting encrypted backups. A backup can be required to move records to another compatible device. If app or device data is lost and no usable backup exists, those records may not be recoverable.'),
+      PolicySection('4. Optional Axon AI',
+          'If you configure the Axon AI Gateway and choose an AI feature, the app sends the current request and, for chat, up to 24 recent messages in the conversation to gateway.archeaxon.com. A selected read-only lookup result or an image you choose to analyze may also be sent. AI features are optional and do not perform business changes in this edition. Do not include payment credentials, PINs, or information you do not want processed by the Gateway.'),
+      PolicySection('5. Sales and payments',
+          'This device-only edition records cash and customer-credit sales locally. It does not initiate online customer payments, merchant payouts, subscription billing, or automatic payment collection. You remain responsible for the goods, prices, taxes, receipts, customer communications, returns, and any payment you record.'),
+      PolicySection('6. Availability and contact',
+          'The app operates from data on your device and may be unavailable if the device or its storage fails. Optional Gateway features require an internet connection and a valid owner-issued key. Questions about Counterbase can be sent to support@archeaxon.com.'),
+    ],
+  ),
+  PolicyDocument(
+    slug: 'privacy',
+    type: 'PRIVACY_NOTICE',
+    title: 'Privacy Notice',
+    version: '2026-10-28-local-v2',
+    summary:
+        'Where standalone app records are stored and when information leaves your device.',
+    sections: [
+      PolicySection('1. Information stored on this device',
+          'The app stores the workspace profile and the products, prices, stock, sales, customer, supplier, finance, and other records you choose to enter in its encrypted local database. Your owner PIN is protected through the device credential store; the PIN itself is not included in backups. Product and category photos are kept in the app’s private device storage.'),
+      PolicySection('2. No automatic POS upload or sync',
+          'The standalone edition does not send ordinary POS records to the retired Counterbase online service and does not automatically sync them between devices. Records remain on this device unless you choose an available export, share, restore, or optional AI feature.'),
+      PolicySection('3. Backups and migration',
+          'A .cbmobile backup is encrypted with a password you choose. It contains the local shop database and held carts, but does not include the owner PIN, Axon Gateway key, or locally saved photos. Keep the password separately from the backup. Imported legacy archives may contain sections that this edition preserves for history but does not yet show in app screens.'),
+      PolicySection('4. Optional Axon AI Gateway',
+          'When you choose an AI feature after configuring a Gateway key, the app sends your current message and up to 24 recent chat messages to gateway.archeaxon.com. If needed, the app also sends the selected read-only local result or the image you chose to analyze. The app does not automatically send customer records. The Gateway key is stored in the operating system credential store and is not included in backups. The Gateway may process requests using services behind it; contact support@archeaxon.com for current provider details.'),
+      PolicySection('5. Device loss and deletion',
+          'Shop records can be lost if app data or the device is removed, damaged, reset, or replaced without a usable backup. Protect exported files and their passwords. Arche Axon cannot remotely retrieve or erase records that exist only on your device.'),
+      PolicySection('6. Your responsibilities and contact',
+          'The shop decides what information to enter about customers, staff, and suppliers and is responsible for providing any notices required for that use. Do not enter bank passwords, M-Pesa PINs, or one-time passwords. Privacy questions can be sent to support@archeaxon.com.'),
+    ],
+  ),
+  PolicyDocument(
+    slug: 'data-processing',
+    type: 'DATA_PROCESSING_ADDENDUM',
+    title: 'Local Data & AI Processing Notice',
+    version: '2026-10-28-local-v2',
+    summary:
+        'How local records and optional Gateway requests are handled in this edition.',
+    sections: [
+      PolicySection('1. Local records',
+          'For normal device-only operation, shop records are stored in the encrypted app database on the shop’s device. The app provider does not receive those records through the retired online POS service.'),
+      PolicySection('2. Optional Gateway requests',
+          'When a user chooses an AI feature, the app sends the current prompt and, for chat, up to 24 recent messages in that conversation to gateway.archeaxon.com. If needed, it also sends the selected read-only local result or the chosen image. The shop decides whether to enable the feature and what to submit. Gateway processing is separate from ordinary local POS operations.'),
+      PolicySection('3. Credentials and sensitive data',
+          'The Gateway key is stored in the operating system credential store and is not included in a shop backup. The app does not need bank passwords, M-Pesa PINs, or one-time passwords. Do not submit those credentials or unnecessary customer personal information to AI features.'),
+      PolicySection('4. Shop responsibilities and contact',
+          'The shop is responsible for choosing lawful purposes, limiting the personal information it records, protecting its devices and backups, and responding to requests concerning its own customer and staff records. Questions about the app or Gateway disclosure can be sent to support@archeaxon.com.'),
+    ],
+  ),
+];
+
+List<PolicyDocument> policyDocumentsFor({required bool standalone}) =>
+    standalone ? kStandalonePolicyDocuments : kPolicyDocuments;
+
+String policyEffectiveDate({required bool standalone}) =>
+    standalone ? kStandalonePolicyEffectiveDate : kPolicyEffectiveDate;
+
+PolicyDocument? policyDocument(String slug, {bool standalone = true}) {
+  for (final document in policyDocumentsFor(standalone: standalone)) {
     if (document.slug == slug) return document;
   }
   return null;

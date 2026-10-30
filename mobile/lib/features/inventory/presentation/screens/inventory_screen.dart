@@ -16,6 +16,7 @@ import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/business_layout_search.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/utils/stock_quantity_display.dart';
+import '../../../../core/widgets/form_kit.dart' show kitCount;
 import '../../../sales/presentation/providers/catalog_provider.dart'
     show
         favoriteProductsProvider,
@@ -40,7 +41,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   List<Map<String, dynamic>> _inventoryItems = [];
   List<Map<String, dynamic>> _lowStockItems = [];
   bool _isLoading = true;
-  bool _isSyncingCatalog = true;
+  bool _isSyncingCatalog = false;
   String? _dataLoadError;
   String? _catalogSyncError;
   String? get _inventoryDataError => _dataLoadError ?? _catalogSyncError;
@@ -53,6 +54,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   bool _isSubmittingTransfer = false;
   String? _transferError;
   String? _transferRequestId;
+  Future<List<Map<String, dynamic>>>? _localReceiptsFuture;
   final TextEditingController _transferQtyController = TextEditingController(
     text: '1',
   );
@@ -64,21 +66,28 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     super.initState();
     _transferQtyController.addListener(_invalidateTransferRequestKey);
     final currentUser = getIt<AuthService>().currentUser;
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
+    if (isLocalWorkspace) {
+      _localReceiptsFuture = getIt<AppDatabase>().getLocalStockReceiptHistory();
+    }
     final canViewTransfers = RolePermissions(
-      currentUser?['permissions'] as List<dynamic>?,
-    ).has('inventory.transfers.view');
+          currentUser?['permissions'] as List<dynamic>?,
+        ).has('inventory.transfers.view') &&
+        !isLocalWorkspace;
+    // Only connected workspaces have a catalog refresh to wait for. Local
+    // workspaces read their product and stock rows directly from Drift; an
+    // empty local catalog is a valid empty state, not an endless sync spinner.
+    _isSyncingCatalog = !isLocalWorkspace;
     _branchesFuture = canViewTransfers
         ? getIt<ApiClient>().getBranches()
         : Future.value(const <dynamic>[]);
     _isLoadingTransfers = canViewTransfers;
     _loadData();
     if (canViewTransfers) unawaited(_loadTransfers());
-    // Stock levels live in the local cache that the POS/Products screens fill
-    // from the server. Opened first on a fresh install, Inventory showed every
-    // product at 0 with "20 alerts" and a KES 0 stock value. Refresh the cache
-    // here too (best effort - offline simply keeps whatever is already cached);
-    // the stock stream below reloads the screen when new levels arrive.
-    unawaited(_refreshCatalogCache());
+    // Connected shops may have stock only in their catalog cache, so refresh
+    // it when Inventory opens. Standalone shops own the local catalog directly
+    // and should not start a redundant sync pass here.
+    if (!isLocalWorkspace) unawaited(_refreshCatalogCache());
     _stockSubscription = getIt<AppDatabase>().watchAllStock().listen((_) {
       _stockRefreshDebounce?.cancel();
       _stockRefreshDebounce = Timer(const Duration(milliseconds: 100), () {
@@ -127,13 +136,22 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     if (!mounted) return;
     setState(() {
       _isLoading = true;
+      _isSyncingCatalog = !getIt<AuthService>().isLocalWorkspace;
       _dataLoadError = null;
       _catalogSyncError = null;
+      if (getIt<AuthService>().isLocalWorkspace) {
+        _localReceiptsFuture =
+            getIt<AppDatabase>().getLocalStockReceiptHistory();
+      }
     });
-    await Future.wait([
-      _loadData(showLoading: false),
-      _refreshCatalogCache(),
-    ]);
+    if (getIt<AuthService>().isLocalWorkspace) {
+      await _loadData(showLoading: false);
+    } else {
+      await Future.wait([
+        _loadData(showLoading: false),
+        _refreshCatalogCache(),
+      ]);
+    }
   }
 
   Future<void> _loadData({bool showLoading = true}) async {
@@ -180,13 +198,16 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     } catch (e) {
       debugPrint('Error loading inventory data: $e');
       if (mounted) {
+        final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
         final hasCachedData =
             _inventoryItems.isNotEmpty || _lowStockItems.isNotEmpty;
         setState(() {
           _isLoading = false;
           _dataLoadError = hasCachedData
               ? 'Could not refresh stock data. Showing the last loaded figures.'
-              : 'Could not read saved stock data. Check your connection and try again.';
+              : isLocalWorkspace
+                  ? 'Could not read saved stock data on this device. Try again.'
+                  : 'Could not read stock data. Check your connection and try again.';
         });
         if (hasCachedData) {
           showGlassSnackBar(
@@ -336,37 +357,43 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final permissions = RolePermissions(
       authService.currentUser?['permissions'] as List<dynamic>?,
     );
+    final isLocalWorkspace = authService.isLocalWorkspace;
     final businessLayout = ref.watch(businessLayoutProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final border =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-    final canViewTransfers = permissions.has('inventory.transfers.view');
+    final canViewTransfers =
+        permissions.has('inventory.transfers.view') && !isLocalWorkspace;
+    final canViewLocalReceipts =
+        isLocalWorkspace && permissions.canSeeInventory;
+    final hasThirdTab = canViewTransfers || canViewLocalReceipts;
 
     return Scaffold(
       appBar: BrandedAppBar(
         title: businessLayout.actionLabel('/inventory', 'Inventory'),
         showBackButton: false,
         actions: [
-          if (permissions.canMakeSales || permissions.canManageStock)
+          if (!isLocalWorkspace &&
+              (permissions.canMakeSales || permissions.canManageStock))
             IconButton(
               icon: const Icon(Icons.add_shopping_cart_rounded, size: 20),
               tooltip: 'Request Stock',
               onPressed: () => context.push('/inventory/request-stock'),
             ),
-          if (permissions.canManageStock) ...[
+          if (permissions.canManageStock)
             IconButton(
               icon: const Icon(Icons.inventory_rounded, size: 20),
               tooltip: 'Receive Stock',
               onPressed: () => _startReceiveStock(context),
             ),
+          if (!isLocalWorkspace && permissions.canManageStock)
             IconButton(
               icon: const Icon(Icons.assignment_outlined, size: 20),
               tooltip: 'Stock Requests',
               onPressed: () => context.push('/inventory/stock-requests'),
             ),
-          ],
           IconButton(
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh_rounded, size: 20),
@@ -377,7 +404,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       body: PageContainer(
         padding: EdgeInsets.zero,
         child: DefaultTabController(
-          length: canViewTransfers ? 3 : 2,
+          length: hasThirdTab ? 3 : 2,
           child: Column(
             children: [
               // Compact overview keeps the stock work area visible above the fold.
@@ -469,6 +496,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     const Tab(text: 'Stock'),
                     const Tab(text: 'Low Stock'),
                     if (canViewTransfers) const Tab(text: 'Transfers'),
+                    if (canViewLocalReceipts) const Tab(text: 'Receipts'),
                   ],
                 ),
               ),
@@ -480,6 +508,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     _buildLowStockTab(context, permissions),
                     if (canViewTransfers)
                       _buildTransfersTab(context, permissions),
+                    if (canViewLocalReceipts) _buildLocalReceiptsTab(context),
                   ],
                 ),
               ),
@@ -496,7 +525,63 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final updated = await context.push<bool>(
       '/inventory/batch-receive?productId=${Uri.encodeComponent(selected['id'] as String)}&productName=${Uri.encodeComponent(selected['name'] as String)}',
     );
-    if (updated == true && mounted) await _loadData(showLoading: false);
+    if (updated == true && mounted) {
+      await _loadData(showLoading: false);
+      _refreshLocalReceiptHistory();
+    }
+  }
+
+  void _refreshLocalReceiptHistory() {
+    if (!getIt<AuthService>().isLocalWorkspace || !mounted) return;
+    setState(() {
+      _localReceiptsFuture = getIt<AppDatabase>().getLocalStockReceiptHistory();
+    });
+  }
+
+  Widget _buildLocalReceiptsTab(BuildContext context) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _localReceiptsFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: DesignColors.brand),
+          );
+        }
+        if (snapshot.hasError) {
+          return EmptyState(
+            icon: Icons.receipt_long_rounded,
+            title: 'Couldn’t load stock receipts',
+            subtitle: 'Your saved stock is safe. Refresh to try again.',
+            iconColor: DesignColors.error,
+            actionLabel: 'Refresh',
+            onAction: _refreshLocalReceiptHistory,
+          );
+        }
+        final receipts = snapshot.data ?? const <Map<String, dynamic>>[];
+        if (receipts.isEmpty) {
+          return const EmptyState(
+            icon: Icons.inventory_2_outlined,
+            title: 'No receipts yet',
+            subtitle:
+                'Stock received on this device will appear here with its batch and cost details.',
+          );
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(
+            DesignSpacing.lg,
+            DesignSpacing.md,
+            DesignSpacing.lg,
+            DesignSpacing.massive + 4,
+          ),
+          itemCount: receipts.length,
+          separatorBuilder: (_, __) => const SizedBox(height: DesignSpacing.sm),
+          itemBuilder: (context, index) => _LocalStockReceiptCard(
+            receipt: receipts[index],
+            formatCurrency: _formatCurrency,
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildStockTab(
@@ -828,6 +913,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         );
                         if (updated == true && mounted) {
                           await _loadData(showLoading: false);
+                          _refreshLocalReceiptHistory();
                         }
                       },
                       height: 34,
@@ -914,7 +1000,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           ),
         ),
         // The restock suggestions screen existed but nothing linked to it.
-        if (permissions.canRecordRestock && _lowStockItems.isNotEmpty) ...[
+        if (permissions.canRecordRestock &&
+            !getIt<AuthService>().isLocalWorkspace &&
+            _lowStockItems.isNotEmpty) ...[
           const SizedBox(height: DesignSpacing.sm),
           OutlinedButton.icon(
             key: const ValueKey('open-restock-suggestions'),
@@ -1185,7 +1273,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
-                  if (permissions.canManageStock) ...[
+                  if (permissions.canManageStock &&
+                      !getIt<AuthService>().isLocalWorkspace) ...[
                     const SizedBox(height: 8),
                     Align(
                       alignment: Alignment.centerRight,
@@ -1923,6 +2012,173 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         }),
       );
     });
+  }
+}
+
+class _LocalStockReceiptCard extends StatelessWidget {
+  const _LocalStockReceiptCard({
+    required this.receipt,
+    required this.formatCurrency,
+  });
+
+  final Map<String, dynamic> receipt;
+  final String Function(double amount) formatCurrency;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+    final quantity = (receipt['totalQuantity'] as num?)?.toDouble() ?? 0;
+    final unit = receipt['unit']?.toString() ?? 'unit';
+    final batchCount = (receipt['batchCount'] as num?)?.toInt() ?? 1;
+    final costComplete = receipt['costComplete'] == true;
+    final receivedAt =
+        DateTime.tryParse(receipt['receivedAt']?.toString() ?? '')?.toLocal();
+    final dateLabel = receivedAt == null
+        ? 'Date unavailable'
+        : '${receivedAt.day}/${receivedAt.month}/${receivedAt.year} · '
+            '${receivedAt.hour.toString().padLeft(2, '0')}:'
+            '${receivedAt.minute.toString().padLeft(2, '0')}';
+    final supplierReferences =
+        receipt['supplierReferences']?.toString().trim() ?? '';
+
+    return Container(
+      padding: const EdgeInsets.all(DesignSpacing.md),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        border: Border.all(color: border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: DesignColors.success.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                ),
+                child: const Icon(Icons.inventory_2_outlined,
+                    color: DesignColors.success, size: 20),
+              ),
+              const SizedBox(width: DesignSpacing.sm + 2),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      receipt['productName']?.toString() ?? 'Product',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            color: titleColor,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(dateLabel,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: secondaryColor)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: DesignSpacing.xs),
+              Text(
+                kitCount(quantity, unit),
+                textAlign: TextAlign.end,
+                style: DesignType.numeric(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: DesignColors.brand,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: DesignSpacing.sm + 2),
+          Wrap(
+            spacing: DesignSpacing.sm,
+            runSpacing: DesignSpacing.xs,
+            children: [
+              _ReceiptMetaChip(
+                icon: Icons.layers_outlined,
+                label: '$batchCount ${batchCount == 1 ? 'batch' : 'batches'}',
+              ),
+              _ReceiptMetaChip(
+                icon: costComplete
+                    ? Icons.payments_outlined
+                    : Icons.info_outline_rounded,
+                label: costComplete
+                    ? 'Purchase ${formatCurrency((receipt['totalCost'] as num?)?.toDouble() ?? 0)}'
+                    : 'Cost not entered for every batch',
+                color:
+                    costComplete ? DesignColors.success : DesignColors.warning,
+              ),
+            ],
+          ),
+          if (supplierReferences.isNotEmpty) ...[
+            const SizedBox(height: DesignSpacing.sm),
+            Text(
+              'Supplier ref: $supplierReferences',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: secondaryColor),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ReceiptMetaChip extends StatelessWidget {
+  const _ReceiptMetaChip({
+    required this.icon,
+    required this.label,
+    this.color = DesignColors.textSecondary,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

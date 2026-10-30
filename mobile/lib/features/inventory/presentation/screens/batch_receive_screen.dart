@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:dio/dio.dart';
+import 'package:uuid/uuid.dart';
 import '../widgets/unit_selector_widget.dart';
 import '../../../../core/providers/api_provider.dart';
 import '../../../../core/services/auth_service.dart';
@@ -32,6 +33,7 @@ class BatchReceiveScreen extends ConsumerStatefulWidget {
 }
 
 class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
+  static const _uuid = Uuid();
   final _formKey = GlobalKey<FormState>();
   final List<BatchEntry> _batches = [];
   bool _isLoading = false;
@@ -44,6 +46,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
   /// Units in stock right now (in the base unit), shown so a receipt can be
   /// checked against what the shelf already holds.
   double? _onHand;
+  String? _localReceiptId;
 
   @override
   void initState() {
@@ -99,6 +102,54 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
   Future<void> _loadProductConfig() async {
     if (widget.productId == null) return;
 
+    if (getIt<AuthService>().isLocalWorkspace) {
+      try {
+        final db = getIt<AppDatabase>();
+        final product = await db.getProduct(widget.productId!);
+        if (product == null) {
+          if (mounted) {
+            setState(() => _isLoadingConfig = false);
+            showGlassSnackBar(
+              context,
+              'This product is no longer available in this shop. Go back and choose an active product.',
+              icon: Icons.error_outline_rounded,
+              color: DesignColors.error,
+            );
+            Navigator.of(context).pop();
+          }
+          return;
+        }
+        final localTiers = await db.getPricingTiersForProduct(product.id);
+        if (!mounted) return;
+        setState(() {
+          _resolvedProductName = product.name;
+          _unitConfig = UnitConfig(
+            baseUnit: product.unit,
+            extraTiers: localTiers
+                .map((tier) => UnitOption(
+                      name: tier.unit,
+                      conversionFactor: tier.quantityPerUnit,
+                    ))
+                .toList(),
+          );
+          _isLoadingConfig = false;
+        });
+        _ensureInitialBatch();
+      } catch (error) {
+        if (!mounted) return;
+        setState(() => _isLoadingConfig = false);
+        showGlassSnackBar(
+          context,
+          'Could not load this product from the local catalog.',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+        Navigator.of(context).pop();
+        debugPrint('Error loading local product config: $error');
+      }
+      return;
+    }
+
     try {
       final apiClient = ref.read(apiClientProvider);
       final product = await apiClient.getProduct(widget.productId!);
@@ -127,26 +178,40 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
         _ensureInitialBatch();
       }
     } catch (e) {
-      final localProduct = await getIt<AppDatabase>().getProduct(
-        widget.productId!,
-      );
-      final localTiers = await getIt<AppDatabase>()
-          .getPricingTiersForProduct(widget.productId!);
-      if (mounted) {
-        setState(() {
-          _resolvedProductName = localProduct?.name ?? _resolvedProductName;
-          _unitConfig = UnitConfig(
-            baseUnit: localProduct?.unit ?? 'piece',
-            extraTiers: localTiers
-                .map((t) => UnitOption(
-                      name: t.unit,
-                      conversionFactor: t.quantityPerUnit,
-                    ))
-                .toList(),
+      try {
+        final db = getIt<AppDatabase>();
+        final localProduct = await db.getProduct(widget.productId!);
+        final localTiers =
+            await db.getPricingTiersForProduct(widget.productId!);
+        if (mounted) {
+          setState(() {
+            _resolvedProductName = localProduct?.name ?? _resolvedProductName;
+            _unitConfig = UnitConfig(
+              baseUnit: localProduct?.unit ?? 'piece',
+              extraTiers: localTiers
+                  .map((t) => UnitOption(
+                        name: t.unit,
+                        conversionFactor: t.quantityPerUnit,
+                      ))
+                  .toList(),
+            );
+            _isLoadingConfig = false;
+          });
+          _ensureInitialBatch();
+        }
+      } catch (fallbackError) {
+        if (mounted) {
+          setState(() => _isLoadingConfig = false);
+          showGlassSnackBar(
+            context,
+            'Could not load product units. Check the connection and try again.',
+            icon: Icons.error_outline_rounded,
+            color: DesignColors.error,
           );
-          _isLoadingConfig = false;
-        });
-        _ensureInitialBatch();
+          Navigator.of(context).pop();
+        }
+        debugPrint(
+            'Error loading local product config fallback: $fallbackError');
       }
       debugPrint('Error loading product config: $e');
     }
@@ -235,15 +300,42 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
         };
       }).toList();
 
-      // Call API to receive batches
-      final apiClient = ref.read(apiClientProvider);
       final authService = getIt<AuthService>();
       final branchId = widget.branchId ?? authService.branchId;
 
       if (branchId == null || widget.productId == null) {
-        throw Exception('Missing branch ID or product ID');
+        throw StateError('Missing branch ID or product ID');
       }
 
+      final db = getIt<AppDatabase>();
+      if (authService.isLocalWorkspace) {
+        final result = await db.recordLocalStockReceipt(
+          receiptId: _localReceiptId ??= _uuid.v4(),
+          productId: widget.productId!,
+          branchId: branchId,
+          batches: batchesData,
+          receivedAt: DateTime.now(),
+        );
+        if (!mounted) return;
+        ref.invalidate(catalog_cache.filteredProductsProvider);
+        ref.invalidate(catalog_cache.favoriteProductsProvider);
+        final quantityReceived = result['totalQuantity'] as num;
+        final currentQuantity = result['currentQuantity'] as num;
+        final purchaseCostRecorded = result['purchaseCostRecorded'] == true;
+        showGlassSnackBar(
+          context,
+          'Received ${kitCount(quantityReceived, _unitConfig!.baseUnit)}. '
+          '${kitNumber(currentQuantity)} now on hand.'
+          '${purchaseCostRecorded ? '' : ' Add a cost price to every batch to include this purchase in profit figures.'}',
+          icon: Icons.check_circle_rounded,
+          color: DesignColors.success,
+        );
+        Navigator.of(context).pop(true);
+        return;
+      }
+
+      // Remote workspaces retain their provider-backed batch receiving flow.
+      final apiClient = ref.read(apiClientProvider);
       final result = await apiClient.receiveBatches({
         'branchId': branchId,
         'productId': widget.productId!,
@@ -252,7 +344,6 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
 
       // Inventory and product details render from Drift. Update that cache
       // before returning so a successful receipt is visible immediately.
-      final db = getIt<AppDatabase>();
       final existingStock =
           await db.getProductStock(widget.productId!, branchId);
       final currentQuantity = (result['currentQuantity'] as num?)?.toDouble() ??
@@ -771,6 +862,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                         }
                         final qty = double.tryParse(value);
                         if (qty == null) return 'Numbers only';
+                        if (!qty.isFinite) return 'Enter a valid quantity';
                         if (qty <= 0) return 'Must be more than 0';
                         return null;
                       },
@@ -990,6 +1082,16 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
+                      validator: (value) {
+                        final text = value?.trim() ?? '';
+                        if (text.isEmpty) return null;
+                        final cost = double.tryParse(text);
+                        if (cost == null || !cost.isFinite) {
+                          return 'Enter a valid cost';
+                        }
+                        if (cost < 0) return 'Cost cannot be negative';
+                        return null;
+                      },
                     ),
 
                     const SizedBox(height: 14),

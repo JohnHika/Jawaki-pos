@@ -17,6 +17,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/share_format_sheet.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/receipt_printer.dart';
+import '../../../../core/widgets/workspace_image.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -139,7 +140,12 @@ class ReceiptScreen extends ConsumerWidget {
             tooltip: 'Print receipt',
             onPressed: () => _printReceipt(context, receiptAsync.valueOrNull),
           ),
-          if (permissions.canVoidSales)
+          if (permissions.canVoidSales &&
+              receiptAsync.hasValue &&
+              (receiptAsync.valueOrNull?['status'] ?? '')
+                      .toString()
+                      .toUpperCase() !=
+                  'VOIDED')
             IconButton(
               tooltip: 'Void sale',
               icon: Container(
@@ -151,7 +157,11 @@ class ReceiptScreen extends ConsumerWidget {
                 child: const Icon(Icons.block_rounded,
                     size: 20, color: DesignColors.error),
               ),
-              onPressed: () => _voidSale(context, ref),
+              onPressed: () => _voidSale(
+                context,
+                ref,
+                receiptAsync.valueOrNull!,
+              ),
             ),
           const SizedBox(width: DesignSpacing.xs),
         ],
@@ -160,7 +170,8 @@ class ReceiptScreen extends ConsumerWidget {
       body: receiptAsync.when(
         data: (receipt) => Column(
           children: [
-            if (receipt['isSynced'] == false)
+            if (!getIt<AuthService>().isLocalWorkspace &&
+                receipt['isSynced'] == false)
               Container(
                 width: double.infinity,
                 margin: const EdgeInsets.fromLTRB(
@@ -207,18 +218,25 @@ class ReceiptScreen extends ConsumerWidget {
           summaryTotal: '',
           paper: null,
         ),
-        error: (e, _) => EmptyState(
-          icon: Icons.error_outline_rounded,
-          title: 'Failed to load receipt',
-          subtitle:
-              e is StateError ? e.message.toString() : loadErrorSubtitle(e),
-          actionLabel:
-              isPermissionDenied(e) || e is StateError ? null : 'Retry',
-          iconColor: DesignColors.error,
-          onAction: isPermissionDenied(e) || e is StateError
-              ? null
-              : () => ref.refresh(receiptProvider(saleId)),
-        ),
+        error: (e, _) {
+          final isMissingLocalReceipt = getIt<AuthService>().isLocalWorkspace &&
+              e is StateError &&
+              e.message == 'This receipt is not saved on this device.';
+          return EmptyState(
+            icon: Icons.error_outline_rounded,
+            title: isMissingLocalReceipt
+                ? 'Receipt not found on this device'
+                : 'Failed to load receipt',
+            subtitle:
+                e is StateError ? e.message.toString() : loadErrorSubtitle(e),
+            actionLabel:
+                isPermissionDenied(e) || e is StateError ? null : 'Retry',
+            iconColor: DesignColors.error,
+            onAction: isPermissionDenied(e) || e is StateError
+                ? null
+                : () => ref.refresh(receiptProvider(saleId)),
+          );
+        },
       ),
       bottomNavigationBar: canMakeSales
           ? SafeArea(
@@ -282,11 +300,11 @@ class ReceiptScreen extends ConsumerWidget {
           // receipt. Hidden if none is set.
           if (logoUrl != null && logoUrl.isNotEmpty) ...[
             Center(
-              child: Image.network(
-                logoUrl,
+              child: WorkspaceImage(
+                source: logoUrl,
                 height: DesignSpacing.xxl + 24,
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                placeholder: const SizedBox.shrink(),
               ),
             ),
             const SizedBox(height: DesignSpacing.md - 2),
@@ -470,11 +488,13 @@ class ReceiptScreen extends ConsumerWidget {
       b.writeln(lr('  Ref', ref.length > 20 ? ref.substring(0, 20) : ref));
     }
 
-    // Balance owed (credit / split-with-credit).
-    final owed = (receipt['outstandingBalance'] as num?)?.toDouble() ?? 0;
-    if (owed > 0.01) {
+    // Record the amount added at checkout; local collections are account-level
+    // and cannot be allocated back to this individual receipt.
+    final creditAdded =
+        (receipt['creditAmountAtSale'] as num?)?.toDouble() ?? 0;
+    if (creditAdded > 0.01) {
       b.writeln(rule);
-      b.writeln(lr('BALANCE OWED', money(owed)));
+      b.writeln(lr('CREDIT ADDED', money(creditAdded)));
       if (receipt['customerName'] != null) {
         b.writeln('  on ${receipt['customerName']}\'s account');
       }
@@ -569,9 +589,10 @@ class ReceiptScreen extends ConsumerWidget {
     } else {
       buffer.writeln('Paid by: $method');
     }
-    final owed = (receipt['outstandingBalance'] as num?)?.toDouble() ?? 0;
-    if (owed > 0.01) {
-      buffer.writeln('Balance owed: KES ${owed.toStringAsFixed(2)}');
+    final creditAdded =
+        (receipt['creditAmountAtSale'] as num?)?.toDouble() ?? 0;
+    if (creditAdded > 0.01) {
+      buffer.writeln('Credit added: KES ${creditAdded.toStringAsFixed(2)}');
     }
     buffer.writeln();
     buffer.writeln('Thank you for your purchase!');
@@ -584,8 +605,10 @@ class ReceiptScreen extends ConsumerWidget {
       WidgetRef ref, Map<String, dynamic> receipt) async {
     final items = receipt['items'] as List? ?? [];
     final identity = ref.read(tenantIdentityProvider);
-    final logoBytes =
-        await ExportDocumentService.fetchLogoBytes(identity.logoUrl);
+    final logoBytes = await ExportDocumentService.fetchLogoBytes(
+      identity.logoUrl,
+      allowNetwork: !getIt<AuthService>().isLocalWorkspace,
+    );
 
     final subtotal = ((receipt['subtotal'] as num?) ?? 0).toStringAsFixed(2);
     final discount = (receipt['discount'] as num?) ?? 0;
@@ -615,9 +638,11 @@ class ReceiptScreen extends ConsumerWidget {
     } else {
       summaryRows.add(['Payment', method]);
     }
-    final owed = (receipt['outstandingBalance'] as num?)?.toDouble() ?? 0;
-    if (owed > 0.01) {
-      summaryRows.add(['Balance owed', 'KES ${owed.toStringAsFixed(2)}']);
+    final creditAdded =
+        (receipt['creditAmountAtSale'] as num?)?.toDouble() ?? 0;
+    if (creditAdded > 0.01) {
+      summaryRows
+          .add(['Credit added', 'KES ${creditAdded.toStringAsFixed(2)}']);
     }
 
     // Per-item row: qty with unit label + per-unit-within-tier breakdown.
@@ -779,56 +804,194 @@ class ReceiptScreen extends ConsumerWidget {
   /// not deleted). Prompts for the reason, voids on the backend (restores
   /// stock server-side) when online, and marks the local sale VOIDED so the
   /// receipt immediately shows the VOIDED banner + reason.
-  Future<void> _voidSale(BuildContext context, WidgetRef ref) async {
+  Future<void> _voidSale(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> receipt,
+  ) async {
+    final auth = getIt<AuthService>();
     final reasonController = TextEditingController();
-    final reason = await showDialog<String>(
+    final paymentMethod =
+        (receipt['paymentMethod'] ?? 'CASH').toString().trim().toUpperCase();
+    final receiptTotal = (receipt['total'] as num?)?.toDouble() ?? 0;
+    final tenders = receipt['paymentTenders'] as List?;
+    final cashTenderAmount = paymentMethod == 'CASH'
+        ? receiptTotal
+        : paymentMethod == 'SPLIT'
+            ? (tenders ?? const [])
+                .whereType<Map>()
+                .where((tender) =>
+                    (tender['method'] ?? '').toString().toUpperCase() == 'CASH')
+                .fold<double>(
+                  0,
+                  (amount, tender) =>
+                      amount + ((tender['amount'] as num?)?.toDouble() ?? 0),
+                )
+            : 0;
+    var recordCashRefund = false;
+    String? reasonError;
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        icon: const Icon(Icons.block_rounded, color: DesignColors.error),
-        title: const Text('Void this sale?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'The sale is kept and marked VOIDED (not deleted), and stock is '
-              'returned. Please give a reason.',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          icon: const Icon(Icons.block_rounded, color: DesignColors.error),
+          title: const Text('Void this sale?'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'The receipt stays in the audit history and its stock is returned.',
+                ),
+                if (auth.isLocalWorkspace && cashTenderAmount > 0) ...[
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: recordCashRefund,
+                    onChanged: (value) => setDialogState(
+                      () => recordCashRefund = value ?? false,
+                    ),
+                    title: const Text('Cash was returned from the till'),
+                    subtitle: Text(
+                      'Record KES ${cashTenderAmount.toStringAsFixed(2)} as a till refund. Select this only if you physically returned the cash. A split sale records only its cash portion.',
+                    ),
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                  if (!recordCashRefund)
+                    const Text(
+                      'If no cash was handed back, the original cash stays in the till and will remain in the cash reconciliation.',
+                      style: TextStyle(color: DesignColors.textSecondary),
+                    ),
+                ] else if (auth.isLocalWorkspace) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'No till cash refund is available for this payment. Refund any M-Pesa or card payment through its original payment method.',
+                    style: TextStyle(color: DesignColors.textSecondary),
+                  ),
+                ] else ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Voiding does not issue a refund through the payment provider.',
+                    style: TextStyle(color: DesignColors.textSecondary),
+                  ),
+                ],
+                if (auth.isLocalWorkspace) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'For credit sales, voiding is blocked if a later customer collection exists or if active due dates would exceed the remaining customer balance. Customer collections and schedules are account-level, so review them before reversing a receipt.',
+                    style: TextStyle(color: DesignColors.textSecondary),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: reasonController,
+                  autofocus: true,
+                  minLines: 1,
+                  maxLines: 3,
+                  onChanged: (value) {
+                    if (reasonError != null && value.trim().isNotEmpty) {
+                      setDialogState(() => reasonError = null);
+                    }
+                  },
+                  decoration: InputDecoration(
+                    labelText: 'Reason for voiding',
+                    hintText: 'e.g. wrong item, customer changed mind',
+                    errorText: reasonError,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: reasonController,
-              autofocus: true,
-              minLines: 1,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Reason for voiding',
-                hintText: 'e.g. wrong item, customer changed mind',
-              ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Keep sale'),
+            ),
+            FilledButton(
+              style:
+                  FilledButton.styleFrom(backgroundColor: DesignColors.error),
+              onPressed: () {
+                final reason = reasonController.text.trim();
+                if (reason.isEmpty) {
+                  setDialogState(
+                    () => reasonError = 'Enter a reason to void this sale.',
+                  );
+                  return;
+                }
+                Navigator.pop(ctx, {
+                  'reason': reason,
+                  'recordCashRefund': recordCashRefund,
+                });
+              },
+              child: const Text('Void sale'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Keep sale'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: DesignColors.error),
-            onPressed: () {
-              final r = reasonController.text.trim();
-              if (r.isEmpty) return; // reason is mandatory
-              Navigator.pop(ctx, r);
-            },
-            child: const Text('Void sale'),
-          ),
-        ],
       ),
     );
 
+    final reason = result?['reason']?.toString();
+    recordCashRefund = result?['recordCashRefund'] == true;
     if (reason == null || !context.mounted) return;
 
     final db = getIt<AppDatabase>();
-    final userName = getIt<AuthService>().currentUser?['name'] as String?;
+    final userName = auth.currentUser?['name'] as String?;
+
+    if (auth.isLocalWorkspace) {
+      try {
+        await db.voidPendingSale(
+          saleId,
+          reason: reason,
+          voidedBy: userName,
+          guardUnallocatedCollections: true,
+          recordCashRefund: recordCashRefund,
+        );
+        ref.invalidate(receiptProvider(saleId));
+        if (context.mounted) {
+          showGlassSnackBar(
+            context,
+            recordCashRefund
+                ? 'Sale voided. The cash refund was recorded and stock returned.'
+                : cashTenderAmount > 0
+                    ? 'Sale voided. No cash refund was recorded; cash remains in the till.'
+                    : 'Sale voided. Any non-cash refund must be returned through its payment provider.',
+            icon: Icons.check_circle_outline_rounded,
+            color: DesignColors.success,
+          );
+        }
+      } catch (error) {
+        if (context.mounted) {
+          if (error is LocalSaleVoidConflict) {
+            await showDialog<void>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                icon: const Icon(
+                  Icons.info_outline_rounded,
+                  color: DesignColors.warning,
+                ),
+                title: const Text('Sale not voided'),
+                content: Text(error.message),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('Understood'),
+                  ),
+                ],
+              ),
+            );
+            return;
+          }
+          showGlassSnackBar(
+            context,
+            'Could not void the sale. The saved sale and stock were left unchanged.',
+            icon: Icons.error_outline_rounded,
+            color: DesignColors.error,
+          );
+        }
+      }
+      return;
+    }
 
     var queueVoidSync = false;
     // Void on the backend first when reachable. Authorization and validation

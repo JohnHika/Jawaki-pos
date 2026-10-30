@@ -14,6 +14,7 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/providers/business_layout_provider.dart';
+import '../../../../core/providers/local_workspace_capabilities.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../providers/cart_provider.dart';
 import '../providers/catalog_provider.dart';
@@ -126,7 +127,11 @@ class _POSScreenState extends ConsumerState<POSScreen> {
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
     final parkedSales = ref.watch(parkedSalesProvider);
+    final heldSalesRestoreWarning =
+        ref.watch(parkedSalesRestoreWarningProvider);
+    final heldSalesRestoring = ref.watch(parkedSalesIsRestoringProvider);
     final businessLayout = ref.watch(businessLayoutProvider);
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     ref.listen<BusinessLayoutConfig>(businessLayoutProvider, (_, next) {
       if (!next.effectiveShowPosCategories &&
           ref.read(selectedCategoryProvider) != null) {
@@ -148,7 +153,17 @@ class _POSScreenState extends ConsumerState<POSScreen> {
         .where((page) => page.id == _selectedProductPageId)
         .firstOrNull;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final configuredPosActions = businessLayout.effectivePosQuickActions
+    final availablePosActionIds =
+        businessLayout.effectivePosQuickActions.where((id) {
+      final path = businessLayoutPosAction(id)?.path;
+      return !isLocalWorkspace ||
+          path == null ||
+          LocalWorkspaceCapabilities.supportsPath(path);
+    }).toList(growable: true);
+    if (!availablePosActionIds.contains('cart')) {
+      availablePosActionIds.add('cart');
+    }
+    final configuredPosActions = availablePosActionIds
         .map((id) => MapEntry(
               id,
               _buildPosQuickAction(
@@ -159,6 +174,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 parkedSales: parkedSales,
                 showFavorites: showFavorites,
                 isDark: isDark,
+                isLocalWorkspace: isLocalWorkspace,
               ),
             ))
         .where((entry) => entry.value != null)
@@ -182,7 +198,9 @@ class _POSScreenState extends ConsumerState<POSScreen> {
               itemBuilder: (menuContext) => overflowPosActions.map((entry) {
                 final action = businessLayoutPosAction(entry.key);
                 final label = entry.key == 'held_sales'
-                    ? 'Held sales (${parkedSales.length})'
+                    ? heldSalesRestoring
+                        ? 'Held sales (loading…)'
+                        : 'Held sales (${parkedSales.length})'
                     : action == null
                         ? entry.key
                         : businessLayout.actionLabel(
@@ -235,13 +253,62 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                     ),
                   ),
                   const SizedBox(width: DesignSpacing.sm - 2),
-                  const Text(
-                    'Offline Mode — sales will sync when reconnected',
-                    style: TextStyle(
-                      fontSize: DesignType.chatMeta,
-                      fontWeight: FontWeight.w600,
-                      color: DesignColors.warning,
+                  getIt<AuthService>().isLocalWorkspace
+                      ? const Text(
+                          'Offline Mode — sales are saved on this device',
+                          style: TextStyle(
+                            fontSize: DesignType.chatMeta,
+                            fontWeight: FontWeight.w600,
+                            color: DesignColors.warning,
+                          ),
+                        )
+                      : const Text(
+                          'Offline Mode — sales will sync when reconnected',
+                          style: TextStyle(
+                            fontSize: DesignType.chatMeta,
+                            fontWeight: FontWeight.w600,
+                            color: DesignColors.warning,
+                          ),
+                        ),
+                ],
+              ),
+            ),
+          if (heldSalesRestoreWarning != null)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.fromLTRB(
+                DesignSpacing.lg,
+                DesignSpacing.sm,
+                DesignSpacing.lg,
+                0,
+              ),
+              padding: const EdgeInsets.all(DesignSpacing.md),
+              decoration: BoxDecoration(
+                color: DesignColors.warning.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                border: Border.all(
+                  color: DesignColors.warning.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    color: DesignColors.warning,
+                  ),
+                  const SizedBox(width: DesignSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      heldSalesRestoreWarning,
+                      style: const TextStyle(
+                        color: DesignColors.warning,
+                        fontSize: DesignType.chatMeta,
+                      ),
                     ),
+                  ),
+                  TextButton(
+                    onPressed: () => _showParkedSalesSheet(context),
+                    child: const Text('Details'),
                   ),
                 ],
               ),
@@ -374,7 +441,10 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                 icon: Icons.favorite_border_rounded,
                                 title: 'No favorites',
                                 subtitle: 'Tap heart on products to add')
-                            : ProductGrid(productsOverride: products),
+                            : ProductGrid(
+                                productsOverride: products,
+                                isLocalWorkspace: isLocalWorkspace,
+                              ),
                         loading: () => const Center(
                             child: CircularProgressIndicator(
                                 color: DesignColors.accent)),
@@ -394,6 +464,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                     catalogRefreshing: _catalogRefreshing,
                     catalogSyncFailed: _catalogSyncFailed,
                     isOffline: _isOffline,
+                    isLocalWorkspace: isLocalWorkspace,
                     onRetryCatalog: _refreshCatalog,
                   ),
           ),
@@ -474,12 +545,15 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     required List<ParkedSale> parkedSales,
     required bool showFavorites,
     required bool isDark,
+    required bool isLocalWorkspace,
   }) {
     final destination = businessLayoutPosAction(id);
     final path = destination?.path;
     if (path != null) {
       final permissions = ref.read(permissionsProvider);
-      if (!businessLayout.isActionVisible(path) ||
+      if ((isLocalWorkspace &&
+              !LocalWorkspaceCapabilities.supportsPath(path)) ||
+          !businessLayout.isActionVisible(path) ||
           !businessLayoutCanOpenPath(permissions, path)) {
         return null;
       }
@@ -595,6 +669,8 @@ class _POSScreenState extends ConsumerState<POSScreen> {
       default:
         final path = businessLayoutPosAction(id)?.path;
         if (path != null &&
+            (!getIt<AuthService>().isLocalWorkspace ||
+                LocalWorkspaceCapabilities.supportsPath(path)) &&
             ref.read(businessLayoutProvider).isActionVisible(path) &&
             businessLayoutCanOpenPath(ref.read(permissionsProvider), path)) {
           context.push(path);
@@ -609,13 +685,49 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     final nameCtrl = TextEditingController(text: cart.customerName ?? '');
     final phoneCtrl = TextEditingController();
     final db = getIt<AppDatabase>();
+    var customerQuery = nameCtrl.text.trim();
+    var customerSearchGeneration = 0;
+    var customerPickerClosed = false;
+    var customerPhoneEdited = false;
+    var customerCreatePending = false;
+    String? customerCreateError;
+    Future<List<Map<String, dynamic>>> customerSearchFuture =
+        customerQuery.length >= 2
+            ? db.searchCustomers(customerQuery)
+            : Future.value(const <Map<String, dynamic>>[]);
+
+    Future<List<Map<String, dynamic>>> searchCustomersAfterPause(
+      String query,
+      int generation,
+    ) async {
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+      if (generation != customerSearchGeneration) {
+        return const <Map<String, dynamic>>[];
+      }
+      final matches = await db.searchCustomers(query);
+      return generation == customerSearchGeneration
+          ? matches
+          : const <Map<String, dynamic>>[];
+    }
+
     if (cart.customerId != null) {
       db.getCustomer(cart.customerId!).then((c) {
-        if (c != null) phoneCtrl.text = c['phone'] as String? ?? '';
+        if (!customerPickerClosed && !customerPhoneEdited && c != null) {
+          phoneCtrl.text = c['phone'] as String? ?? '';
+        }
       });
     }
 
-    GlassBottomSheet.show(context, scrollable: true, child: StatefulBuilder(
+    void releaseCustomerPickerResources() {
+      if (customerPickerClosed) return;
+      customerPickerClosed = true;
+      customerSearchGeneration++;
+      nameCtrl.dispose();
+      phoneCtrl.dispose();
+    }
+
+    final customerPickerFuture = GlassBottomSheet.show<void>(context,
+        scrollable: true, child: StatefulBuilder(
       builder: (ctx, setSheet) {
         final isDark = Theme.of(ctx).brightness == Brightness.dark;
         final secondaryColor = isDark
@@ -654,7 +766,18 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                     ),
                     filled: true,
                   ),
-                  onChanged: (_) => setSheet(() {}),
+                  onChanged: (value) {
+                    customerQuery = value.trim();
+                    final generation = ++customerSearchGeneration;
+                    setSheet(() {
+                      customerSearchFuture = customerQuery.length < 2
+                          ? Future.value(const <Map<String, dynamic>>[])
+                          : searchCustomersAfterPause(
+                              customerQuery,
+                              generation,
+                            );
+                    });
+                  },
                 ),
                 const SizedBox(height: DesignSpacing.md - 2),
                 TextField(
@@ -670,14 +793,61 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                     ),
                     filled: true,
                   ),
-                  onChanged: (_) => setSheet(() {}),
+                  onChanged: (_) {
+                    customerPhoneEdited = true;
+                    setSheet(() {});
+                  },
                 ),
-                if (nameCtrl.text.trim().length >= 2)
+                if (customerCreateError != null) ...[
+                  const SizedBox(height: DesignSpacing.sm),
+                  Text(
+                    customerCreateError!,
+                    style: const TextStyle(color: DesignColors.error),
+                  ),
+                ],
+                if (customerQuery.length >= 2)
                   FutureBuilder<List<Map<String, dynamic>>>(
-                    future: db.searchCustomers(nameCtrl.text.trim()),
+                    future: customerSearchFuture,
                     builder: (_, snap) {
-                      final customers = snap.data ?? [];
-                      if (customers.isEmpty) return const SizedBox.shrink();
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: Center(
+                            child: SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: DesignColors.accent,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      if (snap.hasError) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Text(
+                            'Could not search saved customers. You can still create this one.',
+                            style: TextStyle(
+                              color: secondaryColor,
+                              fontSize: DesignType.chatMeta,
+                            ),
+                          ),
+                        );
+                      }
+                      final customers = snap.data ?? const [];
+                      if (customers.isEmpty) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Text(
+                            'No matching customers. You can create this one.',
+                            style: TextStyle(
+                              color: secondaryColor,
+                              fontSize: DesignType.chatMeta,
+                            ),
+                          ),
+                        );
+                      }
                       return Container(
                         margin: const EdgeInsets.only(top: DesignSpacing.sm),
                         padding: const EdgeInsets.symmetric(
@@ -736,36 +906,73 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                   Expanded(
                       flex: 2,
                       child: GradientButton(
-                          label: 'Create & select',
-                          onPressed: nameCtrl.text.trim().isEmpty
+                          label: customerCreatePending
+                              ? 'Saving…'
+                              : 'Create & select',
+                          onPressed: nameCtrl.text.trim().isEmpty ||
+                                  customerCreatePending
                               ? null
                               : () async {
-                                  final id = await db.insertOrGetCustomer(
-                                      const Uuid().v4(), nameCtrl.text.trim(),
-                                      phone: phoneCtrl.text.trim());
-                                  // Queue for cross-device sync
+                                  setSheet(() {
+                                    customerCreatePending = true;
+                                    customerCreateError = null;
+                                  });
+                                  final customerName = nameCtrl.text.trim();
+                                  final customerPhone = phoneCtrl.text.trim();
+                                  late final CustomerInsertOutcome outcome;
                                   try {
-                                    final syncService = getIt<SyncService>();
-                                    final storage = getIt<StorageService>();
-                                    final auth = getIt<AuthService>();
-                                    await syncService.queueSyncItem(
-                                      tableName: 'customers',
-                                      recordId: id,
-                                      action: SyncAction.create,
-                                      eventType: SyncEventType.customerCreated,
-                                      data: {
-                                        'id': id,
-                                        'name': nameCtrl.text.trim(),
-                                        'phone': phoneCtrl.text.trim(),
-                                      },
-                                      deviceId: storage.getDeviceId() ?? '',
-                                      userId: auth.userId ?? '',
+                                    outcome =
+                                        await db.insertOrGetCustomerWithStatus(
+                                      const Uuid().v4(),
+                                      customerName,
+                                      phone: customerPhone,
                                     );
-                                  } catch (_) {}
+                                    final auth = getIt<AuthService>();
+                                    if (!auth.isLocalWorkspace &&
+                                        outcome.created) {
+                                      // Only connected workspaces need a
+                                      // cross-device sync record.
+                                      try {
+                                        await getIt<SyncService>()
+                                            .queueSyncItem(
+                                          tableName: 'customers',
+                                          recordId: outcome.id,
+                                          action: SyncAction.create,
+                                          eventType:
+                                              SyncEventType.customerCreated,
+                                          data: {
+                                            'id': outcome.id,
+                                            'name': outcome.name,
+                                            'phone': customerPhone,
+                                          },
+                                          deviceId: getIt<StorageService>()
+                                                  .getDeviceId() ??
+                                              '',
+                                          userId: auth.userId ?? '',
+                                        );
+                                      } catch (_) {
+                                        // Local save remains usable if sync
+                                        // queueing is temporarily unavailable.
+                                      }
+                                    }
+                                  } catch (error) {
+                                    if (ctx.mounted) {
+                                      setSheet(() {
+                                        customerCreatePending = false;
+                                        customerCreateError = error
+                                                is StateError
+                                            ? error.message.toString()
+                                            : 'Could not save this customer. Please try again.';
+                                      });
+                                    }
+                                    return;
+                                  }
+                                  if (!ctx.mounted) return;
                                   ref.read(cartProvider.notifier).setCustomer(
-                                      id,
-                                      customerName: nameCtrl.text.trim());
-                                  if (context.mounted) Navigator.pop(context);
+                                        outcome.id,
+                                        customerName: outcome.name,
+                                      );
+                                  Navigator.pop(ctx);
                                 },
                           height: 44,
                           borderRadius: 12)),
@@ -773,6 +980,10 @@ class _POSScreenState extends ConsumerState<POSScreen> {
               ]),
         );
       },
+    ));
+    unawaited(customerPickerFuture.then<void>(
+      (_) => releaseCustomerPickerResources(),
+      onError: (Object _, StackTrace __) => releaseCustomerPickerResources(),
     ));
   }
 
@@ -810,10 +1021,15 @@ class _POSScreenState extends ConsumerState<POSScreen> {
   }
 
   void _showParkedSalesSheet(BuildContext context) {
-    GlassBottomSheet.show(context, initialSize: 0.55, maxSize: 0.85,
-        child: Consumer(
+    GlassBottomSheet.show(context,
+        title: 'Held sales',
+        initialSize: 0.55,
+        maxSize: 0.85,
+        scrollable: true, child: Consumer(
       builder: (ctx, ref, _) {
         final parked = ref.watch(parkedSalesProvider);
+        final restoreWarning = ref.watch(parkedSalesRestoreWarningProvider);
+        final restoring = ref.watch(parkedSalesIsRestoringProvider);
         final isDark = Theme.of(ctx).brightness == Brightness.dark;
         return Padding(
           padding: EdgeInsets.fromLTRB(
@@ -825,34 +1041,59 @@ class _POSScreenState extends ConsumerState<POSScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [
+                if (restoreWarning != null)
                   Container(
-                      padding: const EdgeInsets.all(DesignSpacing.sm),
-                      decoration: BoxDecoration(
-                          color: DesignColors.warning.withValues(alpha: 0.12),
-                          borderRadius:
-                              BorderRadius.circular(DesignSpacing.md - 2)),
-                      child: const Icon(Icons.pause_circle_filled_rounded,
-                          color: DesignColors.warning, size: 22)),
-                  const SizedBox(width: DesignSpacing.md - 2),
-                  Text('Held Sales (${parked.length})',
-                      style: TextStyle(
-                          fontSize: DesignSpacing.md + 6,
-                          fontWeight: FontWeight.w700,
-                          color: isDark
-                              ? DesignColors.darkTextPrimary
-                              : DesignColors.textPrimary)),
-                ]),
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: DesignSpacing.md),
+                    padding: const EdgeInsets.all(DesignSpacing.md),
+                    decoration: BoxDecoration(
+                      color: DesignColors.warning.withValues(alpha: 0.12),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                      border: Border.all(
+                        color: DesignColors.warning.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: Text(
+                      restoreWarning,
+                      style: const TextStyle(
+                        color: DesignColors.warning,
+                        fontSize: DesignType.chatMeta,
+                      ),
+                    ),
+                  ),
                 if (parked.isEmpty)
                   Padding(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: DesignSpacing.xxl + 16),
-                      child: Center(
-                          child: Text('No parked sales',
+                    padding: const EdgeInsets.symmetric(
+                        vertical: DesignSpacing.xxl + 16),
+                    child: Center(
+                      child: restoring
+                          ? const Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox.square(
+                                  dimension: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: DesignColors.accent,
+                                  ),
+                                ),
+                                SizedBox(height: DesignSpacing.md),
+                                Text('Restoring held sales…'),
+                              ],
+                            )
+                          : Text(
+                              restoreWarning == null
+                                  ? 'No parked sales'
+                                  : 'No held sales could be restored',
                               style: TextStyle(
-                                  color: isDark
-                                      ? DesignColors.darkTextTertiary
-                                      : DesignColors.textTertiary))))
+                                color: isDark
+                                    ? DesignColors.darkTextTertiary
+                                    : DesignColors.textTertiary,
+                              ),
+                            ),
+                    ),
+                  )
                 else
                   ...parked.map((s) {
                     final elapsed = DateTime.now().difference(s.parkedAt);
@@ -881,14 +1122,16 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                 tooltip: 'Resume held sale',
                                 icon: const Icon(Icons.play_arrow_rounded,
                                     color: DesignColors.success),
-                                onPressed: () {
-                                  _resumeHeldSale(ctx, ref, s);
-                                }),
+                                onPressed: restoreWarning != null || restoring
+                                    ? null
+                                    : () => _resumeHeldSale(ctx, ref, s)),
                             IconButton(
                                 tooltip: 'Delete held sale',
                                 icon: const Icon(Icons.delete_outline_rounded,
                                     color: DesignColors.error),
-                                onPressed: _resumingHeldSaleId != null
+                                onPressed: restoring ||
+                                        restoreWarning != null ||
+                                        _resumingHeldSaleId != null
                                     ? null
                                     : () async {
                                         final confirmed =
@@ -920,9 +1163,9 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                         }
                                       }),
                           ]),
-                          onTap: () {
-                            _resumeHeldSale(ctx, ref, s);
-                          },
+                          onTap: restoring || restoreWarning != null
+                              ? null
+                              : () => _resumeHeldSale(ctx, ref, s),
                         ));
                   }),
               ]),

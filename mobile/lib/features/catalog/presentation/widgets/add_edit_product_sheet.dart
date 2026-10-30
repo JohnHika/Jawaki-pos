@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:drift/drift.dart' show Value;
+import 'package:uuid/uuid.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/form_kit.dart';
@@ -11,7 +13,9 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
+import '../../../../core/services/axon_gateway_client.dart';
 import '../../../../core/services/storage_service.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../sales/presentation/providers/catalog_provider.dart'
     as catalog_cache;
@@ -63,12 +67,33 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   bool _trackInventory = true;
   bool _isSaving = false;
 
-  // Axon AI product recognition from the photo the owner just took.
+  // Axon AI product recognition only runs after the owner taps the explicit
+  // action below; selecting or saving a photo never sends it by itself.
   bool _aiLooking = false;
   Map<String, dynamic>? _aiSuggestion;
   String? _aiMessage;
 
   bool get isEditing => widget.product != null;
+
+  String? _validateNonNegativeNumber(String? value, {bool required = false}) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) return required ? 'Required' : null;
+    final parsed = double.tryParse(text);
+    if (parsed == null || !parsed.isFinite || parsed < 0) {
+      return 'Enter a valid amount of 0 or more';
+    }
+    return null;
+  }
+
+  String? _validatePositiveNumber(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) return null;
+    final parsed = double.tryParse(text);
+    if (parsed == null || !parsed.isFinite || parsed <= 0) {
+      return 'Enter a finite count greater than 0';
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -169,6 +194,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   }
 
   Future<void> _loadServerMinPrice() async {
+    if (getIt<AuthService>().isLocalWorkspace) return;
     try {
       final json = await getIt<ApiClient>().getProduct(widget.product!.id);
       final raw = json['minPrice'];
@@ -224,34 +250,109 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     return baseQty / factor;
   }
 
-  /// Sends the freshly-picked photo to Axon AI to recognise the product, so
-  /// the owner can fill the name/category/description in one tap. Never
-  /// blocks saving: any failure just means no suggestion is shown.
+  /// Sends a locally stored photo to the owner-configured Axon Gateway only
+  /// after explicit user action. No image is sent when the key is missing.
   Future<void> _identifyFromPhoto(String path) async {
-    if (isEditing) return;
+    if (_aiLooking) return;
     setState(() {
       _aiLooking = true;
       _aiSuggestion = null;
       _aiMessage = null;
     });
+
     try {
-      final bytes = await File(path).readAsBytes();
-      final result = await getIt<ApiClient>()
-          .identifyProductImage(imageBase64: base64Encode(bytes));
+      if (!getIt<AuthService>().isLocalWorkspace) {
+        throw const AxonGatewayException(
+          'Product photo recognition is available in the standalone workspace.',
+        );
+      }
+      if (path.toLowerCase().startsWith('http://') ||
+          path.toLowerCase().startsWith('https://')) {
+        throw const AxonGatewayException(
+          'This photo is only available online. Choose a photo saved on this device.',
+        );
+      }
+
+      final imageFile = File(path);
+      if (!await imageFile.exists()) {
+        throw const AxonGatewayException(
+          'This photo is no longer available on this device. Choose it again.',
+        );
+      }
+      if (await imageFile.length() > AxonGatewayClient.maxVisionImageBytes) {
+        throw const AxonGatewayException(
+          'This image is too large to analyze. Choose a smaller photo.',
+        );
+      }
+      final imageBytes = await imageFile.readAsBytes();
+      final configuredFields =
+          _industryFields.map((field) => field.key).toList();
+      final response = await AxonGatewayClient().vision(
+        prompt: 'Identify the retail product visible in this photo. Return '
+            'only one valid JSON object with keys: name (string or null), '
+            'description (string or null), category (string or null), and '
+            'attributes (object containing only clearly visible values for '
+            'these configured product fields: '
+            '${jsonEncode(configuredFields)}). Do not invent a price, cost, '
+            'stock quantity, barcode, brand, or text that is not visible. '
+            'Use null or an empty object when uncertain.',
+        imageBase64: base64Encode(imageBytes),
+        maxTokens: 400,
+      );
+      final suggestion = _parseAiProductSuggestion(response);
       if (!mounted) return;
       setState(() {
-        if (result['identified'] == true) {
-          _aiSuggestion = result;
-        } else {
-          _aiMessage = (result['reason'] as String?)?.trim().isNotEmpty == true
-              ? "Axon AI couldn't recognise a product here: ${result['reason']}"
-              : "Axon AI couldn't recognise a product in that photo.";
-        }
+        _aiSuggestion = suggestion;
+        _aiMessage = suggestion == null
+            ? 'Axon AI could not identify clear product details. You can still enter them yourself.'
+            : null;
       });
-    } catch (_) {
-      // AI offline or not on this plan — the form still works by hand.
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _aiMessage = error is AxonGatewayException
+            ? error.message
+            : 'Could not analyze this photo. Try again or enter the details yourself.';
+      });
     } finally {
       if (mounted) setState(() => _aiLooking = false);
+    }
+  }
+
+  Map<String, dynamic>? _parseAiProductSuggestion(String response) {
+    final jsonStart = response.indexOf('{');
+    final jsonEnd = response.lastIndexOf('}');
+    if (jsonStart < 0 || jsonEnd < jsonStart) {
+      throw const AxonGatewayException(
+        'Axon AI returned product details in an unreadable format. Try again.',
+      );
+    }
+    try {
+      final decoded = jsonDecode(response.substring(jsonStart, jsonEnd + 1));
+      if (decoded is! Map) {
+        throw const FormatException('Expected a product object.');
+      }
+      final suggestion = Map<String, dynamic>.from(decoded);
+      final name = suggestion['name']?.toString().trim();
+      if (name == null || name.isEmpty) return null;
+      suggestion['name'] = name;
+      for (final key in ['description', 'category']) {
+        final value = suggestion[key]?.toString().trim();
+        suggestion[key] = value == null || value.isEmpty ? null : value;
+      }
+      final rawAttributes = suggestion['attributes'];
+      suggestion['attributes'] = rawAttributes is Map
+          ? Map<String, dynamic>.from(rawAttributes)
+          : <String, dynamic>{};
+      return suggestion;
+    } on FormatException {
+      throw const AxonGatewayException(
+        'Axon AI returned product details in an unreadable format. Try again.',
+      );
+    } on TypeError {
+      throw const AxonGatewayException(
+        'Axon AI returned product details in an unreadable format. Try again.',
+      );
     }
   }
 
@@ -282,6 +383,17 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
         _descriptionController.text = description;
       }
       if (categoryId != null) _selectedCategoryId = categoryId;
+      final attributes = s['attributes'];
+      if (attributes is Map) {
+        for (final entry in _industryFieldControllers.entries) {
+          final value = attributes[entry.key]?.toString().trim();
+          if (entry.value.text.trim().isEmpty &&
+              value != null &&
+              value.isNotEmpty) {
+            entry.value.text = value;
+          }
+        }
+      }
       _aiSuggestion = null;
     });
   }
@@ -563,28 +675,23 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                   ),
                   const SizedBox(height: DesignSpacing.md + 2),
 
-                  // ── Lowest price ──────────────────────────────────────────
-                  TextFormField(
-                    controller: _minPriceController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    style: TextStyle(color: titleColor),
-                    decoration: kitFieldDecoration(
-                      context,
-                      label: 'Lowest price you will accept (optional)',
-                      prefixText: 'KES ',
-                      helper:
-                          'Per ${_unitPriceTiers[0].unit}. Cashiers cannot sell below this without a manager.',
+                  if (!getIt<AuthService>().isLocalWorkspace) ...[
+                    TextFormField(
+                      controller: _minPriceController,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      style: TextStyle(color: titleColor),
+                      decoration: kitFieldDecoration(
+                        context,
+                        label: 'Lowest price you will accept (optional)',
+                        prefixText: 'KES ',
+                        helper:
+                            'Per ${_unitPriceTiers[0].unit}. Cashiers cannot sell below this without a manager.',
+                      ),
+                      validator: _validateNonNegativeNumber,
                     ),
-                    validator: (v) {
-                      final t = (v ?? '').trim();
-                      if (t.isEmpty) return null;
-                      return double.tryParse(t) == null
-                          ? 'Enter a number'
-                          : null;
-                    },
-                  ),
-                  const SizedBox(height: DesignSpacing.md + 2),
+                    const SizedBox(height: DesignSpacing.md + 2),
+                  ],
 
                   // ── Reorder Point ─────────────────────────────────────────
                   if (_trackInventory) ...[
@@ -685,12 +792,31 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                     initialImageUrl: _imageUrl,
                     type: 'product',
                     label: 'Add $entityLabelLower image (optional)',
-                    onPhotoPicked: _identifyFromPhoto,
                     onImageChanged: (url, publicId) => setState(() {
                       _imageUrl = url;
                       _imagePublicId = publicId;
                     }),
                   ),
+                  if (getIt<AuthService>().isLocalWorkspace &&
+                      _imageUrl != null &&
+                      !_imageUrl!.startsWith('http://') &&
+                      !_imageUrl!.startsWith('https://')) ...[
+                    const SizedBox(height: DesignSpacing.sm),
+                    Text(
+                      'The photo stays on this device unless you choose to send it to Axon AI for product recognition.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: DesignSpacing.xs),
+                    OutlinedButton.icon(
+                      onPressed: _aiLooking
+                          ? null
+                          : () => _identifyFromPhoto(_imageUrl!),
+                      icon: const Icon(Icons.auto_awesome_rounded),
+                      label: Text(_aiLooking
+                          ? 'Analyzing photo…'
+                          : 'Identify with Axon AI'),
+                    ),
+                  ],
                   const SizedBox(height: DesignSpacing.xxl),
                 ],
               ),
@@ -769,14 +895,22 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
         ),
       ),
       padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.cloud_off_rounded, color: DesignColors.error, size: 20),
-          SizedBox(width: DesignSpacing.md),
+          Icon(
+            getIt<AuthService>().isLocalWorkspace
+                ? Icons.storage_rounded
+                : Icons.cloud_off_rounded,
+            color: DesignColors.error,
+            size: 20,
+          ),
+          const SizedBox(width: DesignSpacing.md),
           Expanded(
             child: Text(
-              'Couldn\'t load categories. Check your connection.',
-              style: TextStyle(
+              getIt<AuthService>().isLocalWorkspace
+                  ? 'Couldn’t read saved categories on this device. Try again.'
+                  : 'Couldn\'t load categories. Check your connection.',
+              style: const TextStyle(
                 color: DesignColors.error,
                 fontSize: 13,
               ),
@@ -789,68 +923,165 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
 
   Future<void> _saveProduct() async {
     if (!_formKey.currentState!.validate()) return;
+    final units = _unitPriceTiers
+        .map((tier) => tier.unit.trim().toLowerCase())
+        .toList(growable: false);
+    if (units.toSet().length != units.length) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Choose a different unit for each price tier.'),
+        ),
+      );
+      return;
+    }
     setState(() => _isSaving = true);
-    final apiClient = getIt<ApiClient>();
-    final storageService = getIt<StorageService>();
-    final requestTenantId = storageService.getTenantId();
-    final requestBranchId = storageService.getBranchId();
-    final requestApiBaseUrl = apiClient.baseUrl;
-    final description = _descriptionController.text.trim().isEmpty
-        ? null
-        : _descriptionController.text.trim();
-    final clearImage =
-        isEditing && widget.product?.imageUrl != null && _imageUrl == null;
-
-    final primary = _unitPriceTiers[0];
-    final bulkTiers = _unitPriceTiers.sublist(1);
-
-    final primaryPrice = double.parse(primary.priceController.text.trim());
-
-    // Every tier beyond the primary — any number of them — with its real,
-    // directly-entered price and conversion count (how many primary units
-    // make up one of the tier's unit; entered directly, not derived from
-    // price, since bulk pricing often includes a discount).
-    final pricingTiers = <Map<String, dynamic>>[];
-    for (final tier in bulkTiers) {
-      final tierPrice = double.tryParse(tier.priceController.text.trim());
-      if (tierPrice == null) continue;
-      // The conversion count is optional in the UI -- a priced tier
-      // shouldn't be silently dropped just because this was left blank.
-      // Default to 1 (1:1 with the primary unit) until the admin sets a
-      // real count.
-      final tierQty = double.tryParse(tier.qtyController.text.trim()) ?? 1;
-      pricingTiers.add({
-        'unit': tier.unit,
-        'quantityPerUnit': tierQty,
-        'price': tierPrice,
-      });
-    }
-
-    // Convert the reorder point from whichever tier unit was selected back
-    // into base units for storage, using that tier's real conversion count.
-    int? minStock;
-    final minStockText = _minStockController.text.trim();
-    if (minStockText.isNotEmpty) {
-      final enteredQty = double.parse(minStockText);
-      double minStockBase = enteredQty;
-      if (_minStockUnit != primary.unit) {
-        final matchingTier = bulkTiers.where((t) => t.unit == _minStockUnit);
-        if (matchingTier.isNotEmpty) {
-          final factor =
-              double.tryParse(matchingTier.first.qtyController.text.trim());
-          minStockBase = enteredQty * (factor ?? 1);
-        }
-      }
-      minStock = minStockBase.round();
-    }
-
-    final minPriceText = _minPriceController.text.trim();
-    final minPrice = double.tryParse(minPriceText);
-    // Emptying a field that had a value means "remove the floor".
-    final clearMinPrice =
-        isEditing && minPriceText.isEmpty && _serverMinPrice != null;
-
     try {
+      final apiClient = getIt<ApiClient>();
+      final storageService = getIt<StorageService>();
+      final requestTenantId = storageService.getTenantId();
+      final requestBranchId = storageService.getBranchId();
+      final requestApiBaseUrl = apiClient.baseUrl;
+      final description = _descriptionController.text.trim().isEmpty
+          ? null
+          : _descriptionController.text.trim();
+      final clearImage =
+          isEditing && widget.product?.imageUrl != null && _imageUrl == null;
+
+      final primary = _unitPriceTiers[0];
+      final bulkTiers = _unitPriceTiers.sublist(1);
+
+      final primaryPrice = double.tryParse(primary.priceController.text.trim());
+      if (primaryPrice == null || !primaryPrice.isFinite || primaryPrice < 0) {
+        throw StateError('Enter a valid primary price of 0 or more.');
+      }
+
+      // Every tier beyond the primary — any number of them — with its real,
+      // directly-entered price and conversion count (how many primary units
+      // make up one of the tier's unit; entered directly, not derived from
+      // price, since bulk pricing often includes a discount).
+      final pricingTiers = <Map<String, dynamic>>[];
+      for (final tier in bulkTiers) {
+        final tierPrice = double.tryParse(tier.priceController.text.trim());
+        if (tierPrice == null || !tierPrice.isFinite || tierPrice < 0) {
+          throw StateError('Check the price for ${tier.unit}.');
+        }
+        // The conversion count is optional in the UI -- a priced tier
+        // shouldn't be silently dropped just because this was left blank.
+        // Default to 1 (1:1 with the primary unit) until the admin sets a
+        // real count.
+        final qtyText = tier.qtyController.text.trim();
+        final tierQty = qtyText.isEmpty ? 1.0 : double.tryParse(qtyText);
+        if (tierQty == null || !tierQty.isFinite || tierQty <= 0) {
+          throw StateError('Enter a valid unit count for ${tier.unit}.');
+        }
+        pricingTiers.add({
+          'unit': tier.unit,
+          'quantityPerUnit': tierQty,
+          'price': tierPrice,
+        });
+      }
+
+      // Convert the reorder point from whichever tier unit was selected back
+      // into base units for storage, using that tier's real conversion count.
+      int? minStock;
+      final minStockText = _minStockController.text.trim();
+      if (minStockText.isNotEmpty) {
+        final enteredQty = double.tryParse(minStockText);
+        if (enteredQty == null || !enteredQty.isFinite || enteredQty < 0) {
+          throw StateError('Enter a valid low-stock quantity of 0 or more.');
+        }
+        double minStockBase = enteredQty;
+        if (_minStockUnit != primary.unit) {
+          final matchingTier = bulkTiers.where((t) => t.unit == _minStockUnit);
+          if (matchingTier.isNotEmpty) {
+            final factorText = matchingTier.first.qtyController.text.trim();
+            final factor =
+                factorText.isEmpty ? 1.0 : double.tryParse(factorText);
+            if (factor == null || !factor.isFinite || factor <= 0) {
+              throw StateError(
+                  'Enter a valid unit count before setting its low-stock level.');
+            }
+            minStockBase = enteredQty * factor;
+          }
+        }
+        // Product.minStock is an integer in both SQLite and the shared API.
+        // Reject overflow before round() so the form can recover cleanly.
+        if (!minStockBase.isFinite || minStockBase > 2147483647) {
+          throw StateError('The low-stock quantity is too large.');
+        }
+        minStock = minStockBase.round();
+      }
+
+      final minPriceText = _minPriceController.text.trim();
+      final minPrice =
+          minPriceText.isEmpty ? null : double.tryParse(minPriceText);
+      if (minPriceText.isNotEmpty &&
+          (minPrice == null || !minPrice.isFinite || minPrice < 0)) {
+        throw StateError('Enter a valid minimum price of 0 or more.');
+      }
+      // Emptying a field that had a value means "remove the floor".
+      final clearMinPrice =
+          isEditing && minPriceText.isEmpty && _serverMinPrice != null;
+
+      if (getIt<AuthService>().isLocalWorkspace) {
+        final database = getIt<AppDatabase>();
+        final branchId = storageService.getBranchId();
+        if (branchId == null || branchId.isEmpty) {
+          throw StateError('The local shop branch is missing. Reopen setup.');
+        }
+        final productId = widget.product?.id ?? const Uuid().v4();
+        final categoryId =
+            _selectedCategoryId ?? await database.ensureLocalDefaultCategory();
+        final now = DateTime.now();
+        final sku = _skuController.text.trim().isNotEmpty
+            ? _skuController.text.trim()
+            : 'CB-${productId.substring(0, 8).toUpperCase()}';
+        final metadata = _productMetadataForSave();
+        final localTiers = <ProductPricingTiersCompanion>[
+          for (var i = 0; i < pricingTiers.length; i++)
+            ProductPricingTiersCompanion.insert(
+              id: '$productId-tier-${i + 1}',
+              productId: productId,
+              unit: pricingTiers[i]['unit'] as String,
+              quantityPerUnit:
+                  (pricingTiers[i]['quantityPerUnit'] as num).toDouble(),
+              price: (pricingTiers[i]['price'] as num).toDouble(),
+              sortOrder: Value(i + 1),
+            ),
+        ];
+        await database.saveLocalProduct(
+          productId: productId,
+          branchId: branchId,
+          tiers: localTiers,
+          product: ProductsCompanion.insert(
+            id: productId,
+            sku: sku,
+            name: _nameController.text.trim(),
+            description: Value(description),
+            metadata: Value(jsonEncode(metadata)),
+            categoryId: categoryId,
+            price: primaryPrice,
+            costPrice: Value(widget.product?.costPrice),
+            unit: Value(primary.unit),
+            imageUrl: Value(_imageUrl),
+            isActive: Value(widget.product?.isActive ?? true),
+            trackInventory: Value(_trackInventory),
+            allowFractions: Value(_allowFractions),
+            minStock: Value(_trackInventory
+                ? (minStock ?? widget.product?.minStock ?? 0)
+                : 0),
+            createdAt: widget.product?.createdAt ?? now,
+            updatedAt: now,
+          ),
+        );
+        if (!mounted) return;
+        ref.invalidate(catalog_cache.filteredProductsProvider);
+        ref.invalidate(catalog_cache.favoriteProductsProvider);
+        ref.invalidate(catalog_cache.categoriesProvider);
+        Navigator.pop(context);
+        return;
+      }
+
       Map<String, dynamic> savedProduct;
       if (isEditing) {
         savedProduct = await apiClient.updateProduct(
@@ -987,11 +1218,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
               contentPadding: const EdgeInsets.symmetric(
                   horizontal: DesignSpacing.lg, vertical: 14),
             ),
-            validator: (v) {
-              if (v == null || v.trim().isEmpty) return null;
-              if (double.tryParse(v.trim()) == null) return 'Invalid number';
-              return null;
-            },
+            validator: _validateNonNegativeNumber,
           ),
         ),
         const SizedBox(width: DesignSpacing.md),
@@ -1222,15 +1449,10 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                         horizontal: DesignSpacing.md,
                         vertical: DesignSpacing.md),
                   ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) {
-                      return 'Required';
-                    }
-                    if (double.tryParse(v.trim()) == null) {
-                      return 'Invalid';
-                    }
-                    return null;
-                  },
+                  validator: (v) => _validateNonNegativeNumber(
+                    v,
+                    required: true,
+                  ),
                 ),
               ),
               // Delete button (not on primary row)
@@ -1313,14 +1535,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
               // Optional: only validate the format when something was
               // typed. A blank value is fine -- _saveProduct() defaults
               // the conversion count to 1 rather than dropping the tier.
-              validator: (v) {
-                if (v == null || v.trim().isEmpty) return null;
-                final parsed = double.tryParse(v.trim());
-                if (parsed == null || parsed <= 0) {
-                  return 'Enter a count greater than 0';
-                }
-                return null;
-              },
+              validator: _validatePositiveNumber,
             ),
           ),
         // Label below each row
@@ -1444,11 +1659,21 @@ class _AiProductCard extends StatelessWidget {
     String? detail;
     final s = suggestion;
     if (s != null) {
-      detail = [
-        for (final key in ['brand', 'category', 'size'])
-          if ((s[key] as String?)?.trim().isNotEmpty == true)
-            (s[key] as String).trim(),
-      ].join(' · ');
+      final details = <String>[
+        if ((s['category'] as String?)?.trim().isNotEmpty == true)
+          (s['category'] as String).trim(),
+      ];
+      final attributes = s['attributes'];
+      if (attributes is Map) {
+        details.addAll(
+          attributes.entries
+              .where(
+                  (entry) => entry.value?.toString().trim().isNotEmpty == true)
+              .take(3)
+              .map((entry) => '${entry.key}: ${entry.value}'),
+        );
+      }
+      detail = details.join(' · ');
     }
 
     return Container(
@@ -1493,6 +1718,19 @@ class _AiProductCard extends StatelessWidget {
                             Text(detail,
                                 style: theme.textTheme.bodySmall
                                     ?.copyWith(color: secondary)),
+                          if ((s['description'] as String?)?.isNotEmpty == true)
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                top: DesignSpacing.xs,
+                              ),
+                              child: Text(
+                                s['description'] as String,
+                                style: theme.textTheme.bodySmall
+                                    ?.copyWith(color: secondary),
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                           const SizedBox(height: DesignSpacing.sm),
                           FilledButton.icon(
                             onPressed: onUse,

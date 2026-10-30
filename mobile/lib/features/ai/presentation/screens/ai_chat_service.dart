@@ -1,22 +1,14 @@
-import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+
+import 'package:axon_pos/core/services/axon_gateway_client.dart';
 import 'package:axon_pos/core/database/app_database.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
-import 'package:axon_pos/core/services/connectivity_service.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
+import 'package:intl/intl.dart';
 import 'package:axon_pos/core/di/injection.dart';
-import 'package:axon_pos/core/network/api_client.dart';
-import 'ai_chat_prefs.dart';
+import 'package:uuid/uuid.dart';
 
-/// Thrown when the backend rejects an AI request with 402 Payment
-/// Required — this branch has no active AI subscription.
-class AiSubscriptionRequiredException implements Exception {
-  const AiSubscriptionRequiredException();
-}
-
-/// A single AskUserQuestion question, matching the backend/gateway schema
+/// A single AskUserQuestion question, matching the Axon Gateway schema
 /// (question/header/options[label,description]/multiSelect).
 class AiPendingQuestion {
   final String question;
@@ -139,7 +131,8 @@ class AiFileAttachment {
     return AiFileAttachment(
       base64: (json['base64'] ?? '').toString(),
       filename: (json['filename'] ?? 'report').toString(),
-      contentType: (json['contentType'] ?? 'application/octet-stream').toString(),
+      contentType:
+          (json['contentType'] ?? 'application/octet-stream').toString(),
     );
   }
 }
@@ -157,29 +150,86 @@ class AiSendResult {
 }
 
 class AiChatService {
-  static const _maxMessagesSent = 24;
   static const _maxMessageChars = 4000;
+  static const _maxToolCallsPerTurn = 4;
+  static const Uuid _uuid = Uuid();
+  static const List<Map<String, dynamic>> _localReadOnlyTools = [
+    {
+      'name': 'get_today_summary',
+      'description': 'Read this device’s saved sales totals for today.',
+      'input_schema': {
+        'type': 'object',
+        'properties': <String, dynamic>{},
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'get_low_stock',
+      'description':
+          'List local active products at or below their reorder level.',
+      'input_schema': {
+        'type': 'object',
+        'properties': <String, dynamic>{},
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'get_top_products',
+      'description':
+          'Read the best-selling products in the local sales history for a bounded period.',
+      'input_schema': {
+        'type': 'object',
+        'properties': {
+          'days': {
+            'type': 'integer',
+            'minimum': 1,
+            'maximum': 30,
+            'description':
+                'Number of recent calendar days, from 1 to 30. Defaults to 7.',
+          },
+        },
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'search_products',
+      'description':
+          'Search this device’s local product catalog by name or SKU. Never search for people.',
+      'input_schema': {
+        'type': 'object',
+        'properties': {
+          'query': {
+            'type': 'string',
+            'minLength': 1,
+            'maxLength': 80,
+          },
+        },
+        'required': ['query'],
+        'additionalProperties': false,
+      },
+    },
+  ];
   AiChatService._internal();
   static final AiChatService _instance = AiChatService._internal();
   factory AiChatService() => _instance;
 
+  /// The only live AI transport is the owner-keyed Axon Gateway client.
+  bool get gatewayRequestsEnabled => true;
+
+  Future<bool> isGatewayConfigured() => _gateway.isConfigured();
+
   final List<Map<String, String>> _messages = [];
   final Map<String, dynamic> _storeInfo = {};
+  final AxonGatewayClient _gateway = AxonGatewayClient();
 
   /// The current paused agent turn awaiting the user, if any. Cleared once
   /// resolved (answered/confirmed/declined) or when a new conversation
   /// starts.
   AiPendingTurn? pendingTurn;
 
-  /// The AI's current live task checklist (TodoWrite), echoed back on every
-  /// request so the model can see/update it without server-side session
-  /// state. Cleared on a new conversation.
+  /// The AI's current live task checklist (TodoWrite), echoed back on each
+  /// gateway turn. Cleared on a new conversation.
   List<AiTodoItem> todos = [];
-
-  /// Use the same canonical server address as login, sync, and updates.
-  /// Previously AI could silently target a different server after Settings
-  /// changed the endpoint, causing confusing authenticated-chat failures.
-  String get _baseUrl => getIt<ApiClient>().baseUrl;
 
   String get branchId {
     final explicitBranchId = _storeInfo['branchId'] as String?;
@@ -189,25 +239,9 @@ class AiChatService {
     return getIt<StorageService>().getBranchId() ?? '';
   }
 
-  // The AI endpoints are now JWT-guarded (shared per-shop history is scoped
-  // by the authenticated tenant), so every request must carry the bearer
-  // token. This service uses raw http (not the Dio client), so the header
-  // is attached explicitly here.
-  Map<String, String> _headers({bool json = true}) {
-    final token = getIt<AuthService>().accessToken;
-    return {
-      if (json) 'Content-Type': 'application/json',
-      'X-Branch-Id': branchId,
-      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
-    };
-  }
-
   List<Map<String, String>> get messages => List.unmodifiable(_messages);
 
-  /// The tenant's display name, for use in exports (PDF transcript header)
-  /// outside this service — mirrors the same lookup [_buildBusinessContext]
-  /// sends to the AI, so the exported document and the AI's own view of the
-  /// business agree.
+  /// The business display name used in exports (PDF transcript header).
   String get companyName {
     final user = getIt<StorageService>().getUser() ?? {};
     final tenant = user['tenant'] is Map<String, dynamic>
@@ -228,83 +262,25 @@ class AiChatService {
     todos = [];
   }
 
-  /// Loads the shop's shared AI conversation from the backend so every
-  /// staff member sees the same thread. Called when the chat screen opens.
-  /// Silent no-op on failure (offline/new tenant) — the in-memory list
-  /// remains whatever it was.
-  Future<void> loadSharedHistory() async {
-    try {
-      final response = await http
-          .get(
-            Uri.parse('$_baseUrl/ai/conversation?branchId=$branchId'),
-            headers: _headers(json: false),
-          )
-          .timeout(const Duration(seconds: 10));
-      if (response.statusCode != 200) return;
-      final data = jsonDecode(response.body);
-      final msgs = data['data']?['messages'] as List?;
-      if (msgs == null) return;
-      pendingTurn = null;
-      todos = [];
-      _messages
-        ..clear()
-        ..addAll(msgs.map((m) => {
-              'id': (m['id'] ?? '').toString(),
-              'role': (m['role'] ?? 'assistant').toString(),
-              'content': (m['content'] ?? '').toString(),
-            }));
-    } catch (e) {
-      if (!kReleaseMode) debugPrint('[AiChat] Load shared history error: $e');
-    }
-  }
+  /// Conversations stay in memory on this install. Never fetch shared history
+  /// from the retired POS service.
+  Future<void> loadSharedHistory() async {}
 
-  /// Archives the shop's shared thread on the backend and clears locally,
-  /// so "New conversation" starts fresh for everyone.
+  /// Starts a fresh on-device conversation.
   Future<void> startNewSharedConversation() async {
-    _messages.clear();
-    pendingTurn = null;
-    todos = [];
-    try {
-      await http
-          .post(
-            Uri.parse('$_baseUrl/ai/conversation/new'),
-            headers: _headers(),
-            body: jsonEncode({'branchId': branchId}),
-          )
-          .timeout(const Duration(seconds: 10));
-    } catch (e) {
-      if (!kReleaseMode) debugPrint('[AiChat] New conversation error: $e');
-    }
+    clearHistory();
   }
 
-  /// Drops every message from [index] onward, locally and (best-effort) on
-  /// the shared backend thread so every staff member's view stays in sync —
-  /// used by "edit & resubmit", "regenerate", and "rewind". The anchor for
-  /// the backend truncate is the message *at* [index] (the first one being
-  /// dropped): the server removes it and everything created at or after it.
+  /// Drops every message from [index] onward in the on-device conversation.
   Future<void> truncateFrom(int index) async {
     if (index < 0 || index >= _messages.length) return;
-    final anchorId = _messages[index]['id'];
     _messages.removeRange(index, _messages.length);
-
-    if (anchorId == null || anchorId.isEmpty) return;
-    try {
-      await http
-          .post(
-            Uri.parse('$_baseUrl/ai/conversation/truncate'),
-            headers: _headers(),
-            body: jsonEncode({'branchId': branchId, 'messageId': anchorId}),
-          )
-          .timeout(const Duration(seconds: 10));
-    } catch (e) {
-      if (!kReleaseMode) debugPrint('[AiChat] Truncate error: $e');
-    }
   }
 
   void addUserMessage(String content) {
     final normalized = content.trim();
     _messages.add({
-      'id': '',
+      'id': _uuid.v4(),
       'role': 'user',
       'content': normalized.substring(
         0,
@@ -313,28 +289,7 @@ class AiChatService {
     });
   }
 
-  /// The backend's ChatMessageDto only knows `role`/`content` — sending the
-  /// local-only `id` field would trip the global ValidationPipe's
-  /// `forbidNonWhitelisted` and 400 the request.
-  List<Map<String, String>> get _wireMessages => _messages
-      .skip(
-        (_messages.length - _maxMessagesSent)
-            .clamp(0, _messages.length)
-            .toInt(),
-      )
-      .map((m) => {
-            'role': m['role']!,
-            'content': (m['content'] ?? '').substring(
-              0,
-              (m['content'] ?? '').length.clamp(0, _maxMessageChars).toInt(),
-            ),
-          })
-      .toList();
-
-  /// Re-runs the last AI response: drops it (and, if the very last message,
-  /// nothing else) from the shared thread, then resends the preceding user
-  /// question fresh. No-op if the conversation doesn't end with an
-  /// assistant reply (nothing to regenerate) or is empty.
+  /// Re-runs the last AI response through the configured Axon Gateway.
   Future<AiSendResult> regenerateLast() async {
     if (_messages.isEmpty || _messages.last['role'] != 'assistant') {
       return AiSendResult(reply: null);
@@ -343,16 +298,15 @@ class AiChatService {
     if (lastUserIndex == -1) return AiSendResult(reply: null);
 
     final question = _messages[lastUserIndex]['content'] ?? '';
-    // Truncate back to (and including) that user turn — it gets re-added
-    // by sendMessage — so the backend thread and local list both drop the
-    // stale assistant reply plus this duplicate user turn.
+    // Truncate back to (and including) that user turn — it gets re-added by
+    // sendMessage so local history does not duplicate the question.
     await truncateFrom(lastUserIndex);
     return sendMessage(content: question);
   }
 
   /// Rewinds the conversation back to (and excluding) the message at
-  /// [index]: everything from that point on is dropped, locally and on the
-  /// shared backend thread. If the anchor was a user message, the caller
+  /// [index]: everything from that point on is dropped locally. If the anchor
+  /// was a user message, the caller
   /// typically repopulates the input with its content so the user can
   /// retype/resend from there (mirrors "edit & resubmit" but reachable from
   /// any earlier message, not just the latest).
@@ -360,7 +314,7 @@ class AiChatService {
 
   Future<AiSendResult> sendMessage({
     required String content,
-    String context = 'general',
+    void Function(String accumulatedText)? onStreamingText,
   }) async {
     final normalizedContent = content.trim();
     if (normalizedContent.isEmpty) return AiSendResult(reply: null);
@@ -368,342 +322,326 @@ class AiChatService {
     pendingTurn = null;
 
     try {
-      final businessContext = _buildBusinessContext();
-      final dataContext = await _buildDataContext();
+      final reply =
+          await _runGatewayAgentTurn(onStreamingText: onStreamingText);
+      _addAssistantMessage(reply);
+      return AiSendResult(reply: reply);
+    } on AxonGatewayException catch (error) {
+      onStreamingText?.call('');
+      _addAssistantMessage(error.message);
+      return AiSendResult(reply: error.message);
+    } catch (_) {
+      onStreamingText?.call('');
+      const message =
+          'Axon AI could not read the local records. Nothing was changed.';
+      _addAssistantMessage(message);
+      return AiSendResult(reply: message);
+    }
+  }
 
-      final response = await http
-          .post(
-            Uri.parse('$_baseUrl/ai/chat'),
-            headers: _headers(),
-            body: jsonEncode({
-              'messages': _wireMessages,
-              'user_question': normalizedContent.substring(
-                0,
-                normalizedContent.length.clamp(0, _maxMessageChars).toInt(),
-              ),
-              'context': context,
-              'includeData': dataContext['data_read_failed'] != true,
-              'business_context': businessContext,
-              'data_context': dataContext,
-              'ai_task': 'analyze_and_recommend',
-              'response_style': 'actionable_partner',
-              'branchId': branchId,
-              'web_search': AiChatPrefs.instance.webSearch,
-              'tool_access': AiChatPrefs.instance.toolAccess,
-              if (todos.isNotEmpty)
-                'todos': todos.map((t) => t.toJson()).toList(),
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
+  Future<String> _runGatewayAgentTurn({
+    void Function(String accumulatedText)? onStreamingText,
+  }) async {
+    final history = _messages
+        .where((message) =>
+            (message['role'] == 'user' || message['role'] == 'assistant') &&
+            (message['content'] ?? '').isNotEmpty)
+        .toList()
+        .reversed
+        .take(24)
+        .toList()
+        .reversed
+        .map((message) => <String, dynamic>{
+              'role': message['role']!,
+              'content': message['content']!,
+            })
+        .toList();
+    const system =
+        'You are Axon AI, a concise assistant inside Counterbase POS. '
+        'Answer general retail questions normally. You may use the supplied '
+        'read-only tools to answer explicit questions about this shop. Tool '
+        'results come from this device and are sent to the owner’s Axon Gateway '
+        'only when needed to answer the question. Never request or expose customer '
+        'personal data. Never claim to change products, stock, prices, payments, '
+        'staff, or settings. This assistant cannot execute business actions. '
+        'Say when local or unsynchronized records may be incomplete.';
 
-      return _handleChatResponse(response);
-    } on AiSubscriptionRequiredException {
-      rethrow;
-    } catch (e) {
-      if (!kReleaseMode) debugPrint('[AiChat] Error: $e');
-      const error =
-          'Could not reach the AI service. Check your connection and try again.';
-      _messages.add({'id': '', 'role': 'assistant', 'content': error});
-      return AiSendResult(reply: error);
+    var localToolCalls = 0;
+    for (var round = 0; round < 4; round++) {
+      final turn = await _gateway.chatTurnStream(
+        system: system,
+        messages: history,
+        tools: _localReadOnlyTools,
+        maxTokens: 1024,
+        onText: onStreamingText,
+      );
+      final rawContent = turn['content'];
+      final blocks = rawContent is List
+          ? rawContent
+              .whereType<Map>()
+              .map((block) => Map<String, dynamic>.from(block))
+              .toList()
+          : <Map<String, dynamic>>[];
+      final toolCalls =
+          blocks.where((block) => block['type'] == 'tool_use').toList();
+
+      if (turn['stop_reason'] != 'tool_use' || toolCalls.isEmpty) {
+        final reply = blocks
+            .where((block) => block['type'] == 'text')
+            .map((block) => (block['text'] ?? '').toString())
+            .where((part) => part.trim().isNotEmpty)
+            .join('\n')
+            .trim();
+        if (reply.isEmpty) {
+          throw const AxonGatewayException(
+            'Axon AI returned an empty reply. Please try again.',
+          );
+        }
+        return reply;
+      }
+
+      // A streamed tool-call turn can include a short preamble. It is not the
+      // answer yet; remove it while the device runs the approved read-only
+      // lookup and streams the final response on the next round.
+      onStreamingText?.call('');
+
+      history.add({'role': 'assistant', 'content': blocks});
+      final toolResults = <Map<String, dynamic>>[];
+      for (var index = 0; index < toolCalls.length; index++) {
+        final call = toolCalls[index];
+        final id = (call['id'] ?? '').toString();
+        if (id.isEmpty) {
+          throw const AxonGatewayException(
+            'Axon AI returned an invalid lookup request. Please try again.',
+          );
+        }
+        if (localToolCalls >= _maxToolCallsPerTurn) {
+          toolResults.add({
+            'type': 'tool_result',
+            'tool_use_id': id,
+            'is_error': true,
+            'content':
+                'This lookup was skipped because one turn can use at most $_maxToolCallsPerTurn local lookups. Ask separately. No data was changed.',
+          });
+          continue;
+        }
+        localToolCalls++;
+        final name = (call['name'] ?? '').toString();
+        final input = call['input'] is Map
+            ? Map<String, dynamic>.from(call['input'] as Map)
+            : <String, dynamic>{};
+        try {
+          final result = await _runLocalReadOnlyTool(name, input);
+          toolResults.add({
+            'type': 'tool_result',
+            'tool_use_id': id,
+            'content': jsonEncode(result),
+          });
+        } catch (_) {
+          toolResults.add({
+            'type': 'tool_result',
+            'tool_use_id': id,
+            'is_error': true,
+            'content':
+                'This local read-only lookup failed. No data was changed.',
+          });
+        }
+      }
+      history.add({'role': 'user', 'content': toolResults});
+    }
+    throw const AxonGatewayException(
+      'Axon AI reached its safe lookup limit. Ask a shorter question.',
+    );
+  }
+
+  Future<Map<String, dynamic>> _runLocalReadOnlyTool(
+    String name,
+    Map<String, dynamic> input,
+  ) async {
+    final database = getIt<AppDatabase>();
+    switch (name) {
+      case 'get_today_summary':
+        final summary = await database.getDashboardSummary(
+          branchId: getIt<StorageService>().getBranchId(),
+        );
+        return {
+          'sales': summary['transactionCount'],
+          'revenue': summary['totalRevenue'],
+          'averageTicket': summary['avgTicket'],
+          'itemsSold': summary['itemsSold'],
+          'unsyncedSales': summary['unsyncedTransactionCount'],
+          'unsyncedRevenue': summary['unsyncedRevenue'],
+          'scope': 'local device records for today',
+        };
+      case 'get_low_stock':
+        final rows = await database.getInventoryReport();
+        final lowStock = rows.where((row) {
+          final stock = (row['stock'] as num?)?.toDouble() ?? 0;
+          final threshold = (row['minStock'] as num?)?.toDouble() ?? 0;
+          return stock <= threshold;
+        }).toList();
+        return {
+          'items': lowStock
+              .take(30)
+              .map((row) => {
+                    'product': row['name'],
+                    'sku': row['sku'],
+                    'quantity': row['stock'],
+                    'reorderAt': row['minStock'],
+                    'unit': row['unit'],
+                  })
+              .toList(),
+          'totalReturned': lowStock.length.clamp(0, 30),
+          'truncated': lowStock.length > 30,
+          'scope': 'local device inventory for the selected branch',
+        };
+      case 'get_top_products':
+        final days = (input['days'] as num?)?.toInt().clamp(1, 30).toInt() ?? 7;
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        // getTopProducts uses an inclusive end bound. Keep a sale stamped at
+        // exactly tomorrow's midnight out of this range.
+        final endOfToday = today
+            .add(const Duration(days: 1))
+            .subtract(const Duration(microseconds: 1));
+        final rows = await database.getTopProducts(
+          today.subtract(Duration(days: days - 1)),
+          endOfToday,
+          limit: 10,
+        );
+        return {
+          'days': days,
+          'items': rows
+              .map((row) => {
+                    'product': row['productName'],
+                    'quantity': row['totalQty'],
+                    'revenue': row['totalRevenue'],
+                  })
+              .toList(),
+          'scope': 'completed local sales for the selected branch',
+        };
+      case 'search_products':
+        final query = (input['query'] ?? '').toString().trim();
+        if (query.isEmpty || query.length > 80) {
+          throw const FormatException('Invalid product search.');
+        }
+        final products =
+            await database.watchProductSuggestions(query, limit: 20).first;
+        return {
+          'items': products
+              .map((product) => {
+                    'product': product.name,
+                    'sku': product.sku,
+                    'price': product.price,
+                    'unit': product.unit,
+                  })
+              .toList(),
+          'scope': 'local product catalog',
+        };
+      default:
+        throw const FormatException('Unsupported lookup.');
     }
   }
 
   /// Resumes a paused agent turn ([pendingTurn]) with the user's answer(s)
   /// to an AskUserQuestion, or their approve/decline on a mutating tool
-  /// call — the counterpart to the backend's `pending_tool_call` +
-  /// `question_answers`/`tool_confirmed` resume contract. Does not add a
-  /// new user-visible chat bubble; the question/confirmation UI itself
-  /// stands in for that turn.
+  /// call. Does not add a new user-visible chat bubble; the question or
+  /// confirmation UI itself stands in for that turn.
   Future<AiSendResult> resumePendingTurn({
     Map<String, String>? questionAnswers,
     bool? toolConfirmed,
   }) async {
-    final pending = pendingTurn;
-    if (pending == null) {
-      return AiSendResult(reply: null);
-    }
+    if (pendingTurn == null) return AiSendResult(reply: null);
     pendingTurn = null;
-
-    try {
-      final businessContext = _buildBusinessContext();
-      final dataContext = await _buildDataContext();
-
-      final response = await http
-          .post(
-            Uri.parse('$_baseUrl/ai/chat'),
-            headers: _headers(),
-            body: jsonEncode({
-              'messages': _wireMessages,
-              'context': 'general',
-              'includeData': dataContext['data_read_failed'] != true,
-              'business_context': businessContext,
-              'data_context': dataContext,
-              'ai_task': 'analyze_and_recommend',
-              'response_style': 'actionable_partner',
-              'branchId': branchId,
-              'web_search': AiChatPrefs.instance.webSearch,
-              'tool_access': AiChatPrefs.instance.toolAccess,
-              if (todos.isNotEmpty)
-                'todos': todos.map((t) => t.toJson()).toList(),
-              'pending_tool_call': pending.toolCall,
-              if (questionAnswers != null) 'question_answers': questionAnswers,
-              if (toolConfirmed != null) 'tool_confirmed': toolConfirmed,
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
-
-      return _handleChatResponse(response);
-    } catch (e) {
-      if (!kReleaseMode) debugPrint('[AiChat] Resume error: $e');
-      const error =
-          'Could not reach the AI service. Check your connection and try again.';
-      _messages.add({'id': '', 'role': 'assistant', 'content': error});
-      return AiSendResult(reply: error);
-    }
+    const reply =
+        'This Axon AI build cannot resume an action turn. No business action was run.';
+    _addAssistantMessage(reply);
+    return AiSendResult(reply: reply);
   }
 
-  AiSendResult _handleChatResponse(http.Response response) {
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final payload = data['data'] as Map<String, dynamic>;
-      final pendingJson = payload['pending'] as Map<String, dynamic>?;
-      final userMessageId = (payload['userMessageId'] as String?) ?? '';
-
-      // Backfill the id the server assigned to the user turn we already
-      // added locally (in addUserMessage/sendMessage), so a later
-      // regenerate/rewind anchored on it can hit the real backend truncate
-      // endpoint instead of silently no-op'ing (empty id == local-only).
-      if (userMessageId.isNotEmpty) {
-        final idx = _messages.lastIndexWhere(
-          (m) => m['role'] == 'user' && (m['id'] ?? '').isEmpty,
-        );
-        if (idx != -1) _messages[idx]['id'] = userMessageId;
-      }
-
-      if (pendingJson != null) {
-        pendingTurn = AiPendingTurn.fromJson(pendingJson);
-        return AiSendResult(pending: pendingTurn);
-      }
-
-      final todosJson = payload['todos'] as List?;
-      if (todosJson != null) {
-        todos = todosJson
-            .map((t) => AiTodoItem.fromJson(t as Map<String, dynamic>))
-            .toList();
-      }
-
-      final reply = payload['reply'] as String;
-      final assistantMessageId =
-          (payload['assistantMessageId'] as String?) ?? '';
-      final fileJson = payload['file'] as Map<String, dynamic>?;
-      final file = fileJson != null ? AiFileAttachment.fromJson(fileJson) : null;
-      final chart = payload['chart'] as Map<String, dynamic>?;
-      _messages.add(
-          {'id': assistantMessageId, 'role': 'assistant', 'content': reply});
-      return AiSendResult(reply: reply, file: file, chart: chart);
-    } else if (response.statusCode == 402) {
-      // Remove the pending user message — this turn never produced a
-      // reply, and re-sending after subscribing shouldn't leave a
-      // duplicate in history.
-      if (_messages.isNotEmpty && _messages.last['role'] == 'user') {
-        _messages.removeLast();
-      }
-      throw const AiSubscriptionRequiredException();
-    } else {
-      final error =
-          'Sorry, the AI service is unavailable right now. (${response.statusCode})';
-      _messages.add({'id': '', 'role': 'assistant', 'content': error});
-      return AiSendResult(reply: error);
-    }
+  void _addAssistantMessage(String content) {
+    _messages.add({
+      'id': _uuid.v4(),
+      'role': 'assistant',
+      'content': content,
+    });
   }
 
-  /// Fetches a short proactive business brief for the dashboard's "AI
-  /// Brief" card — distinct from [sendMessage]: this never touches
-  /// [_messages] (the real chat history), since it's a background,
-  /// dashboard-driven read rather than something the user asked in chat.
-  ///
-  /// [date] is an optional "YYYY-MM-DD" for the sales-calendar's per-day
-  /// view; omitted (or today's date) means the dashboard's own "AI Brief"
-  /// card. Tries the pre-generated/on-demand backend brief first
-  /// (near-instant when cached, or generated fresh for a past date) and
-  /// only falls back to a live `/ai/chat` call about *today's* on-device
-  /// data when no date was requested — that fallback would be wrong for a
-  /// past date, since it always describes the current moment, not the
-  /// date the user asked about.
+  /// Generates a brief from a small, read-only summary of this device's data.
+  /// Customer records, payment references, and staff details are never sent.
   Future<String?> fetchDailyBrief({String? date}) async {
-    final pregenerated = await _fetchPregeneratedBrief(date: date);
-    if (pregenerated != null) return pregenerated;
-    if (date != null) return null;
-    return _fetchLiveBrief();
-  }
+    final auth = getIt<AuthService>();
+    if (!auth.isLocalWorkspace || !await _gateway.isConfigured()) return null;
 
-  Future<String?> _fetchPregeneratedBrief({String? date}) async {
-    try {
-      final uri = Uri.parse('$_baseUrl/ai/daily-brief').replace(
-        queryParameters: {
-          'branchId': branchId,
-          if (date != null) 'date': date,
-        },
+    final branchId = getIt<StorageService>().getBranchId();
+    if (branchId == null || branchId.trim().isEmpty) {
+      throw const AxonGatewayException(
+        'Choose an active shop branch before generating its AI brief.',
       );
-      final response = await http
-          .get(uri, headers: _headers(json: false))
-          // On-demand generation for a past date runs a real model call
-          // server-side, so it needs more headroom than the near-instant
-          // cached-read path used for today's dashboard card.
-          .timeout(Duration(seconds: date != null ? 25 : 8));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final content = data['data']?['content'] as String?;
-        if (content != null && content.trim().isNotEmpty) return content;
-      }
-      return null;
-    } catch (e) {
-      if (!kReleaseMode) debugPrint('[AiChat] Pregenerated brief error: $e');
-      return null;
     }
-  }
 
-  Future<String?> _fetchLiveBrief() async {
-    try {
-      final businessContext = _buildBusinessContext();
-      final dataContext = await _buildDataContext();
-
-      final response = await http
-          .post(
-            Uri.parse('$_baseUrl/ai/chat'),
-            headers: _headers(),
-            body: jsonEncode({
-              'messages': const [],
-              'user_question':
-                  "Give me a short 2-3 sentence brief on today's business performance and one concrete suggestion. "
-                      "This will be shown in a narrow mobile card, so if you need to list specific items, use a short "
-                      "bullet list (max 3 items, one line each) instead of a markdown table.",
-              'context': 'daily_brief',
-              'includeData': dataContext['data_read_failed'] != true,
-              'business_context': businessContext,
-              'data_context': dataContext,
-              'ai_task': 'analyze_and_recommend',
-              'response_style': 'concise',
-              'branchId': branchId,
-            }),
-          )
-          .timeout(const Duration(seconds: 20));
-
-      if (response.statusCode != 200) return null;
-      final data = jsonDecode(response.body);
-      return data['data']['reply'] as String?;
-    } catch (e) {
-      if (!kReleaseMode) debugPrint('[AiChat] Live brief error: $e');
-      return null;
+    final requestedDay =
+        date == null ? DateTime.now() : DateTime.tryParse(date);
+    if (requestedDay == null) {
+      throw const AxonGatewayException(
+        'The selected date could not be read. Refresh and try again.',
+      );
     }
-  }
+    final dayStart =
+        DateTime(requestedDay.year, requestedDay.month, requestedDay.day);
+    final dayEnd = dayStart
+        .add(const Duration(days: 1))
+        .subtract(const Duration(microseconds: 1));
 
-  Map<String, dynamic> _buildBusinessContext() {
-    final storage = getIt<StorageService>();
-    final user = storage.getUser() ?? {};
-    final tenant = user['tenant'] is Map<String, dynamic>
-        ? user['tenant'] as Map<String, dynamic>
-        : <String, dynamic>{};
-    final branches =
-        user['branches'] is List ? user['branches'] as List : const [];
-    final primaryBranch =
-        branches.whereType<Map>().cast<Map<String, dynamic>?>().firstWhere(
-              (branch) => branch?['id'] == branchId,
-              orElse: () => branches
-                  .whereType<Map>()
-                  .cast<Map<String, dynamic>?>()
-                  .firstWhere(
-                    (branch) => branch?['isPrimary'] == true,
-                    orElse: () => null,
-                  ),
-            );
+    final database = getIt<AppDatabase>();
+    final results = await Future.wait<dynamic>([
+      database.getDailySalesSummary(branchId, dayStart),
+      database.getTopProducts(dayStart, dayEnd, limit: 5),
+      database.getInventoryAlertCounts(branchId),
+    ]);
+    final summary = results[0] as Map<String, dynamic>;
+    final topProducts = results[1] as List<Map<String, dynamic>>;
+    final stockAlerts = results[2] as Map<String, int>;
+    final transactionCount =
+        (summary['totalTransactions'] as num?)?.toInt() ?? 0;
+    final totalSales = (summary['totalSales'] as num?)?.toDouble() ?? 0;
+    final business = auth.currentUser?['tenant'];
+    final businessName = business is Map
+        ? (business['name']?.toString().trim() ?? '')
+        : (auth.currentUser?['companyName']?.toString().trim() ?? '');
 
-    return {
-      'business_type': 'retail',
-      'company': tenant['name'] ?? user['companyName'] ?? 'Counterbase business',
-      'tenant_slug': storage.getTenantSlug() ?? user['tenantSlug'] ?? '',
-      'branch': _storeInfo['branchName'] ??
-          user['branchName'] ??
-          primaryBranch?['name'] ??
-          branchId,
-      'role': user['role'] ?? '',
-      'user_first_name': user['firstName'] ?? '',
-      'time_range': 'today',
+    final briefContext = <String, dynamic>{
+      'business': businessName.isEmpty ? 'Retail shop' : businessName,
+      'date': DateFormat('yyyy-MM-dd').format(dayStart),
+      'currency': 'KES',
+      'sales': totalSales,
+      'transactions': transactionCount,
+      'averageTicket':
+          transactionCount == 0 ? 0 : totalSales / transactionCount,
+      'discounts': summary['totalDiscount'],
+      'topProducts': topProducts
+          .map((product) => {
+                'name': product['productName'],
+                'quantitySold': product['totalQty'],
+                'revenue': product['totalRevenue'],
+              })
+          .toList(growable: false),
+      'lowStockItems': stockAlerts['lowStock'] ?? 0,
+      'outOfStockItems': stockAlerts['outOfStock'] ?? 0,
+      'dataScope': 'Records saved on this device for the selected branch only',
     };
-  }
 
-  Future<Map<String, dynamic>> _buildDataContext() async {
-    // Whether the device currently has connectivity. This is the ONE signal
-    // that legitimately explains missing/stale data — everything else the
-    // AI sees is the real, current state of the business.
-    final isOffline = getIt<ConnectivityService>().isOffline;
-
-    try {
-      final db = getIt<AppDatabase>();
-      final now = DateTime.now();
-      final startOfDay = DateTime(now.year, now.month, now.day);
-      final endOfDay = startOfDay.add(const Duration(days: 1));
-
-      final dashboard = await db.getDashboardSummary();
-      final topProducts =
-          await db.getTopProducts(startOfDay, endOfDay, limit: 5);
-      final lowStock = await db.getLowStockProducts();
-      final branchLowStock = branchId.isEmpty
-          ? lowStock
-          : lowStock.where((item) {
-              final itemBranchId = item['branchId'] as String? ?? '';
-              return itemBranchId.isEmpty || itemBranchId == branchId;
-            }).toList();
-
-      final transactions =
-          (dashboard['transactionCount'] as num?)?.toInt() ?? 0;
-
-      return {
-        // --- Grounding signals: tell the AI this data is authoritative so
-        // it stops speculating about connectivity/sync when it sees zeros.
-        // A zero here means the thing genuinely hasn't happened yet today,
-        // NOT that data is missing or the POS is offline.
-        'data_source': 'local_pos_database',
-        'data_is_authoritative': true,
-        'is_offline': isOffline,
-        'data_freshness': isOffline ? 'last_known' : 'live',
-        'has_sales_today': transactions > 0,
-        // --- Actual figures ---
-        'total_sales': dashboard['totalRevenue'] ?? 0,
-        'transactions': transactions,
-        'average_ticket': dashboard['avgTicket'] ?? 0,
-        'items_sold': dashboard['itemsSold'] ?? 0,
-        'top_products': topProducts
-            .map((item) => {
-                  'name':
-                      item['productName'] ?? item['name'] ?? 'Unnamed product',
-                  'quantity_sold': item['totalQty'] ?? 0,
-                  'revenue': item['totalRevenue'] ?? 0,
-                })
-            .toList(),
-        'low_stock_items': branchLowStock
-            .take(8)
-            .map((item) => {
-                  'name': item['name'] ?? 'Unnamed product',
-                  'sku': item['sku'] ?? '',
-                  'category': item['categoryName'] ?? '',
-                  'price': item['price'] ?? 0,
-                  'remaining_stock': item['quantity'] ?? 0,
-                })
-            .toList(),
-      };
-    } catch (e) {
-      if (!kReleaseMode) debugPrint('[AiChat] Data context error: $e');
-      // Even on failure, still tell the AI whether we're offline and that
-      // no data could be read — never leave it to guess.
-      return {
-        'data_source': 'local_pos_database',
-        'data_is_authoritative': true,
-        'is_offline': isOffline,
-        'data_freshness': isOffline ? 'last_known' : 'live',
-        'data_read_failed': true,
-      };
-    }
+    return _gateway.chat(
+      system:
+          'You are Axon AI, the retail assistant in Counterbase. Write a concise, accurate 2–3 sentence business brief for a narrow mobile dashboard card, followed by one practical suggestion. Use only the supplied aggregate figures. Do not invent causes, compare with periods not supplied, include personal data, or use a table. If there were no sales, say so plainly and focus the suggestion on a useful next step.',
+      messages: [
+        {
+          'role': 'user',
+          'content':
+              'Prepare the daily brief from this selected-branch summary:\n${jsonEncode(briefContext)}',
+        },
+      ],
+      maxTokens: 320,
+    );
   }
 }

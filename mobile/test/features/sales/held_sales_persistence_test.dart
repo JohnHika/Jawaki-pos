@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('held sales survive restart without leaking into another shop or branch', () async {
+  test('scoped held sales survive restoration without leaking across shops or branches', () async {
     SharedPreferences.setMockInitialValues({});
     final storage = StorageService();
     await storage.initialize();
@@ -14,6 +14,7 @@ void main() {
       storage: storage,
       tenantId: 'shop-a',
       branchId: 'branch-1',
+      isLocalWorkspace: false,
     );
     first.park(CartState(
       items: [CartItem(
@@ -35,6 +36,7 @@ void main() {
       storage: storage,
       tenantId: 'shop-a',
       branchId: 'branch-1',
+      isLocalWorkspace: false,
     );
     expect(restored.state, hasLength(1));
     expect(restored.state.single.cart.items.single.productName, 'Tea');
@@ -46,11 +48,13 @@ void main() {
       storage: storage,
       tenantId: 'shop-b',
       branchId: 'branch-1',
+      isLocalWorkspace: false,
     );
     final otherBranch = ParkedSalesNotifier(
       storage: storage,
       tenantId: 'shop-a',
       branchId: 'branch-2',
+      isLocalWorkspace: false,
     );
     expect(otherShop.state, isEmpty);
     expect(otherBranch.state, isEmpty);
@@ -63,6 +67,7 @@ void main() {
       storage: storage,
       tenantId: 'shop-a',
       branchId: 'branch-1',
+      isLocalWorkspace: false,
     ).state, isEmpty);
   });
 }

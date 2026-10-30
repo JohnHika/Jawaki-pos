@@ -10,6 +10,7 @@ import '../../../../core/widgets/app_markdown.dart';
 import '../../../../core/services/export_document_service.dart';
 import '../../../../core/services/voice_input_service.dart';
 import '../../../../core/providers/business_layout_provider.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/providers/tenant_provider.dart';
@@ -32,7 +33,10 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   final AiChatService _aiService = AiChatService();
   final VoiceInputService _voiceService = VoiceInputService();
   bool _isLoading = false;
+  String _streamingReply = '';
   bool _isListening = false;
+  bool _gatewayKeyChecking = true;
+  bool _gatewayKeyReady = false;
   // Text already in the field before this listen session started — partial
   // results replace only what was dictated, so voice input can be appended
   // to (or mixed with) whatever the user already typed instead of clobbering it.
@@ -76,10 +80,11 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   @override
   void initState() {
     super.initState();
-    // Pull the shop's shared conversation so every staff member on this
-    // shop sees and continues the same thread.
+    // Restore only this install's in-memory conversation and check the secure
+    // Gateway key before showing the chat composer.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _aiService.loadSharedHistory();
+      await _refreshGatewayStatus();
       if (mounted) {
         // Snapshot the history batch at the moment the initial mount is
         // declared: everything present now plays the once-per-entry stagger;
@@ -91,6 +96,20 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
         });
       }
       _scrollToBottom();
+    });
+  }
+
+  Future<void> _refreshGatewayStatus() async {
+    var configured = false;
+    try {
+      configured = await _aiService.isGatewayConfigured();
+    } catch (_) {
+      // Keep AI gated if the platform secure credential store is unavailable.
+    }
+    if (!mounted) return;
+    setState(() {
+      _gatewayKeyReady = configured;
+      _gatewayKeyChecking = false;
     });
   }
 
@@ -204,22 +223,35 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     _controller.clear();
     setState(() => _skillSuggestions = null);
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _streamingReply = '';
+    });
     _scrollToBottom();
 
     try {
-      final result = await _aiService.sendMessage(content: message);
-      _markJustArrived();
+      var streamedReply = false;
+      final result = await _aiService.sendMessage(
+        content: message,
+        onStreamingText: (text) {
+          if (!mounted) return;
+          setState(() => _streamingReply = text);
+          streamedReply = streamedReply || text.isNotEmpty;
+          _scrollToBottom();
+        },
+      );
+      if (!streamedReply) _markJustArrived();
       await _maybeShareGeneratedFile(result);
       _maybeStoreChart(result);
-    } on AiSubscriptionRequiredException {
+    } finally {
       if (mounted) {
-        context.push('/ai/upgrade', extra: _aiService.branchId);
+        setState(() {
+          _isLoading = false;
+          _streamingReply = '';
+        });
+        _scrollToBottom();
       }
     }
-
-    if (mounted) setState(() => _isLoading = false);
-    _scrollToBottom();
   }
 
   /// Marks the assistant message that was just appended as the one that
@@ -291,14 +323,12 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
       _markJustArrived();
       await _maybeShareGeneratedFile(result);
       _maybeStoreChart(result);
-    } on AiSubscriptionRequiredException {
+    } finally {
       if (mounted) {
-        context.push('/ai/upgrade', extra: _aiService.branchId);
+        setState(() => _isLoading = false);
+        _scrollToBottom();
       }
     }
-
-    if (mounted) setState(() => _isLoading = false);
-    _scrollToBottom();
   }
 
   /// Exports the visible conversation as a branded PDF transcript (same
@@ -384,14 +414,12 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
 
     try {
       await _aiService.regenerateLast();
-    } on AiSubscriptionRequiredException {
+    } finally {
       if (mounted) {
-        context.push('/ai/upgrade', extra: _aiService.branchId);
+        setState(() => _isLoading = false);
+        _scrollToBottom();
       }
     }
-
-    if (mounted) setState(() => _isLoading = false);
-    _scrollToBottom();
   }
 
   /// Rewinds to an earlier message: drops it and everything after it from
@@ -430,6 +458,12 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_aiService.gatewayRequestsEnabled ||
+        _gatewayKeyChecking ||
+        !_gatewayKeyReady) {
+      return _buildGatewayUnavailableScreen();
+    }
+
     final messages = _aiService.messages;
     final pending = _aiService.pendingTurn;
     // Extra trailing list items: the typing indicator while loading, or the
@@ -446,20 +480,26 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
         title: ref.watch(businessLayoutProvider).actionLabel('/ai', 'Axon AI'),
         showBackButton: false,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.psychology_alt_outlined, size: 20),
-            tooltip: 'AI Memory',
-            onPressed: () => context.push('/ai/memory'),
-          ),
-          if (messages.isNotEmpty)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert_rounded, size: 20),
-              onSelected: (value) {
-                if (value == 'new') _newConversation();
-                if (value == 'export') _exportConversation();
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded, size: 20),
+            onSelected: (value) {
+              if (value == 'new') _newConversation();
+              if (value == 'export') _exportConversation();
+              if (value == 'memory') context.pushNamed('ai-memory');
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'memory',
+                child: Row(
+                  children: [
+                    Icon(Icons.psychology_alt_outlined, size: 18),
+                    SizedBox(width: DesignSpacing.xs + 6),
+                    Text('Workspace memory'),
+                  ],
+                ),
+              ),
+              if (messages.isNotEmpty) ...[
+                const PopupMenuItem(
                   value: 'export',
                   child: Row(
                     children: [
@@ -469,7 +509,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                     ],
                   ),
                 ),
-                PopupMenuItem(
+                const PopupMenuItem(
                   value: 'new',
                   child: Row(
                     children: [
@@ -480,12 +520,44 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                   ),
                 ),
               ],
-            ),
+            ],
+          ),
           const SizedBox(width: DesignSpacing.xs),
         ],
       ),
       body: Column(
         children: [
+          Container(
+            margin: const EdgeInsets.fromLTRB(
+              DesignSpacing.md,
+              DesignSpacing.sm,
+              DesignSpacing.md,
+              0,
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: DesignSpacing.md,
+              vertical: DesignSpacing.sm,
+            ),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.lock_outline_rounded, size: 18),
+                const SizedBox(width: DesignSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'Recent chat messages go to Axon Gateway. Selected read-only shop details may be included; customer records and write actions are unavailable.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ),
           if (_aiService.todos.isNotEmpty) _buildTodoChecklist(),
           // Chat messages
           Expanded(
@@ -499,7 +571,14 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                     itemCount: messages.length + trailingCount,
                     itemBuilder: (context, index) {
                       if (index == messages.length) {
-                        if (_isLoading) return _buildTypingIndicator();
+                        if (_isLoading) {
+                          return _streamingReply.isEmpty
+                              ? _buildTypingIndicator()
+                              : _ChatBubble(
+                                  message: _streamingReply,
+                                  isUser: false,
+                                );
+                        }
                         return _PendingTurnCard(
                           pending: pending!,
                           onAnswerQuestions: (answers) =>
@@ -593,6 +672,133 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
             ),
           _buildInputBar(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildGatewayUnavailableScreen() {
+    final theme = Theme.of(context);
+    final title =
+        ref.watch(businessLayoutProvider).actionLabel('/ai', 'Axon AI');
+    final canManageGateway = ref.watch(permissionsProvider).isAdmin;
+    final surface = context.themed(DesignColors.darkSurface);
+    final border = context.themed(DesignColors.darkBorder);
+    final secondary = context.themed(DesignColors.darkTextSecondary);
+
+    return Scaffold(
+      appBar: BrandedAppBar(
+        title: title,
+        showBackButton: false,
+      ),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(DesignSpacing.lg),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(DesignSpacing.xl),
+                decoration: BoxDecoration(
+                  color: surface,
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
+                  border: Border.all(color: border),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 28,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 58,
+                      height: 58,
+                      decoration: BoxDecoration(
+                        color: DesignColors.accent.withValues(alpha: 0.14),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusLg),
+                      ),
+                      child: const Icon(
+                        Icons.hub_rounded,
+                        size: 30,
+                        color: DesignColors.accent,
+                      ),
+                    ),
+                    const SizedBox(height: DesignSpacing.lg),
+                    Text(
+                      _gatewayKeyChecking
+                          ? 'Checking Axon AI setup'
+                          : 'Connect Axon AI on this device',
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        height: 1.14,
+                      ),
+                    ),
+                    const SizedBox(height: DesignSpacing.md),
+                    Text(
+                      _gatewayKeyChecking
+                          ? 'Checking this device’s secure settings. No prompt or image is being sent.'
+                          : 'Add the owner-issued key in secure settings to use AI. Nothing is sent until a key is saved. Requests go only to gateway.archeaxon.com; read-only shop details are sent only when needed to answer your question.',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: secondary,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: DesignSpacing.sm),
+                    Text(
+                      canManageGateway
+                          ? 'The key is kept in this device’s secure credential store.'
+                          : 'Ask the shop owner to configure Axon AI for this install. No prompt or shop data has been sent.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: secondary,
+                        height: 1.45,
+                      ),
+                    ),
+                    if (canManageGateway) ...[
+                      const SizedBox(height: DesignSpacing.xl),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: _gatewayKeyChecking
+                              ? null
+                              : () async {
+                                  await context.push('/settings/ai-gateway');
+                                  await _refreshGatewayStatus();
+                                },
+                          icon: const Icon(Icons.key_rounded),
+                          label: const Text('Axon Gateway key settings'),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(52),
+                            backgroundColor: DesignColors.accent,
+                            foregroundColor: Colors.black,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: DesignSpacing.md),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => context.pushNamed('ai-memory'),
+                        icon: const Icon(Icons.psychology_alt_outlined),
+                        label: const Text('Workspace memory'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(52),
+                          foregroundColor: DesignColors.accent,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1604,13 +1810,9 @@ class _ChatBubble extends ConsumerWidget {
   final VoidCallback? onRewind;
 
   /// True only for an assistant reply that just arrived this session (not
-  /// history loaded/scrolled back to) — the backend answers in one shot
-  /// (see the "client-side typewriter, not real token streaming" decision:
-  /// real streaming would mean re-asking the model a second time for every
-  /// reply, doubling token cost, since the tool-calling loop can't know a
-  /// turn is "final" until it already has the full text). This just reveals
-  /// the already-fetched text progressively so it reads like it's arriving
-  /// live, without any extra cost or latency.
+  /// history loaded/scrolled back to). Streamed replies already appear in the
+  /// in-progress bubble and skip this reveal; it remains for compatible
+  /// non-streaming JSON responses.
   final bool animateIn;
 
   const _ChatBubble({

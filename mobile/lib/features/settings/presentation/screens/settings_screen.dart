@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -16,7 +18,6 @@ import '../../../../core/theme/share_format_sheet.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/connectivity_service.dart';
-import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/update_check_service.dart';
@@ -24,6 +25,9 @@ import '../../../../core/services/receipt_printer_service.dart';
 import '../../../../core/services/print_queue_service.dart';
 import '../../../../core/services/notification_service.dart';
 import '../../../../core/services/export_document_service.dart';
+import '../../../../core/services/local_archive_import_service.dart';
+import '../../../../core/services/local_archive_export_service.dart';
+import '../../../../core/services/local_portable_backup_service.dart';
 import '../../../../core/widgets/release_notes.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/providers/tenant_provider.dart';
@@ -33,6 +37,10 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/utils/format.dart';
 import '../widgets/settings_layout.dart';
 import '../widgets/living_icon_card.dart';
+
+// Package metadata is immutable for the life of the installed build. Cache it
+// so rebuilding Settings does not repeatedly cross the platform channel.
+final Future<PackageInfo> _settingsPackageInfo = PackageInfo.fromPlatform();
 
 // Settings keys for SharedPreferences. Printer keys delegate to
 // PrinterSettingsKeys (receipt_printer_service.dart) so this screen and
@@ -88,16 +96,16 @@ class SettingsScreen extends ConsumerWidget {
     ref.watch(isOnlineProvider);
     final isOnline = getIt<ConnectivityService>().isOnline;
     final themeMode = ref.watch(themeModeProvider);
-    final syncService = getIt<SyncService>();
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
+    final isLocalWorkspaceOwner = getIt<AuthService>().isLocalWorkspaceOwner;
 
     final legacyRole = user?['role']?.toString().toUpperCase() ?? '';
     // The billing and plan APIs intentionally enforce the legacy ADMIN role
     // today. Keep the menu honest until those endpoints are fully migrated to
     // granular permission keys.
     final isBillingAdmin = legacyRole == 'ADMIN';
-    // Layout customization is tenant-wide, so use the same granular permission
-    // enforced by BusinessLayoutScreen instead of tying it to billing's legacy
-    // role check.
+    // Keep layout access tied to the same granular permission enforced by
+    // BusinessLayoutScreen instead of billing's legacy role check.
     final canManageBusinessLayout = perms.has('branches.tenant.update');
 
     final taxPercent = getIt<AuthService>().taxRatePercent;
@@ -137,7 +145,8 @@ class SettingsScreen extends ConsumerWidget {
               ],
               onTap: () => context.push('/settings/business-layout'),
             ),
-          if (isBillingAdmin || perms.has('users.create'))
+          if (!isLocalWorkspace &&
+              (isBillingAdmin || perms.has('users.create')))
             SettingsEntry(
               id: 'workspace-setup',
               icon: Icons.checklist_rounded,
@@ -152,18 +161,22 @@ class SettingsScreen extends ConsumerWidget {
               onTap: () =>
                   context.push('/owner-welcome', extra: identity.companyName),
             ),
-          if (isBillingAdmin)
+          if ((isLocalWorkspace && isLocalWorkspaceOwner) ||
+              (!isLocalWorkspace && isBillingAdmin))
             SettingsEntry(
               id: 'logo',
               icon: Icons.image_rounded,
               title: 'Business logo',
-              subtitle: 'Change the logo for your shop',
+              subtitle: isLocalWorkspace
+                  ? 'Choose the logo saved on this device'
+                  : 'Change the logo for your shop',
               keywords: const ['picture', 'brand', 'photo'],
               onTap: () => _showLogoDialog(context, ref),
             ),
-          if (perms.canManageBranches ||
-              perms.canUpdateBranches ||
-              perms.canDeleteBranches)
+          if (!isLocalWorkspace &&
+              (perms.canManageBranches ||
+                  perms.canUpdateBranches ||
+                  perms.canDeleteBranches))
             SettingsEntry(
               id: 'branches',
               icon: Icons.store_rounded,
@@ -177,7 +190,7 @@ class SettingsScreen extends ConsumerWidget {
                 canDelete: perms.canDeleteBranches,
               ),
             ),
-          if (perms.canUpdateBranches)
+          if (!isLocalWorkspace && perms.canUpdateBranches)
             SettingsEntry(
               id: 'hours',
               icon: Icons.schedule_rounded,
@@ -186,7 +199,8 @@ class SettingsScreen extends ConsumerWidget {
               keywords: const ['open', 'close', 'time', 'days'],
               onTap: () => context.push('/settings/operating-hours'),
             ),
-          if (isBillingAdmin)
+          if ((isLocalWorkspace && isLocalWorkspaceOwner) ||
+              (!isLocalWorkspace && isBillingAdmin))
             SettingsEntry(
               id: 'tax',
               icon: Icons.percent_rounded,
@@ -201,12 +215,16 @@ class SettingsScreen extends ConsumerWidget {
         id: 'team',
         title: 'Team',
         entries: [
-          if (perms.canManageUsers)
+          if ((!isLocalWorkspace && perms.canManageUsers) ||
+              (isLocalWorkspace && isLocalWorkspaceOwner))
             SettingsEntry(
               id: 'staff',
               icon: Icons.people_rounded,
-              title: 'Staff & roles',
-              subtitle: 'Add your team and choose what each person can do',
+              title:
+                  isLocalWorkspace ? 'Staff on this device' : 'Staff & roles',
+              subtitle: isLocalWorkspace
+                  ? 'Create local staff profiles with individual PINs and access'
+                  : 'Add your team and choose what each person can do',
               keywords: const [
                 'users',
                 'permissions',
@@ -222,7 +240,7 @@ class SettingsScreen extends ConsumerWidget {
         id: 'money',
         title: 'Money & plan',
         entries: [
-          if (perms.canManageMerchantPayout)
+          if (!isLocalWorkspace && perms.canManageMerchantPayout)
             SettingsEntry(
               id: 'merchant-payouts',
               icon: Icons.account_balance_rounded,
@@ -238,7 +256,7 @@ class SettingsScreen extends ConsumerWidget {
               ],
               onTap: () => context.push('/payments/setup'),
             ),
-          if (isBillingAdmin)
+          if (!isLocalWorkspace && isBillingAdmin)
             SettingsEntry(
               id: 'billing',
               icon: Icons.workspace_premium_rounded,
@@ -253,42 +271,23 @@ class SettingsScreen extends ConsumerWidget {
         id: 'devices',
         title: 'Devices & printing',
         entries: [
-          if (perms.canConfigureSync)
-            SettingsEntry(
-              id: 'sync',
-              icon: Icons.cloud_sync_rounded,
-              title: 'Backup & sync',
-              subtitle: 'See if your sales and stock are safely backed up',
-              keywords: const ['sync', 'upload', 'online', 'offline', 'data'],
-              onTap: () => _showSyncSettings(context, syncService),
-              tileBuilder: (context, entry) => FutureBuilder(
-                future: syncService.getStats(),
-                builder: (context, snapshot) {
-                  final stats = snapshot.data;
-                  final failed = stats?.failedEvents ?? 0;
-                  final pending = stats?.pendingEvents ?? 0;
-                  final subtitle = failed > 0
-                      ? 'Some items could not be backed up'
-                      : pending > 0
-                          ? '$pending item${pending == 1 ? '' : 's'} waiting to be backed up'
-                          : stats?.hasPendingSync == true
-                              ? 'Backing up your latest sales'
-                              : 'Everything is backed up';
-                  return SettingsTile(
-                    key: const ValueKey('settings-tile-sync'),
-                    icon: entry.icon,
-                    title: entry.title,
-                    subtitle: subtitle,
-                    trailing: stats?.isOnline == true
-                        ? const SettingsStatusChip(
-                            text: 'Online', color: DesignColors.success)
-                        : const SettingsStatusChip(
-                            text: 'Offline', color: DesignColors.warning),
-                    onTap: entry.onTap,
-                  );
-                },
-              ),
+          SettingsEntry(
+            id: 'local-data',
+            icon: Icons.storage_rounded,
+            title: 'Local data',
+            subtitle: 'See where this device keeps shop records',
+            keywords: const ['sync', 'backup', 'offline', 'storage', 'data'],
+            onTap: () => _showLocalDataSettings(context, ref),
+            tileBuilder: (context, entry) => SettingsTile(
+              key: const ValueKey('settings-tile-local-data'),
+              icon: entry.icon,
+              title: entry.title,
+              subtitle: 'Encrypted on this device',
+              trailing: const SettingsStatusChip(
+                  text: 'Local', color: DesignColors.info),
+              onTap: entry.onTap,
             ),
+          ),
           if (perms.canConfigurePrinter)
             SettingsEntry(
               id: 'printers',
@@ -299,14 +298,15 @@ class SettingsScreen extends ConsumerWidget {
               keywords: const ['printer', 'bluetooth', 'paper', 'print'],
               onTap: () => _showPrinterSettings(context),
             ),
-          SettingsEntry(
-            id: 'notification-centre',
-            icon: Icons.inbox_rounded,
-            title: 'Inbox',
-            subtitle: 'Everything the app has told you, in one place',
-            keywords: const ['inbox', 'messages', 'alerts', 'history'],
-            onTap: () => context.push('/notifications'),
-          ),
+          if (!isLocalWorkspace)
+            SettingsEntry(
+              id: 'notification-centre',
+              icon: Icons.inbox_rounded,
+              title: 'Inbox',
+              subtitle: 'Everything the app has told you, in one place',
+              keywords: const ['inbox', 'messages', 'alerts', 'history'],
+              onTap: () => context.push('/notifications'),
+            ),
           if (perms.canConfigureNotifications)
             SettingsEntry(
               id: 'notifications',
@@ -321,7 +321,8 @@ class SettingsScreen extends ConsumerWidget {
               id: 'appearance',
               icon: Icons.palette_rounded,
               title: 'Appearance',
-              subtitle: 'Light or dark look and your adaptive app icon',
+              subtitle:
+                  'Light or dark look; Counterbase updates its icon automatically',
               keywords: const ['theme', 'dark mode', 'light mode', 'colour'],
               trailing: SettingsStatusChip(
                 text: themeLabel,
@@ -339,27 +340,57 @@ class SettingsScreen extends ConsumerWidget {
           SettingsEntry(
             id: 'pin',
             icon: Icons.lock_rounded,
-            title: 'Quick-unlock PIN',
-            subtitle: 'A 4–6 digit PIN to open the app on this phone',
+            title: isLocalWorkspace && user?['isLocalStaff'] == true
+                ? 'Your staff PIN'
+                : isLocalWorkspace
+                    ? 'Workspace owner PIN'
+                    : 'Quick-unlock PIN',
+            subtitle: isLocalWorkspace && user?['isLocalStaff'] == true
+                ? 'Change the PIN you use to sign in to this staff profile'
+                : isLocalWorkspace
+                    ? 'Change the PIN that opens this local workspace on this device'
+                    : 'A 4–6 digit PIN to open the app on this phone',
             keywords: const ['password', 'pin', 'unlock', 'change pin'],
             onTap: () => _showChangePinDialog(context),
           ),
+          if (!isLocalWorkspace || isLocalWorkspaceOwner)
+            SettingsEntry(
+              id: 'device-security',
+              icon: Icons.fingerprint_rounded,
+              title: 'Sign-in & auto-lock',
+              subtitle: isLocalWorkspace &&
+                      getIt<AuthService>().hasActiveLocalStaff
+                  ? 'Staff use individual PINs; choose when this register locks'
+                  : 'Choose PIN or biometric unlock and when the app locks',
+              keywords: const ['biometric', 'face', 'lock', 'security'],
+              onTap: () => _showSecuritySettings(context),
+            ),
+          if (isLocalWorkspace && isLocalWorkspaceOwner)
+            SettingsEntry(
+              id: 'axon-gateway-key',
+              icon: Icons.hub_rounded,
+              title: 'Axon AI Gateway key',
+              subtitle: 'Store the owner-issued key securely on this device',
+              keywords: const ['axon', 'gateway', 'ai key', 'api key'],
+              onTap: () => context.push('/settings/ai-gateway'),
+            ),
+          if (!isLocalWorkspace)
+            SettingsEntry(
+              id: 'offline-pin',
+              icon: Icons.wifi_off_rounded,
+              title: 'Offline login PIN',
+              subtitle:
+                  'Sign in on the shop\'s offline server phone, even with no internet',
+              keywords: const ['local server', 'offline', 'hub', 'no internet'],
+              onTap: () => _showOfflineAccessPinDialog(context),
+            ),
           SettingsEntry(
-            id: 'device-security',
-            icon: Icons.fingerprint_rounded,
-            title: 'Fingerprint & auto-lock',
-            subtitle: 'Unlock with your fingerprint and lock the app when idle',
-            keywords: const ['biometric', 'face', 'lock', 'security'],
-            onTap: () => _showSecuritySettings(context),
-          ),
-          SettingsEntry(
-            id: 'offline-pin',
-            icon: Icons.wifi_off_rounded,
-            title: 'Offline login PIN',
-            subtitle:
-                'Sign in on the shop\'s offline server phone, even with no internet',
-            keywords: const ['local server', 'offline', 'hub', 'no internet'],
-            onTap: () => _showOfflineAccessPinDialog(context),
+            id: 'desktop-approvals',
+            icon: Icons.laptop_windows_rounded,
+            title: 'Desktop sign-ins',
+            subtitle: 'Approve computers that ask to sign in with a QR code',
+            keywords: const ['desktop', 'laptop', 'qr', 'approve', 'pair'],
+            onTap: () => context.push('/settings/desktop-approvals'),
           ),
         ],
       ),
@@ -376,7 +407,7 @@ class SettingsScreen extends ConsumerWidget {
               keywords: const ['export', 'csv', 'pdf', 'report', 'excel'],
               onTap: () => _showDataExport(context, ref),
             ),
-          if (perms.canSeeAuditTrail)
+          if (!isLocalWorkspace && perms.canSeeAuditTrail)
             SettingsEntry(
               id: 'activity',
               icon: Icons.history_rounded,
@@ -399,14 +430,15 @@ class SettingsScreen extends ConsumerWidget {
             keywords: const ['faq', 'guide', 'contact', 'call', 'email'],
             onTap: () => _showHelpSupport(context),
           ),
-          SettingsEntry(
-            id: 'report',
-            icon: Icons.bug_report_rounded,
-            title: 'Report a problem',
-            subtitle: 'Tell us if something is not working',
-            keywords: const ['bug', 'issue', 'error', 'feedback'],
-            onTap: () => context.push('/settings/report-bug'),
-          ),
+          if (!isLocalWorkspace)
+            SettingsEntry(
+              id: 'report',
+              icon: Icons.bug_report_rounded,
+              title: 'Report a problem',
+              subtitle: 'Tell us if something is not working',
+              keywords: const ['bug', 'issue', 'error', 'feedback'],
+              onTap: () => context.push('/settings/report-bug'),
+            ),
           SettingsEntry(
             id: 'legal',
             icon: Icons.policy_outlined,
@@ -437,14 +469,20 @@ class SettingsScreen extends ConsumerWidget {
             keywords: const ['version', 'build'],
             onTap: () => _showAboutInfo(context),
             tileBuilder: (context, entry) => FutureBuilder<PackageInfo>(
-              future: PackageInfo.fromPlatform(),
+              future: _settingsPackageInfo,
               builder: (context, snapshot) {
-                final version = snapshot.data?.version ?? '1.0.3';
+                final info = snapshot.data;
+                final subtitle =
+                    snapshot.connectionState == ConnectionState.waiting
+                        ? 'Loading version…'
+                        : snapshot.hasError || info == null
+                            ? 'Version unavailable'
+                            : 'Version ${info.version}';
                 return SettingsTile(
                   key: const ValueKey('settings-tile-about'),
                   icon: entry.icon,
                   title: entry.title,
-                  subtitle: 'Version $version',
+                  subtitle: subtitle,
                   onTap: entry.onTap,
                 );
               },
@@ -465,15 +503,16 @@ class SettingsScreen extends ConsumerWidget {
             destructive: true,
             onTap: () => _showLogoutDialog(context, ref),
           ),
-          SettingsEntry(
-            id: 'logout-all',
-            icon: Icons.devices_rounded,
-            title: 'Sign out of all devices',
-            subtitle: 'Signs you out on every phone and browser',
-            keywords: const ['log out', 'logout everywhere'],
-            destructive: true,
-            onTap: () => _showLogoutDialog(context, ref, allDevices: true),
-          ),
+          if (!isLocalWorkspace)
+            SettingsEntry(
+              id: 'logout-all',
+              icon: Icons.devices_rounded,
+              title: 'Sign out of all devices',
+              subtitle: 'Signs you out on every phone and browser',
+              keywords: const ['log out', 'logout everywhere'],
+              destructive: true,
+              onTap: () => _showLogoutDialog(context, ref, allDevices: true),
+            ),
         ],
       ),
     ];
@@ -491,9 +530,13 @@ class SettingsScreen extends ConsumerWidget {
           email: (user?['email'] ?? '').toString(),
           roleLabel: _roleLabel(user?['role']),
           businessName: identity.companyName,
-          companyCode: _companyCodeFor(user),
+          // A local workspace has no invite or synchronization code. Its
+          // tenant slug is only a device-local identifier, so don't present it
+          // as something another shop should copy to join.
+          companyCode: isLocalWorkspace ? '' : _companyCodeFor(user),
           branchName: identity.branchName,
           isOnline: isOnline,
+          isLocalWorkspace: isLocalWorkspace,
         ),
         sections: sections,
         footer: const _SettingsFooter(),
@@ -526,83 +569,692 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
-  // ===== SYNC SETTINGS =====
-  void _showSyncSettings(BuildContext context, SyncService syncService) {
+  // ===== LOCAL DATA SETTINGS =====
+  void _showLocalDataSettings(BuildContext context, WidgetRef ref) {
+    final pageContext = context;
+    final auth = getIt<AuthService>();
+    final localWorkspace = auth.isLocalWorkspace;
+    final canManageLocalData = auth.isLocalWorkspaceOwner;
     showModalBottomSheet(
       useRootNavigator: true,
+      isScrollControlled: true,
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => SettingsSheetScaffold(
-        title: 'Backup & sync',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            FutureBuilder(
-              future: syncService.getStats(),
-              builder: (context, snapshot) {
-                final stats = snapshot.data;
-                final storage = getIt<StorageService>();
-                final lastSync = storage.getLastSyncAt();
-                return GroupedCard(
-                  margin: EdgeInsets.zero,
-                  children: [
-                    _InfoRow('Connection',
-                        stats?.isOnline == true ? 'Online' : 'Offline'),
-                    _InfoRow(
-                        'Waiting to back up', '${stats?.pendingEvents ?? 0}'),
-                    if ((stats?.failedEvents ?? 0) > 0)
-                      _InfoRow('Could not back up', '${stats?.failedEvents}',
-                          valueColor: DesignColors.error),
-                    _InfoRow('Last backed up',
-                        lastSync != null ? _formatDateTime(lastSync) : 'Never'),
+      builder: (sheetContext) => SafeArea(
+        child: FractionallySizedBox(
+          heightFactor: 0.82,
+          child: SingleChildScrollView(
+            child: SettingsSheetScaffold(
+              title: 'Local data',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const GroupedCard(
+                    margin: EdgeInsets.zero,
+                    children: [
+                      _InfoRow('Shop records', 'Stored on this device'),
+                      _InfoRow('Database', 'Encrypted'),
+                      _InfoRow('Cloud sync', 'Not connected'),
+                    ],
+                  ),
+                  if (localWorkspace && canManageLocalData) ...[
+                    const SizedBox(height: DesignSpacing.lg),
+                    FilledButton.icon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+                        _createLocalPortableBackup(pageContext);
+                      },
+                      icon: const Icon(Icons.enhanced_encryption_rounded),
+                      label: const Text('Create encrypted device backup'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(54),
+                        backgroundColor: DesignColors.brand,
+                      ),
+                    ),
+                    const SizedBox(height: DesignSpacing.sm),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+                        _restoreLocalPortableBackup(pageContext, ref);
+                      },
+                      icon: const Icon(Icons.restore_rounded),
+                      label: const Text('Restore encrypted device backup'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(54),
+                      ),
+                    ),
+                    const SizedBox(height: DesignSpacing.sm),
+                    const Text(
+                      'A password-protected .cbmobile file copies shop records, product photos, the shop logo, and scanned supplier receipts to another Counterbase phone; it does not sync. Photos are limited to 16 MB each and 128 MB total. Set a new PIN and add the Axon Gateway key on the receiving phone.',
+                      style: TextStyle(color: DesignColors.textSecondary),
+                    ),
+                    const SizedBox(height: DesignSpacing.lg),
+                    FilledButton.tonalIcon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+                        _createLocalArchiveTransfer(pageContext);
+                      },
+                      icon: const Icon(Icons.devices_rounded),
+                      label: const Text('Create cross-platform transfer'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                      ),
+                    ),
+                    const SizedBox(height: DesignSpacing.sm),
+                    const Text(
+                      'Encrypted .cbarchive transfers move products, customers, completed sales with line discounts, and current stock. Balanced cash/credit split details stay in the archive, but customer balances and collections are not transferred. Supplier finance, photos, held carts, and device settings are also excluded; use the full .cbmobile backup for a complete phone-to-phone copy.',
+                      style: TextStyle(color: DesignColors.textSecondary),
+                    ),
+                    const SizedBox(height: DesignSpacing.lg),
+                    FilledButton.tonalIcon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+                        _restoreLocalArchive(pageContext, ref);
+                      },
+                      icon: const Icon(Icons.inventory_2_outlined),
+                      label: const Text('Import shop transfer or archive'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                      ),
+                    ),
+                    const SizedBox(height: DesignSpacing.sm),
+                    const Text(
+                      'Import an encrypted .cbarchive transfer or a shop archive prepared during migration.',
+                      style: TextStyle(color: DesignColors.textSecondary),
+                    ),
+                    const SizedBox(height: DesignSpacing.sm),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+                        GoRouter.of(pageContext)
+                            .push('/settings/archive-history');
+                      },
+                      icon: const Icon(Icons.history_rounded),
+                      label: const Text('Browse imported archive history'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                      ),
+                    ),
+                  ] else if (localWorkspace) ...[
+                    const SizedBox(height: DesignSpacing.md),
+                    const Text(
+                      'Only the workspace owner can create, restore, or import shop backups on this device.',
+                      style: TextStyle(color: DesignColors.textSecondary),
+                    ),
+                  ] else ...[
+                    const SizedBox(height: DesignSpacing.md),
+                    const Text(
+                      'Unlock the local shop to create or restore an encrypted device backup.',
+                      style: TextStyle(color: DesignColors.textSecondary),
+                    ),
                   ],
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: SettingsPrimaryButton(
-                label: 'Sync now',
-                onPressed: () {
-                  syncService.syncPendingEvents();
-                  Navigator.pop(context);
-                  showGlassSnackBar(context, 'Syncing your data...',
-                      icon: Icons.sync_rounded, color: DesignColors.info);
-                },
+                  const SizedBox(height: DesignSpacing.xl),
+                ],
               ),
             ),
-            FutureBuilder(
-              future: syncService.getStats(),
-              builder: (context, snapshot) {
-                if ((snapshot.data?.failedEvents ?? 0) == 0) {
-                  return const SizedBox.shrink();
-                }
-                return Padding(
-                  padding: const EdgeInsets.only(top: DesignSpacing.md),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: SettingsPrimaryButton(
-                      label: 'Try failed items again',
-                      onPressed: () {
-                        syncService.retryFailedItems();
-                        Navigator.pop(context);
-                        showGlassSnackBar(
-                            context, 'Trying failed items again...',
-                            icon: Icons.refresh_rounded,
-                            color: DesignColors.warning);
-                      },
-                    ),
-                  ),
-                );
-              },
+          ),
+        ),
+      ),
+    );
+  }
+
+  LocalPortableBackupService _localPortableBackupService() =>
+      LocalPortableBackupService(
+        database: getIt<AppDatabase>(),
+        storage: getIt<StorageService>(),
+        auth: getIt<AuthService>(),
+      );
+
+  Future<void> _createLocalPortableBackup(BuildContext context) async {
+    final passphrase = await _requestNewPortableBackupPassphrase(context);
+    if (passphrase == null || !context.mounted) return;
+    _showLocalDataProgress(context, 'Preparing encrypted shop backup…');
+    var progressOpen = true;
+    try {
+      final service = _localPortableBackupService();
+      final file = await service.createBackup(passphrase: passphrase);
+      if (!context.mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      progressOpen = false;
+      await service.shareBackup(file);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Encrypted backup ready. Referenced catalog photos, shop logo, and supplier receipts are included. Save a copy and keep its password separately.',
             ),
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (error) {
+      if (!context.mounted) return;
+      if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
+      _showLocalDataError(context, error);
+    }
+  }
+
+  Future<void> _createLocalArchiveTransfer(BuildContext context) async {
+    final passphrase = await _requestNewPortableBackupPassphrase(context);
+    if (passphrase == null || !context.mounted) return;
+    _showLocalDataProgress(context, 'Preparing cross-platform transfer…');
+    var progressOpen = true;
+    try {
+      final service = LocalArchiveExportService(
+        database: getIt<AppDatabase>(),
+        storage: getIt<StorageService>(),
+        auth: getIt<AuthService>(),
+      );
+      final file = await service.createArchive(passphrase: passphrase);
+      if (!context.mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      progressOpen = false;
+      await service.shareArchive(file);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Verified encrypted transfer ready. It includes customer balances, collection history, payment schedules, products, completed sales, and stock. Keep the password separate from the file.',
+            ),
+            duration: Duration(seconds: 6),
+          ),
+        );
+      }
+    } catch (error) {
+      if (!context.mounted) return;
+      if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
+      _showLocalDataError(context, error);
+    }
+  }
+
+  Future<void> _restoreLocalPortableBackup(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final service = _localPortableBackupService();
+    MobilePortableBackupPreview? preview;
+    try {
+      preview = await service.pickAndInspect(
+        requestPassphrase: () => _requestPortableBackupPassphrase(context),
+      );
+    } catch (error) {
+      if (context.mounted) _showLocalDataError(context, error);
+      return;
+    }
+    if (preview == null || !context.mounted) return;
+    final selectedPreview = preview;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Replace this phone with ${selectedPreview.tenantName}?'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Backup for ${selectedPreview.ownerName.isEmpty ? 'the shop owner' : selectedPreview.ownerName}, created ${MaterialLocalizations.of(dialogContext).formatMediumDate(selectedPreview.createdAt.toLocal())}. It contains ${selectedPreview.products} products, ${selectedPreview.customers} customers, ${selectedPreview.sales} sales, ${selectedPreview.branches} branches and ${selectedPreview.images} photos.',
+              ),
+              const SizedBox(height: DesignSpacing.md),
+              const Text(
+                'Continuing replaces all shop records on this phone. Included photos are copied to this phone. Its PIN and Axon Gateway key stay here.',
+              ),
+              const SizedBox(height: DesignSpacing.md),
+              const Text(
+                'Only continue if you recognize this shop and have another copy of any data you need to keep.',
+                style: TextStyle(color: DesignColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.restore_rounded),
+            label: const Text('Replace shop records'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    _showLocalDataProgress(context, 'Restoring encrypted shop records…');
+    var progressOpen = true;
+    try {
+      await service.restoreBackup(preview: selectedPreview);
+      if (!context.mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      progressOpen = false;
+      ref.read(authControllerProvider.notifier).refreshFromService();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Restored ${preview.tenantName}: ${preview.products} products, ${preview.customers} customers, ${preview.sales} sales and ${preview.images} photos.',
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
+      _showLocalDataError(context, error);
+    }
+  }
+
+  void _showLocalDataProgress(BuildContext context, String label) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            const SizedBox(width: DesignSpacing.md),
+            Expanded(child: Text(label)),
           ],
         ),
       ),
     );
+  }
+
+  void _showLocalDataError(BuildContext context, Object error) {
+    final String? safeMessage = switch (error) {
+      FormatException exception => exception.message,
+      StateError exception => exception.message.toString(),
+      FileSystemException exception => exception.message,
+      _ => null,
+    };
+    final message = safeMessage?.trim() ?? '';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message.isEmpty
+            ? 'Counterbase could not complete that backup action. Try again.'
+            : message),
+        duration: const Duration(seconds: 6),
+      ),
+    );
+  }
+
+  Future<String?> _requestNewPortableBackupPassphrase(
+    BuildContext context,
+  ) {
+    final password = TextEditingController();
+    final confirmation = TextEditingController();
+    var errorText = '';
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          void submit() {
+            if (password.text.length < 12 || password.text.contains('\u0000')) {
+              setDialogState(
+                () => errorText = 'Use at least 12 characters.',
+              );
+              return;
+            }
+            if (password.text != confirmation.text) {
+              setDialogState(() => errorText = 'The passwords do not match.');
+              return;
+            }
+            Navigator.of(dialogContext).pop(password.text);
+          }
+
+          return AlertDialog(
+            scrollable: true,
+            title: const Text('Protect your shop backup'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Choose a password with at least 12 characters. You will need it to restore the backup. Counterbase cannot recover a forgotten password.',
+                ),
+                const SizedBox(height: DesignSpacing.md),
+                TextField(
+                  controller: password,
+                  autofocus: true,
+                  obscureText: true,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  maxLength: 1024,
+                  decoration: const InputDecoration(
+                    labelText: 'Backup password',
+                    counterText: '',
+                  ),
+                ),
+                const SizedBox(height: DesignSpacing.sm),
+                TextField(
+                  controller: confirmation,
+                  obscureText: true,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  maxLength: 1024,
+                  decoration: InputDecoration(
+                    labelText: 'Confirm password',
+                    errorText: errorText.isEmpty ? null : errorText,
+                    counterText: '',
+                  ),
+                  onSubmitted: (_) => submit(),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: submit,
+                child: const Text('Create backup'),
+              ),
+            ],
+          );
+        },
+      ),
+    ).whenComplete(() {
+      password.dispose();
+      confirmation.dispose();
+    });
+  }
+
+  Future<String?> _requestPortableBackupPassphrase(BuildContext context) {
+    final password = TextEditingController();
+    var errorText = '';
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          void submit() {
+            if (password.text.length < 12 || password.text.contains('\u0000')) {
+              setDialogState(
+                () => errorText = 'Use at least 12 characters.',
+              );
+              return;
+            }
+            Navigator.of(dialogContext).pop(password.text);
+          }
+
+          return AlertDialog(
+            scrollable: true,
+            title: const Text('Unlock encrypted backup'),
+            content: TextField(
+              controller: password,
+              autofocus: true,
+              obscureText: true,
+              enableSuggestions: false,
+              autocorrect: false,
+              maxLength: 1024,
+              decoration: InputDecoration(
+                labelText: 'Backup password',
+                prefixIcon: const Icon(Icons.lock_outline_rounded),
+                errorText: errorText.isEmpty ? null : errorText,
+                counterText: '',
+              ),
+              onSubmitted: (_) => submit(),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: submit,
+                child: const Text('Unlock backup'),
+              ),
+            ],
+          );
+        },
+      ),
+    ).whenComplete(password.dispose);
+  }
+
+  Future<void> _restoreLocalArchive(BuildContext context, WidgetRef ref) async {
+    final archiveService = LocalArchiveImportService(
+      database: getIt<AppDatabase>(),
+      storage: getIt<StorageService>(),
+      auth: getIt<AuthService>(),
+    );
+    LocalArchiveImportPreview? preview;
+    try {
+      preview = await archiveService.pickArchive(
+        requestPassphrase: () => _requestArchivePassphrase(context),
+      );
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(error.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
+      return;
+    }
+    if (preview == null || !context.mounted) return;
+    final selectedPreview = preview;
+    final customerCreditNotes = <String>[
+      if (selectedPreview.customerBalanceCount > 0)
+        'Current balances for ${selectedPreview.customerBalanceCount} customers will be restored to their accounts.',
+      if (selectedPreview.customerInstallmentCount > 0)
+        '${selectedPreview.customerInstallmentCount} scheduled customer payments will be restored.',
+      if (selectedPreview.customerCreditEntryCount > 0)
+        '${selectedPreview.customerCreditEntryCount} original online credit entries remain read-only in archive history; their open amounts are included in customer balances and are not recreated as separate debts.',
+    ];
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Restore ${selectedPreview.tenantName}?'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                selectedPreview.workspaceMatches
+                    ? 'This archive matches the shop open on this device. It contains ${selectedPreview.branchCount} branches, ${selectedPreview.productCount} products, ${selectedPreview.customerCount} customers, ${selectedPreview.saleCount} sales, ${selectedPreview.supplierCount} suppliers, ${selectedPreview.supplierInvoiceCount} supplier invoices and ${selectedPreview.customerCollectionCount} customer collections.'
+                    : 'This archive contains ${selectedPreview.branchCount} branches, ${selectedPreview.productCount} products, ${selectedPreview.customerCount} customers, ${selectedPreview.saleCount} sales, ${selectedPreview.supplierCount} suppliers, ${selectedPreview.supplierInvoiceCount} supplier invoices and ${selectedPreview.customerCollectionCount} customer collections. It will name this empty local workspace ${selectedPreview.tenantName}. If the device already has shop data, the restore will stop without changing it.',
+              ),
+              if (customerCreditNotes.isNotEmpty) ...[
+                const SizedBox(height: DesignSpacing.md),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(DesignSpacing.md),
+                  decoration: BoxDecoration(
+                    color: DesignColors.warning.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                    border: Border.all(
+                      color: DesignColors.warning.withValues(alpha: 0.28),
+                    ),
+                  ),
+                  child: Text(
+                    customerCreditNotes.join(' '),
+                    style: Theme.of(dialogContext).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+              if (!selectedPreview.workspaceMatches) ...[
+                const SizedBox(height: DesignSpacing.md),
+                const Text(
+                  'Staff profiles already on this device keep their PINs, roles and active status. They will be assigned to this shop’s selected branch. Staff profiles and PINs from the archive are not recreated.',
+                ),
+              ],
+              if (selectedPreview.preservedOnlyDescriptions.isNotEmpty) ...[
+                const SizedBox(height: DesignSpacing.md),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(DesignSpacing.md),
+                  decoration: BoxDecoration(
+                    color: DesignColors.warning.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                    border: Border.all(
+                      color: DesignColors.warning.withValues(alpha: 0.28),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.archive_outlined,
+                              size: 18, color: DesignColors.warning),
+                          SizedBox(width: DesignSpacing.xs),
+                          Expanded(
+                            child: Text(
+                              'Kept in backup, not restored to app screens',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: DesignSpacing.xs),
+                      Text(
+                        selectedPreview.preservedOnlyDescriptions
+                            .map((section) => '• $section')
+                            .join('\n'),
+                        style: Theme.of(dialogContext).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: DesignSpacing.md),
+              const Text(
+                'The transfer file is password-encrypted. Existing records with matching IDs are kept, and the restore commits in one transaction. The imported archive is saved inside this device’s encrypted database. Old passwords, PINs, login tokens and payment-provider responses are excluded.',
+              ),
+              const SizedBox(height: DesignSpacing.md),
+              Text(
+                'Prepared ${MaterialLocalizations.of(dialogContext).formatMediumDate(selectedPreview.createdAt.toLocal())}.',
+                style: const TextStyle(color: DesignColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(selectedPreview.workspaceMatches
+                ? 'Restore supported records'
+                : 'Set up with supported records'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            SizedBox(width: DesignSpacing.md),
+            Expanded(child: Text('Restoring shop records…')),
+          ],
+        ),
+      ),
+    );
+    try {
+      final result = await archiveService.importArchive(selectedPreview);
+      if (!context.mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ref.read(authControllerProvider.notifier).refreshFromService();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.alreadyImported
+              ? 'This archive was already restored. No duplicate records were added.'
+              : 'Archive restored for ${result.tenantName}. Supported shop, sales, supplier invoice and linked customer collection records are available offline. Keep the encrypted archive for history this edition does not yet display.'),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+  }
+
+  Future<String?> _requestArchivePassphrase(BuildContext context) {
+    final controller = TextEditingController();
+    var errorText = '';
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          scrollable: true,
+          title: const Text('Unlock shop archive'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                  'Enter the password used when this archive was prepared.'),
+              const SizedBox(height: DesignSpacing.md),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                obscureText: true,
+                enableSuggestions: false,
+                autocorrect: false,
+                decoration: InputDecoration(
+                  labelText: 'Archive password',
+                  prefixIcon: const Icon(Icons.lock_outline_rounded),
+                  errorText: errorText.isEmpty ? null : errorText,
+                ),
+                onSubmitted: (_) {
+                  if (controller.text.length < 12) {
+                    setDialogState(
+                        () => errorText = 'Use at least 12 characters.');
+                    return;
+                  }
+                  Navigator.of(dialogContext).pop(controller.text);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (controller.text.length < 12) {
+                  setDialogState(
+                      () => errorText = 'Use at least 12 characters.');
+                  return;
+                }
+                Navigator.of(dialogContext).pop(controller.text);
+              },
+              child: const Text('Unlock archive'),
+            ),
+          ],
+        ),
+      ),
+    ).whenComplete(controller.dispose);
   }
 
   // ===== PRINTER SETTINGS =====
@@ -652,6 +1304,7 @@ class SettingsScreen extends ConsumerWidget {
         notifySales: notifySales,
         notifyInventory: notifyInventory,
         notifySync: notifySync,
+        localWorkspace: getIt<AuthService>().isLocalWorkspace,
       ),
     );
   }
@@ -746,13 +1399,24 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   // ===== QUICK UNLOCK PIN =====
-  // This credential has two deliberate consumers: the secure, local unlock
-  // hash for this device and the authenticated account PIN used by a fresh
-  // workspace login. The server update must succeed first so the two never
-  // silently diverge.
+  // In a connected workspace, keep the local unlock PIN aligned with the
+  // account PIN. A standalone local workspace has no account server, so its
+  // PIN is stored only in this device's secure local storage.
   void _showChangePinDialog(BuildContext context) async {
     final storage = getIt<StorageService>();
-    final hasExistingPin = await storage.hasLocalPinSet();
+    final authService = getIt<AuthService>();
+    final isLocalWorkspace = authService.isLocalWorkspace;
+    final isLocalStaff =
+        isLocalWorkspace && authService.currentUser?['isLocalStaff'] == true;
+    final currentUserId = authService.currentUser?['id']?.toString() ?? '';
+    final hasExistingPin = isLocalStaff
+        ? await storage.hasLocalStaffPin(currentUserId)
+        : await storage.hasLocalPinSet();
+    final canUseBiometricRecovery = isLocalWorkspace &&
+        !isLocalStaff &&
+        hasExistingPin &&
+        storage.isBiometricEnabled() &&
+        await authService.isBiometricAvailable();
     if (!context.mounted) return;
 
     final currentPinController = TextEditingController();
@@ -760,6 +1424,8 @@ class SettingsScreen extends ConsumerWidget {
     final confirmPinController = TextEditingController();
     String? error;
     bool isSaving = false;
+    bool biometricVerified = false;
+    bool verifyingBiometric = false;
     final pinFormatters = [FilteringTextInputFormatter.digitsOnly];
 
     showDialog(
@@ -767,16 +1433,26 @@ class SettingsScreen extends ConsumerWidget {
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => SettingsDialog(
           title: hasExistingPin
-              ? 'Change quick-unlock PIN'
-              : 'Set quick-unlock PIN',
+              ? isLocalStaff
+                  ? 'Change your staff PIN'
+                  : 'Change quick-unlock PIN'
+              : isLocalStaff
+                  ? 'Set your staff PIN'
+                  : 'Set quick-unlock PIN',
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 hasExistingPin
-                    ? 'Choose 4–6 digits. Enter your current PIN first to confirm it is you.'
-                    : 'Choose 4–6 digits. You will use this PIN to open the app on this phone and to sign in quickly.',
+                    ? isLocalStaff
+                        ? 'Choose 4–6 digits. Enter your current staff PIN first.'
+                        : isLocalWorkspace && canUseBiometricRecovery
+                            ? 'Choose 4–6 digits. Confirm with your current PIN or your device biometrics.'
+                            : 'Choose 4–6 digits. Enter your current PIN first to confirm it is you.'
+                    : isLocalWorkspace
+                        ? 'Choose 4–6 digits to unlock Counterbase on this phone.'
+                        : 'Choose 4–6 digits. You will use this PIN to open the app on this phone and to sign in quickly.',
                 style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
                       color:
                           Theme.of(dialogContext).brightness == Brightness.dark
@@ -804,6 +1480,45 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: DesignSpacing.md),
+              ],
+              if (canUseBiometricRecovery) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: isSaving || verifyingBiometric
+                        ? null
+                        : () async {
+                            setDialogState(() {
+                              verifyingBiometric = true;
+                              error = null;
+                            });
+                            final verified =
+                                await authService.loginWithBiometrics();
+                            if (!dialogContext.mounted) return;
+                            setDialogState(() {
+                              verifyingBiometric = false;
+                              biometricVerified = verified;
+                              if (verified) currentPinController.clear();
+                              error = verified
+                                  ? null
+                                  : 'Biometric check was not completed. Try your current PIN instead.';
+                            });
+                          },
+                    icon: verifyingBiometric
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(biometricVerified
+                            ? Icons.verified_user_rounded
+                            : Icons.fingerprint_rounded),
+                    label: Text(biometricVerified
+                        ? 'Biometrics verified'
+                        : 'Forgot PIN? Verify with biometrics'),
+                  ),
+                ),
+                const SizedBox(height: DesignSpacing.sm),
               ],
               TextField(
                 controller: newPinController,
@@ -868,17 +1583,18 @@ class SettingsScreen extends ConsumerWidget {
                       final confirmPin = confirmPinController.text;
                       final validPin = RegExp(r'^\d{4,6}$');
 
-                      if (hasExistingPin) {
+                      if (hasExistingPin && !biometricVerified) {
                         if (!validPin.hasMatch(currentPin)) {
                           setDialogState(
                               () => error = 'Enter your current 4–6 digit PIN');
                           return;
                         }
-                        final isCorrect =
-                            await storage.verifyLocalPin(currentPin);
+                        final isCorrect = await authService
+                            .verifyLocalPinForSensitiveAction(currentPin);
                         if (!isCorrect) {
-                          setDialogState(
-                              () => error = 'That current PIN is not correct');
+                          setDialogState(() => error =
+                              authService.pinThrottleMessage ??
+                                  'That current PIN is not correct');
                           return;
                         }
                       }
@@ -898,15 +1614,24 @@ class SettingsScreen extends ConsumerWidget {
                         error = null;
                       });
                       try {
-                        // Update the authenticated account first. If this is
-                        // unavailable (including phone-server mode), leave the
-                        // existing local PIN intact instead of creating a
-                        // credential mismatch that can never auto-sync.
-                        await getIt<ApiClient>().setPin(newPin);
-                        await storage.setLocalPin(newPin);
+                        // Keep connected account credentials in sync. Local
+                        // workspaces have no account API by design.
+                        if (!isLocalWorkspace) {
+                          await getIt<ApiClient>().setPin(newPin);
+                        }
+                        if (isLocalStaff) {
+                          await authService.setCurrentLocalStaffPin(newPin);
+                        } else {
+                          await authService.setLocalPin(newPin);
+                        }
                         if (!context.mounted || !dialogContext.mounted) return;
                         Navigator.pop(dialogContext);
-                        _showSnack(context, 'Quick-unlock PIN updated');
+                        _showSnack(
+                          context,
+                          isLocalStaff
+                              ? 'Staff PIN updated'
+                              : 'Quick-unlock PIN updated',
+                        );
                       } on DioException catch (e) {
                         if (!dialogContext.mounted) return;
                         setDialogState(() {
@@ -1059,9 +1784,10 @@ class SettingsScreen extends ConsumerWidget {
     final requireUnlockOnResume = storage.requireUnlockOnResume();
     final autoLockMinutes = storage.getAutoLockMinutes();
     final authService = getIt<AuthService>();
-    final biometricAvailable =
-        await authService.isDeviceAuthenticationAvailable();
+    final biometricAvailable = await authService.isBiometricAvailable();
     final primaryLoginMethod = storage.getPrimaryLoginMethod();
+    final isLocalWorkspace = authService.isLocalWorkspace;
+    final hasLocalStaff = authService.hasActiveLocalStaff;
 
     if (!context.mounted) return;
 
@@ -1083,6 +1809,8 @@ class SettingsScreen extends ConsumerWidget {
           requireUnlockOnResume: requireUnlockOnResume,
           autoLockMinutes: autoLockMinutes,
           primaryLoginMethod: primaryLoginMethod,
+          isLocalWorkspace: isLocalWorkspace,
+          hasLocalStaff: hasLocalStaff,
           scrollController: scrollController,
         ),
       ),
@@ -1173,43 +1901,46 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   void _showFAQ(BuildContext context) {
+    final localWorkspace = getIt<AuthService>().isLocalWorkspace;
     showDialog(
       context: context,
       builder: (context) => SettingsDialog(
         title: 'Common questions',
-        content: const SingleChildScrollView(
+        content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Q: How do I add items to the cart?',
+              const Text('Q: How do I add items to the cart?',
                   style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 4),
-              Text(
+              const SizedBox(height: 4),
+              const Text(
                   'A: Tap a product on the POS screen and select the quantity.'),
-              SizedBox(height: 16),
-              Text('Q: How do I manage products?',
+              const SizedBox(height: 16),
+              const Text('Q: How do I manage products?',
                   style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 4),
-              Text(
+              const SizedBox(height: 4),
+              const Text(
                   'A: Go to the Products tab. Use the + button to add products and the categories button to manage categories.'),
-              SizedBox(height: 16),
-              Text('Q: Can I work offline?',
+              const SizedBox(height: 16),
+              const Text('Q: Can I work offline?',
                   style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 4),
-              Text(
-                  'A: Yes! Sales and product data are stored locally. They will sync automatically when you\'re back online.'),
-              SizedBox(height: 16),
-              Text('Q: How do I change my PIN?',
+              const SizedBox(height: 4),
+              Text(localWorkspace
+                  ? 'A: Yes. This local workspace works offline. Sales and shop records stay on this device and do not sync to a cloud account.'
+                  : 'A: Yes. Sales and product data are stored locally and sync automatically when you\'re back online.'),
+              const SizedBox(height: 16),
+              const Text('Q: How do I change my PIN?',
                   style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 4),
-              Text('A: Go to Settings > Quick-unlock PIN.'),
-              SizedBox(height: 16),
-              Text('Q: How do I process a refund?',
+              const SizedBox(height: 4),
+              const Text('A: Go to Settings > Quick-unlock PIN.'),
+              const SizedBox(height: 16),
+              const Text('Q: How do I process a refund?',
                   style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 4),
-              Text(
-                  'A: Refund functionality will be available in a future update.'),
+              const SizedBox(height: 4),
+              Text(localWorkspace
+                  ? 'A: Open the receipt and void the sale with a reason. Stock is returned. If you physically return till cash, select the cash-refund option so the till is correct. Refund M-Pesa or card payments through the original provider; voiding alone never sends a refund.'
+                  : 'A: Open the receipt and void the sale with a reason. Voiding reverses the sale record and stock, but does not send money back. Refund the payment through its original payment method.'),
             ],
           ),
         ),
@@ -1224,7 +1955,7 @@ class SettingsScreen extends ConsumerWidget {
 
   // ===== ABOUT =====
   void _showAboutInfo(BuildContext context) async {
-    final info = await PackageInfo.fromPlatform();
+    final info = await _settingsPackageInfo;
     if (!context.mounted) return;
     showDialog(
       context: context,
@@ -1471,39 +2202,59 @@ class SettingsScreen extends ConsumerWidget {
                     error = null;
                   });
                   try {
-                    final apiClient = getIt<ApiClient>();
-                    final updated = await apiClient.updateCurrentTenant(
-                      taxRatePercent: rate,
-                      showTaxOnReceipt: showOnReceipt,
-                    );
-                    final sessionCached = await _cacheTenantUpdate(ref, {
-                      'id': updated['id'],
-                      'name': updated['name'],
-                      'settings': updated['settings'],
-                    });
+                    final auth = getIt<AuthService>();
+                    final Map<String, dynamic> updated;
+                    if (auth.isLocalWorkspace) {
+                      final tenant = auth.currentUser?['tenant'];
+                      final currentTenant = tenant is Map
+                          ? Map<String, dynamic>.from(tenant)
+                          : <String, dynamic>{};
+                      final rawSettings = currentTenant['settings'];
+                      final settings = rawSettings is Map
+                          ? Map<String, dynamic>.from(rawSettings)
+                          : <String, dynamic>{};
+                      settings['taxRatePercent'] = rate;
+                      settings['showTaxOnReceipt'] = showOnReceipt;
+                      updated = {
+                        ...currentTenant,
+                        'settings': settings,
+                      };
+                      await auth.updateTenantSession(updated);
+                      ref
+                          .read(authControllerProvider.notifier)
+                          .refreshFromService();
+                    } else {
+                      updated = await getIt<ApiClient>().updateCurrentTenant(
+                        taxRatePercent: rate,
+                        showTaxOnReceipt: showOnReceipt,
+                      );
+                      await _cacheTenantUpdate(ref, {
+                        'id': updated['id'],
+                        'name': updated['name'],
+                        'settings': updated['settings'],
+                      });
+                    }
                     if (dialogContext.mounted) {
                       Navigator.of(dialogContext).pop();
                     }
                     if (context.mounted) {
                       showGlassSnackBar(
                         context,
-                        sessionCached
-                            ? rate > 0
-                                ? 'Tax rate set to ${rate.toStringAsFixed(rate % 1 == 0 ? 0 : 1)}%'
-                                : 'Tax removed — sales will not be taxed'
-                            : 'Tax settings saved to this shop. This device could not cache the change; it will refresh from the workspace later.',
-                        icon: sessionCached
-                            ? Icons.check_circle_rounded
-                            : Icons.cloud_done_rounded,
-                        color: sessionCached
-                            ? DesignColors.success
-                            : DesignColors.warning,
+                        rate > 0
+                            ? 'Tax rate set to ${rate.toStringAsFixed(rate % 1 == 0 ? 0 : 1)}%${auth.isLocalWorkspace ? ' on this device' : ''}'
+                            : auth.isLocalWorkspace
+                                ? 'Tax removed on this device'
+                                : 'Tax removed — sales will not be taxed',
+                        icon: Icons.check_circle_rounded,
+                        color: DesignColors.success,
                       );
                     }
                   } catch (exception) {
                     setDialogState(() {
                       isSaving = false;
-                      error = 'Could not save. ${apiErrorMessage(exception)}';
+                      error = getIt<AuthService>().isLocalWorkspace
+                          ? 'Could not save tax settings on this device. Please try again.'
+                          : 'Could not save. ${apiErrorMessage(exception)}';
                     });
                   }
                 },
@@ -1515,11 +2266,11 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  /// Update the tenant's logo, optionally tracing it into a scalable SVG
-  /// (deterministic vectorization via the backend, no AI involved). Mirrors
-  /// the picker used at first-time company setup, but reachable any time so
-  /// existing shops can swap or vectorize their logo later.
+  /// Update the tenant's logo. Standalone workspaces keep it in app storage;
+  /// connected workspaces use the configured upload service.
   void _showLogoDialog(BuildContext context, WidgetRef ref) {
+    final authService = getIt<AuthService>();
+    final isLocalWorkspace = authService.isLocalWorkspace;
     File? logoFile;
     bool vectorize = false;
     bool isSaving = false;
@@ -1556,7 +2307,9 @@ class SettingsScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Pick a new logo from your phone, or turn your current one into a sharper, resizable (SVG) logo.',
+                  isLocalWorkspace
+                      ? 'Choose a logo image. It will stay on this device and appear on receipts and shop screens.'
+                      : 'Pick a new logo from your phone, or turn your current one into a sharper, resizable (SVG) logo.',
                   style: Theme.of(dialogContext)
                       .textTheme
                       .bodyMedium
@@ -1623,7 +2376,7 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
-                if (logoFile != null) ...[
+                if (logoFile != null && !isLocalWorkspace) ...[
                   const SizedBox(height: 14),
                   GroupedCard(
                     margin: EdgeInsets.zero,
@@ -1669,42 +2422,57 @@ class SettingsScreen extends ConsumerWidget {
                           error = null;
                         });
                         try {
-                          final apiClient = getIt<ApiClient>();
-                          final fileName = logoFile!.uri.pathSegments.isNotEmpty
-                              ? logoFile!.uri.pathSegments.last
-                              : 'company-logo.jpg';
-
-                          String? logoUrl;
-                          String? logoPublicId;
-                          if (vectorize) {
-                            final v = await apiClient.vectorizeLogo(
-                              filePath: logoFile!.path,
-                              fileName: fileName,
-                            );
-                            logoUrl =
-                                (v['svgUrl'] ?? v['rasterUrl']) as String?;
-                            logoPublicId = v['publicId'] as String?;
+                          if (isLocalWorkspace) {
+                            final storedPath =
+                                await _storeLocalBusinessLogo(logoFile!);
+                            await authService.updateTenantSession({
+                              'logo': storedPath,
+                              'logoUrl': storedPath,
+                              'logoPublicId': null,
+                            });
+                            ref
+                                .read(authControllerProvider.notifier)
+                                .refreshFromService();
                           } else {
-                            final uploadResult = await apiClient.uploadImage(
-                              filePath: logoFile!.path,
-                              fileName: fileName,
-                              type: 'logo',
-                            );
-                            logoUrl = uploadResult['url'] as String?;
-                            logoPublicId = uploadResult['publicId'] as String?;
-                          }
+                            final apiClient = getIt<ApiClient>();
+                            final fileName =
+                                logoFile!.uri.pathSegments.isNotEmpty
+                                    ? logoFile!.uri.pathSegments.last
+                                    : 'company-logo.jpg';
 
-                          final updated = await apiClient.updateCurrentTenant(
-                            logo: logoUrl,
-                            logoPublicId: logoPublicId,
-                          );
-                          final sessionCached = await _cacheTenantUpdate(ref, {
-                            'id': updated['id'],
-                            'name': updated['name'],
-                            'logo': updated['logo'],
-                            'logoPublicId': updated['logoPublicId'],
-                            'settings': updated['settings'],
-                          });
+                            String? logoUrl;
+                            String? logoPublicId;
+                            if (vectorize) {
+                              final v = await apiClient.vectorizeLogo(
+                                filePath: logoFile!.path,
+                                fileName: fileName,
+                              );
+                              logoUrl =
+                                  (v['svgUrl'] ?? v['rasterUrl']) as String?;
+                              logoPublicId = v['publicId'] as String?;
+                            } else {
+                              final uploadResult = await apiClient.uploadImage(
+                                filePath: logoFile!.path,
+                                fileName: fileName,
+                                type: 'logo',
+                              );
+                              logoUrl = uploadResult['url'] as String?;
+                              logoPublicId =
+                                  uploadResult['publicId'] as String?;
+                            }
+
+                            final updated = await apiClient.updateCurrentTenant(
+                              logo: logoUrl,
+                              logoPublicId: logoPublicId,
+                            );
+                            await _cacheTenantUpdate(ref, {
+                              'id': updated['id'],
+                              'name': updated['name'],
+                              'logo': updated['logo'],
+                              'logoPublicId': updated['logoPublicId'],
+                              'settings': updated['settings'],
+                            });
+                          }
 
                           if (dialogContext.mounted) {
                             Navigator.of(dialogContext).pop();
@@ -1712,23 +2480,21 @@ class SettingsScreen extends ConsumerWidget {
                           if (context.mounted) {
                             showGlassSnackBar(
                               context,
-                              sessionCached
-                                  ? vectorize
+                              isLocalWorkspace
+                                  ? 'Business logo saved on this device'
+                                  : vectorize
                                       ? 'Logo updated with a crisp SVG version'
-                                      : 'Logo updated'
-                                  : 'Logo saved to this shop. This device could not cache the change; it will refresh from the workspace later.',
-                              icon: sessionCached
-                                  ? Icons.check_circle_rounded
-                                  : Icons.cloud_done_rounded,
-                              color: sessionCached
-                                  ? DesignColors.success
-                                  : DesignColors.warning,
+                                      : 'Logo updated',
+                              icon: Icons.check_circle_rounded,
+                              color: DesignColors.success,
                             );
                           }
                         } catch (e) {
                           setDialogState(() {
                             isSaving = false;
-                            error = 'Could not save. ${apiErrorMessage(e)}';
+                            error = isLocalWorkspace
+                                ? 'Could not save the logo on this device. Check available storage and try again.'
+                                : 'Could not save. ${apiErrorMessage(e)}';
                           });
                         }
                       },
@@ -1738,6 +2504,26 @@ class SettingsScreen extends ConsumerWidget {
         },
       ),
     );
+  }
+
+  Future<String> _storeLocalBusinessLogo(File source) async {
+    final supportDirectory = await getApplicationSupportDirectory();
+    final directory = Directory(
+      p.join(supportDirectory.path, 'Counterbase', 'images', 'logo'),
+    );
+    await directory.create(recursive: true);
+
+    final extension = p.extension(source.path).toLowerCase();
+    final safeExtension =
+        const {'.jpg', '.jpeg', '.png', '.webp', '.heic'}.contains(extension)
+            ? extension
+            : '.jpg';
+    final destination = p.join(
+      directory.path,
+      'business-${DateTime.now().microsecondsSinceEpoch}$safeExtension',
+    );
+    await source.copy(destination);
+    return destination;
   }
 
   void _showBranchManagement(
@@ -1807,6 +2593,16 @@ class SettingsScreen extends ConsumerWidget {
                 await _exportProducts(context, ref);
               },
             ),
+            SettingsRow(
+              icon: Icons.people_alt_rounded,
+              title: 'Customer accounts',
+              subtitle:
+                  'Contact details, balances and credit limits as PDF or CSV',
+              onTap: () async {
+                Navigator.pop(context);
+                await _exportCustomers(context, ref);
+              },
+            ),
           ],
         ),
       ),
@@ -1864,8 +2660,10 @@ class SettingsScreen extends ConsumerWidget {
         await ExportDocumentService.shareCsv(csv, 'sales_export');
       } else {
         final identity = ref.read(tenantIdentityProvider);
-        final logoBytes =
-            await ExportDocumentService.fetchLogoBytes(identity.logoUrl);
+        final logoBytes = await ExportDocumentService.fetchLogoBytes(
+          identity.logoUrl,
+          allowNetwork: !getIt<AuthService>().isLocalWorkspace,
+        );
         final bytes = await ExportDocumentService.buildPdfReport(
           title: 'Sales Export',
           companyName: identity.companyName,
@@ -1928,8 +2726,10 @@ class SettingsScreen extends ConsumerWidget {
         await ExportDocumentService.shareCsv(csv, 'inventory_export');
       } else {
         final identity = ref.read(tenantIdentityProvider);
-        final logoBytes =
-            await ExportDocumentService.fetchLogoBytes(identity.logoUrl);
+        final logoBytes = await ExportDocumentService.fetchLogoBytes(
+          identity.logoUrl,
+          allowNetwork: !getIt<AuthService>().isLocalWorkspace,
+        );
         final bytes = await ExportDocumentService.buildPdfReport(
           title: 'Inventory Export',
           companyName: identity.companyName,
@@ -1993,8 +2793,10 @@ class SettingsScreen extends ConsumerWidget {
         await ExportDocumentService.shareCsv(csv, 'products_export');
       } else {
         final identity = ref.read(tenantIdentityProvider);
-        final logoBytes =
-            await ExportDocumentService.fetchLogoBytes(identity.logoUrl);
+        final logoBytes = await ExportDocumentService.fetchLogoBytes(
+          identity.logoUrl,
+          allowNetwork: !getIt<AuthService>().isLocalWorkspace,
+        );
         final bytes = await ExportDocumentService.buildPdfReport(
           title: 'Products Export',
           companyName: identity.companyName,
@@ -2010,6 +2812,74 @@ class SettingsScreen extends ConsumerWidget {
       if (context.mounted) {
         _showSnack(
             context, 'Could not prepare your file. ${apiErrorMessage(e)}');
+      }
+    }
+  }
+
+  Future<void> _exportCustomers(BuildContext context, WidgetRef ref) async {
+    final format = await showShareFormatSheet(
+      context,
+      title: 'Download customer accounts',
+      formats: const [ShareFormatOption.pdf, ShareFormatOption.csv],
+    );
+    if (format == null || !context.mounted) return;
+
+    try {
+      _showSnack(context, 'Preparing your customer file...');
+      final customers = await getIt<AppDatabase>().getAllCustomers();
+      const headers = [
+        'Name',
+        'Phone',
+        'Email',
+        'Location',
+        'Balance',
+        'Credit Limit',
+        'Total Purchases',
+        'Total Spent',
+      ];
+      final rows = [
+        for (final customer in customers)
+          [
+            customer['name']?.toString() ?? '',
+            customer['phone']?.toString() ?? '',
+            customer['email']?.toString() ?? '',
+            customer['location']?.toString() ?? '',
+            '${customer['balance'] ?? 0}',
+            '${customer['creditLimit'] ?? 0}',
+            '${customer['totalPurchases'] ?? 0}',
+            '${customer['totalSpent'] ?? 0}',
+          ],
+      ];
+
+      if (!context.mounted) return;
+      if (format == ShareFormat.csv) {
+        final csv = ExportDocumentService.buildCsv(headers, rows);
+        await ExportDocumentService.shareCsv(csv, 'customer_accounts_export');
+      } else {
+        final identity = ref.read(tenantIdentityProvider);
+        final logoBytes = await ExportDocumentService.fetchLogoBytes(
+          identity.logoUrl,
+          allowNetwork: !getIt<AuthService>().isLocalWorkspace,
+        );
+        final bytes = await ExportDocumentService.buildPdfReport(
+          title: 'Customer Accounts',
+          companyName: identity.companyName,
+          subtitle: countLabel(customers.length, 'customer account'),
+          logoBytes: logoBytes,
+          sections: [
+            PdfReportSection(
+              heading: 'Customers and balances',
+              headers: headers,
+              rows: rows,
+            ),
+          ],
+        );
+        await ExportDocumentService.sharePdf(bytes, 'customer_accounts_export');
+      }
+    } catch (error) {
+      if (context.mounted) {
+        _showSnack(
+            context, 'Could not prepare your file. ${apiErrorMessage(error)}');
       }
     }
   }
@@ -2530,11 +3400,13 @@ class _NotificationSettingsSheet extends StatefulWidget {
   final bool notifySales;
   final bool notifyInventory;
   final bool notifySync;
+  final bool localWorkspace;
 
   const _NotificationSettingsSheet({
     required this.notifySales,
     required this.notifyInventory,
     required this.notifySync,
+    required this.localWorkspace,
   });
 
   @override
@@ -2626,7 +3498,9 @@ class _NotificationSettingsSheetState
                     subtitle: _checkingPermission
                         ? 'Checking…'
                         : _osPermissionGranted
-                            ? 'On — you will get alerts'
+                            ? widget.localWorkspace
+                                ? 'On — Counterbase can show on-device notices'
+                                : 'On — you will get shop alerts'
                             : 'Blocked — turn them on in your phone settings',
                     trailing: _checkingPermission
                         ? const SizedBox(
@@ -2706,87 +3580,102 @@ class _NotificationSettingsSheetState
                   ],
                 ),
               const SizedBox(height: 12),
-              // ── Category Toggles ──
-              GroupedCard(
-                margin: EdgeInsets.zero,
-                children: [
-                  SettingsRow(
-                    icon: Icons.point_of_sale_rounded,
-                    title: 'Sales alerts',
-                    subtitle: 'Know when a sale is completed',
-                    trailing: Switch(
-                      value: _notifySales,
-                      activeThumbColor: DesignColors.accent,
-                      onChanged: (v) => setState(() => _notifySales = v),
+              if (widget.localWorkspace) ...[
+                const GroupedCard(
+                  margin: EdgeInsets.zero,
+                  children: [
+                    SettingsRow(
+                      icon: Icons.phone_android_rounded,
+                      iconColor: DesignColors.info,
+                      title: 'Device-only notifications',
+                      subtitle:
+                          'This edition can show local app notices. Sales, low-stock, and backup alerts are not active in this device-only workspace.',
                     ),
-                  ),
-                  SettingsRow(
-                    icon: Icons.inventory_rounded,
-                    title: 'Stock alerts',
-                    subtitle: 'Low stock and reorder reminders',
-                    trailing: Switch(
-                      value: _notifyInventory,
-                      activeThumbColor: DesignColors.accent,
-                      onChanged: (v) => setState(() => _notifyInventory = v),
-                    ),
-                  ),
-                  SettingsRow(
-                    icon: Icons.sync_rounded,
-                    title: 'Backup alerts',
-                    subtitle: 'Know when a backup finishes or fails',
-                    trailing: Switch(
-                      value: _notifySync,
-                      activeThumbColor: DesignColors.accent,
-                      onChanged: (v) => setState(() => _notifySync = v),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: SettingsPrimaryButton(
-                  label: 'Save',
-                  onPressed: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool(
-                        _SettingsKeys.notifySales, _notifySales);
-                    await prefs.setBool(
-                        _SettingsKeys.notifyInventory, _notifyInventory);
-                    await prefs.setBool(_SettingsKeys.notifySync, _notifySync);
-
-                    // These three toggles are per-category filters; the OS
-                    // notification permission itself is a single shared
-                    // gate, so any category being on means this device
-                    // needs to be registered to actually receive pushes.
-                    final anyEnabled =
-                        _notifySales || _notifyInventory || _notifySync;
-                    String? permissionMessage;
-                    if (anyEnabled && !_osPermissionGranted) {
-                      final granted = await getIt<NotificationService>()
-                          .requestPermission();
-                      if (!granted) {
-                        permissionMessage =
-                            'Notifications are blocked in your phone settings — enable them there to receive alerts.';
-                      } else if (mounted) {
-                        setState(() {
-                          _osPermissionGranted = true;
-                        });
-                      }
-                    }
-
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(permissionMessage ??
-                              'Notification settings saved'),
-                        ),
-                      );
-                    }
-                  },
+                  ],
                 ),
-              ),
+              ] else ...[
+                // These category preferences are applied to connected shop
+                // alerts. The local-only edition has no event feed behind
+                // them, so it explains that limitation instead of offering
+                // switches that cannot change behavior.
+                GroupedCard(
+                  margin: EdgeInsets.zero,
+                  children: [
+                    SettingsRow(
+                      icon: Icons.point_of_sale_rounded,
+                      title: 'Sales alerts',
+                      subtitle: 'Know when a sale is completed',
+                      trailing: Switch(
+                        value: _notifySales,
+                        activeThumbColor: DesignColors.accent,
+                        onChanged: (v) => setState(() => _notifySales = v),
+                      ),
+                    ),
+                    SettingsRow(
+                      icon: Icons.inventory_rounded,
+                      title: 'Stock alerts',
+                      subtitle: 'Low stock and reorder reminders',
+                      trailing: Switch(
+                        value: _notifyInventory,
+                        activeThumbColor: DesignColors.accent,
+                        onChanged: (v) => setState(() => _notifyInventory = v),
+                      ),
+                    ),
+                    SettingsRow(
+                      icon: Icons.sync_rounded,
+                      title: 'Backup alerts',
+                      subtitle: 'Know when a backup finishes or fails',
+                      trailing: Switch(
+                        value: _notifySync,
+                        activeThumbColor: DesignColors.accent,
+                        onChanged: (v) => setState(() => _notifySync = v),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: SettingsPrimaryButton(
+                    label: 'Save',
+                    onPressed: () async {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setBool(
+                          _SettingsKeys.notifySales, _notifySales);
+                      await prefs.setBool(
+                          _SettingsKeys.notifyInventory, _notifyInventory);
+                      await prefs.setBool(
+                          _SettingsKeys.notifySync, _notifySync);
+
+                      final anyEnabled =
+                          _notifySales || _notifyInventory || _notifySync;
+                      String? permissionMessage;
+                      if (anyEnabled && !_osPermissionGranted) {
+                        final granted = await getIt<NotificationService>()
+                            .requestPermission();
+                        if (!granted) {
+                          permissionMessage =
+                              'Notifications are blocked in your phone settings — enable them there to receive alerts.';
+                        } else if (mounted) {
+                          setState(() {
+                            _osPermissionGranted = true;
+                          });
+                        }
+                      }
+
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(permissionMessage ??
+                                'Notification settings saved'),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -2802,6 +3691,8 @@ class _SecuritySettingsSheet extends StatefulWidget {
   final bool requireUnlockOnResume;
   final int autoLockMinutes;
   final String primaryLoginMethod;
+  final bool isLocalWorkspace;
+  final bool hasLocalStaff;
   final ScrollController scrollController;
 
   const _SecuritySettingsSheet({
@@ -2810,6 +3701,8 @@ class _SecuritySettingsSheet extends StatefulWidget {
     required this.requireUnlockOnResume,
     required this.autoLockMinutes,
     required this.primaryLoginMethod,
+    required this.isLocalWorkspace,
+    required this.hasLocalStaff,
     required this.scrollController,
   });
 
@@ -2834,7 +3727,10 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
     _autoLockMinutes = supportedLockDelays.contains(widget.autoLockMinutes)
         ? widget.autoLockMinutes
         : 0;
-    _primaryLoginMethod = widget.primaryLoginMethod;
+    _primaryLoginMethod = widget.isLocalWorkspace &&
+            !{'pin', 'biometric'}.contains(widget.primaryLoginMethod)
+        ? 'pin'
+        : widget.primaryLoginMethod;
   }
 
   /// Turning biometric login on/off takes effect immediately (not deferred
@@ -2948,7 +3844,7 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                           borderRadius:
                               BorderRadius.circular(DesignSpacing.xs)))),
               const SizedBox(height: 18),
-              Text('Fingerprint & auto-lock',
+              Text('Sign-in & auto-lock',
                   style: Theme.of(context)
                       .textTheme
                       .titleLarge
@@ -2959,9 +3855,12 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                 children: [
                   SettingsRow(
                     icon: Icons.login_rounded,
-                    title: 'Primary sign-in method',
-                    subtitle:
-                        'Choosing biometrics also asks you to unlock when you return. Biometrics restore a remembered session; first sign-in still needs an account.',
+                    title: widget.isLocalWorkspace
+                        ? 'Primary unlock method'
+                        : 'Primary sign-in method',
+                    subtitle: widget.isLocalWorkspace
+                        ? 'Choose how to unlock this device. Your PIN remains available if biometrics cannot be used.'
+                        : 'Choosing biometrics also asks you to unlock when you return. Biometrics restore a remembered session; first sign-in still needs an account.',
                     trailing: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         value: _primaryLoginMethod == 'biometric' &&
@@ -2972,14 +3871,16 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                         isDense: true,
                         borderRadius: BorderRadius.circular(16),
                         items: [
-                          const DropdownMenuItem(
-                            value: 'email',
-                            child: Text('Email'),
-                          ),
-                          const DropdownMenuItem(
-                            value: 'google',
-                            child: Text('Google'),
-                          ),
+                          if (!widget.isLocalWorkspace) ...[
+                            const DropdownMenuItem(
+                              value: 'email',
+                              child: Text('Email'),
+                            ),
+                            const DropdownMenuItem(
+                              value: 'google',
+                              child: Text('Google'),
+                            ),
+                          ],
                           const DropdownMenuItem(
                             value: 'pin',
                             child: Text('PIN'),
@@ -3017,7 +3918,9 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                     title: 'Fingerprint or face unlock',
                     subtitle: widget.biometricAvailable
                         ? "Use an enrolled fingerprint or face; PIN and pattern are not biometric sign-in."
-                        : 'Set up fingerprint or face recognition in Android settings first.',
+                        : widget.hasLocalStaff
+                            ? 'Off while local staff profiles are active. The device cannot tell Counterbase which enrolled person passed the biometric check, so each staff member signs in with their own PIN.'
+                            : 'Set up fingerprint or face recognition in your device settings first.',
                     enabled: widget.biometricAvailable &&
                         !_isConfirmingBiometric &&
                         !_isSaving,
@@ -3181,8 +4084,7 @@ class _StatusBadge extends StatelessWidget {
 class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
-  final Color? valueColor;
-  const _InfoRow(this.label, this.value, {this.valueColor});
+  const _InfoRow(this.label, this.value);
 
   @override
   Widget build(BuildContext context) {
@@ -3213,7 +4115,7 @@ class _InfoRow extends StatelessWidget {
                 style: DesignType.numeric(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
-                    color: valueColor ?? titleColor),
+                    color: titleColor),
                 textAlign: TextAlign.end,
                 overflow: TextOverflow.ellipsis),
           ),
@@ -3724,7 +4626,7 @@ class _SettingsFooter extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: FutureBuilder<PackageInfo>(
-        future: PackageInfo.fromPlatform(),
+        future: _settingsPackageInfo,
         builder: (context, snapshot) {
           final info = snapshot.data;
           final build = info == null || info.buildNumber.isEmpty

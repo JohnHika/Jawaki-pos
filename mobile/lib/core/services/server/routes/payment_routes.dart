@@ -58,9 +58,9 @@ class PaymentRoutes {
     return shelf.Response(
       503,
       body: jsonEncode({
-        'error': 'Merchant payments need the online workspace',
+        'error': 'Merchant payments are unavailable in this edition',
         'message':
-            'Connect to the online Counterbase workspace to set up Paystack or collect customer M-Pesa payments. Cash and credit sales remain available on this device.',
+            'This standalone workspace cannot start Paystack or customer M-Pesa payments. Cash and customer-credit sales can still be recorded on this device.',
         'provider': 'Paystack',
       }),
       headers: {'content-type': 'application/json'},
@@ -72,7 +72,7 @@ class PaymentRoutes {
       503,
       body: jsonEncode({
         'error': '$provider requires internet access',
-        'message': 'Connect to the online Counterbase workspace to use this payment provider. Cash and credit sales remain available on this device.',
+        'message': 'This standalone workspace cannot start $provider payments. Cash and customer-credit sales can still be recorded on this device.',
         'provider': provider,
       }),
       headers: {'content-type': 'application/json'},

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/di/injection.dart';
+import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
@@ -16,6 +18,18 @@ final _reconciliationHistoryProvider =
   final branchId = getIt<AuthService>().branchId;
   if (branchId == null) return {};
   return getIt<ApiClient>().getCashReconciliations(branchId, limit: 20);
+});
+
+final _localReconciliationHistoryProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final auth = getIt<AuthService>();
+  final branchId = auth.branchId;
+  if (branchId == null || branchId.isEmpty) return const {};
+  final items = await getIt<AppDatabase>().getLocalDailyCloseHistory(
+    branchId: branchId,
+    limit: 20,
+  );
+  return <String, dynamic>{'items': items};
 });
 
 final _currencyFmt =
@@ -37,8 +51,12 @@ class _CashReconciliationScreenState
     final permissions = ref.watch(permissionsProvider);
     final canViewHistory = permissions.has('cash_reconciliation.view');
     final canCreateReconciliation = permissions.canReconcileCash;
-    final historyAsync =
-        canViewHistory ? ref.watch(_reconciliationHistoryProvider) : null;
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
+    final historyAsync = canViewHistory
+        ? ref.watch(isLocalWorkspace
+            ? _localReconciliationHistoryProvider
+            : _reconciliationHistoryProvider)
+        : null;
 
     if (!canViewHistory && !canCreateReconciliation) {
       return const Scaffold(
@@ -59,8 +77,9 @@ class _CashReconciliationScreenState
                 IconButton(
                   tooltip: 'Refresh',
                   icon: const Icon(Icons.refresh_rounded),
-                  onPressed: () =>
-                      ref.invalidate(_reconciliationHistoryProvider),
+                  onPressed: () => ref.invalidate(isLocalWorkspace
+                      ? _localReconciliationHistoryProvider
+                      : _reconciliationHistoryProvider),
                 ),
               ]
             : const [],
@@ -70,7 +89,7 @@ class _CashReconciliationScreenState
               minimum: const EdgeInsets.fromLTRB(DesignSpacing.lg,
                   DesignSpacing.sm, DesignSpacing.lg, DesignSpacing.md),
               child: GradientButton(
-                label: 'Count Cash',
+                label: isLocalWorkspace ? 'Close the day' : 'Count Cash',
                 icon: Icons.calculate_rounded,
                 onPressed: getIt<AuthService>().branchId?.isNotEmpty == true
                     ? _showCountSheet
@@ -97,9 +116,13 @@ class _CashReconciliationScreenState
                 if (items.isEmpty) {
                   return EmptyState(
                     icon: Icons.calculate_outlined,
-                    title: 'No reconciliations yet',
+                    title: isLocalWorkspace
+                        ? 'No till closes yet'
+                        : 'No reconciliations yet',
                     subtitle: canCreateReconciliation
-                        ? 'Tap "Count Cash" to record your first cash count.'
+                        ? isLocalWorkspace
+                            ? 'Close the day to save your first expected and counted cash record.'
+                            : 'Tap "Count Cash" to record your first cash count.'
                         : 'No cash counts have been recorded for this branch yet.',
                   );
                 }
@@ -130,7 +153,9 @@ class _CashReconciliationScreenState
                 actionLabel: isPermissionDenied(e) ? null : 'Retry',
                 onAction: isPermissionDenied(e)
                     ? null
-                    : () => ref.invalidate(_reconciliationHistoryProvider),
+                    : () => ref.invalidate(isLocalWorkspace
+                        ? _localReconciliationHistoryProvider
+                        : _reconciliationHistoryProvider),
               ),
             )
           : const EmptyState(
@@ -144,6 +169,11 @@ class _CashReconciliationScreenState
 
   Future<void> _showCountSheet() async {
     if (!ref.read(permissionsProvider).canReconcileCash) return;
+    if (getIt<AuthService>().isLocalWorkspace) {
+      await context.push<void>('/cash-flow/end-of-day');
+      if (mounted) ref.invalidate(_localReconciliationHistoryProvider);
+      return;
+    }
     final branchId = getIt<AuthService>().branchId;
     if (branchId == null) return;
 
@@ -321,7 +351,8 @@ class _ReconciliationCard extends StatelessWidget {
     final countedCash = (item['countedCash'] as num).toDouble();
     final discrepancy = (item['discrepancy'] as num).toDouble();
     final countedByName = item['countedByName'] as String?;
-    final createdAt = DateTime.tryParse(item['createdAt'] as String? ?? '')?.toLocal();
+    final createdAt =
+        DateTime.tryParse(item['createdAt'] as String? ?? '')?.toLocal();
 
     final isMatch = discrepancy.abs() < 0.01;
     final statusColor = isMatch

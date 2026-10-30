@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -111,11 +112,13 @@ class CartMutationResult {
   final bool success;
   final String message;
   final double currentStock;
+  final bool isStockBlocked;
 
   const CartMutationResult({
     required this.success,
     required this.message,
     this.currentStock = 0,
+    this.isStockBlocked = false,
   });
 
   const CartMutationResult.success([String message = 'Updated cart'])
@@ -278,14 +281,39 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
     required StorageService storage,
     required String? tenantId,
     required String? branchId,
+    required bool isLocalWorkspace,
   })  : _storage = storage,
         _tenantId = tenantId,
         _branchId = branchId,
-        super(_restore(storage, tenantId, branchId));
+        _isLocalWorkspace = isLocalWorkspace,
+        // Local workspaces restore held carts from the OS-protected store
+        // asynchronously. Do not expose a legacy plaintext backup in the UI
+        // while that migration is still running.
+        super(isLocalWorkspace
+            ? const []
+            : _restore(storage, tenantId, branchId,
+                isLocalWorkspace: isLocalWorkspace)) {
+    _isRestoring = isLocalWorkspace;
+    _ready = isLocalWorkspace ? _restoreSecureSnapshot() : Future<void>.value();
+  }
 
   final StorageService _storage;
   final String? _tenantId;
   final String? _branchId;
+  final bool _isLocalWorkspace;
+  late final Future<void> _ready;
+  bool _isRestoring = false;
+  bool _disposed = false;
+  String? _restoreWarning;
+  String? get restoreWarning => _restoreWarning;
+  bool get isRestoring => _isRestoring;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
   Future<void> _mutationQueue = Future<void>.value();
   final Map<CartState, Future<void>> _pendingParks = {};
 
@@ -297,7 +325,11 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
   }
 
   static List<ParkedSale> _restore(
-      StorageService storage, String? tenantId, String? branchId) {
+    StorageService storage,
+    String? tenantId,
+    String? branchId, {
+    required bool isLocalWorkspace,
+  }) {
     if (tenantId == null ||
         tenantId.isEmpty ||
         branchId == null ||
@@ -306,7 +338,20 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
     }
     final raw =
         storage.getHeldSalesSnapshot(tenantId: tenantId, branchId: branchId);
-    if (raw == null) return const [];
+    return _decodeSnapshot(raw, tenantId, branchId,
+        allowCoupons: !isLocalWorkspace);
+  }
+
+  static List<ParkedSale> _decodeSnapshot(
+      String? raw, String? tenantId, String? branchId,
+      {bool allowCoupons = true}) {
+    if (tenantId == null ||
+        tenantId.isEmpty ||
+        branchId == null ||
+        branchId.isEmpty ||
+        raw == null) {
+      return const [];
+    }
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map ||
@@ -367,7 +412,7 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
           final id = row['id']?.toString() ?? '';
           if (id.isEmpty || parkedAt == null) continue;
           Coupon? coupon;
-          if (cartJson['coupon'] is Map) {
+          if (allowCoupons && cartJson['coupon'] is Map) {
             try {
               coupon = Coupon.fromJson(
                   Map<String, dynamic>.from(cartJson['coupon'] as Map));
@@ -399,6 +444,267 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
     }
   }
 
+  static bool _hasValidSnapshotEnvelope(
+    String? raw,
+    String tenantId,
+    String branchId,
+  ) {
+    if (raw == null) return false;
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is Map &&
+          decoded['version'] == 1 &&
+          decoded['tenantId'] == tenantId &&
+          decoded['branchId'] == branchId &&
+          decoded['sales'] is List;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static bool _isCompletelyRestorableSnapshot(
+    String? raw,
+    String tenantId,
+    String branchId, {
+    required bool allowCoupons,
+  }) {
+    if (!_hasValidSnapshotEnvelope(raw, tenantId, branchId)) return false;
+    try {
+      final decoded = jsonDecode(raw!) as Map;
+      final rows = decoded['sales'] as List;
+      final restored = _decodeSnapshot(
+        raw,
+        tenantId,
+        branchId,
+        allowCoupons: allowCoupons,
+      );
+      if (restored.length != rows.length) return false;
+
+      for (final row in rows) {
+        if (row is! Map || row['cart'] is! Map) return false;
+        final id = row['id']?.toString() ?? '';
+        final matches = restored.where((sale) => sale.id == id).toList();
+        if (matches.length != 1) return false;
+
+        final cart = row['cart'] as Map;
+        final sourceItems = cart['items'];
+        if (sourceItems is! List ||
+            sourceItems.length != matches.single.cart.items.length) {
+          return false;
+        }
+        final restoredItems = matches.single.cart.items;
+        for (final sourceItem in sourceItems) {
+          if (sourceItem is! Map) return false;
+          final itemId = sourceItem['id']?.toString() ?? '';
+          final restoredMatches =
+              restoredItems.where((item) => item.id == itemId).toList();
+          if (restoredMatches.length != 1) return false;
+          final sourceQuantity = _amount(sourceItem['quantity']);
+          final sourcePrice = _amount(sourceItem['unitPrice']);
+          final sourceDiscount = _amount(sourceItem['discount']) ?? 0;
+          final restoredItem = restoredMatches.single;
+          if (sourceQuantity == null ||
+              sourcePrice == null ||
+              sourceDiscount < 0 ||
+              _quantityAtSupportedPrecision(sourceQuantity) !=
+                  restoredItem.quantity ||
+              sourcePrice != restoredItem.unitPrice ||
+              sourceDiscount != restoredItem.discount) {
+            return false;
+          }
+        }
+        final sourceDiscountPercent = _amount(cart['discountPercent']) ?? 0;
+        final sourceDiscountAmount = _amount(cart['discountAmount']) ?? 0;
+        if (sourceDiscountPercent < 0 ||
+            sourceDiscountPercent > 100 ||
+            sourceDiscountAmount < 0 ||
+            sourceDiscountAmount > matches.single.cart.subtotal ||
+            (sourceDiscountPercent > 0 && sourceDiscountAmount > 0) ||
+            sourceDiscountPercent != matches.single.cart.discountPercent ||
+            sourceDiscountAmount != matches.single.cart.discountAmount) {
+          return false;
+        }
+        // Standalone installs cannot validate a coupon against the retired
+        // shared service. Never silently resume a cart whose total depends on
+        // coupon data that this edition cannot safely restore.
+        if (!allowCoupons && cart['coupon'] != null) return false;
+        if (cart['coupon'] != null && matches.single.cart.coupon == null) {
+          return false;
+        }
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static bool _snapshotSalesCoveredBy(
+    String legacySnapshot,
+    String secureSnapshot,
+    String tenantId,
+    String branchId,
+  ) {
+    try {
+      final legacy = jsonDecode(legacySnapshot) as Map;
+      final secure = jsonDecode(secureSnapshot) as Map;
+      final legacyRows = legacy['sales'] as List;
+      final secureRows = secure['sales'] as List;
+      final secureIds = secureRows
+          .whereType<Map>()
+          .map((row) => row['id']?.toString() ?? '')
+          .toSet();
+      return _hasValidSnapshotEnvelope(
+            legacySnapshot,
+            tenantId,
+            branchId,
+          ) &&
+          _hasValidSnapshotEnvelope(
+            secureSnapshot,
+            tenantId,
+            branchId,
+          ) &&
+          legacyRows.every(
+              (row) => row is Map && secureIds.contains(row['id']?.toString()));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _markRestoreWarning(String message) {
+    if (_disposed) return;
+    _restoreWarning = message;
+    // Notify the derived status provider even when the visible sale list stays
+    // empty. Held-sale data remains read-only until it can be restored safely.
+    state = [...state];
+  }
+
+  void _ensureSnapshotWritable() {
+    if (_restoreWarning != null) {
+      throw StateError(
+        'Saved held sales could not be restored safely. Their saved data was kept; do not clear app data.',
+      );
+    }
+  }
+
+  Future<void> _restoreSecureSnapshot() async {
+    try {
+      await _loadSecureSnapshot();
+    } finally {
+      _isRestoring = false;
+      if (!_disposed) state = [...state];
+    }
+  }
+
+  Future<void> _loadSecureSnapshot() async {
+    final tenantId = _tenantId;
+    final branchId = _branchId;
+    if (tenantId == null ||
+        tenantId.isEmpty ||
+        branchId == null ||
+        branchId.isEmpty) {
+      return;
+    }
+    String? secureSnapshot;
+    String? legacySnapshot;
+    try {
+      secureSnapshot = await _storage.getSecureHeldSalesSnapshot(
+        tenantId: tenantId,
+        branchId: branchId,
+      );
+      legacySnapshot = _storage.getHeldSalesSnapshot(
+        tenantId: tenantId,
+        branchId: branchId,
+      );
+    } catch (_) {
+      _markRestoreWarning(
+        'Saved held sales could not be read from secure storage. Their saved data was left untouched.',
+      );
+      return;
+    }
+
+    final secureSnapshotIsComplete = _isCompletelyRestorableSnapshot(
+      secureSnapshot,
+      tenantId,
+      branchId,
+      allowCoupons: false,
+    );
+    final legacySnapshotIsComplete = _isCompletelyRestorableSnapshot(
+      legacySnapshot,
+      tenantId,
+      branchId,
+      allowCoupons: false,
+    );
+
+    if (secureSnapshotIsComplete) {
+      if (_disposed) return;
+      state = _decodeSnapshot(
+        secureSnapshot,
+        tenantId,
+        branchId,
+        allowCoupons: false,
+      );
+      if (legacySnapshot != null) {
+        if (legacySnapshotIsComplete &&
+            _snapshotSalesCoveredBy(
+              legacySnapshot,
+              secureSnapshot!,
+              tenantId,
+              branchId,
+            )) {
+          try {
+            await _storage.clearLegacyHeldSalesSnapshot(
+              tenantId: tenantId,
+              branchId: branchId,
+            );
+          } catch (_) {
+            _markRestoreWarning(
+              'Held sales are readable, but an older unprotected copy could not be removed. Do not clear app data; ask the workspace owner for help.',
+            );
+          }
+        } else {
+          _markRestoreWarning(
+            'Held sales are readable, but another saved copy contains entries that could not be safely matched. Both copies were kept; do not clear app data.',
+          );
+        }
+      }
+      return;
+    }
+
+    if (secureSnapshot == null && legacySnapshotIsComplete) {
+      try {
+        // Migrate only a fully restorable legacy snapshot. Keep the plaintext
+        // source until the protected copy has been written successfully.
+        await _storage.saveSecureHeldSalesSnapshot(
+          tenantId: tenantId,
+          branchId: branchId,
+          snapshot: legacySnapshot!,
+        );
+        if (_disposed) return;
+        state = _decodeSnapshot(
+          legacySnapshot,
+          tenantId,
+          branchId,
+          allowCoupons: false,
+        );
+        await _storage.clearLegacyHeldSalesSnapshot(
+          tenantId: tenantId,
+          branchId: branchId,
+        );
+      } catch (_) {
+        _markRestoreWarning(
+          'Held sales could not be moved into secure storage. Their saved copy was kept; do not clear app data.',
+        );
+      }
+      return;
+    }
+
+    if (secureSnapshot != null || legacySnapshot != null) {
+      _markRestoreWarning(
+        'Some saved held sales could not be restored safely. Their saved data was kept; do not clear app data.',
+      );
+    }
+  }
+
   Future<T> _serializeMutation<T>(Future<T> Function() mutation) {
     final operation = _mutationQueue.then((_) => mutation());
     _mutationQueue = operation.then<void>((_) {}).catchError((Object error) {
@@ -408,6 +714,7 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
   }
 
   Future<void> _persist() async {
+    _ensureSnapshotWritable();
     final tenantId = _tenantId;
     final branchId = _branchId;
     if (tenantId == null ||
@@ -438,11 +745,19 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
           },
       ],
     });
-    await _storage.saveHeldSalesSnapshot(
-      tenantId: tenantId,
-      branchId: branchId,
-      snapshot: snapshot,
-    );
+    if (_isLocalWorkspace) {
+      await _storage.saveSecureHeldSalesSnapshot(
+        tenantId: tenantId,
+        branchId: branchId,
+        snapshot: snapshot,
+      );
+    } else {
+      await _storage.saveHeldSalesSnapshot(
+        tenantId: tenantId,
+        branchId: branchId,
+        snapshot: snapshot,
+      );
+    }
   }
 
   Future<void> park(CartState cart, {String? label}) {
@@ -451,6 +766,8 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
 
     late final Future<void> operation;
     operation = _serializeMutation(() async {
+      await _ready;
+      _ensureSnapshotWritable();
       if (cart.items.isEmpty) return;
       final previous = state;
       final name = label ?? cart.customerName ?? 'Sale #${state.length + 1}';
@@ -482,6 +799,8 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
   }
 
   Future<CartState?> resume(String id) => _serializeMutation(() async {
+        await _ready;
+        _ensureSnapshotWritable();
         final index = state.indexWhere((sale) => sale.id == id);
         if (index < 0) return null;
         final previous = state;
@@ -506,6 +825,8 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
     required bool Function(CartState) installCart,
   }) =>
       _serializeMutation(() async {
+        await _ready;
+        _ensureSnapshotWritable();
         final index = state.indexWhere((sale) => sale.id == id);
         if (index < 0) return false;
         if (!installCart(reviewedCart)) return false;
@@ -531,6 +852,8 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
       });
 
   Future<void> remove(String id) => _serializeMutation(() async {
+        await _ready;
+        _ensureSnapshotWritable();
         final previous = state;
         final next = state.where((sale) => sale.id != id).toList();
         if (next.length == state.length) return;
@@ -546,15 +869,30 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
 
 final parkedSalesProvider =
     StateNotifierProvider<ParkedSalesNotifier, List<ParkedSale>>((ref) {
-  final scope = ref.watch(authControllerProvider.select((auth) => auth
-          .isAuthenticated
-      ? (auth.user?['tenantId']?.toString(), auth.user?['branchId']?.toString())
-      : (null, null)));
+  final scope =
+      ref.watch(authControllerProvider.select((auth) => auth.isAuthenticated
+          ? (
+              auth.user?['authMode'] == 'local',
+              auth.user?['tenantId']?.toString(),
+              auth.user?['branchId']?.toString()
+            )
+          : (false, null, null)));
   return ParkedSalesNotifier(
     storage: getIt<StorageService>(),
-    tenantId: scope.$1,
-    branchId: scope.$2,
+    tenantId: scope.$2,
+    branchId: scope.$3,
+    isLocalWorkspace: scope.$1,
   );
+});
+
+final parkedSalesRestoreWarningProvider = Provider<String?>((ref) {
+  ref.watch(parkedSalesProvider);
+  return ref.read(parkedSalesProvider.notifier).restoreWarning;
+});
+
+final parkedSalesIsRestoringProvider = Provider<bool>((ref) {
+  ref.watch(parkedSalesProvider);
+  return ref.read(parkedSalesProvider.notifier).isRestoring;
 });
 
 // ════════ CART NOTIFIER ════════
@@ -563,6 +901,7 @@ class CartNotifier extends StateNotifier<CartState> {
   AppDatabase get _database => getIt<AppDatabase>();
 
   int _sessionGeneration = 0;
+  final Map<String, Future<void>> _productMutationTails = {};
 
   int get sessionGeneration => _sessionGeneration;
 
@@ -582,6 +921,36 @@ class CartNotifier extends StateNotifier<CartState> {
   void resetForSession() {
     _sessionGeneration++;
     state = const CartState();
+  }
+
+  /// Serializes stock-sensitive edits to the same cart line. Each operation
+  /// validates against the quantity committed by the preceding operation, so
+  /// rapid taps cannot all pass stock validation against the same stale cart.
+  Future<CartMutationResult> _serializeProductMutation(
+    String productId,
+    int expectedSessionGeneration,
+    Future<CartMutationResult> Function() operation,
+  ) async {
+    final previous = _productMutationTails[productId];
+    final turn = Completer<void>();
+    final turnFuture = turn.future;
+    _productMutationTails[productId] = turnFuture;
+    if (previous != null) await previous;
+
+    try {
+      if (expectedSessionGeneration != _sessionGeneration) {
+        return const CartMutationResult(
+          success: false,
+          message: 'Your session changed. Start this sale again.',
+        );
+      }
+      return await operation();
+    } finally {
+      turn.complete();
+      if (identical(_productMutationTails[productId], turnFuture)) {
+        _productMutationTails.remove(productId);
+      }
+    }
   }
 
   // Stock validation method
@@ -641,6 +1010,7 @@ class CartNotifier extends StateNotifier<CartState> {
       if (stock.quantity <= 0) {
         return {
           'available': false,
+          'stockBlocked': true,
           'message': 'Product is out of stock',
           'currentStock': stock.quantity,
           'required': quantity,
@@ -650,6 +1020,7 @@ class CartNotifier extends StateNotifier<CartState> {
       if (stock.quantity < quantity) {
         return {
           'available': false,
+          'stockBlocked': true,
           'message': 'Insufficient stock available',
           'currentStock': stock.quantity,
           'required': quantity,
@@ -674,6 +1045,41 @@ class CartNotifier extends StateNotifier<CartState> {
   }
 
   Future<CartMutationResult> addItem({
+    required String productId,
+    required String productName,
+    required String sku,
+    required double unitPrice,
+    num quantity = 1,
+    double discount = 0,
+    String? notes,
+    String? saleUnit,
+    double? saleQuantity,
+    double? unitConversionFactor,
+    double? catalogUnitPrice,
+    bool allowFractions = false,
+  }) {
+    final generation = _sessionGeneration;
+    return _serializeProductMutation(
+      productId,
+      generation,
+      () => _addItem(
+        productId: productId,
+        productName: productName,
+        sku: sku,
+        unitPrice: unitPrice,
+        quantity: quantity,
+        discount: discount,
+        notes: notes,
+        saleUnit: saleUnit,
+        saleQuantity: saleQuantity,
+        unitConversionFactor: unitConversionFactor,
+        catalogUnitPrice: catalogUnitPrice,
+        allowFractions: allowFractions,
+      ),
+    );
+  }
+
+  Future<CartMutationResult> _addItem({
     required String productId,
     required String productName,
     required String sku,
@@ -757,6 +1163,7 @@ class CartNotifier extends StateNotifier<CartState> {
         success: false,
         message: stockCheck['message'] as String? ?? 'Insufficient stock',
         currentStock: (stockCheck['currentStock'] as num?)?.toDouble() ?? 0,
+        isStockBlocked: stockCheck['stockBlocked'] == true,
       );
     }
 
@@ -825,8 +1232,43 @@ class CartNotifier extends StateNotifier<CartState> {
     double? saleQuantity,
     double? unitConversionFactor,
     double? catalogUnitPrice,
+  }) {
+    final generation = _sessionGeneration;
+    return _serializeProductMutation(
+      productId,
+      generation,
+      () => _updateQuantity(
+        productId,
+        quantity,
+        unitPrice: unitPrice,
+        notes: notes,
+        saleUnit: saleUnit,
+        saleQuantity: saleQuantity,
+        unitConversionFactor: unitConversionFactor,
+        catalogUnitPrice: catalogUnitPrice,
+      ),
+    );
+  }
+
+  Future<CartMutationResult> _updateQuantity(
+    String productId,
+    num quantity, {
+    double? unitPrice,
+    String? notes,
+    String? saleUnit,
+    double? saleQuantity,
+    double? unitConversionFactor,
+    double? catalogUnitPrice,
   }) async {
     final sessionGeneration = _sessionGeneration;
+    final currentItemIndex =
+        state.items.indexWhere((item) => item.productId == productId);
+    if (currentItemIndex < 0) {
+      return const CartMutationResult(
+        success: false,
+        message: 'This item is no longer in the cart. Reopen it and try again.',
+      );
+    }
     final quantityValue = _quantityAtSupportedPrecision(quantity);
     if (!quantityValue.isFinite || quantityValue < 0) {
       return const CartMutationResult(
@@ -844,19 +1286,15 @@ class CartNotifier extends StateNotifier<CartState> {
         message: 'Enter a valid item price.',
       );
     }
-    final currentItemIndex =
-        state.items.indexWhere((item) => item.productId == productId);
-    final currentItem =
-        currentItemIndex < 0 ? null : state.items[currentItemIndex];
-    if (quantityValue % 1 != 0 && currentItem?.allowFractions != true) {
+    final currentItem = state.items[currentItemIndex];
+    if (quantityValue % 1 != 0 && !currentItem.allowFractions) {
       return const CartMutationResult(
         success: false,
         message: 'This product is sold in whole units.',
       );
     }
-    final resultingUnitPrice = unitPrice ?? currentItem?.unitPrice;
-    if (resultingUnitPrice != null &&
-        !(resultingUnitPrice * quantityValue).isFinite) {
+    final resultingUnitPrice = unitPrice ?? currentItem.unitPrice;
+    if (!(resultingUnitPrice * quantityValue).isFinite) {
       return const CartMutationResult(
         success: false,
         message: 'The item price is too large for this quantity.',
@@ -873,11 +1311,19 @@ class CartNotifier extends StateNotifier<CartState> {
       );
     }
 
+    if (!state.items.any((item) => item.productId == productId)) {
+      return const CartMutationResult(
+        success: false,
+        message: 'This item was removed while you were editing it.',
+      );
+    }
+
     if (!stockCheck['available']) {
       return CartMutationResult(
         success: false,
         message: stockCheck['message'] as String? ?? 'Insufficient stock',
         currentStock: (stockCheck['currentStock'] as num?)?.toDouble() ?? 0,
+        isStockBlocked: stockCheck['stockBlocked'] == true,
       );
     }
 
@@ -909,7 +1355,16 @@ class CartNotifier extends StateNotifier<CartState> {
 
   /// Moves a line by [delta] base units, keeping its price and sale unit.
   /// Going to zero or below removes the line.
-  Future<CartMutationResult> changeQuantityBy(
+  Future<CartMutationResult> changeQuantityBy(String productId, num delta) {
+    final generation = _sessionGeneration;
+    return _serializeProductMutation(
+      productId,
+      generation,
+      () => _changeQuantityBy(productId, delta),
+    );
+  }
+
+  Future<CartMutationResult> _changeQuantityBy(
       String productId, num delta) async {
     final sessionGeneration = _sessionGeneration;
     final index = state.items.indexWhere((i) => i.productId == productId);
@@ -951,12 +1406,24 @@ class CartNotifier extends StateNotifier<CartState> {
           success: false,
           message: stockCheck['message'] as String? ?? 'Insufficient stock',
           currentStock: (stockCheck['currentStock'] as num?)?.toDouble() ?? 0,
+          isStockBlocked: stockCheck['stockBlocked'] == true,
         );
       }
     }
 
     final latest = state.items.indexWhere((i) => i.productId == productId);
-    if (latest < 0) return const CartMutationResult.success();
+    if (sessionGeneration != _sessionGeneration) {
+      return const CartMutationResult(
+        success: false,
+        message: 'Your session changed. Start this sale again.',
+      );
+    }
+    if (latest < 0) {
+      return const CartMutationResult(
+        success: false,
+        message: 'This item was removed while you were updating the cart.',
+      );
+    }
     final latestItem = state.items[latest];
     final latestConversionValue = latestItem.unitConversionFactor;
     final latestConversion = latestConversionValue != null &&

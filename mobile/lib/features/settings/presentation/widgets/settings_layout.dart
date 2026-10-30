@@ -105,7 +105,7 @@ class SettingsIconTile extends StatelessWidget {
   }
 }
 
-/// Small pill used for states such as Online / Offline.
+/// Small pill used for network and workspace states.
 class SettingsStatusChip extends StatelessWidget {
   const SettingsStatusChip({
     super.key,
@@ -191,8 +191,9 @@ class SettingsTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final titleColor =
-        destructive ? context.readable(DesignColors.error) : _primaryTextFor(isDark);
+    final titleColor = destructive
+        ? context.readable(DesignColors.error)
+        : _primaryTextFor(isDark);
 
     return Material(
       color: Colors.transparent,
@@ -341,6 +342,7 @@ class SettingsProfileHeader extends StatelessWidget {
     required this.companyCode,
     this.branchName = '',
     this.isOnline = false,
+    this.isLocalWorkspace = false,
   });
 
   final String name;
@@ -350,6 +352,7 @@ class SettingsProfileHeader extends StatelessWidget {
   final String companyCode;
   final String branchName;
   final bool isOnline;
+  final bool isLocalWorkspace;
 
   String get _initial {
     final text = name.trim();
@@ -456,11 +459,24 @@ class SettingsProfileHeader extends StatelessWidget {
                             ),
                           ),
                           SettingsStatusChip(
-                            text: isOnline ? 'Online' : 'Offline',
-                            pulse: isOnline,
-                            color: isOnline
-                                ? DesignColors.success
-                                : DesignColors.warning,
+                            // Internet access does not mean a device-local
+                            // shop is syncing. Make the storage model clear
+                            // instead of showing a misleading live status.
+                            text: isLocalWorkspace
+                                ? 'Local only'
+                                : isOnline
+                                    ? 'Network connected'
+                                    : 'No network',
+                            // Connectivity state only describes the device's
+                            // network interface, not whether a server is
+                            // reachable, so it should not pulse as a live
+                            // service-health indicator.
+                            pulse: false,
+                            color: isLocalWorkspace
+                                ? DesignColors.info
+                                : isOnline
+                                    ? DesignColors.success
+                                    : DesignColors.warning,
                           ),
                         ],
                       ),
@@ -470,7 +486,8 @@ class SettingsProfileHeader extends StatelessWidget {
               ],
             ),
           ),
-          Divider(height: 1, thickness: 1, color: border.withValues(alpha: 0.7)),
+          Divider(
+              height: 1, thickness: 1, color: border.withValues(alpha: 0.7)),
           Container(
             color: isDark
                 ? DesignColors.darkSurface.withValues(alpha: 0.5)
@@ -668,8 +685,8 @@ class _SettingsSectionListState extends State<SettingsSectionList> {
                 Text(
                   'Try a different word, like "printer" or "PIN".',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 13, color: _secondaryTextFor(isDark)),
+                  style:
+                      TextStyle(fontSize: 13, color: _secondaryTextFor(isDark)),
                 ),
               ],
             ),

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -36,19 +35,6 @@ class NotificationService {
   static const String keyNotifySales = 'setting_notify_sales';
   static const String keyNotifyInventory = 'setting_notify_inventory';
   static const String keyNotifySync = 'setting_notify_sync';
-
-  /// Maps a push's `data.type` (set server-side — see
-  /// backend NotificationsService/PushNotificationPayload callers) to the
-  /// local category preference that gates it. Unrecognized/missing types
-  /// are never silently dropped — they fall through to "always show".
-  static const Map<String, String> _categoryByType = {
-    'stock_request_resolved': keyNotifyInventory,
-    'low_stock_alert': keyNotifyInventory,
-    'restock_suggestion': keyNotifyInventory,
-    'eod_reminder': keyNotifySync,
-    'sync_failed': keyNotifySync,
-    'sale_completed': keyNotifySales,
-  };
 
   static const _defaultChannel = AndroidNotificationChannel(
     'axon_pos_default_channel',
@@ -115,25 +101,8 @@ class NotificationService {
     } catch (e) {
       debugPrint('[NotificationService] Local notification init failed: $e');
     }
-
-    try {
-      await Firebase.initializeApp();
-    } catch (e) {
-      debugPrint('[NotificationService] Firebase init failed: $e');
-      return; // Local notifications still work without Firebase/FCM.
-    }
-
-    FirebaseMessaging.onMessage.listen(_showForegroundNotification);
-    // Tapped while the app was in the background...
-    FirebaseMessaging.onMessageOpenedApp.listen(
-        (message) => _emitOpen(Map<String, dynamic>.from(message.data)));
-    // ...or tapped to launch the app from a fully closed state.
-    try {
-      final initial = await FirebaseMessaging.instance.getInitialMessage();
-      if (initial != null) {
-        _emitOpen(Map<String, dynamic>.from(initial.data));
-      }
-    } catch (_) {}
+    // The downloadable edition uses on-device notifications only. Push
+    // registration depends on an online POS backend and is intentionally off.
   }
 
   Future<void> _initializeLocalNotifications() async {
@@ -185,14 +154,47 @@ class NotificationService {
     }
   }
 
+  /// A desktop computer is asking to pair (QR / approval sign-in). Shown
+  /// locally by the phone server when the request arrives, so it surfaces
+  /// even while the app is in the foreground.
+  Future<void> showDesktopLinkRequestNotification({
+    required String code,
+    required String desktopName,
+  }) async {
+    try {
+      await _initializeLocalNotifications();
+      await _localNotifications.show(
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        'Sign-in request: $desktopName',
+        'A computer wants to open Counterbase. Review code $code in the app.',
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            _defaultChannel.id,
+            _defaultChannel.name,
+            channelDescription: _defaultChannel.description,
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+        ),
+        payload: 'desktop-link',
+      );
+    } catch (e) {
+      debugPrint('[NotificationService] Desktop link notice failed: $e');
+    }
+  }
+
   /// True if the OS has actually granted notification permission — separate
   /// from the in-app "Inventory Alerts"/"Sales Alerts" preference toggles,
   /// which only control which categories of push this user wants, not
   /// whether the OS allows notifications at all.
   Future<bool> hasPermission() async {
-    final settings = await FirebaseMessaging.instance.getNotificationSettings();
-    return settings.authorizationStatus == AuthorizationStatus.authorized ||
-        settings.authorizationStatus == AuthorizationStatus.provisional;
+    if (!_initialized) await initialize();
+    final android = _localNotifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android != null) {
+      return await android.areNotificationsEnabled() ?? true;
+    }
+    return _localInitialized;
   }
 
   /// Requests OS notification permission (a real system prompt on Android
@@ -203,20 +205,32 @@ class NotificationService {
   /// far more likely to be denied.
   Future<bool> requestPermission() async {
     if (!_initialized) await initialize();
-
-    final settings = await FirebaseMessaging.instance.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-    final granted =
-        settings.authorizationStatus == AuthorizationStatus.authorized ||
-            settings.authorizationStatus == AuthorizationStatus.provisional;
-
-    if (granted) {
-      await registerToken();
+    final android = _localNotifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android != null) {
+      return await android.requestNotificationsPermission() ?? true;
     }
-    return granted;
+    final ios = _localNotifications.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    if (ios != null) {
+      return await ios.requestPermissions(
+            alert: true,
+            badge: true,
+            sound: true,
+          ) ??
+          false;
+    }
+    final macos = _localNotifications.resolvePlatformSpecificImplementation<
+        MacOSFlutterLocalNotificationsPlugin>();
+    if (macos != null) {
+      return await macos.requestPermissions(
+            alert: true,
+            badge: true,
+            sound: true,
+          ) ??
+          false;
+    }
+    return true;
   }
 
   /// Fetches the device's current FCM token and sends it to the backend so
@@ -253,44 +267,5 @@ class NotificationService {
     } finally {
       _registeredToken = null;
     }
-  }
-
-  void _showForegroundNotification(RemoteMessage message) async {
-    // Always refresh the in-app inbox/badge, even if the user muted this
-    // category's system alerts — it is still in their notification list.
-    pushArrived.value++;
-
-    final notification = message.notification;
-    if (notification == null) return;
-
-    if (!await _isCategoryEnabled(message.data['type'])) return;
-
-    _localNotifications.show(
-      notification.hashCode,
-      notification.title,
-      notification.body,
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          _defaultChannel.id,
-          _defaultChannel.name,
-          channelDescription: _defaultChannel.description,
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-      ),
-      payload: jsonEncode(message.data),
-    );
-  }
-
-  /// Whether the user's in-app category preference allows this push to be
-  /// shown. An unmapped/missing `type` always returns true (fail-open —
-  /// only explicitly categorized pushes can be muted). Defaults to enabled
-  /// when no preference has been saved yet, matching the Settings screen's
-  /// own `?? true` defaults.
-  Future<bool> _isCategoryEnabled(String? type) async {
-    final prefKey = _categoryByType[type];
-    if (prefKey == null) return true;
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(prefKey) ?? true;
   }
 }

@@ -4,10 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/utils/api_message.dart';
 
 /// Reusable image picker + uploader used by product, category, and logo
@@ -19,17 +23,12 @@ class ImagePickerSection extends StatefulWidget {
   final void Function(String? url, String? publicId) onImageChanged;
   final String label;
 
-  /// Called with the local path as soon as a photo is chosen (before the
-  /// upload), so callers can run on-photo AI such as product recognition.
-  final void Function(String path)? onPhotoPicked;
-
   const ImagePickerSection({
     super.key,
     this.initialImageUrl,
     required this.type,
     required this.onImageChanged,
     this.label = 'Add image',
-    this.onPhotoPicked,
   });
 
   @override
@@ -38,6 +37,16 @@ class ImagePickerSection extends StatefulWidget {
 
 class _ImagePickerSectionState extends State<ImagePickerSection> {
   bool get _dark => Theme.of(context).brightness == Brightness.dark;
+  bool get _hasUnavailableOnlineImage {
+    if (!getIt<AuthService>().isLocalWorkspace || _localImagePath != null) {
+      return false;
+    }
+    final value = _imageUrl?.trim();
+    final uri = value == null ? null : Uri.tryParse(value);
+    return uri != null &&
+        (uri.scheme == 'http' || uri.scheme == 'https') &&
+        uri.host.isNotEmpty;
+  }
 
   String? _imageUrl;
   String? _localImagePath;
@@ -108,13 +117,28 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
     }
     if (file == null || !mounted) return;
 
+    await _processPickedImage(file);
+  }
+
+  Future<void> _processPickedImage(XFile file) async {
+    if (!mounted) return;
     setState(() {
-      _localImagePath = file!.path;
+      _localImagePath = file.path;
       _isUploading = true;
     });
-    widget.onPhotoPicked?.call(file.path);
 
     try {
+      if (getIt<AuthService>().isLocalWorkspace) {
+        final storedPath = await _storeImageLocally(file);
+        if (!mounted) return;
+        setState(() {
+          _imageUrl = storedPath;
+          _localImagePath = storedPath;
+        });
+        widget.onImageChanged(storedPath, null);
+        return;
+      }
+
       final result = await getIt<ApiClient>().uploadImage(
         filePath: file.path,
         fileName: file.name,
@@ -129,10 +153,35 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
       });
       widget.onImageChanged(url, publicId);
     } catch (e) {
-      _showImageError('Image upload failed. ${apiErrorMessage(e)}');
+      _showImageError(
+        getIt<AuthService>().isLocalWorkspace
+            ? 'Could not save this photo on the device. Check available storage and try again.'
+            : 'Image upload failed. ${apiErrorMessage(e)}',
+      );
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
+  }
+
+  Future<String> _storeImageLocally(XFile file) async {
+    final supportDirectory = await getApplicationSupportDirectory();
+    final safeType = widget.type.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    final imageDirectory = Directory(
+      p.join(supportDirectory.path, 'Counterbase', 'images', safeType),
+    );
+    await imageDirectory.create(recursive: true);
+
+    final extension = p.extension(file.name).toLowerCase();
+    final safeExtension =
+        const {'.jpg', '.jpeg', '.png', '.webp', '.heic'}.contains(extension)
+            ? extension
+            : '.jpg';
+    final destination = p.join(
+      imageDirectory.path,
+      '${const Uuid().v4()}$safeExtension',
+    );
+    await File(file.path).copy(destination);
+    return destination;
   }
 
   Future<void> _recoverLostImage() async {
@@ -147,8 +196,8 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
       }
 
       final file = response.file;
-      if (file == null) return;
-      setState(() => _localImagePath = file.path);
+      if (file == null || !mounted) return;
+      await _processPickedImage(file);
     } catch (_) {
       // Lost-data recovery is best effort only.
     }
@@ -180,7 +229,9 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
       return Container(
         height: 64,
         decoration: BoxDecoration(
-          color: (_dark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle),
+          color: (_dark
+              ? DesignColors.darkSurfaceElevated
+              : DesignColors.surfaceSubtle),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -196,8 +247,14 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
             ),
             const SizedBox(width: 10),
             Text(
-              'Uploading...',
-              style: TextStyle(fontSize: 13, color: (_dark ? DesignColors.darkTextSecondary : DesignColors.textSecondary)),
+              getIt<AuthService>().isLocalWorkspace
+                  ? 'Saving photo on this device...'
+                  : 'Uploading...',
+              style: TextStyle(
+                  fontSize: 13,
+                  color: (_dark
+                      ? DesignColors.darkTextSecondary
+                      : DesignColors.textSecondary)),
             ),
           ],
         ),
@@ -222,8 +279,17 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
                   children: [
                     TextButton.icon(
                       onPressed: _isUploading ? null : _pickImage,
-                      icon: const Icon(Icons.swap_horiz_rounded, size: 17),
-                      label: const Text('Change image'),
+                      icon: Icon(
+                        _hasUnavailableOnlineImage
+                            ? Icons.add_photo_alternate_outlined
+                            : Icons.swap_horiz_rounded,
+                        size: 17,
+                      ),
+                      label: Text(
+                        _hasUnavailableOnlineImage
+                            ? 'Choose image'
+                            : 'Change image',
+                      ),
                       style: TextButton.styleFrom(
                         foregroundColor: DesignColors.brand,
                         padding: EdgeInsets.zero,
@@ -248,6 +314,19 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
               ),
             ],
           ),
+          if (_hasUnavailableOnlineImage) ...[
+            const SizedBox(height: 8),
+            Text(
+              'This image is stored online. Choose a photo to keep it on this device.',
+              style: TextStyle(
+                color: _dark
+                    ? DesignColors.darkTextSecondary
+                    : DesignColors.textSecondary,
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
+          ],
           if (_isUploading) ...[
             const SizedBox(height: 8),
             const LinearProgressIndicator(
@@ -277,23 +356,32 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
           child: Container(
             height: 56,
             decoration: BoxDecoration(
-              color: (_dark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle),
+              color: (_dark
+                  ? DesignColors.darkSurfaceElevated
+                  : DesignColors.surfaceSubtle),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: (_dark ? DesignColors.darkBorder : DesignColors.surfaceBorder)),
+              border: Border.all(
+                  color: (_dark
+                      ? DesignColors.darkBorder
+                      : DesignColors.surfaceBorder)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
                   Icons.add_photo_alternate_outlined,
-                  color: (_dark ? DesignColors.darkTextTertiary : DesignColors.textTertiary),
+                  color: (_dark
+                      ? DesignColors.darkTextTertiary
+                      : DesignColors.textTertiary),
                   size: 20,
                 ),
                 const SizedBox(width: 8),
                 Text(
                   widget.label,
                   style: TextStyle(
-                    color: (_dark ? DesignColors.darkTextTertiary : DesignColors.textTertiary),
+                    color: (_dark
+                        ? DesignColors.darkTextTertiary
+                        : DesignColors.textTertiary),
                     fontSize: 13,
                   ),
                 ),
@@ -326,6 +414,36 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
       );
     }
 
+    if (_hasUnavailableOnlineImage) {
+      return Container(
+        width: 64,
+        height: 64,
+        color: _dark
+            ? DesignColors.darkSurfaceElevated
+            : DesignColors.surfaceSubtle,
+        child: Icon(
+          Icons.cloud_off_outlined,
+          color:
+              _dark ? DesignColors.darkTextTertiary : DesignColors.textTertiary,
+          size: 25,
+        ),
+      );
+    }
+
+    if (getIt<AuthService>().isLocalWorkspace) {
+      final value = _imageUrl?.trim();
+      if (value == null || value.isEmpty) return _brokenPreview();
+      final uri = Uri.tryParse(value);
+      final path = uri?.scheme == 'file' ? uri!.toFilePath() : value;
+      return Image.file(
+        File(path),
+        width: 64,
+        height: 64,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _brokenPreview(),
+      );
+    }
+
     return CachedNetworkImage(
       imageUrl: _imageUrl!,
       width: 64,
@@ -334,7 +452,9 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
       placeholder: (_, __) => Container(
         width: 64,
         height: 64,
-        color: (_dark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle),
+        color: (_dark
+            ? DesignColors.darkSurfaceElevated
+            : DesignColors.surfaceSubtle),
       ),
       errorWidget: (_, __, ___) => _brokenPreview(),
     );
@@ -344,10 +464,13 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
     return Container(
       width: 64,
       height: 64,
-      color: (_dark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle),
+      color: (_dark
+          ? DesignColors.darkSurfaceElevated
+          : DesignColors.surfaceSubtle),
       child: Icon(
         Icons.broken_image_outlined,
-        color: (_dark ? DesignColors.darkTextTertiary : DesignColors.textTertiary),
+        color:
+            (_dark ? DesignColors.darkTextTertiary : DesignColors.textTertiary),
         size: 28,
       ),
     );

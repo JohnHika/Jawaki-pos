@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:dio/dio.dart';
-
 import 'package:axon_pos/features/auth/presentation/screens/company_setup_screen.dart';
 
 void main() {
@@ -47,20 +45,18 @@ void main() {
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Verify your ownership'), findsOneWidget);
-    expect(find.text('Secure ownership check'), findsOneWidget);
-    expect(find.text('Continue with Google'), findsOneWidget);
-    expect(find.text('Verify and create workspace'), findsOneWidget);
-    expect(find.text('Use an email code instead'), findsOneWidget);
+    expect(find.text('Secure this device'), findsOneWidget);
+    expect(find.text('Owner PIN · 6 digits'), findsOneWidget);
+    expect(find.text('Confirm owner PIN'), findsOneWidget);
     expect(
       find.text(
-        'Counterbase does not collect or store an owner password during workspace setup.',
+        'The workspace is created locally. No account, online POS server, or internet connection is needed.',
       ),
       findsOneWidget,
     );
   });
 
-  testWidgets('company name rejects server-invalid characters on step one',
+  testWidgets('company name rejects unsupported characters on step one',
       (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -82,24 +78,4 @@ void main() {
     expect(find.textContaining('Step 1 of 4'), findsOneWidget);
   });
 
-  test('maps duplicate workspace responses to concise user-facing copy', () {
-    final error = DioException(
-      requestOptions: RequestOptions(path: '/auth/register-company'),
-      response: Response<dynamic>(
-        requestOptions: RequestOptions(path: '/auth/register-company'),
-        statusCode: 400,
-        data: {
-          'message': 'Company with this slug already exists',
-          'error': 'Bad Request',
-          'statusCode': 400,
-        },
-      ),
-      type: DioExceptionType.badResponse,
-    );
-
-    expect(
-      companySetupErrorMessage(error),
-      'A workspace with this name already exists. Choose a different name.',
-    );
-  });
 }

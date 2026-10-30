@@ -6,10 +6,12 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/services/connectivity_service.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/notification_service.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/providers/business_layout_provider.dart';
+import '../../../../core/providers/local_workspace_capabilities.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../billing/presentation/widgets/subscription_entitlement_host.dart';
 import '../../../../core/services/haptic_service.dart';
@@ -40,6 +42,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// for and ask for the OS permission in context — instead of leaving it
   /// buried behind a Settings toggle most people never find. Asked once.
   Future<void> _offerNotifications() async {
+    if (getIt<AuthService>().isLocalWorkspace) return;
     await Future<void>.delayed(const Duration(seconds: 2));
     if (!mounted) return;
     try {
@@ -97,6 +100,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   List<_NavItem> _buildNavItems(
       RolePermissions perms, BusinessLayoutConfig businessLayout) {
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final items = <_NavItem>[];
     if (perms.canSeeDashboard) {
       items.add(_NavItem(
@@ -112,14 +116,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: 'POS',
           path: '/'));
     }
-    // AI is a primary working surface, not an add-on hidden in More.
-    // Keep the first four tabs focused on daily work. Customers is available
-    // from More so it never displaces AI in the compact bottom bar.
-    items.add(_NavItem(
-        icon: Icons.auto_awesome_outlined,
-        activeIcon: Icons.auto_awesome_rounded,
-        label: 'AI',
-        path: '/ai'));
+    // AI is a primary work surface for accounts whose role permits it.
+    // Device-local staff use scoped roles, so the owner-only Gateway
+    // credential is never exposed as a general staff capability.
+    if (perms.has('ai.chat')) {
+      items.add(_NavItem(
+          icon: Icons.auto_awesome_outlined,
+          activeIcon: Icons.auto_awesome_rounded,
+          label: 'AI',
+          path: '/ai'));
+    }
     if (perms.canSeeProducts) {
       items.add(_NavItem(
           icon: Icons.inventory_2_outlined,
@@ -256,7 +262,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: 'Trade Partners',
           path: '/partners'));
     }
-    items.removeWhere((item) => !businessLayout.isActionVisible(
+    items.removeWhere((item) =>
+        (isLocalWorkspace &&
+            !LocalWorkspaceCapabilities.supportsPath(item.path)) ||
+        !businessLayout.isActionVisible(
           item.path == '/inventory/request-stock' ? '/inventory' : item.path,
         ));
     late final List<_NavItem> orderedItems;
@@ -476,7 +485,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _latestMoreItems = moreItems;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentIndex = _resolveCurrentIndex(allNavItems);
-    final homePath = businessLayout.homePathFor(perms);
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
+    final homePath = isLocalWorkspace
+        ? LocalWorkspaceCapabilities.homePathFor(perms, businessLayout)
+        : businessLayout.homePathFor(perms);
     final atHome = GoRouterState.of(context).uri.path == homePath;
 
     // Tabs are reached with context.go, so the stack holds a single page and
@@ -503,24 +515,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: Scaffold(
           body: Column(
             children: [
-              // Offline Banner
+              // Always distinguish device-local workspaces from cloud
+              // workspaces. Internet connectivity does not enable syncing in
+              // the standalone edition.
               StreamBuilder<ConnectionStatus>(
                 stream: connectivity.statusStream,
                 initialData: connectivity.currentStatus,
                 builder: (context, snapshot) {
                   final isOffline = snapshot.data == ConnectionStatus.offline;
-                  if (!isOffline) return const SizedBox.shrink();
+                  if (!isLocalWorkspace && !isOffline) {
+                    return const SizedBox.shrink();
+                  }
+                  final statusColor = isLocalWorkspace
+                      ? DesignColors.info
+                      : DesignColors.warning;
                   return Container(
                     width: double.infinity,
                     padding: EdgeInsets.only(
                         top: MediaQuery.of(context).padding.top,
                         bottom: DesignSpacing.sm),
                     decoration: BoxDecoration(
-                      color: DesignColors.warning.withValues(alpha: 0.12),
+                      color: statusColor.withValues(alpha: 0.12),
                       border: Border(
                           bottom: BorderSide(
-                              color:
-                                  DesignColors.warning.withValues(alpha: 0.2))),
+                              color: statusColor.withValues(alpha: 0.2))),
                     ),
                     child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -528,21 +546,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           Container(
                               width: 6,
                               height: 6,
-                              decoration: const BoxDecoration(
-                                  color: DesignColors.warning,
-                                  shape: BoxShape.circle)),
+                              decoration: BoxDecoration(
+                                  color: statusColor, shape: BoxShape.circle)),
                           const SizedBox(width: DesignSpacing.sm - 2),
-                          const Text('Offline Mode',
+                          Text(isLocalWorkspace ? 'Local only' : 'Offline mode',
                               style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
-                                  color: DesignColors.warning)),
+                                  color: statusColor)),
                           const SizedBox(width: DesignSpacing.sm),
-                          Text('Sales will sync',
+                          Flexible(
+                            child: Text(
+                              isLocalWorkspace
+                                  ? 'Records stay on this device'
+                                  : 'Sales will sync when connected',
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                  fontSize: 10,
-                                  color: DesignColors.warning
-                                      .withValues(alpha: 0.7))),
+                                fontSize: 10,
+                                color: statusColor.withValues(alpha: 0.8),
+                              ),
+                            ),
+                          ),
                         ]),
                   );
                 },

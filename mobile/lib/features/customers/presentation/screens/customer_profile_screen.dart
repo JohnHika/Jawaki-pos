@@ -13,6 +13,7 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../sales/presentation/providers/cart_provider.dart';
 import '../../../finance/domain/bulk_allocation.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/utils/api_message.dart';
 import '../widgets/credit_limit_card.dart';
@@ -153,6 +154,11 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   /// Keep the profile balance aligned with Finance after a payment is made on
   /// another device, while retaining debt from sales still waiting to sync.
   Future<void> _refreshCloudBalance(String customerId, int generation) async {
+    // Local workspaces are the source of truth on this device. A cloud
+    // receivables request cannot update their balance and only adds a long,
+    // silent timeout to the customer profile.
+    if (getIt<AuthService>().isLocalWorkspace) return;
+
     final branchId = getIt<AuthService>().branchId;
     if (branchId == null || branchId.isEmpty) return;
     try {
@@ -210,6 +216,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   }
 
   Future<void> _showAddInstallmentSheet() async {
+    if (!ref.read(permissionsProvider).canManageReceivables) return;
     final amountCtrl = TextEditingController();
     final noteCtrl = TextEditingController();
     DateTime? dueDate;
@@ -353,12 +360,13 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                               if (!sheetContext.mounted) return;
                               Navigator.of(sheetContext).pop();
                               await _loadData();
-                            } catch (_) {
+                            } catch (saveError) {
                               if (!sheetContext.mounted) return;
                               setSheetState(() {
                                 isSaving = false;
-                                error =
-                                    'Could not save this due date. Try again.';
+                                error = saveError is StateError
+                                    ? saveError.message.toString()
+                                    : 'Could not save this due date. Try again.';
                               });
                             }
                           },
@@ -378,6 +386,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   Future<void> _confirmMarkInstallmentPaid(
     Map<String, dynamic> installment,
   ) async {
+    if (!ref.read(permissionsProvider).canManageReceivables) return;
     final amount = (installment['amount'] as num?)?.toDouble() ?? 0;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -405,7 +414,72 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
     }
   }
 
+  Future<void> _confirmCancelInstallment(
+    Map<String, dynamic> installment,
+  ) async {
+    if (!ref.read(permissionsProvider).canManageReceivables) return;
+    final id = installment['id']?.toString();
+    final amount = (installment['amount'] as num?)?.toDouble() ?? 0;
+    if (id == null || id.isEmpty || _savingInstallmentIds.contains(id)) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel this due date?'),
+        content: Text(
+          'This removes the ${formatMoney(amount)} payment reminder. '
+          '${_customer?['name'] ?? 'The customer'} will still owe the amount; '
+          'the balance is not written off and can be scheduled again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep due date'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Cancel due date'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _savingInstallmentIds.add(id));
+    try {
+      final auth = getIt<AuthService>();
+      final cancelled = await getIt<AppDatabase>().cancelCustomerInstallment(
+        id,
+        cancelledBy: auth.currentUser?['name']?.toString(),
+      );
+      if (!cancelled) {
+        throw StateError(
+          'This due date has changed. Refresh the customer and try again.',
+        );
+      }
+      await _loadData();
+      if (!mounted) return;
+      showGlassSnackBar(
+        context,
+        'Due date cancelled. The customer balance is unchanged.',
+        icon: Icons.event_busy_rounded,
+        color: DesignColors.success,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      showGlassSnackBar(
+        context,
+        error is StateError
+            ? error.message.toString()
+            : 'Could not cancel this due date. Refresh and try again.',
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
+      );
+    } finally {
+      if (mounted) setState(() => _savingInstallmentIds.remove(id));
+    }
+  }
+
   Future<void> _markInstallmentPaid(Map<String, dynamic> installment) async {
+    if (!ref.read(permissionsProvider).canManageReceivables) return;
     final id = installment['id']?.toString();
     if (id == null || id.isEmpty || _savingInstallmentIds.contains(id)) return;
     setState(() => _savingInstallmentIds.add(id));
@@ -419,6 +493,26 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       }
 
       final auth = getIt<AuthService>();
+      if (auth.isLocalWorkspace) {
+        final recorded = await getIt<AppDatabase>().markInstallmentPaid(
+          id,
+          recordLocalCashCollection: true,
+        );
+        if (!recorded) {
+          throw StateError(
+              'This payment schedule is already complete. Refresh the customer and try again.');
+        }
+        if (!mounted) return;
+        await _loadData();
+        if (!mounted) return;
+        showGlassSnackBar(
+          context,
+          'Collection recorded on this device and customer balance updated.',
+          icon: Icons.check_circle_rounded,
+          color: DesignColors.success,
+        );
+        return;
+      }
       final branchId = auth.branchId;
       if (branchId == null || branchId.isEmpty) {
         throw StateError('Select a branch before recording a collection.');
@@ -536,6 +630,8 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
     final businessLayout = ref.watch(businessLayoutProvider);
+    final canManageReceivables =
+        ref.watch(permissionsProvider).canManageReceivables;
 
     return Scaffold(
       appBar: BrandedAppBar(
@@ -742,13 +838,15 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                       SectionHeader(
                         title: 'Payment Schedule',
                         icon: Icons.event_note_rounded,
-                        trailing: TextButton.icon(
-                          onPressed: _unscheduledBalance > 0.005
-                              ? _showAddInstallmentSheet
-                              : null,
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text('Add due date'),
-                        ),
+                        trailing: canManageReceivables
+                            ? TextButton.icon(
+                                onPressed: _unscheduledBalance > 0.005
+                                    ? _showAddInstallmentSheet
+                                    : null,
+                                icon: const Icon(Icons.add_rounded, size: 18),
+                                label: const Text('Add due date'),
+                              )
+                            : null,
                       ),
                       const SizedBox(height: 4),
                       if (_installmentsLoadFailed)
@@ -777,8 +875,12 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                           final isPaid =
                               inst['status']?.toString().toLowerCase() ==
                                   'paid';
+                          final isCancelled =
+                              inst['status']?.toString().toLowerCase() ==
+                                  'cancelled';
                           final today = DateTime.now();
                           final isOverdue = !isPaid &&
+                              !isCancelled &&
                               dueDate != null &&
                               dueDate.isBefore(
                                   DateTime(today.year, today.month, today.day));
@@ -786,11 +888,19 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                           final isSaving =
                               _savingInstallmentIds.contains(installmentId);
                           final note = inst['note']?.toString().trim() ?? '';
+                          final paidAmount =
+                              (inst['paidAmount'] as num?)?.toDouble() ?? 0;
+                          final scheduledAmount =
+                              (inst['scheduledAmount'] as num?)?.toDouble() ??
+                                  ((inst['amount'] as num?)?.toDouble() ?? 0) +
+                                      paidAmount;
                           final statusColor = isPaid
                               ? DesignColors.success
-                              : isOverdue
-                                  ? DesignColors.error
-                                  : DesignColors.warning;
+                              : isCancelled
+                                  ? tertiaryColor
+                                  : isOverdue
+                                      ? DesignColors.error
+                                      : DesignColors.warning;
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: Container(
@@ -805,9 +915,11 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                   Icon(
                                     isPaid
                                         ? Icons.check_circle_rounded
-                                        : isOverdue
-                                            ? Icons.warning_rounded
-                                            : Icons.schedule_rounded,
+                                        : isCancelled
+                                            ? Icons.event_busy_rounded
+                                            : isOverdue
+                                                ? Icons.warning_rounded
+                                                : Icons.schedule_rounded,
                                     color: statusColor,
                                     size: 20,
                                   ),
@@ -824,14 +936,26 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                             fontWeight: FontWeight.w700,
                                           ),
                                         ),
+                                        if (!isPaid && paidAmount > 0.005)
+                                          Text(
+                                            '${formatMoney(paidAmount)} received · ${formatMoney((inst['amount'] as num))} remaining of ${formatMoney(scheduledAmount)}',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall
+                                                ?.copyWith(
+                                                  color: tertiaryColor,
+                                                ),
+                                          ),
                                         Text(
                                           isPaid
                                               ? 'Paid'
-                                              : isOverdue
-                                                  ? 'Overdue — was due ${dueDate.day}/${dueDate.month}/${dueDate.year}'
-                                                  : dueDate == null
-                                                      ? 'Due date unavailable'
-                                                      : 'Due ${dueDate.day}/${dueDate.month}/${dueDate.year}',
+                                              : isCancelled
+                                                  ? 'Cancelled — balance remains due'
+                                                  : isOverdue
+                                                      ? 'Overdue — was due ${dueDate.day}/${dueDate.month}/${dueDate.year}'
+                                                      : dueDate == null
+                                                          ? 'Due date unavailable'
+                                                          : 'Due ${dueDate.day}/${dueDate.month}/${dueDate.year}',
                                           style: Theme.of(context)
                                               .textTheme
                                               .bodySmall
@@ -853,7 +977,9 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                       ],
                                     ),
                                   ),
-                                  if (!isPaid)
+                                  if (!isPaid &&
+                                      !isCancelled &&
+                                      canManageReceivables) ...[
                                     TextButton(
                                       onPressed: isSaving
                                           ? null
@@ -869,6 +995,22 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                             )
                                           : const Text('Record'),
                                     ),
+                                    PopupMenuButton<String>(
+                                      tooltip: 'More due-date actions',
+                                      enabled: !isSaving,
+                                      onSelected: (action) {
+                                        if (action == 'cancel') {
+                                          _confirmCancelInstallment(inst);
+                                        }
+                                      },
+                                      itemBuilder: (context) => const [
+                                        PopupMenuItem<String>(
+                                          value: 'cancel',
+                                          child: Text('Cancel due date'),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),

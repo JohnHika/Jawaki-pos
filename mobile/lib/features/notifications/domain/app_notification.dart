@@ -73,6 +73,10 @@ String routeForNotification(String type, Map<String, dynamic> data) {
     case 'statement_claim':
     case 'statement_viewed':
       return '/statements/replies';
+    case 'desktop_link_request':
+    case 'desktop_link_claimed':
+    case 'desktop_link_denied':
+      return '/settings/desktop-approvals';
     case 'referral_reward':
       return '/referrals';
     default:

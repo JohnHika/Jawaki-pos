@@ -24,8 +24,10 @@ dependencies:
   # Local Database (Offline-first)
   drift: ^2.14.1
   drift_sqflite: ^2.0.1
-  sqlite3_flutter_libs: ^0.5.18
-  # sqlcipher_flutter_libs: ^0.5.7  # Commented out to avoid duplicate class conflict
+  sqlite3: ^2.4.0
+  # SQLCipher must replace sqlite3_flutter_libs: both plugins register the
+  # same native plugin class, and plain SQLite silently ignores PRAGMA key.
+  sqlcipher_flutter_libs: ^0.5.7
   path_provider: ^2.1.1
   path: ^1.8.3
   
@@ -131,6 +133,8 @@ dependencies:
   google_sign_in: 6.2.1
   app_links: ^7.0.0
   webview_flutter: ^4.14.1
+  file_picker: ^11.0.3
+  cryptography: ^2.9.0
 
 dev_dependencies:
   flutter_test:

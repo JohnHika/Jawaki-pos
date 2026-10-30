@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
@@ -23,9 +24,12 @@ class DateRangeNotifier extends StateNotifier<DateRangeState> {
 
   static DateRangeState _today() {
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     return DateRangeState(
-      from: DateTime(now.year, now.month, now.day),
-      to: DateTime(now.year, now.month, now.day, 23, 59, 59),
+      from: today,
+      to: today.add(const Duration(days: 1)).subtract(
+            const Duration(microseconds: 1),
+          ),
       label: 'Today',
     );
   }
@@ -34,34 +38,45 @@ class DateRangeNotifier extends StateNotifier<DateRangeState> {
 
   void setThisWeek() {
     final now = DateTime.now();
-    final monday = now.subtract(Duration(days: now.weekday - 1));
+    final today = DateTime(now.year, now.month, now.day);
+    final monday = today.subtract(Duration(days: today.weekday - 1));
     state = DateRangeState(
       from: DateTime(monday.year, monday.month, monday.day),
-      to: DateTime(now.year, now.month, now.day, 23, 59, 59),
+      to: today.add(const Duration(days: 1)).subtract(
+            const Duration(microseconds: 1),
+          ),
       label: 'This Week',
     );
   }
 
   void setThisMonth() {
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     state = DateRangeState(
       from: DateTime(now.year, now.month, 1),
-      to: DateTime(now.year, now.month, now.day, 23, 59, 59),
+      to: today.add(const Duration(days: 1)).subtract(
+            const Duration(microseconds: 1),
+          ),
       label: 'This Month',
     );
   }
 
   void setCustom(DateTime from, DateTime to) {
     final fmt = DateFormat('d MMM');
+    final start = DateTime(from.year, from.month, from.day);
+    final end = DateTime(to.year, to.month, to.day)
+        .add(const Duration(days: 1))
+        .subtract(const Duration(microseconds: 1));
     state = DateRangeState(
-      from: from,
-      to: DateTime(to.year, to.month, to.day, 23, 59, 59),
-      label: '${fmt.format(from)} – ${fmt.format(to)}',
+      from: start,
+      to: end,
+      label: '${fmt.format(start)} – ${fmt.format(end)}',
     );
   }
 }
 
-final dateRangeProvider = StateNotifierProvider<DateRangeNotifier, DateRangeState>(
+final dateRangeProvider =
+    StateNotifierProvider<DateRangeNotifier, DateRangeState>(
   (ref) => DateRangeNotifier(),
 );
 
@@ -77,10 +92,13 @@ String? get _branchId => getIt<AuthService>().branchId;
 // needs no changes for this section.
 final dashboardSummaryProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  if (getIt<AuthService>().isLocalWorkspace) {
+    return getIt<AppDatabase>().getDashboardSummary();
+  }
   final data = await getIt<ApiClient>().getDashboard(
-    // Dashboard reads today's own range regardless of the reports date
-    // picker below it — matches the previous local behavior exactly.
-  );
+      // Dashboard reads today's own range regardless of the reports date
+      // picker below it — matches the previous local behavior exactly.
+      );
   final sales = (data['sales'] as Map<String, dynamic>?) ?? {};
   return summaryFromServer(sales);
 });
@@ -92,6 +110,20 @@ final dashboardSummaryProvider =
 final salesListProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final range = ref.watch(dateRangeProvider);
+  if (getIt<AuthService>().isLocalWorkspace) {
+    final sales =
+        await getIt<AppDatabase>().getSalesByDateRange(range.from, range.to);
+    return sales
+        .where((sale) => sale.status.toUpperCase() == 'COMPLETED')
+        .map((sale) => <String, dynamic>{
+              'id': sale.id,
+              'receiptNumber': sale.receiptNumber,
+              'totalAmount': sale.total,
+              'paymentMethod': sale.paymentMethod,
+              'createdAt': sale.createdAt.toIso8601String(),
+            })
+        .toList(growable: false);
+  }
   final items = await getIt<ApiClient>()
       .getSales(startDate: range.fromIso, endDate: range.toIso, limit: 500);
   return items.cast<Map<String, dynamic>>();
@@ -104,6 +136,9 @@ final salesListProvider =
 final paymentMethodProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final range = ref.watch(dateRangeProvider);
+  if (getIt<AuthService>().isLocalWorkspace) {
+    return getIt<AppDatabase>().getSalesByPaymentMethod(range.from, range.to);
+  }
   final rows = await getIt<ApiClient>().getPaymentMethodReport(
     startDate: range.fromIso,
     endDate: range.toIso,
@@ -123,6 +158,25 @@ final paymentMethodProvider =
 final cashierPerformanceProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final range = ref.watch(dateRangeProvider);
+  if (getIt<AuthService>().isLocalWorkspace) {
+    final user = getIt<AuthService>().currentUser ?? const <String, dynamic>{};
+    final userId = user['id']?.toString();
+    final displayName = [user['firstName'], user['lastName']]
+        .whereType<String>()
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .join(' ');
+    final rows =
+        await getIt<AppDatabase>().getSalesByCashier(range.from, range.to);
+    return rows
+        .map((row) => {
+              ...row,
+              'cashierId': row['cashierId'] == userId
+                  ? (displayName.isEmpty ? 'You' : displayName)
+                  : 'Staff',
+            })
+        .toList(growable: false);
+  }
   final rows = await getIt<ApiClient>().getCashierPerformanceReport(
     startDate: range.fromIso,
     endDate: range.toIso,
@@ -144,6 +198,9 @@ final cashierPerformanceProvider =
 final categorySalesProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final range = ref.watch(dateRangeProvider);
+  if (getIt<AuthService>().isLocalWorkspace) {
+    return getIt<AppDatabase>().getSalesByCategory(range.from, range.to);
+  }
   final rows = await getIt<ApiClient>().getCategorySalesReport(
     startDate: range.fromIso,
     endDate: range.toIso,
@@ -163,6 +220,9 @@ final categorySalesProvider =
 final topProductsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final range = ref.watch(dateRangeProvider);
+  if (getIt<AuthService>().isLocalWorkspace) {
+    return getIt<AppDatabase>().getTopProducts(range.from, range.to, limit: 20);
+  }
   final rows = await getIt<ApiClient>().getTopProductsReport(
     startDate: range.fromIso,
     endDate: range.toIso,
@@ -186,6 +246,9 @@ final topProductsProvider =
 final inventoryReportProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final branchId = _branchId;
+  if (getIt<AuthService>().isLocalWorkspace) {
+    return getIt<AppDatabase>().getInventoryReport();
+  }
   if (branchId == null) return [];
   final rows = await getIt<ApiClient>().getStock(branchId: branchId);
   final mapped = rows
@@ -199,7 +262,6 @@ final inventoryReportProvider =
             'categoryName': '',
           })
       .toList();
-  mapped.sort((a, b) =>
-      (a['stock'] as num).compareTo(b['stock'] as num));
+  mapped.sort((a, b) => (a['stock'] as num).compareTo(b['stock'] as num));
   return mapped;
 });

@@ -8,6 +8,18 @@ import 'package:uuid/uuid.dart';
 import '../../features/finance/domain/finance_models.dart';
 import 'lifecycle_lock_controller.dart';
 
+class LocalPinCredentialSnapshot {
+  const LocalPinCredentialSnapshot({
+    required this.hash,
+    required this.salt,
+    required this.length,
+  });
+
+  final String? hash;
+  final String? salt;
+  final String? length;
+}
+
 class StorageService implements LifecycleLockStorage {
   FlutterSecureStorage? _secureStorage;
   SharedPreferences? _prefs;
@@ -19,6 +31,8 @@ class StorageService implements LifecycleLockStorage {
   static const String keyAccessToken = 'access_token';
   static const String keyRefreshToken = 'refresh_token';
   static const String keyUser = 'user';
+  static const String keyLocalWorkspace = 'local_workspace_v1';
+  static const String keyLocalStaffAccounts = 'local_staff_accounts_v1';
   static const String keyDeviceId = 'device_id';
   static const String keyBranchId = 'branch_id';
   static const String keyTenantId = 'tenant_id';
@@ -43,9 +57,11 @@ class StorageService implements LifecycleLockStorage {
   static const String keySupplierDataMigrated = 'supplier_data_migrated_v1';
   static const String keyFinanceSnapshotPrefix = 'finance_snapshot_v1';
   static const String keyHeldSalesPrefix = 'held_sales_v1';
+  static const String keySecureHeldSalesPrefix = 'held_sales_secure_v1';
   static const String keyPendingMerchantMpesaPrefix =
       'pending_merchant_mpesa_v1';
   static const String keyHasSeenStaffTour = 'has_seen_staff_tour';
+  static const String keyAxonGatewayApiKey = 'axon_gateway_api_key';
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -89,6 +105,35 @@ class StorageService implements LifecycleLockStorage {
   Future<String?> getRefreshToken() async {
     _checkInitialized();
     return await _secureStorage!.read(key: keyRefreshToken);
+  }
+
+  /// Axon Gateway credentials are stored in the platform's secure credential
+  /// store, never in SharedPreferences or the SQLite workspace.
+  Future<void> saveAxonGatewayApiKey(String key) async {
+    _checkInitialized();
+    final normalized = key.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError.value(key, 'key', 'Must not be empty');
+    }
+    await _secureStorage!.write(key: keyAxonGatewayApiKey, value: normalized);
+  }
+
+  Future<bool> hasAxonGatewayApiKey() async {
+    _checkInitialized();
+    final key = await _secureStorage!.read(key: keyAxonGatewayApiKey);
+    return key != null && key.trim().isNotEmpty;
+  }
+
+  Future<String?> getAxonGatewayApiKey() async {
+    _checkInitialized();
+    final key = await _secureStorage!.read(key: keyAxonGatewayApiKey);
+    final normalized = key?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
+  }
+
+  Future<void> clearAxonGatewayApiKey() async {
+    _checkInitialized();
+    await _secureStorage!.delete(key: keyAxonGatewayApiKey);
   }
 
   // ===== Quick-unlock PIN =====
@@ -227,6 +272,70 @@ class StorageService implements LifecycleLockStorage {
     return false;
   }
 
+  /// Stores a local staff member's verifier in the OS secure credential
+  /// store. Staff PINs are never written to SharedPreferences or the app DB.
+  Future<void> setLocalStaffPin(String userId, String pin) async {
+    _checkInitialized();
+    if (userId.trim().isEmpty || !RegExp(r'^\d{4,6}$').hasMatch(pin)) {
+      throw ArgumentError('A staff ID and a 4–6 digit PIN are required.');
+    }
+    final salt = _generateSalt();
+    final hash = _hashPin(pin, salt, _pinHashRounds);
+    await _secureStorage!.write(
+      key: _localStaffPinKey(userId),
+      value: '$_pinHashV3Prefix${pin.length}:$_pinHashRounds:$salt:$hash',
+    );
+  }
+
+  Future<bool> hasLocalStaffPin(String userId) async {
+    _checkInitialized();
+    final hash = await _secureStorage!.read(key: _localStaffPinKey(userId));
+    return hash != null && hash.isNotEmpty;
+  }
+
+  Future<String?> snapshotLocalStaffPin(String userId) async {
+    _checkInitialized();
+    return _secureStorage!.read(key: _localStaffPinKey(userId));
+  }
+
+  Future<void> restoreLocalStaffPin(
+    String userId,
+    String? credential,
+  ) async {
+    _checkInitialized();
+    await _restoreSecureValue(_localStaffPinKey(userId), credential);
+  }
+
+  Future<bool> verifyLocalStaffPin(String userId, String pin) async {
+    _checkInitialized();
+    final stored = await _secureStorage!.read(key: _localStaffPinKey(userId));
+    if (stored == null || stored.isEmpty) return false;
+    final parts = stored.split(':');
+    if (parts.length != 5 || parts[0] != 'v3') return false;
+    final pinLength = int.tryParse(parts[1]);
+    final rounds = int.tryParse(parts[2]);
+    if (pinLength == null ||
+        pinLength < 4 ||
+        pinLength > 6 ||
+        pin.length != pinLength ||
+        rounds == null ||
+        rounds < 1 ||
+        rounds > _pinHashMaxRounds ||
+        parts[3].isEmpty ||
+        parts[4].isEmpty) {
+      return false;
+    }
+    return _constantTimeEquals(_hashPin(pin, parts[3], rounds), parts[4]);
+  }
+
+  Future<void> clearLocalStaffPin(String userId) async {
+    _checkInitialized();
+    await _secureStorage!.delete(key: _localStaffPinKey(userId));
+  }
+
+  String _localStaffPinKey(String userId) =>
+      'local_staff_pin_${base64Url.encode(utf8.encode(userId))}';
+
   Future<void> clearLocalPin() async {
     _checkInitialized();
     await _secureStorage!.delete(key: keyPinHash);
@@ -236,6 +345,35 @@ class StorageService implements LifecycleLockStorage {
     // grows the slot row as digits are entered, so that cached value is stale
     // by definition when the account PIN changes from another device.
     await _secureStorage!.delete(key: keyRememberedServerPinLength);
+  }
+
+  /// Captures only the stored PIN verifier metadata so a failed workspace
+  /// setup can restore the previous quick-unlock credential without ever
+  /// reading or retaining the PIN itself.
+  Future<LocalPinCredentialSnapshot> snapshotLocalPinCredential() async {
+    _checkInitialized();
+    return LocalPinCredentialSnapshot(
+      hash: await _secureStorage!.read(key: keyPinHash),
+      salt: await _secureStorage!.read(key: keyPinSalt),
+      length: await _secureStorage!.read(key: keyPinLength),
+    );
+  }
+
+  Future<void> restoreLocalPinCredential(
+    LocalPinCredentialSnapshot snapshot,
+  ) async {
+    _checkInitialized();
+    await _restoreSecureValue(keyPinHash, snapshot.hash);
+    await _restoreSecureValue(keyPinSalt, snapshot.salt);
+    await _restoreSecureValue(keyPinLength, snapshot.length);
+  }
+
+  Future<void> _restoreSecureValue(String key, String? value) async {
+    if (value == null) {
+      await _secureStorage!.delete(key: key);
+    } else {
+      await _secureStorage!.write(key: key, value: value);
+    }
   }
 
   // Quick-unlock throttle state (see AuthService.unlockWithPin): the failed
@@ -340,6 +478,49 @@ class StorageService implements LifecycleLockStorage {
   /// in the key so logging in to another shop cannot reveal an old cart.
   static String heldSalesKey(String tenantId, String branchId) =>
       '$keyHeldSalesPrefix:${Uri.encodeComponent(tenantId)}:${Uri.encodeComponent(branchId)}';
+
+  static String secureHeldSalesKey(String tenantId, String branchId) =>
+      '$keySecureHeldSalesPrefix:${Uri.encodeComponent(tenantId)}:${Uri.encodeComponent(branchId)}';
+
+  Future<String?> getSecureHeldSalesSnapshot({
+    required String tenantId,
+    required String branchId,
+  }) async {
+    _checkInitialized();
+    return _secureStorage!.read(
+      key: secureHeldSalesKey(tenantId, branchId),
+    );
+  }
+
+  Future<void> saveSecureHeldSalesSnapshot({
+    required String tenantId,
+    required String branchId,
+    required String snapshot,
+  }) async {
+    _checkInitialized();
+    await _secureStorage!.write(
+      key: secureHeldSalesKey(tenantId, branchId),
+      value: snapshot,
+    );
+  }
+
+  Future<void> clearSecureHeldSalesSnapshot({
+    required String tenantId,
+    required String branchId,
+  }) async {
+    _checkInitialized();
+    await _secureStorage!.delete(
+      key: secureHeldSalesKey(tenantId, branchId),
+    );
+  }
+
+  Future<void> clearLegacyHeldSalesSnapshot({
+    required String tenantId,
+    required String branchId,
+  }) async {
+    _checkInitialized();
+    await _prefs!.remove(heldSalesKey(tenantId, branchId));
+  }
 
   /// An unresolved provider request must survive process death so a cashier
   /// cannot accidentally charge the customer again after reopening the app.
@@ -460,7 +641,9 @@ class StorageService implements LifecycleLockStorage {
 
   Future<void> saveUser(Map<String, dynamic> user) async {
     _checkInitialized();
-    await _prefs!.setString(keyUser, jsonEncode(user));
+    if (!await _prefs!.setString(keyUser, jsonEncode(user))) {
+      throw StateError('Could not save the user profile on this device.');
+    }
   }
 
   Map<String, dynamic>? getUser() {
@@ -468,6 +651,67 @@ class StorageService implements LifecycleLockStorage {
     final userJson = _prefs!.getString(keyUser);
     if (userJson == null) return null;
     return jsonDecode(userJson) as Map<String, dynamic>;
+  }
+
+  /// A device-owned workspace profile. The business data itself lives in the
+  /// encrypted Drift database; this small record only lets a signed-out app
+  /// identify its local owner and reopen the workspace without a server.
+  Future<void> saveLocalWorkspace(Map<String, dynamic> workspace) async {
+    _checkInitialized();
+    if (!await _prefs!.setString(keyLocalWorkspace, jsonEncode(workspace))) {
+      throw StateError('Could not save the workspace profile on this device.');
+    }
+  }
+
+  Map<String, dynamic>? getLocalWorkspace() {
+    if (!_initialized || _prefs == null) return null;
+    final raw = _prefs!.getString(keyLocalWorkspace);
+    if (raw == null) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool hasLocalWorkspace() => getLocalWorkspace() != null;
+
+  List<Map<String, dynamic>> getLocalStaffAccounts() {
+    if (!_initialized || _prefs == null) return const [];
+    final raw = _prefs!.getString(keyLocalStaffAccounts);
+    if (raw == null) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return decoded
+          .whereType<Map>()
+          .map((account) => Map<String, dynamic>.from(account))
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> saveLocalStaffAccounts(
+    List<Map<String, dynamic>> accounts,
+  ) async {
+    _checkInitialized();
+    final safeAccounts = accounts.map((account) {
+      final safe = Map<String, dynamic>.from(account)..remove('pin');
+      return safe;
+    }).toList();
+    if (!await _prefs!.setString(
+      keyLocalStaffAccounts,
+      jsonEncode(safeAccounts),
+    )) {
+      throw StateError('Could not save staff profiles on this device.');
+    }
+  }
+
+  Future<void> clearLocalWorkspace() async {
+    _checkInitialized();
+    await _prefs!.remove(keyLocalWorkspace);
   }
 
   Future<void> saveDeviceId(String deviceId) async {
@@ -495,7 +739,9 @@ class StorageService implements LifecycleLockStorage {
 
   Future<void> saveBranchId(String branchId) async {
     _checkInitialized();
-    await _prefs!.setString(keyBranchId, branchId);
+    if (!await _prefs!.setString(keyBranchId, branchId)) {
+      throw StateError('Could not save the active branch on this device.');
+    }
   }
 
   String? getBranchId() {
@@ -505,7 +751,9 @@ class StorageService implements LifecycleLockStorage {
 
   Future<void> saveTenantId(String tenantId) async {
     _checkInitialized();
-    await _prefs!.setString(keyTenantId, tenantId);
+    if (!await _prefs!.setString(keyTenantId, tenantId)) {
+      throw StateError('Could not save the active workspace on this device.');
+    }
   }
 
   String? getTenantId() {
@@ -515,7 +763,14 @@ class StorageService implements LifecycleLockStorage {
 
   Future<void> saveTenantSlug(String tenantSlug) async {
     _checkInitialized();
-    await _prefs!.setString(keyTenantSlug, tenantSlug);
+    if (!await _prefs!.setString(keyTenantSlug, tenantSlug)) {
+      throw StateError('Could not save the workspace name on this device.');
+    }
+  }
+
+  Future<void> clearTenantSlug() async {
+    _checkInitialized();
+    await _prefs!.remove(keyTenantSlug);
   }
 
   String? getTenantSlug() {
@@ -606,10 +861,14 @@ class StorageService implements LifecycleLockStorage {
     required String tenantSlug,
   }) async {
     _checkInitialized();
-    await _prefs!.setBool(keyRememberLogin, enabled);
+    if (!await _prefs!.setBool(keyRememberLogin, enabled)) {
+      throw StateError('Could not save the sign-in preference.');
+    }
     if (enabled) {
-      await _prefs!.setString(keyRememberedEmail, email);
-      await _prefs!.setString(keyRememberedTenantSlug, tenantSlug);
+      if (!await _prefs!.setString(keyRememberedEmail, email) ||
+          !await _prefs!.setString(keyRememberedTenantSlug, tenantSlug)) {
+        throw StateError('Could not save the remembered workspace details.');
+      }
     } else {
       await _prefs!.remove(keyRememberedEmail);
       await _prefs!.remove(keyRememberedTenantSlug);
@@ -796,6 +1055,10 @@ class StorageService implements LifecycleLockStorage {
 
   // Clear all data
   Future<void> clearAll() async {
+    for (final account in getLocalStaffAccounts()) {
+      final userId = account['id']?.toString() ?? '';
+      if (userId.isNotEmpty) await clearLocalStaffPin(userId);
+    }
     await clearSecureStorage();
     await clearLocalPin();
     _checkInitialized();

@@ -44,7 +44,8 @@ Future<void> _pumpGrid(
     ProviderScope(
       overrides: [
         cartProvider.overrideWith((ref) => _cart),
-        filteredProductsProvider.overrideWith((ref, params) async => products),
+        filteredProductsProvider
+            .overrideWith((ref, params) => Stream.value(products)),
         favoritesProvider.overrideWith(
           (ref) => FavoritesNotifier.emptyForTesting(),
         ),
@@ -216,6 +217,7 @@ void main() {
     _cart = CartNotifier(
         stockValidator: (id, qty) async => {
               'available': qty <= 1,
+              'stockBlocked': qty > 1,
               'message': 'Insufficient stock available',
               'currentStock': 1,
             });
@@ -227,7 +229,8 @@ void main() {
             (ref) => FavoritesNotifier.emptyForTesting(),
           ),
           filteredProductsProvider.overrideWith(
-            (ref, params) async => [_product('1', 'Maize flour', stock: 1)],
+            (ref, params) =>
+                Stream.value([_product('1', 'Maize flour', stock: 1)]),
           ),
         ],
         child: const MaterialApp(home: Scaffold(body: ProductGrid())),

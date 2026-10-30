@@ -71,7 +71,8 @@ class AuthController extends StateNotifier<AuthState> {
   /// this afterward, or dependents like tenantIdentityProvider stay stale
   /// until the next login.
   void refreshFromService() {
-    state = state.copyWith(
+    state = AuthState(
+      isLoading: state.isLoading,
       isAuthenticated: _authService.isAuthenticated,
       isLocked: _authService.isLocked,
       user: _authService.currentUser,
@@ -210,18 +211,19 @@ class AuthController extends StateNotifier<AuthState> {
 
     state = state.copyWith(
       isLoading: false,
-      error:
-          _authService.pinThrottleMessage ?? 'Incorrect PIN. Try again.',
+      error: _authService.pinThrottleMessage ?? 'Incorrect PIN. Try again.',
     );
     return false;
   }
 
   Future<void> logout({bool allDevices = false}) async {
     state = state.copyWith(isLoading: true);
-    try {
-      await getIt<NotificationService>().unregisterToken();
-    } catch (_) {
-      // Non-fatal — a stale token just goes unused until it expires.
+    if (!_authService.isLocalWorkspace) {
+      try {
+        await getIt<NotificationService>().unregisterToken();
+      } catch (_) {
+        // Non-fatal — a stale token just goes unused until it expires.
+      }
     }
     await _authService.logout(allDevices: allDevices);
     state = const AuthState();
@@ -236,6 +238,7 @@ class AuthController extends StateNotifier<AuthState> {
         state = state.copyWith(
           isLoading: false,
           isAuthenticated: true,
+          isLocked: false,
           user: _authService.currentUser,
         );
         _registerPushTokenIfPermitted();
@@ -243,7 +246,9 @@ class AuthController extends StateNotifier<AuthState> {
       }
       state = state.copyWith(
         isLoading: false,
-        error: 'Biometric authentication failed',
+        error: _authService.isLocalWorkspace
+            ? 'Biometric unlock was cancelled or unavailable. Enter your device PIN instead.'
+            : 'Biometric sign-in was cancelled or unavailable. Use your PIN or another sign-in method.',
       );
       return false;
     } catch (e) {
@@ -260,6 +265,7 @@ class AuthController extends StateNotifier<AuthState> {
   /// previous session — fire-and-forget so a slow/failed network call
   /// never delays showing the authenticated UI.
   void _registerPushTokenIfPermitted() {
+    if (_authService.isLocalWorkspace) return;
     Future.microtask(() async {
       try {
         final notifications = getIt<NotificationService>();

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -181,20 +182,49 @@ class ExportDocumentService {
     await Share.shareXFiles([XFile(file.path)], subject: 'Counterbase report');
   }
 
-  /// Fetches a network logo image as bytes for embedding in a PDF header;
-  /// returns null on any failure so callers can render without a logo
-  /// instead of failing the whole export.
-  static Future<Uint8List?> fetchLogoBytes(String? logoUrl) async {
-    final url = logoUrl?.trim();
-    if (url == null || url.isEmpty) return null;
+  /// Reads a local logo or, when explicitly permitted, fetches an online logo
+  /// for embedding in a PDF. Callers must choose whether network access is
+  /// appropriate; standalone workspaces always disable it.
+  static Future<Uint8List?> fetchLogoBytes(
+    String? logoUrl, {
+    required bool allowNetwork,
+  }) async {
+    final source = logoUrl?.trim();
+    if (source == null || source.isEmpty) return null;
     try {
-      final response =
-          await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
+      final uri = Uri.tryParse(source);
+      if (uri?.scheme == 'file') {
+        return await _readManagedLocalLogo(uri!.toFilePath());
+      }
+      if (uri == null || uri.scheme.isEmpty) {
+        return await _readManagedLocalLogo(source);
+      }
+      if (!allowNetwork ||
+          (uri.scheme != 'http' && uri.scheme != 'https') ||
+          uri.host.isEmpty) {
+        return null;
+      }
+      final response = await http.get(uri).timeout(const Duration(seconds: 8));
       if (response.statusCode != 200) return null;
       return response.bodyBytes;
     } catch (_) {
       return null;
     }
+  }
+
+  static Future<Uint8List?> _readManagedLocalLogo(String path) async {
+    final supportDirectory = await getApplicationSupportDirectory();
+    final imageRoot = p.normalize(
+      p.join(supportDirectory.path, 'Counterbase', 'images'),
+    );
+    final candidate = p.normalize(p.absolute(path));
+    if (!p.isWithin(imageRoot, candidate)) return null;
+
+    final file = File(candidate);
+    if (!await file.exists()) return null;
+    final length = await file.length();
+    if (length == 0 || length > 12 * 1024 * 1024) return null;
+    return file.readAsBytes();
   }
 
   static String buildCsv(List<String> headers, List<List<String>> rows) {

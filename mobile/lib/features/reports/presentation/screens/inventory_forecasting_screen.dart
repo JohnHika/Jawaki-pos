@@ -12,6 +12,7 @@ import '../../../../core/database/app_database.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../../core/utils/format.dart';
 import '../../domain/analytics_mapping.dart';
 
@@ -48,44 +49,67 @@ class _InventoryForecastingScreenState
       _lowStockItems = await database.getLowStockProducts();
 
       final now = DateTime.now();
-      try {
-        // Sales figures come from the server so a second phone or fresh install
-        // sees the shop's real history; this device's records are the fallback.
-        final api = getIt<ApiClient>();
-        final branchId = getIt<AuthService>().branchId;
-        final iso = DateFormat('yyyy-MM-dd');
-        final monday = now.subtract(Duration(days: now.weekday - 1));
-        final results = await Future.wait<Object?>([
-          api.getTopProductsReport(
-              startDate: iso.format(monday),
-              endDate: iso.format(now),
-              branchId: branchId,
-              limit: 100),
-          api.getSalesTrendReport(
-              startDate: iso.format(now.subtract(const Duration(days: 6))),
-              endDate: iso.format(now),
-              branchId: branchId,
-              groupBy: 'DAY'),
-        ]);
-        final ranking = topProductsFromServer(results[0]);
-        _fastMovingItems = ranking.take(10).toList();
-        _slowMovingItems = slowestFromRanking(ranking);
-        _forecastData = weeklyVelocityFromServer(results[1], now);
-        _isUsingLocalSales = false;
-      } catch (e) {
-        if (!kReleaseMode) {
-          debugPrint('Forecast server load failed, using local: $e');
-        }
+      final today = DateTime(now.year, now.month, now.day);
+      if (getIt<AuthService>().isLocalWorkspace) {
         _isUsingLocalSales = true;
-        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-        final endOfWeek = startOfWeek.add(const Duration(days: 7));
-        _fastMovingItems =
-            await database.getTopProducts(startOfWeek, endOfWeek, limit: 10);
-        _slowMovingItems = await database
-            .getSlowMovingProducts(startOfWeek, endOfWeek, limit: 10);
+        final startOfWeek = today.subtract(Duration(days: today.weekday - 1));
+        final endOfToday = today
+            .add(const Duration(days: 1))
+            .subtract(const Duration(microseconds: 1));
+        _fastMovingItems = await database.getTopProducts(
+          startOfWeek,
+          endOfToday,
+          limit: 10,
+        );
+        _slowMovingItems = await database.getSlowMovingProducts(
+          startOfWeek,
+          endOfToday,
+          limit: 10,
+        );
         _forecastData = await _loadDailySalesVelocity();
+      } else {
+        try {
+          // Sales figures come from the server so a second phone or fresh install
+          // sees the shop's real history; this device's records are the fallback.
+          final api = getIt<ApiClient>();
+          final branchId = getIt<AuthService>().branchId;
+          final iso = DateFormat('yyyy-MM-dd');
+          final monday = today.subtract(Duration(days: today.weekday - 1));
+          final results = await Future.wait<Object?>([
+            api.getTopProductsReport(
+                startDate: iso.format(monday),
+                endDate: iso.format(today),
+                branchId: branchId,
+                limit: 100),
+            api.getSalesTrendReport(
+                startDate: iso.format(today.subtract(const Duration(days: 6))),
+                endDate: iso.format(today),
+                branchId: branchId,
+                groupBy: 'DAY'),
+          ]);
+          final ranking = topProductsFromServer(results[0]);
+          _fastMovingItems = ranking.take(10).toList();
+          _slowMovingItems = slowestFromRanking(ranking);
+          _forecastData = weeklyVelocityFromServer(results[1], now);
+          _isUsingLocalSales = false;
+        } catch (e) {
+          if (!kReleaseMode) {
+            debugPrint('Forecast server load failed, using local: $e');
+          }
+          _isUsingLocalSales = true;
+          final startOfWeek = today.subtract(Duration(days: today.weekday - 1));
+          final endOfToday = today
+              .add(const Duration(days: 1))
+              .subtract(const Duration(microseconds: 1));
+          _fastMovingItems =
+              await database.getTopProducts(startOfWeek, endOfToday, limit: 10);
+          _slowMovingItems = await database
+              .getSlowMovingProducts(startOfWeek, endOfToday, limit: 10);
+          _forecastData = await _loadDailySalesVelocity();
+        }
       }
 
+      if (!mounted) return;
       setState(() => _isLoading = false);
     } catch (e) {
       if (!kReleaseMode) debugPrint('Inventory forecast load error: $e');
@@ -93,7 +117,9 @@ class _InventoryForecastingScreenState
         setState(() => _isLoading = false);
         showGlassSnackBar(
           context,
-          "Couldn't load inventory data. Check your connection and try again.",
+          getIt<AuthService>().isLocalWorkspace
+              ? "Couldn't read inventory and sales saved on this device. Refresh and try again."
+              : loadErrorSubtitle(e),
           icon: Icons.error_outline_rounded,
           color: DesignColors.error,
         );
@@ -108,7 +134,9 @@ class _InventoryForecastingScreenState
     final now = DateTime.now();
     final startOfRange = DateTime(now.year, now.month, now.day)
         .subtract(const Duration(days: 6));
-    final endOfRange = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    final endOfRange = DateTime(now.year, now.month, now.day)
+        .add(const Duration(days: 1))
+        .subtract(const Duration(microseconds: 1));
 
     final dailySales =
         await getIt<AppDatabase>().getDailyItemsSold(startOfRange, endOfRange);

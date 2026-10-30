@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/database/app_database.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
@@ -11,6 +13,19 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 
 final customerCreditProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, customerId) async {
+  if (getIt<AuthService>().isLocalWorkspace) {
+    final customer = await getIt<AppDatabase>().getCustomer(customerId);
+    if (customer == null) return const {'known': false};
+    final limit = (customer['creditLimit'] as num?)?.toDouble() ?? 0;
+    final outstanding = (customer['balance'] as num?)?.toDouble() ?? 0;
+    return {
+      'known': true,
+      'limit': limit > 0 ? limit : null,
+      'outstanding': outstanding,
+      'available': limit > 0 ? (limit - outstanding).clamp(0, limit) : null,
+      'limitIsDefault': false,
+    };
+  }
   return getIt<ApiClient>().getCustomerCredit(customerId);
 });
 
@@ -28,6 +43,7 @@ class CreditLimitCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final standing = ref.watch(customerCreditProvider(customerId));
     final canEdit = ref.watch(permissionsProvider).has('sales.credit_override');
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -40,7 +56,8 @@ class CreditLimitCard extends ConsumerWidget {
         color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
         borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         border: Border.all(
-            color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+            color:
+                isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
       ),
       child: standing.when(
         loading: () => const SizedBox(
@@ -49,14 +66,23 @@ class CreditLimitCard extends ConsumerWidget {
         ),
         error: (e, _) => Row(
           children: [
-            Icon(Icons.cloud_off_rounded, color: secondary),
+            Icon(
+              isLocalWorkspace
+                  ? Icons.error_outline_rounded
+                  : Icons.cloud_off_rounded,
+              color: secondary,
+            ),
             const SizedBox(width: DesignSpacing.sm),
             Expanded(
-              child: Text('Credit details need a connection.',
+              child: Text(
+                  isLocalWorkspace
+                      ? 'Couldn’t load saved credit details.'
+                      : 'Credit details need a connection.',
                   style: TextStyle(color: secondary)),
             ),
             TextButton(
-              onPressed: () => ref.invalidate(customerCreditProvider(customerId)),
+              onPressed: () =>
+                  ref.invalidate(customerCreditProvider(customerId)),
               child: const Text('Retry'),
             ),
           ],
@@ -64,7 +90,9 @@ class CreditLimitCard extends ConsumerWidget {
         data: (s) {
           if (s['known'] == false) {
             return Text(
-              'This customer has not reached the server yet. Credit limits can be set once they sync.',
+              isLocalWorkspace
+                  ? 'This customer is not available in the local workspace.'
+                  : 'This customer has not reached the server yet. Credit limits can be set once they sync.',
               style: TextStyle(color: secondary),
             );
           }
@@ -121,17 +149,27 @@ class CreditLimitCard extends ConsumerWidget {
     );
   }
 
-  Future<void> _edit(BuildContext context, WidgetRef ref, double? current) async {
+  Future<void> _edit(
+      BuildContext context, WidgetRef ref, double? current) async {
     final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _LimitSheet(name: customerName, current: current),
+      builder: (_) => _LimitSheet(
+        name: customerName,
+        current: current,
+        isLocalWorkspace: getIt<AuthService>().isLocalWorkspace,
+      ),
     );
     if (result == null || !context.mounted) return;
     try {
-      await getIt<ApiClient>().updateCustomer(customerId, result);
+      if (getIt<AuthService>().isLocalWorkspace) {
+        final value = (result['creditLimit'] as num?)?.toDouble() ?? 0;
+        await getIt<AppDatabase>().setCustomerCreditLimit(customerId, value);
+      } else {
+        await getIt<ApiClient>().updateCustomer(customerId, result);
+      }
       ref.invalidate(customerCreditProvider(customerId));
       if (context.mounted) {
         showGlassSnackBar(context, 'Credit limit saved',
@@ -147,10 +185,15 @@ class CreditLimitCard extends ConsumerWidget {
 }
 
 class _LimitSheet extends StatefulWidget {
-  const _LimitSheet({required this.name, required this.current});
+  const _LimitSheet({
+    required this.name,
+    required this.current,
+    required this.isLocalWorkspace,
+  });
 
   final String name;
   final double? current;
+  final bool isLocalWorkspace;
 
   @override
   State<_LimitSheet> createState() => _LimitSheetState();
@@ -200,35 +243,50 @@ class _LimitSheetState extends State<_LimitSheet> {
                   prefixText: 'KES ',
                   hint: 'Empty = no limit'),
             ),
-            const SizedBox(height: DesignSpacing.md),
-            TextField(
-              controller: _idNumber,
-              decoration: kitFieldDecoration(context,
-                  label: 'ID number (optional)'),
-            ),
-            const SizedBox(height: DesignSpacing.md),
-            TextField(
-              controller: _guarantor,
-              textCapitalization: TextCapitalization.words,
-              decoration: kitFieldDecoration(context,
-                  label: 'Guarantor name (optional)',
-                  helper: 'Someone who will vouch for this customer.'),
-            ),
-            const SizedBox(height: DesignSpacing.md),
-            TextField(
-              controller: _guarantorPhone,
-              keyboardType: TextInputType.phone,
-              decoration: kitFieldDecoration(context,
-                  label: 'Guarantor phone (optional)'),
-            ),
+            if (!widget.isLocalWorkspace) ...[
+              const SizedBox(height: DesignSpacing.md),
+              TextField(
+                controller: _idNumber,
+                decoration:
+                    kitFieldDecoration(context, label: 'ID number (optional)'),
+              ),
+              const SizedBox(height: DesignSpacing.md),
+              TextField(
+                controller: _guarantor,
+                textCapitalization: TextCapitalization.words,
+                decoration: kitFieldDecoration(context,
+                    label: 'Guarantor name (optional)',
+                    helper: 'Someone who will vouch for this customer.'),
+              ),
+              const SizedBox(height: DesignSpacing.md),
+              TextField(
+                controller: _guarantorPhone,
+                keyboardType: TextInputType.phone,
+                decoration: kitFieldDecoration(context,
+                    label: 'Guarantor phone (optional)'),
+              ),
+            ],
             const SizedBox(height: DesignSpacing.lg),
             GradientButton(
               label: 'Save',
               icon: Icons.check_rounded,
               onPressed: () {
                 final t = _limit.text.trim();
+                final parsedLimit = t.isEmpty ? null : double.tryParse(t);
+                if (t.isNotEmpty &&
+                    (parsedLimit == null ||
+                        !parsedLimit.isFinite ||
+                        parsedLimit < 0)) {
+                  showGlassSnackBar(
+                    context,
+                    'Enter a valid amount of zero or more, or leave it empty for no limit.',
+                    icon: Icons.error_outline_rounded,
+                    color: DesignColors.error,
+                  );
+                  return;
+                }
                 Navigator.of(context).pop({
-                  'creditLimit': t.isEmpty ? null : double.tryParse(t),
+                  'creditLimit': parsedLimit,
                   if (_idNumber.text.trim().isNotEmpty)
                     'idNumber': _idNumber.text.trim(),
                   if (_guarantor.text.trim().isNotEmpty)

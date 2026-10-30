@@ -17,14 +17,19 @@ import '../network/api_client.dart';
 import '../widgets/update_available_dialog.dart';
 import 'update_version_utils.dart';
 
-// GitHub Packages configuration.
+// GitHub Releases configuration.
 // The token must be injected at build time via --dart-define; the literal
 // string 'GITHUB_TOKEN' was previously sent as the Authorization header
 // itself (always invalid → GitHub 401 → fallback update source dead).
-const String _githubPackagesTokenEnv =
+const String _githubApiTokenEnv =
     String.fromEnvironment('GITHUB_TOKEN', defaultValue: '');
-const String _githubPackagesReleaseApi =
+const String _githubReleasesApi =
     'https://api.github.com/repos/JohnHika/Jawaki-pos/releases';
+// The release workflow attaches latest.json to every GitHub release. Keep the
+// in-app fallback on the same host as the APK: the old public R2 hostname has
+// failed DNS on customer devices, which left update checks and retries stuck.
+const String _githubLatestAndroidManifest =
+    'https://github.com/JohnHika/Jawaki-pos/releases/latest/download/latest.json';
 const int _minimumSafeAndroidBuildNumber = 2021;
 
 class UpdateSource {
@@ -128,17 +133,20 @@ typedef LatestAndroidReleaseLoader = Future<AppUpdateInfo?> Function();
 
 class UpdateCheckService extends ChangeNotifier {
   UpdateCheckService({
-    required ApiClient apiClient,
+    // Kept as an ignored optional argument for old callers. Update discovery
+    // must not use a POS API, so this client is intentionally never stored or
+    // used here.
+    @Deprecated(
+        'Update discovery uses the app release channel, not the POS API.')
+    ApiClient? apiClient,
     LatestAndroidReleaseLoader? githubReleaseLoader,
-  })  : _apiClient = apiClient,
-        _githubReleaseLoader = githubReleaseLoader;
+  }) : _githubReleaseLoader = githubReleaseLoader;
 
   static const MethodChannel _installerChannel =
       MethodChannel('pos_mobile/installer');
   static const Duration _checkInterval = Duration(hours: 1);
   static const Duration _retryInterval = Duration(minutes: 5);
 
-  final ApiClient _apiClient;
   final LatestAndroidReleaseLoader? _githubReleaseLoader;
 
   DateTime? _lastCheckTime;
@@ -216,61 +224,30 @@ class UpdateCheckService extends ChangeNotifier {
     _checkCompleter = checkCompleter;
     try {
       final currentVersion = await _resolveCurrentVersion();
-      AppUpdateInfo? primaryUpdate;
-      AppUpdateInfo? secondaryUpdate;
-
-      // Step 1: Try Cloudflare R2 (primary source)
+      // Release discovery belongs to the independent app release channel.
+      // Do not query the retired POS API for update metadata, even for an
+      // install that still has an older cloud session stored on this device.
+      AppUpdateInfo? manifest;
       try {
-        final manifest = AppUpdateInfo.fromJson(
-          await _apiClient.getLatestAndroidUpdate(),
-        );
-        if (manifest.latestVersion.trim().isEmpty ||
-            manifest.apkUrl.trim().isEmpty) {
-          throw const FormatException('Invalid Android update manifest');
+        manifest = _githubReleaseLoader != null
+            ? await _githubReleaseLoader()
+            : await _getLatestGitHubReleaseUpdate() ??
+                await _getLatestGitHubManifestUpdate();
+        if (manifest != null &&
+            (manifest.latestVersion.trim().isEmpty ||
+                manifest.apkUrl.trim().isEmpty)) {
+          manifest = null;
         }
-        primaryUpdate = manifest;
-        if (!kReleaseMode) {
+        if (manifest != null && !kReleaseMode) {
           debugPrint(
-              '[UpdateCheck] Found primary update from Cloudflare: ${manifest.displayVersion}');
+              '[UpdateCheck] Found release from GitHub: ${manifest.displayVersion}');
         }
       } catch (error) {
         if (!kReleaseMode) {
-          debugPrint('[UpdateCheck] Cloudflare R2 update check failed: $error');
+          debugPrint('[UpdateCheck] GitHub release check failed: $error');
         }
       }
 
-      // Step 2: Check GitHub Packages (secondary source) if Cloudflare fails or no update found
-      if (primaryUpdate == null ||
-          !_hasNewerBuildOrVersion(
-            latestBuildNumber: primaryUpdate.buildNumber,
-            currentBuildNumber: _currentBuildNumber(currentVersion),
-            latestVersion: primaryUpdate.latestVersion,
-            currentVersion: currentVersion,
-          )) {
-        try {
-          final githubUpdate = _githubReleaseLoader != null
-              ? await _githubReleaseLoader()
-              : await _getLatestGitHubPackagesUpdate();
-          if (githubUpdate != null) {
-            secondaryUpdate = githubUpdate;
-            if (!kReleaseMode) {
-              debugPrint(
-                  '[UpdateCheck] Found secondary update from GitHub Packages: ${githubUpdate.latestVersion}');
-            }
-          }
-        } catch (error) {
-          if (!kReleaseMode) {
-            debugPrint(
-                '[UpdateCheck] GitHub Packages update check failed: $error');
-          }
-        }
-      }
-
-      // Step 3: Prefer the newest release found across both sources. The API
-      // manifest can lag the GitHub release briefly (or after a failed
-      // manifest publish); when that happens, choosing the first non-null
-      // result would hide a newer APK that we already discovered.
-      final manifest = _newestAvailableUpdate(primaryUpdate, secondaryUpdate);
       if (manifest != null) {
         _cachedUpdate = manifest;
         _errorMessage = null;
@@ -417,8 +394,8 @@ class UpdateCheckService extends ChangeNotifier {
     }
   }
 
-  /// Get the latest Android update from GitHub Packages releases
-  Future<AppUpdateInfo?> _getLatestGitHubPackagesUpdate({
+  /// Get the latest Android update from GitHub Releases.
+  Future<AppUpdateInfo?> _getLatestGitHubReleaseUpdate({
     int? matchingBuildNumber,
   }) async {
     try {
@@ -427,12 +404,12 @@ class UpdateCheckService extends ChangeNotifier {
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 15),
       ));
-      final response = await dio.get(_githubPackagesReleaseApi,
+      final response = await dio.get(_githubReleasesApi,
           options: Options(
             headers: {
               'Accept': 'application/vnd.github.v3+json',
-              if (_githubPackagesTokenEnv.isNotEmpty)
-                'Authorization': 'token $_githubPackagesTokenEnv',
+              if (_githubApiTokenEnv.isNotEmpty)
+                'Authorization': 'token $_githubApiTokenEnv',
             },
           ));
 
@@ -493,7 +470,7 @@ class UpdateCheckService extends ChangeNotifier {
             buildNumber: buildNumber,
             minSupportedVersion: '0.0.0',
             forceUpdate: false,
-            apkUrl: _resolveGitHubPackagesApkUrl(browserDownloadUrl),
+            apkUrl: _resolveGitHubApkUrl(browserDownloadUrl),
             releaseNotes: body?.trim() ?? '',
             publishedAt:
                 publishedAt != null ? DateTime.tryParse(publishedAt) : null,
@@ -520,13 +497,60 @@ class UpdateCheckService extends ChangeNotifier {
     } catch (error) {
       if (!kReleaseMode) {
         debugPrint(
-            '[UpdateCheck] Error fetching GitHub Packages update: $error');
+            '[UpdateCheck] Error fetching GitHub Releases update: $error');
       }
       return null;
     }
   }
 
-  String _resolveGitHubPackagesApkUrl(String rawUrl) {
+  /// Use the latest release's attached manifest when GitHub's releases API is
+  /// unavailable or has not indexed the release. Its APK URL must point to
+  /// this app's versioned GitHub release asset.
+  Future<AppUpdateInfo?> _getLatestGitHubManifestUpdate() async {
+    try {
+      final response = await Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 4),
+          receiveTimeout: const Duration(seconds: 6),
+          headers: const {'Accept': 'application/json'},
+        ),
+      ).get(_githubLatestAndroidManifest);
+      if (response.statusCode != 200 || response.data == null) return null;
+
+      final payload = response.data is String
+          ? jsonDecode(response.data as String)
+          : response.data;
+      if (payload is! Map) return null;
+      final update = AppUpdateInfo.fromJson(Map<String, dynamic>.from(payload));
+      if (update.latestVersion.trim().isEmpty ||
+          update.buildNumber == null ||
+          update.buildNumber! < _minimumSafeAndroidBuildNumber ||
+          !_isTrustedGitHubReleaseAsset(update.apkUrl)) {
+        return null;
+      }
+      // Ignore manifest-provided mirrors. Every download is fetched from the
+      // same versioned GitHub release asset, so a stale or broken R2 URL can
+      // never become the user's retry target.
+      return AppUpdateInfo(
+        latestVersion: update.latestVersion,
+        releaseName: update.releaseName,
+        buildNumber: update.buildNumber,
+        minSupportedVersion: update.minSupportedVersion,
+        minSupportedBuildNumber: update.minSupportedBuildNumber,
+        forceUpdate: update.forceUpdate,
+        apkUrl: update.apkUrl,
+        releaseNotes: update.releaseNotes,
+        publishedAt: update.publishedAt,
+      );
+    } catch (error) {
+      if (!kReleaseMode) {
+        debugPrint('[UpdateCheck] GitHub release manifest unavailable: $error');
+      }
+      return null;
+    }
+  }
+
+  String _resolveGitHubApkUrl(String rawUrl) {
     final parsed = Uri.tryParse(rawUrl.trim());
     if (parsed != null && parsed.hasScheme) {
       return parsed.toString();
@@ -847,14 +871,14 @@ class UpdateCheckService extends ChangeNotifier {
     final downloadUrls = <String>[];
     void addDownloadUrl(String rawUrl) {
       final normalized = _resolveDownloadUrl(rawUrl.trim());
-      if (normalized.isNotEmpty && !downloadUrls.contains(normalized)) {
+      if (_isTrustedGitHubReleaseAsset(normalized) &&
+          !downloadUrls.contains(normalized)) {
         downloadUrls.add(normalized);
       }
     }
 
-    // Keep apkUrl first for older manifests, then use any explicit mirror
-    // URLs. New manifests point legacy clients at GitHub and let this client
-    // retry Cloudflare R2 if GitHub is unreachable.
+    // Accept only this app's versioned GitHub release asset. Ignore mirror
+    // URLs from legacy manifests, which can be stale or fail on some devices.
     addDownloadUrl(update.apkUrl);
     final sources = update.updateSources ?? const <UpdateSource>[];
     for (final source in sources.where((item) => item.priority == 'primary')) {
@@ -962,7 +986,7 @@ class UpdateCheckService extends ChangeNotifier {
       '${update.latestVersion}|${update.buildNumber ?? ''}|${update.apkUrl.trim()}';
 
   Future<String?> _githubFallbackUrlForUpdate(AppUpdateInfo update) async {
-    final githubUpdate = await _getLatestGitHubPackagesUpdate(
+    final githubUpdate = await _getLatestGitHubReleaseUpdate(
       matchingBuildNumber: update.buildNumber,
     );
     if (githubUpdate != null &&
@@ -1056,19 +1080,35 @@ class UpdateCheckService extends ChangeNotifier {
 
   String _resolveDownloadUrl(String rawUrl) {
     final parsed = Uri.tryParse(rawUrl.trim());
-    if (parsed != null && parsed.hasScheme) {
+    if (parsed != null && parsed.hasScheme && parsed.hasAuthority) {
       return parsed.toString();
     }
 
-    final baseUri = Uri.parse(_apiClient.baseUrl);
-    final origin = Uri(
-      scheme: baseUri.scheme,
-      host: baseUri.host,
-      port: baseUri.hasPort ? baseUri.port : null,
-    );
-
+    // Relative release asset URLs are resolved against GitHub, never against
+    // the app's POS API base URL.
+    final origin = Uri.parse('https://github.com');
     final normalizedPath = rawUrl.startsWith('/') ? rawUrl : '/$rawUrl';
     return origin.resolve(normalizedPath).toString();
+  }
+
+  bool _isTrustedGitHubReleaseAsset(String rawUrl) {
+    final uri = Uri.tryParse(rawUrl.trim());
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host != 'github.com' ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasQuery ||
+        uri.hasFragment) {
+      return false;
+    }
+    final segments = uri.pathSegments;
+    return segments.length == 6 &&
+        segments[0] == 'JohnHika' &&
+        segments[1] == 'Jawaki-pos' &&
+        segments[2] == 'releases' &&
+        segments[3] == 'download' &&
+        segments[4].isNotEmpty &&
+        segments[5].toLowerCase() == 'app-release.apk';
   }
 
   /// Promotes an optional (not-yet-required) update into the same
@@ -1108,54 +1148,6 @@ class UpdateCheckService extends ChangeNotifier {
     }
 
     return isNewerAppVersion(latestVersion, currentVersion);
-  }
-
-  AppUpdateInfo? _newestAvailableUpdate(
-    AppUpdateInfo? primary,
-    AppUpdateInfo? secondary,
-  ) {
-    if (primary == null) return secondary;
-    if (secondary == null) return primary;
-
-    final primaryBuild = primary.buildNumber;
-    final secondaryBuild = secondary.buildNumber;
-    if (primaryBuild != null && secondaryBuild != null) {
-      // Android versionCode is the release-line authority and remains
-      // monotonic even when the visible version name is reset.
-      return secondaryBuild > primaryBuild
-          ? _applyUpdatePolicy(primary, secondary)
-          : primary;
-    }
-
-    // Legacy sources may omit buildNumber. Compare their version strings in
-    // that case, retaining the API manifest on a tie because it carries the
-    // server-controlled minimum-version and force-update policy.
-    return isNewerAppVersion(secondary.latestVersion, primary.latestVersion)
-        ? _applyUpdatePolicy(primary, secondary)
-        : primary;
-  }
-
-  AppUpdateInfo _applyUpdatePolicy(
-    AppUpdateInfo policySource,
-    AppUpdateInfo release,
-  ) {
-    return AppUpdateInfo(
-      latestVersion: release.latestVersion,
-      releaseName: release.releaseName,
-      buildNumber: release.buildNumber,
-      minSupportedVersion: policySource.minSupportedVersion.isNotEmpty
-          ? policySource.minSupportedVersion
-          : release.minSupportedVersion,
-      minSupportedBuildNumber: policySource.minSupportedBuildNumber ??
-          release.minSupportedBuildNumber,
-      forceUpdate: policySource.forceUpdate || release.forceUpdate,
-      apkUrl: release.apkUrl,
-      releaseNotes: release.releaseNotes.trim().isNotEmpty
-          ? release.releaseNotes
-          : policySource.releaseNotes,
-      publishedAt: release.publishedAt,
-      updateSources: release.updateSources,
-    );
   }
 
   bool _isBelowMinimum({

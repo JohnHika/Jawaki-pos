@@ -9,6 +9,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/services/till_guard.dart';
 import '../../../accountability/data/till_guard_service.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/theme/design_system.dart';
@@ -45,6 +46,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   bool get _canAcceptMpesa =>
       _payoutStatus == 'ACTIVE' && _paystackPayoutVerified;
 
+  bool get _isLocalWorkspace => getIt<AuthService>().isLocalWorkspace;
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +61,17 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   }
 
   Future<void> _refreshPayoutStatus() async {
+    if (_isLocalWorkspace) {
+      if (mounted) {
+        setState(() {
+          _payoutAccount = null;
+          _payoutStatus = null;
+          _paystackPayoutVerified = false;
+          _checkingPayoutStatus = false;
+        });
+      }
+      return;
+    }
     if (mounted) setState(() => _checkingPayoutStatus = true);
     try {
       final account = await getIt<ApiClient>().getMerchantPayoutAccount();
@@ -347,30 +361,56 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             ),
             const SizedBox(height: DesignSpacing.md - 2),
 
-            // M-Pesa
-            _PaymentMethodTile(
-              icon: Icons.phone_android_rounded,
-              title: 'M-Pesa',
-              subtitle: _checkingPayoutStatus
-                  ? 'Checking Paystack payout account'
-                  : _canAcceptMpesa
-                      ? 'Customer pays $shopName through Paystack'
-                      : 'Requires a verified business payout account',
-              color: DesignColors.accent,
-              isSelected: _selectedMethod == PaymentMethod.mpesa,
-              onTap: paymentState.isProcessing || _isPreparingPayment
-                  ? null
-                  : () => _selectMpesa(
-                        cart.total,
-                        hasPendingRequest:
-                            paymentState.hasUnresolvedMerchantPayment,
+            if (_isLocalWorkspace) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(DesignSpacing.md),
+                decoration: BoxDecoration(
+                  color: DesignColors.info.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                  border: Border.all(
+                      color: DesignColors.info.withValues(alpha: 0.2)),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.phone_android_rounded, color: DesignColors.info),
+                    SizedBox(width: DesignSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        'This device-only checkout works offline. Record cash, customer credit, or split payments here. M-Pesa prompts need an online payment service.',
                       ),
-            ),
-            const SizedBox(height: DesignSpacing.md - 2),
-
-            if (!_checkingPayoutStatus && !_canAcceptMpesa) ...[
-              _buildPayoutStatusNotice(),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: DesignSpacing.md - 2),
+            ] else ...[
+              // M-Pesa
+              _PaymentMethodTile(
+                icon: Icons.phone_android_rounded,
+                title: 'M-Pesa',
+                subtitle: _checkingPayoutStatus
+                    ? 'Checking Paystack payout account'
+                    : _canAcceptMpesa
+                        ? 'Customer pays $shopName through Paystack'
+                        : 'Requires a verified business payout account',
+                color: DesignColors.accent,
+                isSelected: _selectedMethod == PaymentMethod.mpesa,
+                onTap: paymentState.isProcessing || _isPreparingPayment
+                    ? null
+                    : () => _selectMpesa(
+                          cart.total,
+                          hasPendingRequest:
+                              paymentState.hasUnresolvedMerchantPayment,
+                        ),
+              ),
+              const SizedBox(height: DesignSpacing.md - 2),
+
+              if (!_checkingPayoutStatus && !_canAcceptMpesa) ...[
+                _buildPayoutStatusNotice(),
+                const SizedBox(height: DesignSpacing.md - 2),
+              ],
             ],
 
             // Debt (sell now, customer pays later)
@@ -593,6 +633,15 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     double total, {
     required bool hasPendingRequest,
   }) async {
+    if (_isLocalWorkspace) {
+      showGlassSnackBar(
+        context,
+        'M-Pesa prompts are not available in this device-only checkout. Choose cash, customer credit, or split payment.',
+        icon: Icons.wifi_off_rounded,
+        color: DesignColors.info,
+      );
+      return;
+    }
     if (_isPreparingPayment || ref.read(paymentProvider).isProcessing) return;
     if (!_canAcceptMpesa) {
       await _showPayoutNotReady();
@@ -904,6 +953,20 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   Future<void> _processPaymentWhileLocked({bool rulesChecked = false}) async {
     if (_selectedMethod == null) return;
 
+    // The local edition never starts provider checkout. Clear a stale method
+    // (for example, if workspace mode changed while this route stayed open)
+    // before showing phone-entry UI or invoking payment code.
+    if (_isLocalWorkspace && _selectedMethod == PaymentMethod.mpesa) {
+      setState(() => _selectedMethod = null);
+      showGlassSnackBar(
+        context,
+        'M-Pesa prompts are not available in this device-only checkout. Choose cash, customer credit, or split payment.',
+        icon: Icons.wifi_off_rounded,
+        color: DesignColors.info,
+      );
+      return;
+    }
+
     if (ref.read(paymentProvider.notifier).hasUnresolvedMerchantPayment &&
         _selectedMethod != PaymentMethod.mpesa) {
       showGlassSnackBar(
@@ -1085,7 +1148,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       final customerId = cart.customerId;
       var customerHistoryFailed = false;
 
-      if (customerId != null) {
+      if (customerId != null && !getIt<AuthService>().isLocalWorkspace) {
         try {
           await getIt<AppDatabase>()
               .recordCustomerPurchase(customerId, cart.total);
@@ -1567,16 +1630,18 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
                               },
                             ),
             ),
-            const SizedBox(height: DesignSpacing.sm),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _addCustomer,
-                icon: const Icon(Icons.person_add_alt_1_rounded),
-                label:
-                    Text('Add a new ${widget.customerSingular.toLowerCase()}'),
+            if (_loading || _failed || _customers.isNotEmpty) ...[
+              const SizedBox(height: DesignSpacing.sm),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _addCustomer,
+                  icon: const Icon(Icons.person_add_alt_1_rounded),
+                  label: Text(
+                      'Add a new ${widget.customerSingular.toLowerCase()}'),
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),

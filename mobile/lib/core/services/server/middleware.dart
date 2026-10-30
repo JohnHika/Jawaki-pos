@@ -65,6 +65,11 @@ shelf.Middleware authMiddleware({
     '/api/v1/auth/pin-login',
     '/api/v1/auth/register',
     '/api/v1/auth/refresh',
+    // Desktop pairing: the laptop has no token yet — that is the point.
+    // start/status/claim are guarded by the one-time claim secret instead.
+    '/api/v1/desktop-link/start',
+    '/api/v1/desktop-link/status',
+    '/api/v1/desktop-link/claim',
   },
 }) {
   return (shelf.Handler innerHandler) {

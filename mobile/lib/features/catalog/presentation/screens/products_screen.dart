@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:drift/drift.dart' show Value;
+import 'package:uuid/uuid.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/stock_quantity_display.dart';
@@ -8,6 +12,8 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
+import '../../../../core/services/auth_service.dart';
+import '../../../../core/services/storage_service.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/utils/business_layout_search.dart';
@@ -18,23 +24,49 @@ import '../providers/catalog_categories_provider.dart';
 import '../widgets/add_edit_product_sheet.dart';
 import '../widgets/image_picker_section.dart';
 import '../../../../core/utils/format.dart';
+import '../../../../core/widgets/workspace_image.dart';
 
 // Providers for the products screen
 final _productsProvider = StreamProvider<List<Product>>((ref) {
-  return getIt<AppDatabase>().watchAllProducts();
+  final showArchived = getIt<AuthService>().isLocalWorkspace &&
+      ref.watch(_showArchivedProductsProvider);
+  return getIt<AppDatabase>().watchCatalogProducts(
+    isActive: !showArchived,
+    categoryId: ref.watch(_selectedCategoryFilterProvider),
+    searchQuery: ref.watch(_searchQueryProvider),
+  );
 });
 
 final _selectedCategoryFilterProvider = StateProvider<String?>((ref) => null);
 final _searchQueryProvider = StateProvider<String>((ref) => '');
 final _catalogGridViewProvider = StateProvider<bool>((ref) => true);
+final _showArchivedProductsProvider = StateProvider<bool>((ref) => false);
+final _lastCatalogScopeProvider = StateProvider<String?>((ref) => null);
 
-// Keyed by the logged-in user's id (or a sentinel while logged out) so a
-// fresh login — including logging in as a different org on the same
-// device — always gets its own provider instance and re-runs the sync,
-// instead of forever reusing whichever tenant's sync happened to run
-// first in this app process.
+// Search and category filters belong to one shop/branch. Without this scope,
+// switching shops can leave the previous shop's category selected and make a
+// perfectly healthy catalog look empty.
+final _catalogScopeProvider = Provider<String>((ref) {
+  final user = ref.watch(currentUserProvider);
+  final storage = getIt<StorageService>();
+  final tenantId =
+      user?['tenantId']?.toString() ?? storage.getTenantId() ?? '';
+  final branchId =
+      user?['branchId']?.toString() ?? storage.getBranchId() ?? '';
+  final workspaceKind =
+      getIt<AuthService>().isLocalWorkspace ? 'local' : 'connected';
+  return [
+    user?['id']?.toString() ?? '',
+    tenantId,
+    branchId,
+    workspaceKind,
+  ].join('\u0000');
+});
+
+// Keyed by the user, tenant, branch, and workspace type so switching shop
+// scope always gets a fresh provider instance and re-runs the sync.
 final _catalogSyncProvider =
-    FutureProvider.family<void, String>((ref, userKey) async {
+    FutureProvider.family<void, String>((ref, catalogScope) async {
   await catalog_cache.syncCatalogCacheFromApi();
   ref.invalidate(catalog_cache.filteredProductsProvider);
   ref.invalidate(catalog_cache.favoriteProductsProvider);
@@ -62,19 +94,92 @@ String _productStockQuantityLabel(double quantity) {
       .replaceFirst(RegExp(r'\.$'), '');
 }
 
-class ProductsScreen extends ConsumerWidget {
+class ProductsScreen extends ConsumerStatefulWidget {
   const ProductsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProductsScreen> createState() => _ProductsScreenState();
+}
+
+class _ProductsScreenState extends ConsumerState<ProductsScreen> {
+  late final TextEditingController _searchController;
+  Timer? _searchDebounce;
+
+  @override
+  void initState() {
+    super.initState();
+    final scope = ref.read(_catalogScopeProvider);
+    final previousScope = ref.read(_lastCatalogScopeProvider);
+    if (previousScope != null && previousScope != scope) {
+      ref.read(_selectedCategoryFilterProvider.notifier).state = null;
+      ref.read(_searchQueryProvider.notifier).state = '';
+      ref.read(_showArchivedProductsProvider.notifier).state = false;
+    }
+    ref.read(_lastCatalogScopeProvider.notifier).state = scope;
+    _searchController = TextEditingController(
+      text: ref.read(_searchQueryProvider),
+    );
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _scheduleSearch(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 180), () {
+      if (!mounted) return;
+      ref.read(_searchQueryProvider.notifier).state = value;
+    });
+  }
+
+  void _commitSearch(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = null;
+    ref.read(_searchQueryProvider.notifier).state = value;
+  }
+
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+    _searchDebounce = null;
+    _searchController.clear();
+    _commitSearch('');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final catalogScope = ref.watch(_catalogScopeProvider);
     final currentUserId =
         ref.watch(currentUserProvider)?['id'] as String? ?? 'logged-out';
-    final syncAsync = ref.watch(_catalogSyncProvider(currentUserId));
+    ref.listen<String>(_catalogScopeProvider, (previous, next) {
+      if (previous == null || previous == next) return;
+      _searchDebounce?.cancel();
+      _searchDebounce = null;
+      ref.read(_lastCatalogScopeProvider.notifier).state = next;
+      ref.read(_selectedCategoryFilterProvider.notifier).state = null;
+      ref.read(_searchQueryProvider.notifier).state = '';
+      ref.read(_showArchivedProductsProvider.notifier).state = false;
+    });
+    ref.listen<String>(_searchQueryProvider, (previous, next) {
+      if (_searchController.text == next) return;
+      _searchController.value = TextEditingValue(
+        text: next,
+        selection: TextSelection.collapsed(offset: next.length),
+      );
+    });
+
+    final syncAsync = ref.watch(_catalogSyncProvider(catalogScope));
     final categoriesAsync = ref.watch(categoriesProvider);
     final productsAsync = ref.watch(_productsProvider);
     final selectedCategory = ref.watch(_selectedCategoryFilterProvider);
     final searchQuery = ref.watch(_searchQueryProvider);
     final gridView = ref.watch(_catalogGridViewProvider);
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
+    final showArchivedProducts =
+        isLocalWorkspace && ref.watch(_showArchivedProductsProvider);
     final perms = ref.watch(permissionsProvider);
     final businessLayout = ref.watch(businessLayoutProvider);
     final productName = businessLayout.productSingular.toLowerCase();
@@ -200,6 +305,7 @@ class ProductsScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(
                   DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.xs + 2),
               child: TextField(
+                controller: _searchController,
                 style: TextStyle(color: titleColor),
                 decoration: InputDecoration(
                   hintText: businessLayout.catalogSearchHint,
@@ -209,9 +315,7 @@ class ProductsScreen extends ConsumerWidget {
                       ? IconButton(
                           tooltip: 'Clear search',
                           icon: Icon(Icons.clear_rounded, color: tertiaryColor),
-                          onPressed: () => ref
-                              .read(_searchQueryProvider.notifier)
-                              .state = '',
+                          onPressed: _clearSearch,
                         )
                       : null,
                   filled: true,
@@ -235,8 +339,8 @@ class ProductsScreen extends ConsumerWidget {
                       horizontal: DesignSpacing.lg,
                       vertical: DesignSpacing.md - 1),
                 ),
-                onChanged: (value) =>
-                    ref.read(_searchQueryProvider.notifier).state = value,
+                onChanged: _scheduleSearch,
+                onSubmitted: _commitSearch,
               ),
             ),
 
@@ -315,7 +419,12 @@ class ProductsScreen extends ConsumerWidget {
             productsAsync.when(
               data: (products) {
                 final filtered = _filterProducts(
-                    products, selectedCategory, searchQuery, businessLayout);
+                  products,
+                  selectedCategory,
+                  searchQuery,
+                  businessLayout,
+                  showArchived: showArchivedProducts,
+                );
                 return Padding(
                   padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
                       DesignSpacing.xs, DesignSpacing.lg, DesignSpacing.xs + 2),
@@ -334,12 +443,46 @@ class ProductsScreen extends ConsumerWidget {
                           ),
                         ],
                       ),
-                      Text(
-                        gridView ? 'Grid' : 'List',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: tertiaryColor,
-                              fontWeight: FontWeight.w500,
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isLocalWorkspace)
+                            TextButton.icon(
+                              onPressed: () {
+                                ref
+                                    .read(
+                                        _showArchivedProductsProvider.notifier)
+                                    .state = !showArchivedProducts;
+                                ref
+                                    .read(_selectedCategoryFilterProvider
+                                        .notifier)
+                                    .state = null;
+                              },
+                              icon: Icon(
+                                showArchivedProducts
+                                    ? Icons.inventory_2_outlined
+                                    : Icons.archive_outlined,
+                                size: 16,
+                              ),
+                              label: Text(showArchivedProducts
+                                  ? 'Active products'
+                                  : 'Archived'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: DesignColors.brand,
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: DesignSpacing.xs),
+                              ),
                             ),
+                          Text(
+                            gridView ? 'Grid' : 'List',
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: tertiaryColor,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -354,7 +497,12 @@ class ProductsScreen extends ConsumerWidget {
               child: productsAsync.when(
                 data: (products) {
                   final filtered = _filterProducts(
-                      products, selectedCategory, searchQuery, businessLayout);
+                    products,
+                    selectedCategory,
+                    searchQuery,
+                    businessLayout,
+                    showArchived: showArchivedProducts,
+                  );
                   if (filtered.isEmpty) {
                     if (products.isEmpty &&
                         searchQuery.isEmpty &&
@@ -650,9 +798,14 @@ class ProductsScreen extends ConsumerWidget {
     );
   }
 
-  List<Product> _filterProducts(List<Product> products, String? categoryId,
-      String query, BusinessLayoutConfig businessLayout) {
-    var filtered = products.where((p) => p.isActive).toList();
+  List<Product> _filterProducts(
+    List<Product> products,
+    String? categoryId,
+    String query,
+    BusinessLayoutConfig businessLayout, {
+    required bool showArchived,
+  }) {
+    var filtered = products.where((p) => p.isActive != showArchived).toList();
     if (categoryId != null) {
       filtered = filtered.where((p) => p.categoryId == categoryId).toList();
     }
@@ -700,17 +853,39 @@ class ProductsScreen extends ConsumerWidget {
 
   void _confirmDelete(
       BuildContext context, WidgetRef ref, Product product) async {
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
+    final isArchiveAction = isLocalWorkspace && product.isActive;
+    final isRestoreAction = isLocalWorkspace && !product.isActive;
     final confirmed = await showConfirmDialog(
       context,
-      title: 'Delete Product',
-      message: 'Are you sure you want to delete "${product.name}"?',
-      confirmLabel: 'Delete',
-      confirmColor: DesignColors.error,
+      title: isArchiveAction
+          ? 'Archive product'
+          : isRestoreAction
+              ? 'Restore product'
+              : 'Delete Product',
+      message: isArchiveAction
+          ? 'Hide "${product.name}" from the POS? Its sales and history will be kept. You can restore it later from Archived.'
+          : isRestoreAction
+              ? 'Make "${product.name}" available in the POS again?'
+              : 'Are you sure you want to delete "${product.name}"?',
+      confirmLabel: isArchiveAction
+          ? 'Archive'
+          : isRestoreAction
+              ? 'Restore'
+              : 'Delete',
+      confirmColor: isRestoreAction ? DesignColors.accent : DesignColors.error,
     );
     if (confirmed) {
       try {
-        await getIt<ApiClient>().deleteProduct(product.id);
-        await catalog_cache.deleteProductFromCache(product.id);
+        if (isLocalWorkspace) {
+          await getIt<AppDatabase>().setLocalProductActive(
+            product.id,
+            isActive: !product.isActive,
+          );
+        } else {
+          await getIt<ApiClient>().deleteProduct(product.id);
+          await catalog_cache.deleteProductFromCache(product.id);
+        }
         // The POS grid is a cached FutureProvider, so invalidate its snapshots
         // as well as updating the live Products stream after a deletion.
         if (context.mounted) {
@@ -722,7 +897,7 @@ class ProductsScreen extends ConsumerWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Could not delete product. ${apiErrorMessage(e)}'),
+              content: Text('Could not update product. ${apiErrorMessage(e)}'),
               backgroundColor: DesignColors.error,
             ),
           );
@@ -756,19 +931,14 @@ class _ProductImage extends StatelessWidget {
         height: height,
         width: double.infinity,
         color: fallbackColor,
-        child: url == null || url.isEmpty
-            ? const Center(
-                child: Icon(Icons.inventory_2_outlined,
-                    color: DesignColors.brand, size: 30),
-              )
-            : Image.network(
-                url,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Center(
-                  child: Icon(Icons.inventory_2_outlined,
-                      color: DesignColors.brand, size: 30),
-                ),
-              ),
+        child: WorkspaceImage(
+          source: url,
+          fit: BoxFit.cover,
+          placeholder: const Center(
+            child: Icon(Icons.inventory_2_outlined,
+                color: DesignColors.brand, size: 30),
+          ),
+        ),
       ),
     );
   }
@@ -777,8 +947,13 @@ class _ProductImage extends StatelessWidget {
 class _ProductActions extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final bool productIsActive;
 
-  const _ProductActions({this.onEdit, this.onDelete});
+  const _ProductActions({
+    this.onEdit,
+    this.onDelete,
+    required this.productIsActive,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -801,13 +976,28 @@ class _ProductActions extends StatelessWidget {
             ),
           ),
         if (onDelete != null)
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'delete',
             child: ListTile(
               dense: true,
-              leading: Icon(Icons.remove_circle_outline_rounded,
-                  color: DesignColors.error, size: 19),
-              title: Text('Remove product'),
+              leading: Icon(
+                getIt<AuthService>().isLocalWorkspace && !productIsActive
+                    ? Icons.unarchive_outlined
+                    : getIt<AuthService>().isLocalWorkspace
+                        ? Icons.archive_outlined
+                        : Icons.remove_circle_outline_rounded,
+                color: getIt<AuthService>().isLocalWorkspace && !productIsActive
+                    ? DesignColors.success
+                    : DesignColors.error,
+                size: 19,
+              ),
+              title: Text(
+                getIt<AuthService>().isLocalWorkspace
+                    ? productIsActive
+                        ? 'Archive product'
+                        : 'Restore product'
+                    : 'Remove product',
+              ),
             ),
           ),
       ],
@@ -896,8 +1086,11 @@ class _ProductGridCard extends ConsumerWidget {
                         color: surface.withValues(alpha: 0.92),
                         shape: BoxShape.circle,
                       ),
-                      child:
-                          _ProductActions(onEdit: onEdit, onDelete: onDelete),
+                      child: _ProductActions(
+                        onEdit: onEdit,
+                        onDelete: onDelete,
+                        productIsActive: product.isActive,
+                      ),
                     ),
                   ),
                 ],
@@ -1101,7 +1294,11 @@ class _ProductListTile extends ConsumerWidget {
                         letterSpacing: -0.3,
                       ),
                     ),
-                    _ProductActions(onEdit: onEdit, onDelete: onDelete),
+                    _ProductActions(
+                      onEdit: onEdit,
+                      onDelete: onDelete,
+                      productIsActive: product.isActive,
+                    ),
                   ],
                 ),
               ],
@@ -1118,6 +1315,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final categoriesAsync = ref.watch(categoriesProvider);
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
@@ -1168,6 +1366,15 @@ class _CategoryManagementSheet extends ConsumerWidget {
                   itemCount: sorted.length,
                   itemBuilder: (context, index) {
                     final cat = sorted[index];
+                    final isProtectedDefaultCategory =
+                        isLocalWorkspace && cat.id == 'local-default-category';
+                    final isArchivedCategory =
+                        isLocalWorkspace && !cat.isActive;
+                    final categoryActionColor = isProtectedDefaultCategory
+                        ? tertiaryColor
+                        : isArchivedCategory
+                            ? DesignColors.success
+                            : DesignColors.error;
                     return Padding(
                       padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
                       child: GlassCard(
@@ -1209,7 +1416,9 @@ class _CategoryManagementSheet extends ConsumerWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    cat.name,
+                                    cat.isActive
+                                        ? cat.name
+                                        : '${cat.name} · Archived',
                                     style: Theme.of(context)
                                         .textTheme
                                         .titleSmall
@@ -1256,19 +1465,28 @@ class _CategoryManagementSheet extends ConsumerWidget {
                             ),
                             const SizedBox(width: DesignSpacing.xs),
                             GestureDetector(
-                              onTap: () => _confirmDeleteCategory(context, cat),
+                              onTap: isProtectedDefaultCategory
+                                  ? null
+                                  : () =>
+                                      _confirmDeleteCategory(context, ref, cat),
                               child: Container(
                                 padding: const EdgeInsets.all(DesignSpacing.sm),
                                 decoration: BoxDecoration(
-                                  color: DesignColors.error
-                                      .withValues(alpha: 0.08),
+                                  color: categoryActionColor.withValues(
+                                      alpha: 0.08),
                                   borderRadius: BorderRadius.circular(
                                       DesignSpacing.radiusSm),
                                 ),
-                                child: const Icon(
-                                  Icons.delete_outline_rounded,
+                                child: Icon(
+                                  isProtectedDefaultCategory
+                                      ? Icons.lock_outline_rounded
+                                      : isArchivedCategory
+                                          ? Icons.unarchive_outlined
+                                          : isLocalWorkspace
+                                              ? Icons.archive_outlined
+                                              : Icons.delete_outline_rounded,
                                   size: 18,
-                                  color: DesignColors.error,
+                                  color: categoryActionColor,
                                 ),
                               ),
                             ),
@@ -1302,6 +1520,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
     final nameController = TextEditingController();
     final descController = TextEditingController();
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     String? categoryImageUrl;
     String? categoryImagePublicId;
     showDialog(
@@ -1403,6 +1622,23 @@ class _CategoryManagementSheet extends ConsumerWidget {
                 onPressed: () async {
                   if (nameController.text.trim().isEmpty) return;
                   try {
+                    if (isLocalWorkspace) {
+                      final now = DateTime.now();
+                      await getIt<AppDatabase>().insertCategory(
+                        CategoriesCompanion.insert(
+                          id: const Uuid().v4(),
+                          name: nameController.text.trim(),
+                          description: Value(descController.text.trim().isEmpty
+                              ? null
+                              : descController.text.trim()),
+                          imageUrl: Value(categoryImageUrl),
+                          createdAt: now,
+                          updatedAt: now,
+                        ),
+                      );
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      return;
+                    }
                     final category = await getIt<ApiClient>().createCategory(
                       name: nameController.text.trim(),
                       description: descController.text.trim().isEmpty
@@ -1448,6 +1684,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
     final nameController = TextEditingController(text: cat.name);
     final descController = TextEditingController(text: cat.description ?? '');
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     String? categoryImageUrl = cat.imageUrl;
     String? categoryImagePublicId;
     showDialog(
@@ -1534,6 +1771,21 @@ class _CategoryManagementSheet extends ConsumerWidget {
                 onPressed: () async {
                   if (nameController.text.trim().isEmpty) return;
                   try {
+                    if (isLocalWorkspace) {
+                      await getIt<AppDatabase>().updateCategory(
+                        cat.id,
+                        CategoriesCompanion(
+                          name: Value(nameController.text.trim()),
+                          description: Value(descController.text.trim().isEmpty
+                              ? null
+                              : descController.text.trim()),
+                          imageUrl: Value(categoryImageUrl),
+                          updatedAt: Value(DateTime.now()),
+                        ),
+                      );
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      return;
+                    }
                     final category = await getIt<ApiClient>().updateCategory(
                       cat.id,
                       name: nameController.text.trim(),
@@ -1578,24 +1830,47 @@ class _CategoryManagementSheet extends ConsumerWidget {
     );
   }
 
-  void _confirmDeleteCategory(BuildContext context, Category cat) async {
+  void _confirmDeleteCategory(
+      BuildContext context, WidgetRef ref, Category cat) async {
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final confirmed = await showConfirmDialog(
       context,
-      title: 'Delete Category',
-      message:
-          'Delete "${cat.name}"? Products in this category will need reassigning.',
-      confirmLabel: 'Delete',
-      confirmColor: DesignColors.error,
+      title: isLocalWorkspace
+          ? cat.isActive
+              ? 'Archive category'
+              : 'Restore category'
+          : 'Delete Category',
+      message: isLocalWorkspace
+          ? cat.isActive
+              ? 'Hide "${cat.name}" from the POS filters? Products, sales, and reports will keep their category history. You can restore it from category management.'
+              : 'Make "${cat.name}" available in the POS filters again?'
+          : 'Delete "${cat.name}"? Products in this category will need reassigning.',
+      confirmLabel: isLocalWorkspace
+          ? cat.isActive
+              ? 'Archive'
+              : 'Restore'
+          : 'Delete',
+      confirmColor: isLocalWorkspace && !cat.isActive
+          ? DesignColors.accent
+          : DesignColors.error,
     );
     if (confirmed) {
       try {
-        await getIt<ApiClient>().deleteCategory(cat.id);
-        await catalog_cache.deleteCategoryFromCache(cat.id);
+        if (isLocalWorkspace) {
+          await getIt<AppDatabase>().setLocalCategoryActive(
+            cat.id,
+            isActive: !cat.isActive,
+          );
+          ref.read(_selectedCategoryFilterProvider.notifier).state = null;
+        } else {
+          await getIt<ApiClient>().deleteCategory(cat.id);
+          await catalog_cache.deleteCategoryFromCache(cat.id);
+        }
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Could not delete category. ${apiErrorMessage(e)}'),
+              content: Text('Could not update category. ${apiErrorMessage(e)}'),
               backgroundColor: DesignColors.error,
             ),
           );

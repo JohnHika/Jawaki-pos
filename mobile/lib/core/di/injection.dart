@@ -6,6 +6,7 @@ import '../database/app_database.dart';
 import '../services/app_icon_service.dart';
 import '../network/api_client.dart';
 import '../network/auth_interceptor.dart';
+import '../network/local_first_network_guard.dart';
 import '../network/network_retry_interceptor.dart';
 import '../services/connectivity_service.dart';
 import '../services/auth_service.dart';
@@ -28,7 +29,7 @@ export '../../features/billing/domain/entitlement_service.dart'
     show EntitlementService;
 
 final getIt = GetIt.instance;
-const _defaultApiUrl = 'https://api.archeaxon.com/api/v1';
+const _defaultApiUrl = 'http://127.0.0.1:3000/api/v1';
 
 /// Configure all dependencies for the app
 /// This must be called after WidgetsFlutterBinding.ensureInitialized()
@@ -84,19 +85,21 @@ Future<void> configureDependencies() async {
     getIt.registerSingleton<ApiClient>(apiClient);
     debugPrint('[DI] ApiClient registered');
 
-    // Apply saved server URL (overrides compile-time default)
+    // Only accept a device or private-LAN endpoint. Old installs may still
+    // have the retired public API URL saved in preferences; clear it rather
+    // than letting that stale setting survive into the downloadable edition.
     final savedUrl = storageService.getServerBaseUrl();
     if (savedUrl != null && savedUrl.isNotEmpty) {
-      final isLegacyLocalUrl = savedUrl.contains('192.168.100.47') ||
-          savedUrl.contains('10.30.168.100');
-      final effectiveUrl = isLegacyLocalUrl ? _defaultApiUrl : savedUrl;
-      if (isLegacyLocalUrl) {
-        await storageService.setServerBaseUrl(effectiveUrl);
+      if (LocalFirstNetworkGuard.isLocalNetworkUrl(savedUrl)) {
+        apiClient.setBaseUrl(savedUrl);
+        debugPrint('[DI] Local API endpoint from storage: $savedUrl');
+      } else {
+        await storageService.clearServerBaseUrl();
+        apiClient.setBaseUrl(_defaultApiUrl);
+        debugPrint('[DI] Removed retired public API URL from storage');
       }
-      apiClient.setBaseUrl(effectiveUrl);
-      debugPrint('[DI] ApiClient base URL from storage: $effectiveUrl');
     } else {
-      debugPrint('[DI] Using default ApiClient base URL');
+      debugPrint('[DI] Using local-only API base URL');
     }
 
     // ============================================
@@ -132,6 +135,15 @@ Future<void> configureDependencies() async {
       apiClient: getIt<ApiClient>(),
       connectivity: getIt<ConnectivityService>(),
       storage: getIt<StorageService>(),
+      canUseSync: () {
+        final auth = getIt<AuthService>();
+        return auth.isAuthenticated &&
+            !auth.isLocalWorkspace &&
+            auth.isUsingConfiguredLocalServer;
+      },
+      workspaceModeChanges: getIt<AuthService>().authStatusStream.map<void>(
+            (_) {},
+          ),
     );
     getIt.registerSingleton<SyncService>(
       syncService,
@@ -147,13 +159,32 @@ Future<void> configureDependencies() async {
     getIt.registerSingleton<LocalServerService>(localServerService);
     debugPrint('[DI] LocalServerService registered');
 
+    // Desktop pairing requests arriving at the phone server surface as a
+    // local notification (works even when the app is foregrounded, unlike
+    // FCM). Registered lazily — NotificationService may not exist yet here.
+    Future<void> linkDesktopRequestStream() async {
+      try {
+        if (!getIt.isRegistered<NotificationService>()) return;
+        localServerService.desktopLinkRequests.listen((event) {
+          final code = event['code']?.toString() ?? '';
+          final desktopName = event['desktopName']?.toString() ?? 'A computer';
+          getIt<NotificationService>().showDesktopLinkRequestNotification(
+            code: code,
+            desktopName: desktopName,
+          );
+        });
+      } catch (e) {
+        debugPrint('[DI] Desktop link stream wiring failed: $e');
+      }
+    }
+
+    await linkDesktopRequestStream();
+
     // ============================================
-    // STEP 8: Update Check Service (backend manifest)
+    // STEP 8: Update Check Service (independent release channel)
     // ============================================
     debugPrint('[DI] Registering UpdateCheckService...');
-    getIt.registerSingleton<UpdateCheckService>(
-      UpdateCheckService(apiClient: getIt<ApiClient>()),
-    );
+    getIt.registerSingleton<UpdateCheckService>(UpdateCheckService());
     debugPrint('[DI] UpdateCheckService registered');
 
     // ============================================
@@ -162,7 +193,8 @@ Future<void> configureDependencies() async {
     debugPrint('[DI] Registering FeatureAnnouncementService...');
     final featureAnnouncementService = FeatureAnnouncementService();
     await featureAnnouncementService.initialize();
-    getIt.registerSingleton<FeatureAnnouncementService>(featureAnnouncementService);
+    getIt.registerSingleton<FeatureAnnouncementService>(
+        featureAnnouncementService);
     debugPrint('[DI] FeatureAnnouncementService registered');
 
     // ============================================
@@ -196,7 +228,7 @@ Future<void> configureDependencies() async {
     // ============================================
     debugPrint('[DI] Registering ReceiptVisionService...');
     getIt.registerSingleton<ReceiptVisionService>(
-      ReceiptVisionService(apiClient: getIt<ApiClient>()),
+      ReceiptVisionService(),
     );
     debugPrint('[DI] ReceiptVisionService registered');
 
@@ -253,6 +285,8 @@ Dio _createDio() {
       logPrint: (obj) => debugPrint('[Dio] $obj'),
     ));
   }
+
+  dio.interceptors.add(const LocalFirstNetworkGuard());
 
   return dio;
 }

@@ -59,20 +59,17 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final businessLayout = ref.watch(businessLayoutProvider);
-    final providerQuery = ref.watch(searchQueryProvider);
-    if (_controller.text != providerQuery) {
-      // A route reset or clear action can arrive while a typed query is
-      // waiting to be applied. Cancel it so stale text cannot re-filter the
-      // catalog after the screen has been reset.
+    // Only synchronize when another part of the POS changes the query. Doing
+    // this comparison in build also sees the user's uncommitted keystrokes and
+    // can cancel the debounce or erase the first character during a rebuild.
+    ref.listen<String>(searchQueryProvider, (_, providerQuery) {
+      if (!mounted || _controller.text == providerQuery) return;
       _searchDebounce?.cancel();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _controller.text == providerQuery) return;
-        _controller.value = TextEditingValue(
-          text: providerQuery,
-          selection: TextSelection.collapsed(offset: providerQuery.length),
-        );
-      });
-    }
+      _controller.value = TextEditingValue(
+        text: providerQuery,
+        selection: TextSelection.collapsed(offset: providerQuery.length),
+      );
+    });
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),

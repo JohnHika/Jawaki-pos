@@ -31,22 +31,38 @@ String? receiptHeaderName(Map<String, dynamic>? user) {
   return combined.length <= 32 ? combined : company;
 }
 
-/// The credit/debt portion still owed on a sale, for the receipt's
-/// "Balance owed" line. A pure CREDIT sale owes its whole total; a SPLIT
-/// sale owes the sum of its CREDIT tenders (parsed from paymentReference,
-/// where split tenders are stored as JSON). Everything else owes nothing.
-double _extractOutstanding(PendingSale sale) {
+/// The amount this sale added to the customer's account. Collections are
+/// account-level in the local ledger, so a receipt cannot truthfully claim
+/// this amount is still outstanding after later payments.
+double _extractCreditAmountAtSale(PendingSale sale) {
+  if (const {'VOIDED', 'REFUNDED', 'FAILED', 'CANCELLED'}
+      .contains(sale.status.toUpperCase())) {
+    return 0;
+  }
   final method = sale.paymentMethod.toUpperCase();
-  if (method == 'CREDIT') return sale.total;
+  if (method == 'CREDIT') {
+    return sale.total.isFinite && sale.total > 0 ? sale.total : 0;
+  }
   if (method == 'SPLIT' && (sale.paymentReference?.isNotEmpty ?? false)) {
     try {
-      final tenders = jsonDecode(sale.paymentReference!) as List;
-      return tenders
+      final decoded = jsonDecode(sale.paymentReference!);
+      if (decoded is! List) return 0;
+      final creditTenders = decoded
           .whereType<Map>()
-          .where(
-              (t) => (t['method'] ?? '').toString().toUpperCase() == 'CREDIT')
-          .fold<double>(
-              0, (sum, t) => sum + ((t['amount'] as num?)?.toDouble() ?? 0));
+          .where((tender) =>
+              (tender['method'] ?? '').toString().toUpperCase() == 'CREDIT')
+          .toList(growable: false);
+      if (creditTenders.isEmpty) return 0;
+      var total = 0.0;
+      for (final tender in creditTenders) {
+        final rawAmount = tender['amount'];
+        final amount = rawAmount is num
+            ? rawAmount.toDouble()
+            : double.tryParse(rawAmount?.toString() ?? '');
+        if (amount == null || !amount.isFinite || amount <= 0) return 0;
+        total += amount;
+      }
+      return total.isFinite && total > 0 ? total : 0;
     } catch (_) {
       return 0;
     }
@@ -60,17 +76,28 @@ List<Map<String, dynamic>>? _extractTenders(PendingSale sale) {
   if (sale.paymentMethod.toUpperCase() != 'SPLIT') return null;
   if (!(sale.paymentReference?.isNotEmpty ?? false)) return null;
   try {
-    final list = jsonDecode(sale.paymentReference!) as List;
-    return list
-        .whereType<Map>()
-        .map((t) => {
-              'method': (t['method'] ?? '').toString(),
-              'amount': (t['amount'] as num?)?.toDouble() ?? 0,
-            })
-        .toList();
+    return _normalizeReceiptTenders(jsonDecode(sale.paymentReference!));
   } catch (_) {
     return null;
   }
+}
+
+List<Map<String, dynamic>>? _normalizeReceiptTenders(Object? value) {
+  if (value is! List || value.isEmpty) return null;
+  final tenders = <Map<String, dynamic>>[];
+  for (final row in value) {
+    if (row is! Map) return null;
+    final method = row['method']?.toString().trim().toUpperCase() ?? '';
+    final rawAmount = row['amount'];
+    final amount = rawAmount is num
+        ? rawAmount.toDouble()
+        : double.tryParse(rawAmount?.toString() ?? '');
+    if (method.isEmpty || amount == null || !amount.isFinite || amount <= 0) {
+      return null;
+    }
+    tenders.add({'method': method, 'amount': amount});
+  }
+  return tenders;
 }
 
 double _receiptAmount(Object? value) {
@@ -86,23 +113,30 @@ Map<String, dynamic> _normalizeRemoteReceipt(Map<String, dynamic> response) {
   final paid = _receiptAmount(payload['paidAmount']);
   final change = _receiptAmount(payload['changeAmount']);
   final method = (payload['paymentMethod'] ?? 'CASH').toString().toUpperCase();
+  final status = (payload['status'] ?? '').toString().toUpperCase();
   final rawTenders = payload['paymentTenders'] ?? payload['tenders'];
-  final tenders = rawTenders is List
-      ? rawTenders
-          .whereType<Map>()
-          .map((tender) => Map<String, dynamic>.from(tender))
-          .toList()
-      : const <Map<String, dynamic>>[];
+  final tenders =
+      _normalizeReceiptTenders(rawTenders) ?? const <Map<String, dynamic>>[];
   final creditTenders = tenders
       .where((tender) =>
           (tender['method'] ?? '').toString().toUpperCase() == 'CREDIT')
       .fold<double>(0, (sum, tender) => sum + _receiptAmount(tender['amount']));
   final remaining = total - paid + change;
-  final outstanding = method == 'SPLIT' && creditTenders > 0
-      ? creditTenders
-      : remaining > 0
-          ? remaining
-          : 0.0;
+  final rawCreditAmountAtSale = _receiptAmount(
+    payload['creditAmountAtSale'] ??
+        payload['creditAmount'] ??
+        (method == 'SPLIT'
+            ? creditTenders
+            : method == 'CREDIT'
+                ? remaining
+                : 0),
+  );
+  final creditAmountAtSale =
+      const {'VOIDED', 'REFUNDED', 'FAILED', 'CANCELLED'}.contains(status)
+          ? 0.0
+          : rawCreditAmountAtSale > 0
+              ? rawCreditAmountAtSale
+              : 0.0;
   final rawItems = payload['items'] as List? ?? const [];
   final items = rawItems.whereType<Map>().map((item) {
     final normalized = Map<String, dynamic>.from(item);
@@ -128,7 +162,7 @@ Map<String, dynamic> _normalizeRemoteReceipt(Map<String, dynamic> response) {
     'customerPhone': payload['customerPhone'],
     'paymentMethod': method,
     'paymentTenders': tenders,
-    'outstandingBalance': outstanding,
+    'creditAmountAtSale': creditAmountAtSale,
     'items': items,
   };
 }
@@ -139,15 +173,18 @@ Map<String, dynamic> _normalizeRemoteReceipt(Map<String, dynamic> response) {
 final receiptProvider = StreamProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, saleId) async* {
   final database = getIt<AppDatabase>();
+  final auth = getIt<AuthService>();
   final sale = await database.getPendingSaleById(saleId);
 
   if (sale == null) {
+    if (auth.isLocalWorkspace) {
+      throw StateError('This receipt is not saved on this device.');
+    }
     // A remote sale from another device has no local row to watch.
     yield _normalizeRemoteReceipt(await getIt<ApiClient>().getSale(saleId));
     return;
   }
 
-  final auth = getIt<AuthService>();
   final permissions = RolePermissions(
     auth.currentUser?['permissions'] as List<dynamic>?,
   );
@@ -158,11 +195,18 @@ final receiptProvider = StreamProvider.autoDispose
   }
 
   if (!permissions.has('sales.view_all') && !isOwnSale) {
-    if (sale.isSynced && permissions.has('sales.view')) {
-      yield _normalizeRemoteReceipt(await getIt<ApiClient>().getSale(saleId));
-      return;
+    if (permissions.has('sales.view') &&
+        (auth.isLocalWorkspace || sale.isSynced)) {
+      // In the retired online edition, the server decides whether a synced
+      // sale is visible to this cashier. A device-only workspace has no
+      // remote receipt endpoint: its saved database is the source of truth.
+      if (!auth.isLocalWorkspace) {
+        yield _normalizeRemoteReceipt(await getIt<ApiClient>().getSale(saleId));
+        return;
+      }
+    } else {
+      throw StateError('You can only view receipts for sales you recorded.');
     }
-    throw StateError('You can only view receipts for sales you recorded.');
   }
 
   await for (final currentSale in database.watchPendingSaleById(saleId)) {
@@ -192,7 +236,7 @@ final receiptProvider = StreamProvider.autoDispose
       'isSynced': currentSale.isSynced,
       'voidReason': currentSale.voidReason,
       'voidedAt': currentSale.voidedAt?.toIso8601String(),
-      'outstandingBalance': _extractOutstanding(currentSale),
+      'creditAmountAtSale': _extractCreditAmountAtSale(currentSale),
       'paymentTenders': _extractTenders(currentSale),
       'items': items
           .map((item) => {

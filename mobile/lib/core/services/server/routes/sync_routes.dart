@@ -147,6 +147,7 @@ class SyncRoutes {
         debugPrint('[PhoneServer Sync] Failed event $eventId: $e');
         debugPrint(stack.toString());
         final unsupportedEvent = e is UnsupportedError;
+        final saleVoidConflict = e is LocalSaleVoidConflict;
         results.add({
           'success': false,
           'eventId': eventId,
@@ -154,8 +155,12 @@ class SyncRoutes {
               ? 'This update is not supported by the shop phone. Update it, then retry Sync.'
               : e is _SyncAuthorizationException
                   ? e.message
-                  : 'This update could not be saved. We’ll retry shortly; check Sync status if the problem continues.',
-          'retryable': !unsupportedEvent && e is! _SyncAuthorizationException,
+                  : e is LocalSaleVoidConflict
+                      ? e.message
+                      : 'This update could not be saved. We’ll retry shortly; check Sync status if the problem continues.',
+          'retryable': !unsupportedEvent &&
+              e is! _SyncAuthorizationException &&
+              !saleVoidConflict,
         });
       }
     }
@@ -535,6 +540,7 @@ class SyncRoutes {
         saleId,
         reason: reason,
         voidedBy: access.userId,
+        guardUnallocatedCollections: true,
       );
     }
   }

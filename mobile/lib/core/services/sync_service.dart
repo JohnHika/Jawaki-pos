@@ -137,14 +137,17 @@ class SyncService {
   final ApiClient _apiClient;
   final ConnectivityService _connectivity;
   final StorageService _storage;
+  final bool Function() _canUseSync;
 
   final _uuid = const Uuid();
   Timer? _syncTimer;
   Timer? _heartbeatTimer;
   Timer? _pullTimer;
   StreamSubscription<ConnectionStatus>? _connectivitySubscription;
+  StreamSubscription<void>? _workspaceModeSubscription;
   bool _isSyncing = false;
   bool _isPulling = false;
+  bool _disposed = false;
 
   final StreamController<SyncStatus> _statusController =
       StreamController<SyncStatus>.broadcast();
@@ -156,16 +159,38 @@ class SyncService {
     required ApiClient apiClient,
     required ConnectivityService connectivity,
     required StorageService storage,
+    required bool Function() canUseSync,
+    required Stream<void> workspaceModeChanges,
   })  : _database = database,
         _apiClient = apiClient,
         _connectivity = connectivity,
-        _storage = storage {
-    _initializeSync();
+        _storage = storage,
+        _canUseSync = canUseSync {
+    _workspaceModeSubscription = workspaceModeChanges.listen((_) {
+      _refreshSyncLifecycle();
+    });
+    _refreshSyncLifecycle();
+  }
+
+  bool get _syncAllowed => !_storage.hasLocalWorkspace() && _canUseSync();
+
+  void _refreshSyncLifecycle() {
+    if (_disposed) return;
+    if (_syncAllowed) {
+      _initializeSync();
+    } else {
+      _stopSync();
+    }
   }
 
   void _initializeSync() {
+    if (!_syncAllowed || _connectivitySubscription != null) return;
     // Listen for connectivity changes
     _connectivitySubscription = _connectivity.statusStream.listen((status) {
+      if (!_syncAllowed) {
+        _refreshSyncLifecycle();
+        return;
+      }
       if (status == ConnectionStatus.online) {
         // Trigger sync when coming online
         syncPendingEvents();
@@ -199,6 +224,20 @@ class SyncService {
         pullChanges();
       }
     });
+  }
+
+  void _stopSync() {
+    _syncTimer?.cancel();
+    _syncTimer = null;
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+    _pullTimer?.cancel();
+    _pullTimer = null;
+    final connectivitySubscription = _connectivitySubscription;
+    _connectivitySubscription = null;
+    if (connectivitySubscription != null) {
+      unawaited(connectivitySubscription.cancel());
+    }
   }
 
   /// Queue an event for sync (Legacy - backwards compatibility)
@@ -239,6 +278,7 @@ class SyncService {
     int maxRetries = 5,
     bool syncImmediately = true,
   }) async {
+    if (!_syncAllowed) return;
     final tenantId = expectedTenantId ?? _storage.getTenantId();
     if (tenantId == null || tenantId.isEmpty) {
       throw StateError('Sign in to a shop before queueing offline changes.');
@@ -298,6 +338,7 @@ class SyncService {
     required String reason,
     required String voidedById,
   }) async {
+    if (!_syncAllowed) return;
     final expectedTenantId = _storage.getTenantId();
     if (expectedTenantId == null || expectedTenantId.isEmpty) {
       throw StateError('Sign in to the sale’s shop before syncing the void.');
@@ -391,6 +432,9 @@ class SyncService {
     required SyncConflictResolution resolution,
     Map<String, dynamic>? mergedPayload,
   }) async {
+    if (!_syncAllowed) {
+      throw StateError('Sync is available only for a configured shop server.');
+    }
     final results = await _apiClient.resolveSyncConflicts([
       {
         'eventId': itemId,
@@ -428,6 +472,7 @@ class SyncService {
 
   /// Sync pending events to server
   Future<void> syncPendingEvents() async {
+    if (!_syncAllowed) return;
     if (_isSyncing) return;
 
     final expectedTenantId = _storage.getTenantId();
@@ -711,6 +756,7 @@ class SyncService {
   /// invoice carries its original local id as offlineId so a retry after
   /// a partial failure won't create duplicates server-side.
   Future<void> migrateLocalSupplierDataIfNeeded() async {
+    if (!_syncAllowed) return;
     final tenantId = _storage.getTenantId();
     if (tenantId == null || _storage.isSupplierDataMigrated(tenantId)) return;
     if (!_connectivity.isOnline) return;
@@ -816,6 +862,7 @@ class SyncService {
 
   /// Pull changes from server
   Future<void> pullChanges({String? since}) async {
+    if (!_syncAllowed) return;
     if (!_connectivity.isOnline || _isPulling) return;
     _isPulling = true;
 
@@ -1233,6 +1280,7 @@ class SyncService {
   }
 
   Future<void> _sendHeartbeat() async {
+    if (!_syncAllowed) return;
     try {
       await _apiClient.sendHeartbeat();
     } catch (e) {
@@ -1273,10 +1321,13 @@ class SyncService {
   }
 
   void dispose() {
-    _syncTimer?.cancel();
-    _heartbeatTimer?.cancel();
-    _pullTimer?.cancel();
-    _connectivitySubscription?.cancel();
+    _disposed = true;
+    _stopSync();
+    final workspaceModeSubscription = _workspaceModeSubscription;
+    _workspaceModeSubscription = null;
+    if (workspaceModeSubscription != null) {
+      unawaited(workspaceModeSubscription.cancel());
+    }
     _statusController.close();
   }
 }

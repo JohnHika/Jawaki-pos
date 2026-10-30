@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/widgets/app_markdown.dart';
 
 import '../../../../core/di/injection.dart';
+import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
@@ -13,13 +14,12 @@ import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../ai/presentation/screens/ai_chat_service.dart';
 
-/// Everything the calendar day-detail screen needs for one date, sourced
-/// straight from the backend (never local SQLite) so the figures are
-/// correct regardless of which device made the sales — see the earlier
-/// stock_id/MANUAL-payment sync bugs that made local-only history unsafe.
+/// Everything the calendar day-detail screen needs for one date. A local
+/// workspace uses its device database; a connected workspace uses the server
+/// so it can include sales from every device.
 class DaySummaryData {
-  final Map<String, dynamic> summary; // /sales/summary/:branchId/:date
-  final List<dynamic> sales; // /sales?startDate=&endDate=
+  final Map<String, dynamic> summary;
+  final List<dynamic> sales;
   DaySummaryData({required this.summary, required this.sales});
 }
 
@@ -27,6 +27,36 @@ final _daySummaryProvider = FutureProvider.autoDispose
     .family<DaySummaryData, DateTime>((ref, date) async {
   final branchId = getIt<AuthService>().branchId;
   final dateStr = DateFormat('yyyy-MM-dd').format(date);
+
+  if (getIt<AuthService>().isLocalWorkspace) {
+    if (branchId == null || branchId.isEmpty) {
+      throw StateError(
+        'Select an active branch before viewing this day’s sales.',
+      );
+    }
+    final start = DateTime(date.year, date.month, date.day);
+    final end = start.add(const Duration(days: 1)).subtract(
+          const Duration(microseconds: 1),
+        );
+    final db = getIt<AppDatabase>();
+    final results = await Future.wait([
+      db.getDailySalesSummary(branchId, date),
+      db.getSalesByDateRangeForBranch(branchId, start, end),
+    ]);
+    final summary = results[0] as Map<String, dynamic>;
+    final sales = (results[1] as List<PendingSale>)
+        .where((sale) => sale.status.toUpperCase() == 'COMPLETED')
+        .map((sale) => <String, dynamic>{
+              'id': sale.id,
+              'receiptNumber': sale.receiptNumber,
+              'totalAmount': sale.total,
+              'paymentMethod': sale.paymentMethod,
+              'createdAt': sale.createdAt.toIso8601String(),
+            })
+        .toList(growable: false);
+    return DaySummaryData(summary: summary, sales: sales);
+  }
+
   final api = getIt<ApiClient>();
 
   final results = await Future.wait([
@@ -48,10 +78,27 @@ final _dayAiBriefProvider =
   return AiChatService().fetchDailyBrief(date: dateStr);
 });
 
-/// Shown when the dashboard's calendar icon returns a past date: the real
-/// backend-sourced sales for that day, plus an AI brief generated
-/// on-demand (and cached server-side) for dates the nightly cron never
-/// covered.
+final _gatewayKeyConfiguredProvider = FutureProvider.autoDispose<bool>(
+  (ref) => AiChatService().isGatewayConfigured(),
+);
+
+Future<void> _refreshDaySummary(WidgetRef ref, DateTime date) async {
+  ref.invalidate(_daySummaryProvider(date));
+  if (getIt<AuthService>().isLocalWorkspace) {
+    // Keep the Gateway request independent from sales-data loading. The
+    // refresh indicator follows the local database refresh, while the brief
+    // card shows its own loading state.
+    ref.invalidate(_dayAiBriefProvider(date));
+  }
+  try {
+    await ref.read(_daySummaryProvider(date).future);
+  } catch (_) {
+    // The provider renders the actionable error state after refresh ends.
+  }
+}
+
+/// Shown when the dashboard's calendar icon returns a past date: sales for
+/// that day, plus an AI brief when an Axon Gateway key is configured.
 class DaySummaryScreen extends ConsumerWidget {
   const DaySummaryScreen({super.key, required this.date});
 
@@ -73,18 +120,12 @@ class DaySummaryScreen extends ConsumerWidget {
           IconButton(
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh_rounded),
-            onPressed: () {
-              ref.invalidate(_daySummaryProvider(date));
-              ref.invalidate(_dayAiBriefProvider(date));
-            },
+            onPressed: () => _refreshDaySummary(ref, date),
           ),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(_daySummaryProvider(date));
-          ref.invalidate(_dayAiBriefProvider(date));
-        },
+        onRefresh: () => _refreshDaySummary(ref, date),
         child: dataAsync.when(
           data: (data) => _buildContent(context, ref, data),
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -114,6 +155,7 @@ class DaySummaryScreen extends ConsumerWidget {
       BuildContext context, WidgetRef ref, DaySummaryData data) {
     final summary = data.summary;
     final sales = data.sales;
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
@@ -168,11 +210,17 @@ class DaySummaryScreen extends ConsumerWidget {
                     const SizedBox(width: DesignSpacing.md),
                     Expanded(
                       child: MetricCard(
-                        title: 'M-Pesa',
-                        value: _currencyFmt
-                            .format((summary['mpesaSales'] as num?) ?? 0),
-                        icon: Icons.phone_android_rounded,
-                        color: DesignColors.mpesa,
+                        title: isLocalWorkspace ? 'Credit Sales' : 'M-Pesa',
+                        value: _currencyFmt.format((summary[isLocalWorkspace
+                                ? 'creditSales'
+                                : 'mpesaSales'] as num?) ??
+                            0),
+                        icon: isLocalWorkspace
+                            ? Icons.credit_score_rounded
+                            : Icons.phone_android_rounded,
+                        color: isLocalWorkspace
+                            ? DesignColors.credit
+                            : DesignColors.mpesa,
                       ),
                     ),
                   ],
@@ -182,9 +230,10 @@ class DaySummaryScreen extends ConsumerWidget {
           ),
           const SizedBox(height: DesignSpacing.xl),
 
-          // AI Brief for this specific date
-          _buildAiBrief(context, ref),
-          const SizedBox(height: DesignSpacing.xl),
+          if (isLocalWorkspace) ...[
+            _buildAiBrief(context, ref),
+            const SizedBox(height: DesignSpacing.xl),
+          ],
 
           // Sales list for the day
           SectionHeader(
@@ -299,6 +348,8 @@ class DaySummaryScreen extends ConsumerWidget {
 
   Widget _buildAiBrief(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final localWorkspace = getIt<AuthService>().isLocalWorkspace;
+    final gatewayKeyStatus = ref.watch(_gatewayKeyConfiguredProvider);
     final briefAsync = ref.watch(_dayAiBriefProvider(date));
     final cardBorder =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
@@ -347,6 +398,59 @@ class DaySummaryScreen extends ConsumerWidget {
                                 : DesignColors.textSecondary),
                       );
                     }
+                    if (localWorkspace && gatewayKeyStatus.isLoading) {
+                      return const Text('Checking Axon Gateway settings…');
+                    }
+                    if (localWorkspace && gatewayKeyStatus.hasError) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Secure key storage could not be checked. No AI request was sent.',
+                          ),
+                          TextButton.icon(
+                            onPressed: () {
+                              ref.invalidate(_gatewayKeyConfiguredProvider);
+                              ref.invalidate(_dayAiBriefProvider(date));
+                            },
+                            icon: const Icon(Icons.refresh_rounded, size: 18),
+                            label: const Text('Check again'),
+                          ),
+                        ],
+                      );
+                    }
+                    if (localWorkspace &&
+                        gatewayKeyStatus.valueOrNull != true) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Add your owner-issued Axon Gateway key to generate a brief from this device’s sales summary.',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: isDark
+                                      ? DesignColors.darkTextSecondary
+                                      : DesignColors.textSecondary,
+                                ),
+                          ),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton.icon(
+                              onPressed: () async {
+                                await context.push('/settings/ai-gateway');
+                                if (!context.mounted) return;
+                                ref.invalidate(_gatewayKeyConfiguredProvider);
+                                ref.invalidate(_dayAiBriefProvider(date));
+                              },
+                              icon: const Icon(Icons.key_rounded, size: 18),
+                              label: const Text('Open Gateway settings'),
+                            ),
+                          ),
+                        ],
+                      );
+                    }
                     return Text(
                       'No AI brief available for this day.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -379,12 +483,24 @@ class DaySummaryScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  error: (_, __) => Text(
-                    "Couldn't generate a brief for this day.",
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: isDark
-                            ? DesignColors.darkTextTertiary
-                            : DesignColors.textTertiary),
+                  error: (_, __) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Couldn't generate a brief for this day.",
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: isDark
+                                ? DesignColors.darkTextTertiary
+                                : DesignColors.textTertiary),
+                      ),
+                      if (localWorkspace)
+                        TextButton.icon(
+                          onPressed: () =>
+                              ref.invalidate(_dayAiBriefProvider(date)),
+                          icon: const Icon(Icons.refresh_rounded, size: 18),
+                          label: const Text('Try again'),
+                        ),
+                    ],
                   ),
                 ),
               ],

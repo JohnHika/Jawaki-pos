@@ -49,6 +49,9 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
 
   StreamSubscription<List<PendingSale>>? _salesSub;
 
+  bool get _canViewPaymentStatus =>
+      ref.read(permissionsProvider).has('payments.view_status');
+
   @override
   void dispose() {
     _salesSub?.cancel();
@@ -58,7 +61,11 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   /// Follows today's sales live, so a sale rung up while this tab sits in the
   /// background shows in "Today's Takings" instead of a stale first read.
   Future<void> _loadData() async {
-    unawaited(_refreshMerchantCharges());
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
+    final canViewPaymentStatus = _canViewPaymentStatus;
+    if (!isLocalWorkspace && canViewPaymentStatus) {
+      unawaited(_refreshMerchantCharges());
+    }
     await _salesSub?.cancel();
     _serverRefreshGeneration++;
     setState(() {
@@ -69,7 +76,18 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
       _serverOfflineSaleIds = const {};
       _serverTotal = 0;
       _serverCount = 0;
+      _todaysSales = const [];
+      _merchantCharges = const [];
     });
+
+    // `payments.view_methods` alone must not load sales or payment status.
+    // The route is intentionally available to either permission, so keep the
+    // data read aligned with the narrower status permission here too.
+    if (!canViewPaymentStatus) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
     final branchId = getIt<AuthService>().branchId;
     final salesStream = branchId == null
         ? _db.watchTodaysSales().map((sales) => sales
@@ -83,7 +101,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
           _todaysSales = sales;
           _isLoading = false;
         });
-        unawaited(_refreshServerTotals());
+        if (!isLocalWorkspace) unawaited(_refreshServerTotals());
       },
       onError: (Object e) {
         if (!mounted) return;
@@ -96,10 +114,13 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   }
 
   Future<void> _refreshMerchantCharges() async {
+    if (getIt<AuthService>().isLocalWorkspace || !_canViewPaymentStatus) return;
     try {
       final paymentNotifier = ref.read(paymentProvider.notifier);
       await paymentNotifier.ensurePendingMerchantPaymentLoaded(force: true);
+      if (!mounted || !_canViewPaymentStatus) return;
       final rows = await getIt<ApiClient>().getRecentMerchantCharges();
+      if (!mounted || !_canViewPaymentStatus) return;
       final recovered = paymentNotifier.recoveredMerchantCharge;
       final reference = recovered?['reference']?.toString();
       if (recovered != null &&
@@ -114,18 +135,23 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   }
 
   Future<void> _retryPendingPaymentRecovery() async {
+    if (getIt<AuthService>().isLocalWorkspace || !_canViewPaymentStatus) return;
     try {
       await ref.read(paymentProvider.notifier).refreshPendingMerchantPayment();
     } finally {
-      await _refreshMerchantCharges();
+      if (mounted && _canViewPaymentStatus) {
+        await _refreshMerchantCharges();
+      }
     }
   }
 
   Future<void> _checkMerchantCharge(String reference) async {
+    if (getIt<AuthService>().isLocalWorkspace || !_canViewPaymentStatus) return;
     final router = GoRouter.of(context);
     final messenger = ScaffoldMessenger.of(context);
     try {
       final charge = await getIt<ApiClient>().getMerchantMpesaStatus(reference);
+      if (!mounted || !_canViewPaymentStatus) return;
       await _refreshMerchantCharges();
       await _refreshServerTotals();
       if (!mounted) return;
@@ -169,6 +195,15 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   }
 
   Future<void> _refreshServerTotals() async {
+    if (getIt<AuthService>().isLocalWorkspace || !_canViewPaymentStatus) {
+      if (mounted) {
+        setState(() {
+          _cloudTotalsAvailable = false;
+          _canReconcileLocalSales = false;
+        });
+      }
+      return;
+    }
     final generation = ++_serverRefreshGeneration;
     final branchId = getIt<AuthService>().branchId;
     if (branchId == null) {
@@ -259,18 +294,79 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(permissionsProvider, (previous, next) {
+      if (previous != null &&
+          previous.has('payments.view_status') !=
+              next.has('payments.view_status')) {
+        unawaited(_loadData());
+      }
+    });
     final businessLayout = ref.watch(businessLayoutProvider);
     final paymentState = ref.watch(paymentProvider);
+    final permissions = ref.watch(permissionsProvider);
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
+    final canViewPaymentStatus = permissions.has('payments.view_status');
+    final canViewPaymentMethods = permissions.has('payments.view_methods');
+    final canSeePaymentAnalytics = isLocalWorkspace
+        ? permissions.canSeeReports
+        : permissions.has('reporting.payment_breakdown');
+    final quickAccessActions = <Widget>[
+      if (permissions.canSeeReceipts)
+        QuickActionTile(
+          icon: Icons.receipt_long_rounded,
+          label: 'Receipts',
+          subtitle: 'View & share',
+          color: DesignColors.info,
+          onTap: () => context.push('/receipts'),
+        ),
+      if (canSeePaymentAnalytics)
+        QuickActionTile(
+          icon: Icons.analytics_rounded,
+          label: isLocalWorkspace ? 'Reports' : 'Analytics',
+          subtitle: isLocalWorkspace
+              ? 'On-device sales analysis'
+              : 'Payment breakdown',
+          color: DesignColors.brand,
+          onTap: () => context.push(
+            isLocalWorkspace ? '/reports/analytics' : '/payment-analytics',
+          ),
+        ),
+      if (permissions.canSeeCustomers)
+        QuickActionTile(
+          icon: Icons.credit_score_rounded,
+          label: 'Customer Credit',
+          subtitle: 'Installments & balances',
+          color: DesignColors.warning,
+          onTap: () => context.go('/customers'),
+        ),
+      if (permissions.canMakeSales)
+        QuickActionTile(
+          icon: Icons.point_of_sale_rounded,
+          label: 'New Sale',
+          subtitle: 'Start a checkout',
+          color: DesignColors.success,
+          onTap: () => context.go('/'),
+        ),
+      if (!isLocalWorkspace && permissions.canManageMerchantPayout)
+        QuickActionTile(
+          icon: Icons.account_balance_rounded,
+          label: 'Payout account',
+          subtitle: 'Where your shop receives customer payments',
+          color: DesignColors.success,
+          onTap: () => context.push('/payments/setup'),
+        ),
+    ];
     return Scaffold(
       appBar: BrandedAppBar(
         title: businessLayout.actionLabel('/payments', 'Payments'),
         showBackButton: false,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.receipt_long_rounded),
-            onPressed: () => context.push('/receipts'),
-            tooltip: 'View Receipts',
-          ),
+          if (permissions.canSeeReceipts)
+            IconButton(
+              icon: const Icon(Icons.receipt_long_rounded),
+              onPressed: () => context.push('/receipts'),
+              tooltip: 'View Receipts',
+            ),
         ],
       ),
       body: _error != null
@@ -295,180 +391,141 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SectionHeader(
+                    SectionHeader(
                       title: 'Payment Management',
-                      subtitle: "Today's takings, receipts, and credit",
+                      subtitle: canViewPaymentStatus
+                          ? isLocalWorkspace
+                              ? "Today's on-device takings, receipts, and credit"
+                              : "Today's takings, receipts, and credit"
+                          : 'Payment methods available to your role',
                       icon: Icons.payments_rounded,
                     ),
+                    if (isLocalWorkspace && canViewPaymentStatus) ...[
+                      const SizedBox(height: DesignSpacing.sm),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(DesignSpacing.md),
+                        decoration: BoxDecoration(
+                          color: DesignColors.info.withValues(alpha: 0.08),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusMd),
+                          border: Border.all(
+                              color: DesignColors.info.withValues(alpha: 0.2)),
+                        ),
+                        child: const Text(
+                          'Figures include sales saved on this device. They do not include activity from other devices.',
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: DesignSpacing.sm),
 
                     // Today's summary
-                    StaggeredItem(
-                        itemKey: 'payments-takings',
-                        child: GlassCard(
-                          padding: const EdgeInsets.all(DesignSpacing.xl),
-                          borderRadius: DesignSpacing.radiusLg,
-                          blur: 12,
-                          gradient: const LinearGradient(
-                            colors: [
-                              DesignColors.brand,
-                              DesignColors.brandDark
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding:
-                                        const EdgeInsets.all(DesignSpacing.sm),
-                                    decoration: BoxDecoration(
-                                      color: DesignColors.textOnBrand
-                                          .withValues(alpha: 0.2),
-                                      borderRadius: BorderRadius.circular(
-                                          DesignSpacing.radiusMd - 2),
+                    if (canViewPaymentStatus)
+                      StaggeredItem(
+                          itemKey: 'payments-takings',
+                          child: GlassCard(
+                            padding: const EdgeInsets.all(DesignSpacing.xl),
+                            borderRadius: DesignSpacing.radiusLg,
+                            blur: 12,
+                            gradient: const LinearGradient(
+                              colors: [
+                                DesignColors.brand,
+                                DesignColors.brandDark
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(
+                                          DesignSpacing.sm),
+                                      decoration: BoxDecoration(
+                                        color: DesignColors.textOnBrand
+                                            .withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(
+                                            DesignSpacing.radiusMd - 2),
+                                      ),
+                                      child: const Icon(Icons.today_rounded,
+                                          color: DesignColors.textOnBrand,
+                                          size: 24),
                                     ),
-                                    child: const Icon(Icons.today_rounded,
-                                        color: DesignColors.textOnBrand,
-                                        size: 24),
-                                  ),
-                                  const SizedBox(width: DesignSpacing.md),
+                                    const SizedBox(width: DesignSpacing.md),
+                                    Text(
+                                      "Today's Takings",
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                            color: DesignColors.textOnBrand,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                                if (_cloudTotalsAvailable &&
+                                    !_canReconcileLocalSales &&
+                                    _todaysSales
+                                        .any((sale) => !sale.isSynced)) ...[
+                                  const SizedBox(height: DesignSpacing.sm),
                                   Text(
-                                    "Today's Takings",
+                                    'Offline sales are waiting to sync.',
                                     style: Theme.of(context)
                                         .textTheme
-                                        .bodyMedium
+                                        .bodySmall
                                         ?.copyWith(
-                                          color: DesignColors.textOnBrand,
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
+                                          color: DesignColors.textOnBrand
+                                              .withValues(alpha: 0.8),
                                         ),
                                   ),
                                 ],
-                              ),
-                              if (_cloudTotalsAvailable &&
-                                  !_canReconcileLocalSales &&
-                                  _todaysSales
-                                      .any((sale) => !sale.isSynced)) ...[
-                                const SizedBox(height: DesignSpacing.sm),
-                                Text(
-                                  'Offline sales are waiting to sync.',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(
-                                        color: DesignColors.textOnBrand
-                                            .withValues(alpha: 0.8),
-                                      ),
+                                const SizedBox(height: DesignSpacing.xl),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceAround,
+                                  children: [
+                                    _buildGlassStatItem(
+                                      label: 'Total Sales',
+                                      value: _isLoading
+                                          ? '...'
+                                          : 'KES ${NumberFormat('#,##0').format(_todaysTotal)}',
+                                      icon: Icons.point_of_sale_rounded,
+                                    ),
+                                    _buildGlassStatItem(
+                                      label: 'Transactions',
+                                      value: _isLoading
+                                          ? '...'
+                                          : '$_todaysTransactionCount',
+                                      icon: Icons.receipt_rounded,
+                                    ),
+                                  ],
                                 ),
                               ],
-                              const SizedBox(height: DesignSpacing.xl),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceAround,
-                                children: [
-                                  _buildGlassStatItem(
-                                    label: 'Total Sales',
-                                    value: _isLoading
-                                        ? '...'
-                                        : 'KES ${NumberFormat('#,##0').format(_todaysTotal)}',
-                                    icon: Icons.point_of_sale_rounded,
-                                  ),
-                                  _buildGlassStatItem(
-                                    label: 'Transactions',
-                                    value: _isLoading
-                                        ? '...'
-                                        : '$_todaysTransactionCount',
-                                    icon: Icons.receipt_rounded,
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        )),
-
-                    const SizedBox(height: DesignSpacing.xxl),
-
-                    const SectionHeader(
-                      title: 'Quick Access',
-                      subtitle: 'Jump into receipts, analytics, or credit',
-                      icon: Icons.dashboard_rounded,
-                    ),
-                    const SizedBox(height: DesignSpacing.sm),
-
-                    StaggeredItem(
-                        itemKey: 'payments-quick-receipts',
-                        index: 1,
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: QuickActionTile(
-                                icon: Icons.receipt_long_rounded,
-                                label: 'Receipts',
-                                subtitle: 'View & share',
-                                color: DesignColors.info,
-                                onTap: () => context.push('/receipts'),
-                              ),
                             ),
-                            const SizedBox(width: DesignSpacing.md),
-                            Expanded(
-                              child: QuickActionTile(
-                                icon: Icons.analytics_rounded,
-                                label: 'Analytics',
-                                subtitle: 'Payment breakdown',
-                                color: DesignColors.brand,
-                                onTap: () => context.push('/payment-analytics'),
-                              ),
-                            ),
-                          ],
-                        )),
-                    const SizedBox(height: DesignSpacing.md),
-                    StaggeredItem(
-                        itemKey: 'payments-quick-credit',
-                        index: 2,
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: QuickActionTile(
-                                icon: Icons.credit_score_rounded,
-                                label: 'Customer Credit',
-                                subtitle: 'Installments & balances',
-                                color: DesignColors.warning,
-                                onTap: () => context.go('/customers'),
-                              ),
-                            ),
-                            const SizedBox(width: DesignSpacing.md),
-                            Expanded(
-                              child: QuickActionTile(
-                                icon: Icons.point_of_sale_rounded,
-                                label: 'New Sale',
-                                subtitle: 'Start a checkout',
-                                color: DesignColors.success,
-                                onTap: () => context.go('/'),
-                              ),
-                            ),
-                          ],
-                        )),
+                          )),
 
-                    if (ref
-                            .watch(currentUserProvider)?['role']
-                            ?.toString()
-                            .toUpperCase() ==
-                        'ADMIN') ...[
-                      const SizedBox(height: DesignSpacing.md),
-                      QuickActionTile(
-                        icon: Icons.account_balance_rounded,
-                        label: 'Payout account',
-                        subtitle: 'Where your shop receives customer payments',
-                        color: DesignColors.success,
-                        onTap: () => context.push('/payments/setup'),
+                    if (canViewPaymentStatus)
+                      const SizedBox(height: DesignSpacing.xxl),
+
+                    if (quickAccessActions.isNotEmpty) ...[
+                      SectionHeader(
+                        title: 'Quick Access',
+                        subtitle: isLocalWorkspace
+                            ? 'Available actions for your role'
+                            : 'Jump into the areas you can manage',
+                        icon: Icons.dashboard_rounded,
                       ),
+                      const SizedBox(height: DesignSpacing.sm),
+                      ..._buildQuickAccessRows(quickAccessActions),
                     ],
 
-                    if (paymentState.hasUnresolvedMerchantPayment &&
+                    if (!isLocalWorkspace &&
+                        canViewPaymentStatus &&
+                        paymentState.hasUnresolvedMerchantPayment &&
                         paymentState.isRecoveredMerchantPayment &&
                         !_merchantCharges.any((row) =>
                             row['reference'] ==
@@ -489,14 +546,16 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                       ),
                     ],
 
-                    if (_merchantCharges.any((row) =>
-                        row['status'] == 'PENDING' ||
-                        row['status'] == 'NEEDS_REVIEW' ||
-                        row['status'] == 'SETTLING' ||
-                        (paymentState.isRecoveredMerchantPayment &&
-                            row['reference'] ==
-                                paymentState.currentTransactionId &&
-                            row['status'] == 'COMPLETED'))) ...[
+                    if (!isLocalWorkspace &&
+                        canViewPaymentStatus &&
+                        _merchantCharges.any((row) =>
+                            row['status'] == 'PENDING' ||
+                            row['status'] == 'NEEDS_REVIEW' ||
+                            row['status'] == 'SETTLING' ||
+                            (paymentState.isRecoveredMerchantPayment &&
+                                row['reference'] ==
+                                    paymentState.currentTransactionId &&
+                                row['status'] == 'COMPLETED'))) ...[
                       const SizedBox(height: DesignSpacing.xxl),
                       const SectionHeader(
                         title: 'Payments to check',
@@ -534,7 +593,15 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                     Builder(builder: (context) {
                       final perms = ref.watch(permissionsProvider);
                       final tiles = <Widget>[
-                        if (perms.canViewCashFlow)
+                        if (isLocalWorkspace && perms.canCloseEndOfDay)
+                          QuickActionTile(
+                            icon: Icons.event_available_rounded,
+                            label: 'End of day',
+                            subtitle: 'Review device sales',
+                            color: DesignColors.warning,
+                            onTap: () => context.push('/cash-flow/end-of-day'),
+                          )
+                        else if (perms.canViewCashFlow)
                           QuickActionTile(
                             icon: Icons.account_balance_wallet_rounded,
                             label: 'Cash Flow',
@@ -569,44 +636,75 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                     const SizedBox(height: DesignSpacing.xxl),
 
                     // Payment Methods
-                    const SectionHeader(
-                      title: 'Accepted Payment Methods',
-                      subtitle: 'Available at checkout',
-                      icon: Icons.credit_card_rounded,
-                    ),
-                    const SizedBox(height: DesignSpacing.sm),
-                    const StaggeredItem(
-                        itemKey: 'payments-methods',
-                        index: 3,
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _PaymentMethodBadge(
-                              method: 'Cash',
-                              icon: Icons.payments_outlined,
-                            ),
-                            _PaymentMethodBadge(
-                              method: 'M-Pesa',
-                              icon: Icons.phone_android_rounded,
-                            ),
-                            _PaymentMethodBadge(
-                              method: 'Customer debt',
-                              icon: Icons.credit_score_outlined,
-                            ),
-                            _PaymentMethodBadge(
-                              method: 'Cash + debt split',
-                              icon: Icons.call_split_rounded,
-                            ),
-                          ],
-                        )),
-
-                    const SizedBox(height: DesignSpacing.xxl),
+                    if (canViewPaymentMethods) ...[
+                      SectionHeader(
+                        title: 'Payment Methods',
+                        subtitle: isLocalWorkspace
+                            ? 'Available on this device'
+                            : 'Methods recorded for sales',
+                        icon: Icons.credit_card_rounded,
+                      ),
+                      const SizedBox(height: DesignSpacing.sm),
+                      StaggeredItem(
+                          itemKey: 'payments-methods',
+                          index: 3,
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              const _PaymentMethodBadge(
+                                method: 'Cash',
+                                icon: Icons.payments_outlined,
+                              ),
+                              if (!isLocalWorkspace)
+                                const _PaymentMethodBadge(
+                                  method: 'M-Pesa',
+                                  icon: Icons.phone_android_rounded,
+                                ),
+                              const _PaymentMethodBadge(
+                                method: 'Customer debt',
+                                icon: Icons.credit_score_outlined,
+                              ),
+                              const _PaymentMethodBadge(
+                                method: 'Cash + debt split',
+                                icon: Icons.call_split_rounded,
+                              ),
+                            ],
+                          )),
+                      const SizedBox(height: DesignSpacing.xxl),
+                    ],
                   ],
                 ),
               ),
             ),
     );
+  }
+
+  List<Widget> _buildQuickAccessRows(List<Widget> actions) {
+    final rows = <Widget>[];
+    for (var index = 0; index < actions.length; index += 2) {
+      rows.add(
+        StaggeredItem(
+          itemKey: 'payments-quick-${index ~/ 2}',
+          index: index ~/ 2 + 1,
+          child: Row(
+            children: [
+              Expanded(child: actions[index]),
+              const SizedBox(width: DesignSpacing.md),
+              Expanded(
+                child: index + 1 < actions.length
+                    ? actions[index + 1]
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (index + 2 < actions.length) {
+        rows.add(const SizedBox(height: DesignSpacing.md));
+      }
+    }
+    return rows;
   }
 
   Widget _buildGlassStatItem({

@@ -12,6 +12,7 @@ import '../../../../core/utils/format.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../finance/domain/finance_models.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../widgets/add_customer_sheet.dart';
 
 class CustomersScreen extends ConsumerStatefulWidget {
@@ -64,6 +65,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   ) async {
     try {
       final authService = getIt<AuthService>();
+      if (authService.isLocalWorkspace) return customers;
       final tenantId = authService.tenantId;
       final branchId = authService.branchId;
       if (tenantId == null || branchId == null) return customers;
@@ -175,10 +177,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       }
       // Search runs on the local database immediately. Wait until typing stops
       // before requesting the same full server balance snapshot again.
-      _serverBalanceDebounce = Timer(const Duration(milliseconds: 320), () {
-        if (!mounted || generation != _loadGeneration) return;
-        unawaited(_refreshServerBalances(local, normalizedQuery, generation));
-      });
+      if (!getIt<AuthService>().isLocalWorkspace) {
+        _serverBalanceDebounce = Timer(const Duration(milliseconds: 320), () {
+          if (!mounted || generation != _loadGeneration) return;
+          unawaited(_refreshServerBalances(local, normalizedQuery, generation));
+        });
+      }
     } catch (_) {
       if (mounted && generation == _loadGeneration) {
         setState(() {
@@ -206,8 +210,11 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   }
 
   Future<void> _showAddCustomerSheet() async {
+    final permissions = ref.read(permissionsProvider);
+    if (!permissions.has('customers.create')) return;
     final customer = await showAddCustomerSheet(
       context,
+      allowInitialCredit: permissions.canManageReceivables,
       customerSingular: ref.read(businessLayoutProvider).customerSingular,
     );
     if (customer == null || !mounted) return;
@@ -233,6 +240,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
     final businessLayout = ref.watch(businessLayoutProvider);
+    final permissions = ref.watch(permissionsProvider);
     final customerSingular = businessLayout.customerSingular.toLowerCase();
     final customersLabel = businessLayout.customersLabel.toLowerCase();
 
@@ -241,11 +249,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         title: businessLayout.actionLabel('/customers', 'Customers'),
         showBackButton: false,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.person_add_rounded, size: 20),
-            tooltip: 'Add ${businessLayout.customerSingular}',
-            onPressed: _showAddCustomerSheet,
-          ),
+          if (permissions.has('customers.create'))
+            IconButton(
+              icon: const Icon(Icons.person_add_rounded, size: 20),
+              tooltip: 'Add ${businessLayout.customerSingular}',
+              onPressed: _showAddCustomerSheet,
+            ),
         ],
       ),
       body: PageContainer(
@@ -405,9 +414,13 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                               actionIcon: Icons.person_add_alt_1_rounded,
                               actionLabel: _showDebtOnly
                                   ? null
-                                  : 'Add ${businessLayout.customerSingular}',
-                              onAction:
-                                  _showDebtOnly ? null : _showAddCustomerSheet,
+                                  : permissions.has('customers.create')
+                                      ? 'Add ${businessLayout.customerSingular}'
+                                      : null,
+                              onAction: _showDebtOnly ||
+                                      !permissions.has('customers.create')
+                                  ? null
+                                  : _showAddCustomerSheet,
                             )
                           : RefreshIndicator(
                               onRefresh: () => _loadCustomers(),

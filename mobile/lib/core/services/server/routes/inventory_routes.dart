@@ -55,7 +55,10 @@ class InventoryRoutes {
 
   /// GET /api/v1/inventory/low-stock
   Future<shelf.Response> _handleGetLowStock(shelf.Request request) async {
-    final lowStock = await _db.getLowStockProducts();
+    final branchId = request.url.queryParameters['branchId']?.trim();
+    final lowStock = await _db.getLowStockProducts(
+      branchId: branchId == null || branchId.isEmpty ? null : branchId,
+    );
     return shelf.Response.ok(
       jsonEncode(lowStock),
       headers: {'content-type': 'application/json'},

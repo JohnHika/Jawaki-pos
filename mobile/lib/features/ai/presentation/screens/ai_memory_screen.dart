@@ -1,9 +1,7 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/di/injection.dart';
-import '../../../../core/network/api_client.dart';
-import '../../../../core/services/auth_service.dart';
+import '../../../../core/database/app_database.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 
@@ -15,11 +13,8 @@ const _memoryTypeLabels = {
   'policy': 'Policy',
 };
 
-/// View, add, and remove the AI's durable shop memories — the things it
-/// recalls across sessions (owner preferences, policies, customer notes)
-/// without being told again each time. Tenant-wide and shared by every
-/// staff member, same as the AI chat thread itself. Backend only supports
-/// create/list/delete (no edit-in-place), so this screen doesn't either.
+/// View, add, and remove shop notes stored in the encrypted local workspace.
+/// They are deliberately not included in Axon Gateway requests automatically.
 class AiMemoryScreen extends StatefulWidget {
   const AiMemoryScreen({super.key});
 
@@ -31,8 +26,6 @@ class _AiMemoryScreenState extends State<AiMemoryScreen> {
   List<Map<String, dynamic>> _memories = [];
   bool _loading = true;
   String? _error;
-
-  String get _branchId => getIt<AuthService>().branchId ?? '';
 
   @override
   void initState() {
@@ -46,26 +39,15 @@ class _AiMemoryScreenState extends State<AiMemoryScreen> {
       _error = null;
     });
     try {
-      final memories = await getIt<ApiClient>().getAiMemories(branchId: _branchId);
+      final memories = await getIt<AppDatabase>().getLocalAiMemories();
       if (!mounted) return;
       setState(() {
         _memories = memories;
         _loading = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      String message;
-      if (e is DioException) {
-        if (e.response?.statusCode == 402) {
-          message = 'AI subscription required. Subscribe to use AI memory.';
-        } else if (e.response?.statusCode == 400) {
-          message = 'Could not identify your branch. Try logging in again.';
-        } else {
-          message = 'Could not load memories. Check your connection and try again.';
-        }
-      } else {
-        message = 'Could not load memories. Check your connection and try again.';
-      }
+      const message = 'Could not load workspace memories from this device.';
       setState(() {
         _error = message;
         _loading = false;
@@ -88,8 +70,10 @@ class _AiMemoryScreenState extends State<AiMemoryScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Remove this memory?'),
-        content: const Text('The AI will no longer recall this.'),
+        title: const Text('Remove this note?'),
+        content: const Text(
+          'This removes the note from this device. Existing backups may still contain it.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -108,8 +92,8 @@ class _AiMemoryScreenState extends State<AiMemoryScreen> {
     final removed = _memories.firstWhere((m) => m['id'] == id);
     setState(() => _memories.removeWhere((m) => m['id'] == id));
     try {
-      await getIt<ApiClient>().deleteAiMemory(id: id, branchId: _branchId);
-    } catch (e) {
+      await getIt<AppDatabase>().deleteLocalAiMemory(id);
+    } catch (_) {
       if (!mounted) return;
       setState(() => _memories.add(removed));
       showGlassSnackBar(
@@ -125,7 +109,7 @@ class _AiMemoryScreenState extends State<AiMemoryScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      appBar: const BrandedAppBar(title: 'AI Memory'),
+      appBar: const BrandedAppBar(title: 'Workspace Memory'),
       body: RefreshIndicator(
         onRefresh: _load,
         child: _buildBody(isDark),
@@ -161,15 +145,16 @@ class _AiMemoryScreenState extends State<AiMemoryScreen> {
     }
     if (_memories.isEmpty) {
       return ListView(
-        children: const [
-          SizedBox(height: 80),
-          EmptyState(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+        children: [
+          _privacyNote(isDark),
+          const SizedBox(height: 80),
+          const EmptyState(
             icon: Icons.psychology_alt_outlined,
             title: 'No memories yet',
             subtitle:
-                'Add things the AI should always remember — a policy, a customer\'s '
-                'preference, a fact about your shop. It also picks these up '
-                'automatically when you tell it something in chat.',
+                'Keep useful shop notes in this encrypted workspace. They stay '
+                'on this device and are not sent to Axon AI automatically.',
           ),
         ],
       );
@@ -177,9 +162,10 @@ class _AiMemoryScreenState extends State<AiMemoryScreen> {
 
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-      itemCount: _memories.length,
+      itemCount: _memories.length + 1,
       itemBuilder: (context, index) {
-        final memory = _memories[index];
+        if (index == 0) return _privacyNote(isDark);
+        final memory = _memories[index - 1];
         // First-mount entrance only: stable key per memory so pull-to-
         // refresh never replays the choreography.
         return StaggeredItem(
@@ -194,6 +180,35 @@ class _AiMemoryScreenState extends State<AiMemoryScreen> {
       },
     );
   }
+
+  Widget _privacyNote(bool isDark) => Container(
+        margin: const EdgeInsets.only(bottom: DesignSpacing.md),
+        padding: const EdgeInsets.all(DesignSpacing.md),
+        decoration: BoxDecoration(
+          color: (isDark ? DesignColors.darkSurfaceElevated : Colors.white),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+          border: Border.all(
+            color:
+                isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+          ),
+        ),
+        child: const Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.lock_outline_rounded,
+                size: 19, color: DesignColors.accent),
+            SizedBox(width: DesignSpacing.sm),
+            Expanded(
+              child: Text(
+                'Saved in this encrypted workspace on this device; it does not '
+                'sync across installs. Notes are not added to Axon AI requests '
+                'automatically. Axon AI will not recall them unless you include '
+                'one in chat. Encrypted shop backups include these notes.',
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 class _MemoryCard extends StatelessWidget {
@@ -217,7 +232,8 @@ class _MemoryCard extends StatelessWidget {
     final bodyColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return Container(
       margin: const EdgeInsets.only(bottom: DesignSpacing.sm + 2),
@@ -269,8 +285,7 @@ class _MemoryCard extends StatelessWidget {
                 const SizedBox(height: DesignSpacing.xs),
                 Text(
                   content,
-                  style: TextStyle(
-                      fontSize: 13, color: bodyColor, height: 1.4),
+                  style: TextStyle(fontSize: 13, color: bodyColor, height: 1.4),
                 ),
               ],
             ),
@@ -320,16 +335,15 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
     if (content.isEmpty || _saving) return;
     setState(() => _saving = true);
     try {
-      await getIt<ApiClient>().saveAiMemory(
+      await getIt<AppDatabase>().addLocalAiMemory(
         content: content,
-        branchId: getIt<AuthService>().branchId ?? '',
         type: _type,
         title: _titleController.text.trim().isEmpty
             ? null
             : _titleController.text.trim(),
       );
       if (mounted) Navigator.pop(context, true);
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() => _saving = false);
         showGlassSnackBar(
@@ -358,7 +372,8 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
         decoration: BoxDecoration(
           color: isDark ? DesignColors.darkSurface : Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(DesignSpacing.radiusXl)),
+          borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(DesignSpacing.radiusXl)),
         ),
         child: SingleChildScrollView(
           child: SafeArea(
@@ -373,7 +388,9 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
                     height: 4,
                     margin: const EdgeInsets.only(bottom: DesignSpacing.lg),
                     decoration: BoxDecoration(
-                      color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+                      color: isDark
+                          ? DesignColors.darkBorder
+                          : DesignColors.surfaceBorder,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -383,7 +400,9 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
                   style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
-                    color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
+                    color: isDark
+                        ? DesignColors.darkTextPrimary
+                        : DesignColors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: DesignSpacing.lg),
@@ -401,10 +420,12 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
                         label: Text(_memoryTypeLabels[type] ?? type),
                         selected: selected,
                         onSelected: (_) => setState(() => _type = type),
-                        selectedColor: DesignColors.accent.withValues(alpha: 0.15),
+                        selectedColor:
+                            DesignColors.accent.withValues(alpha: 0.15),
                         labelStyle: TextStyle(
                           color: selected ? DesignColors.accent : null,
-                          fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                          fontWeight:
+                              selected ? FontWeight.bold : FontWeight.normal,
                         ),
                       ),
                     );
@@ -425,8 +446,9 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
                   maxLines: 4,
                   maxLength: 2000,
                   decoration: const InputDecoration(
-                    labelText: 'What should the AI remember?',
-                    hintText: 'e.g. "We give a 5% discount to customers who buy 3+ crates"',
+                    labelText: 'What should this workspace remember?',
+                    hintText:
+                        'e.g. "We give a 5% discount to customers who buy 3+ crates"',
                     border: OutlineInputBorder(),
                     alignLabelWithHint: true,
                   ),
@@ -441,7 +463,8 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
                     style: FilledButton.styleFrom(
                       backgroundColor: DesignColors.accent,
                       foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: DesignSpacing.lg - 2),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: DesignSpacing.lg - 2),
                     ),
                     child: _saving
                         ? const SizedBox(

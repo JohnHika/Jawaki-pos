@@ -49,19 +49,42 @@ class _AnalyticsDashboardScreenState
     });
 
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final endOfToday = today
+        .add(const Duration(days: 1))
+        .subtract(const Duration(microseconds: 1));
     final DateTime from;
     final DateTime to;
     switch (_selectedPeriod) {
       case 0:
-        from = DateTime(now.year, now.month, now.day);
-        to = from;
+        from = today;
+        to = endOfToday;
       case 1:
-        final monday = now.subtract(Duration(days: now.weekday - 1));
+        final monday = today.subtract(Duration(days: today.weekday - 1));
         from = DateTime(monday.year, monday.month, monday.day);
-        to = DateTime(now.year, now.month, now.day);
+        to = endOfToday;
       default:
         from = DateTime(now.year, now.month, 1);
-        to = DateTime(now.year, now.month, now.day);
+        to = endOfToday;
+    }
+
+    if (getIt<AuthService>().isLocalWorkspace) {
+      try {
+        await _loadFromLocal(now);
+        _isUsingLocalData = true;
+      } catch (e) {
+        if (!kReleaseMode) debugPrint('Analytics load error: $e');
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _loadError =
+                "Couldn't load on-device analytics. Refresh and try again.";
+          });
+        }
+        return;
+      }
+      if (mounted) setState(() => _isLoading = false);
+      return;
     }
 
     try {
@@ -71,12 +94,16 @@ class _AnalyticsDashboardScreenState
       await _loadFromServer(from, to);
       _isUsingLocalData = false;
     } catch (e) {
-      if (!kReleaseMode) debugPrint('Analytics server load failed, using local: $e');
+      if (!kReleaseMode) {
+        debugPrint('Analytics server load failed, using local: $e');
+      }
       try {
         await _loadFromLocal(now);
         _isUsingLocalData = true;
       } catch (e2) {
-        if (!kReleaseMode) debugPrint('Analytics load error: $e2');
+        if (!kReleaseMode) {
+          debugPrint('Analytics load error: $e2');
+        }
         if (mounted) {
           setState(() {
             _isLoading = false;
@@ -98,7 +125,8 @@ class _AnalyticsDashboardScreenState
     final isToday = _selectedPeriod == 0;
 
     final results = await Future.wait<Object?>([
-      api.getSalesSummaryReport(startDate: fromIso, endDate: toIso, branchId: branchId),
+      api.getSalesSummaryReport(
+          startDate: fromIso, endDate: toIso, branchId: branchId),
       api.getSalesTrendReport(
           startDate: fromIso,
           endDate: toIso,
@@ -106,12 +134,16 @@ class _AnalyticsDashboardScreenState
           groupBy: isToday ? 'HOUR' : 'DAY'),
       api.getTopProductsReport(
           startDate: fromIso, endDate: toIso, branchId: branchId, limit: 10),
-      api.getPaymentMethodReport(startDate: fromIso, endDate: toIso, branchId: branchId),
-      api.getCategorySalesReport(startDate: fromIso, endDate: toIso, branchId: branchId),
+      api.getPaymentMethodReport(
+          startDate: fromIso, endDate: toIso, branchId: branchId),
+      api.getCategorySalesReport(
+          startDate: fromIso, endDate: toIso, branchId: branchId),
     ]);
 
     _summary = summaryFromServer(results[0]);
-    _hourlySales = isToday ? hourlyFromServer(results[1], from) : dailyFromServer(results[1]);
+    _hourlySales = isToday
+        ? hourlyFromServer(results[1], from)
+        : dailyFromServer(results[1]);
     _topProducts = topProductsFromServer(results[2]);
     _salesByPayment = paymentsFromServer(results[3]);
     _salesByCategory = categoriesFromServer(results[4]);
@@ -122,7 +154,9 @@ class _AnalyticsDashboardScreenState
     switch (_selectedPeriod) {
       case 0: // Today
         final startOfDay = DateTime(now.year, now.month, now.day);
-        final endOfDay = startOfDay.add(const Duration(days: 1));
+        final endOfDay = startOfDay
+            .add(const Duration(days: 1))
+            .subtract(const Duration(microseconds: 1));
 
         _summary = await database.getDashboardSummary();
         _hourlySales = await database.getHourlySales(startOfDay, endOfDay);
@@ -134,8 +168,11 @@ class _AnalyticsDashboardScreenState
             await database.getSalesByCategory(startOfDay, endOfDay);
 
       case 1: // This Week
-        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-        final endOfWeek = startOfWeek.add(const Duration(days: 7));
+        final today = DateTime(now.year, now.month, now.day);
+        final startOfWeek = today.subtract(Duration(days: today.weekday - 1));
+        final endOfWeek = today
+            .add(const Duration(days: 1))
+            .subtract(const Duration(microseconds: 1));
 
         _summary = await database.getWeeklySummary(startOfWeek, endOfWeek);
         _hourlySales = await database.getDailySales(startOfWeek, endOfWeek);
@@ -148,12 +185,14 @@ class _AnalyticsDashboardScreenState
 
       case 2: // This Month
         final startOfMonth = DateTime(now.year, now.month, 1);
-        final endOfMonth = DateTime(now.year, now.month + 1, 0);
+        final endOfMonth = DateTime(now.year, now.month, now.day)
+            .add(const Duration(days: 1))
+            .subtract(const Duration(microseconds: 1));
 
         _summary = await database.getMonthlySummary(startOfMonth, endOfMonth);
         _hourlySales = await database.getDailySales(startOfMonth, endOfMonth);
-        _topProducts = await database.getTopProducts(startOfMonth, endOfMonth,
-            limit: 10);
+        _topProducts =
+            await database.getTopProducts(startOfMonth, endOfMonth, limit: 10);
         _salesByPayment =
             await database.getSalesByPaymentMethod(startOfMonth, endOfMonth);
         _salesByCategory =
@@ -168,7 +207,8 @@ class _AnalyticsDashboardScreenState
       appBar: BrandedAppBar(
         title: 'Analytics',
         actions: [
-          IconButton(tooltip: 'Refresh', 
+          IconButton(
+            tooltip: 'Refresh',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: _loadAnalyticsData,
           ),
@@ -195,91 +235,91 @@ class _AnalyticsDashboardScreenState
                     ],
                   ),
                 )
-          : RefreshIndicator(
-              onRefresh: _loadAnalyticsData,
-              child: PageContainer(
-                withScroll: true,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_isUsingLocalData) ...[
-                      _buildLocalDataNotice(),
-                      const SizedBox(height: DesignSpacing.lg),
-                    ],
-                    // First-mount entrance: each section fades/rises in
-                    // once, staggered (see StaggeredItem); stable keys keep
-                    // pull-to-refresh and period switches from replaying.
+              : RefreshIndicator(
+                  onRefresh: _loadAnalyticsData,
+                  child: PageContainer(
+                    withScroll: true,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_isUsingLocalData) ...[
+                          _buildLocalDataNotice(),
+                          const SizedBox(height: DesignSpacing.lg),
+                        ],
+                        // First-mount entrance: each section fades/rises in
+                        // once, staggered (see StaggeredItem); stable keys keep
+                        // pull-to-refresh and period switches from replaying.
 
-                    // Date Period Selector
-                    _buildPeriodSelector(isDark),
-                    const SizedBox(height: DesignSpacing.xxl),
+                        // Date Period Selector
+                        _buildPeriodSelector(isDark),
+                        const SizedBox(height: DesignSpacing.xxl),
 
-                    // Summary Cards with MetricCard
-                    StaggeredItem(
-                      itemKey: 'analytics-summary',
-                      child: _buildSummaryCards(),
+                        // Summary Cards with MetricCard
+                        StaggeredItem(
+                          itemKey: 'analytics-summary',
+                          child: _buildSummaryCards(),
+                        ),
+                        const SizedBox(height: DesignSpacing.xxl),
+
+                        // Main Sales Chart
+                        StaggeredItem(
+                          itemKey: 'analytics-trend',
+                          index: 1,
+                          child: _buildSalesTrendChart(isDark),
+                        ),
+                        const SizedBox(height: DesignSpacing.xxl),
+
+                        // Top Products & Payment Methods — side-by-side on
+                        // tablets, stacked on phones so the payment panel never
+                        // becomes a clipped sliver.
+                        StaggeredItem(
+                          itemKey: 'analytics-top-payments',
+                          index: 2,
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final topProducts = _buildTopProducts(isDark);
+                              final payments = _buildPaymentMethods(isDark);
+                              if (constraints.maxWidth < 680) {
+                                return Column(
+                                  children: [
+                                    topProducts,
+                                    const SizedBox(height: DesignSpacing.xxl),
+                                    payments,
+                                  ],
+                                );
+                              }
+                              return Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(flex: 2, child: topProducts),
+                                  const SizedBox(width: DesignSpacing.lg),
+                                  Expanded(child: payments),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: DesignSpacing.xxl),
+
+                        // Category Breakdown
+                        StaggeredItem(
+                          itemKey: 'analytics-category',
+                          index: 3,
+                          child: _buildCategoryBreakdown(isDark),
+                        ),
+                        const SizedBox(height: DesignSpacing.xxl),
+
+                        // Hourly Distribution
+                        StaggeredItem(
+                          itemKey: 'analytics-hourly',
+                          index: 4,
+                          child: _buildHourlyDistribution(isDark),
+                        ),
+                        const SizedBox(height: DesignSpacing.lg),
+                      ],
                     ),
-                    const SizedBox(height: DesignSpacing.xxl),
-
-                    // Main Sales Chart
-                    StaggeredItem(
-                      itemKey: 'analytics-trend',
-                      index: 1,
-                      child: _buildSalesTrendChart(isDark),
-                    ),
-                    const SizedBox(height: DesignSpacing.xxl),
-
-                    // Top Products & Payment Methods — side-by-side on
-                    // tablets, stacked on phones so the payment panel never
-                    // becomes a clipped sliver.
-                    StaggeredItem(
-                      itemKey: 'analytics-top-payments',
-                      index: 2,
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final topProducts = _buildTopProducts(isDark);
-                          final payments = _buildPaymentMethods(isDark);
-                          if (constraints.maxWidth < 680) {
-                            return Column(
-                              children: [
-                                topProducts,
-                                const SizedBox(height: DesignSpacing.xxl),
-                                payments,
-                              ],
-                            );
-                          }
-                          return Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(flex: 2, child: topProducts),
-                              const SizedBox(width: DesignSpacing.lg),
-                              Expanded(child: payments),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: DesignSpacing.xxl),
-
-                    // Category Breakdown
-                    StaggeredItem(
-                      itemKey: 'analytics-category',
-                      index: 3,
-                      child: _buildCategoryBreakdown(isDark),
-                    ),
-                    const SizedBox(height: DesignSpacing.xxl),
-
-                    // Hourly Distribution
-                    StaggeredItem(
-                      itemKey: 'analytics-hourly',
-                      index: 4,
-                      child: _buildHourlyDistribution(isDark),
-                    ),
-                    const SizedBox(height: DesignSpacing.lg),
-                  ],
+                  ),
                 ),
-              ),
-            ),
     );
   }
 
@@ -324,7 +364,8 @@ class _AnalyticsDashboardScreenState
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.xs),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.sm, vertical: DesignSpacing.sm - 2),
+        padding: const EdgeInsets.symmetric(
+            horizontal: DesignSpacing.sm, vertical: DesignSpacing.sm - 2),
         decoration: BoxDecoration(
           color: surface,
           borderRadius: BorderRadius.circular(DesignSpacing.radiusXl - 2),
@@ -350,8 +391,8 @@ class _AnalyticsDashboardScreenState
                   borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   child: AnimatedContainer(
                     duration: DesignAnimation.fast,
-                    constraints: const BoxConstraints(
-                        minHeight: DesignSpacing.xl + 24),
+                    constraints:
+                        const BoxConstraints(minHeight: DesignSpacing.xl + 24),
                     alignment: Alignment.center,
                     padding:
                         const EdgeInsets.symmetric(vertical: DesignSpacing.md),
@@ -366,11 +407,12 @@ class _AnalyticsDashboardScreenState
                       period,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight:
-                          isSelected ? FontWeight.w700 : FontWeight.w500,
-                          color:
-                          isSelected ? DesignColors.accent : secondaryColor,
-                      ),
+                            fontWeight:
+                                isSelected ? FontWeight.w700 : FontWeight.w500,
+                            color: isSelected
+                                ? DesignColors.accent
+                                : secondaryColor,
+                          ),
                     ),
                   ),
                 ),
@@ -467,9 +509,9 @@ class _AnalyticsDashboardScreenState
               Text(
                 'Sales Trend',
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: titleColor,
-                ),
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
+                    ),
               ),
             ],
           ),
@@ -496,106 +538,116 @@ class _AnalyticsDashboardScreenState
                     ),
                   )
                 : RevealLineChart(
-              LineChartData(
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: [
-                      for (int i = 0; i < _hourlySales.length; i++)
-                        FlSpot(i.toDouble(),
-                            (_hourlySales[i]['totalAmount'] ?? 0).toDouble()),
-                    ],
-                    isCurved: true,
-                    preventCurveOverShooting: true,
-                    gradient: const LinearGradient(
-                      colors: [DesignColors.brand, DesignColors.brandLight],
-                    ),
-                    barWidth: 3,
-                    isStrokeCapRound: true,
-                    dotData: const FlDotData(show: true),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      gradient: LinearGradient(
-                        colors: [
-                          DesignColors.brand.withValues(alpha: 0.3),
-                          DesignColors.brand.withValues(alpha: 0.0),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-                minX: 0,
-                maxX: (_hourlySales.length - 1).toDouble(),
-                minY: 0,
-                maxY: (_hourlySales.isNotEmpty
-                            ? (_hourlySales
-                                .map((e) => e['totalAmount'])
-                                .reduce((a, b) => a > b ? a : b) as num)
-                            : 1000)
-                        .toDouble() *
-                    1.2,
-                titlesData: FlTitlesData(
-                  show: true,
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      // Explicit spacing so labels never overlap, whatever the
-                      // range: every 4th hour, every 2nd day for a week-sized
-                      // range, every 5th for a month.
-                      interval: _hourlySales.length > 24
-                          ? 5
-                          : _hourlySales.length > 12
-                              ? 4
-                              : (_hourlySales.length > 7 ? 2 : 1),
-                      getTitlesWidget: (value, meta) {
-                        if (_hourlySales.isEmpty) return const Text('');
-                        final index = value.toInt();
-                        if (index >= 0 && index < _hourlySales.length) {
-                          final date =
-                              DateTime.parse(_hourlySales[index]['date'] ?? '').toLocal();
-                          final time = _selectedPeriod == 0
-                              ? '${date.hour}:00'
-                              : '${date.day}/${date.month}';
-                          return Padding(
-                            padding: const EdgeInsets.only(top: DesignSpacing.sm),
-                            child: Text(
-                              time,
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                  color: tertiaryColor,
-                              ),
+                    LineChartData(
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: [
+                            for (int i = 0; i < _hourlySales.length; i++)
+                              FlSpot(
+                                  i.toDouble(),
+                                  (_hourlySales[i]['totalAmount'] ?? 0)
+                                      .toDouble()),
+                          ],
+                          isCurved: true,
+                          preventCurveOverShooting: true,
+                          gradient: const LinearGradient(
+                            colors: [
+                              DesignColors.brand,
+                              DesignColors.brandLight
+                            ],
+                          ),
+                          barWidth: 3,
+                          isStrokeCapRound: true,
+                          dotData: const FlDotData(show: true),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            gradient: LinearGradient(
+                              colors: [
+                                DesignColors.brand.withValues(alpha: 0.3),
+                                DesignColors.brand.withValues(alpha: 0.0),
+                              ],
                             ),
-                          );
-                        }
-                        return const Text('');
-                      },
+                          ),
+                        ),
+                      ],
+                      minX: 0,
+                      maxX: (_hourlySales.length - 1).toDouble(),
+                      minY: 0,
+                      maxY: (_hourlySales.isNotEmpty
+                                  ? (_hourlySales
+                                      .map((e) => e['totalAmount'])
+                                      .reduce((a, b) => a > b ? a : b) as num)
+                                  : 1000)
+                              .toDouble() *
+                          1.2,
+                      titlesData: FlTitlesData(
+                        show: true,
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            // Explicit spacing so labels never overlap, whatever the
+                            // range: every 4th hour, every 2nd day for a week-sized
+                            // range, every 5th for a month.
+                            interval: _hourlySales.length > 24
+                                ? 5
+                                : _hourlySales.length > 12
+                                    ? 4
+                                    : (_hourlySales.length > 7 ? 2 : 1),
+                            getTitlesWidget: (value, meta) {
+                              if (_hourlySales.isEmpty) return const Text('');
+                              final index = value.toInt();
+                              if (index >= 0 && index < _hourlySales.length) {
+                                final date = DateTime.parse(
+                                        _hourlySales[index]['date'] ?? '')
+                                    .toLocal();
+                                final time = _selectedPeriod == 0
+                                    ? '${date.hour}:00'
+                                    : '${date.day}/${date.month}';
+                                return Padding(
+                                  padding: const EdgeInsets.only(
+                                      top: DesignSpacing.sm),
+                                  child: Text(
+                                    time,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          color: tertiaryColor,
+                                        ),
+                                  ),
+                                );
+                              }
+                              return const Text('');
+                            },
+                          ),
+                        ),
+                        leftTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                      ),
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: false,
+                        horizontalInterval: (_hourlySales.isNotEmpty
+                                    ? (_hourlySales
+                                        .map((e) => e['totalAmount'])
+                                        .reduce((a, b) => a > b ? a : b) as num)
+                                    : 1000)
+                                .toDouble() /
+                            5,
+                        getDrawingHorizontalLine: (value) {
+                          return FlLine(color: border, strokeWidth: 1);
+                        },
+                      ),
+                      borderData: FlBorderData(show: false),
                     ),
                   ),
-                  leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                ),
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: (_hourlySales.isNotEmpty
-                              ? (_hourlySales
-                                  .map((e) => e['totalAmount'])
-                                  .reduce((a, b) => a > b ? a : b) as num)
-                              : 1000)
-                          .toDouble() /
-                      5,
-                  getDrawingHorizontalLine: (value) {
-                    return FlLine(color: border, strokeWidth: 1);
-                  },
-                ),
-                borderData: FlBorderData(show: false),
-              ),
-            ),
           ),
         ],
       ),
@@ -631,9 +683,9 @@ class _AnalyticsDashboardScreenState
               Text(
                 'Top Products',
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: titleColor,
-                ),
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
+                    ),
               ),
             ],
           ),
@@ -660,13 +712,15 @@ class _AnalyticsDashboardScreenState
                         color: index == 0
                             ? Colors.amber.withValues(alpha: 0.2)
                             : index == 1
-                                ? DesignColors.textTertiary.withValues(alpha: 0.2)
+                                ? DesignColors.textTertiary
+                                    .withValues(alpha: 0.2)
                                 : index == 2
                                     ? Colors.orange.withValues(alpha: 0.2)
                                     : (isDark
                                         ? DesignColors.darkSurfaceElevated
                                         : DesignColors.surfaceSubtle),
-                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd - 2),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd - 2),
                         border: Border.all(
                           color: (index == 0
                                   ? Colors.amber
@@ -682,16 +736,17 @@ class _AnalyticsDashboardScreenState
                       child: Center(
                         child: Text(
                           '#${index + 1}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: index == 0
-                              ? Colors.amber[700]
-                              : index == 1
-                              ? DesignColors.textSecondary
-                              : index == 2
-                              ? Colors.orange[700]
-                              : tertiaryColor,
-                              fontWeight: FontWeight.bold,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: index == 0
+                                        ? Colors.amber[700]
+                                        : index == 1
+                                            ? DesignColors.textSecondary
+                                            : index == 2
+                                                ? Colors.orange[700]
+                                                : tertiaryColor,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                         ),
                       ),
                     ),
@@ -702,19 +757,23 @@ class _AnalyticsDashboardScreenState
                         children: [
                           Text(
                             product['productName'] ?? 'Unknown',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: titleColor,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: titleColor,
+                                ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '${product['totalQty']} units sold',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: secondaryColor,
-                            ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: secondaryColor,
+                                    ),
                           ),
                         ],
                       ),
@@ -724,17 +783,19 @@ class _AnalyticsDashboardScreenState
                       children: [
                         Text(
                           formatMoney(revenue),
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: DesignColors.success,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: DesignColors.success,
+                                  ),
                         ),
                         const SizedBox(height: DesignSpacing.xs),
                         Text(
                           '${(revenue / (_summary['totalRevenue'] ?? 1) * 100).toStringAsFixed(1)}%',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: secondaryColor,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: secondaryColor,
+                                  ),
                         ),
                       ],
                     ),
@@ -774,9 +835,9 @@ class _AnalyticsDashboardScreenState
               Text(
                 'Payments',
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: titleColor,
-                ),
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
+                    ),
               ),
             ],
           ),
@@ -790,8 +851,7 @@ class _AnalyticsDashboardScreenState
             ..._salesByPayment.map((payment) {
               final method = payment['paymentMethod'] ?? 'Unknown';
               final count = payment['count'] ?? 0;
-              final total =
-                  (payment['totalAmount'] as num?)?.toDouble() ?? 0;
+              final total = (payment['totalAmount'] as num?)?.toDouble() ?? 0;
               final color = _getPaymentMethodColor(method);
               final totalBreakdown = _salesByPayment.isNotEmpty
                   ? _salesByPayment.fold<double>(
@@ -812,7 +872,8 @@ class _AnalyticsDashboardScreenState
                       height: 44,
                       decoration: BoxDecoration(
                         color: color.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
                         border: Border.all(
                           color: color.withValues(alpha: 0.3),
                           width: 1,
@@ -833,17 +894,21 @@ class _AnalyticsDashboardScreenState
                         children: [
                           Text(
                             _formatPaymentMethod(method),
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: titleColor,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: titleColor,
+                                ),
                           ),
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
                             countLabel(count, 'transaction'),
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: secondaryColor,
-                            ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: secondaryColor,
+                                    ),
                           ),
                         ],
                       ),
@@ -853,17 +918,19 @@ class _AnalyticsDashboardScreenState
                       children: [
                         Text(
                           formatMoney(total),
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: titleColor,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: titleColor,
+                                  ),
                         ),
                         const SizedBox(height: DesignSpacing.xs),
                         Text(
                           '$percent%',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: secondaryColor,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: secondaryColor,
+                                  ),
                         ),
                       ],
                     ),
@@ -901,9 +968,9 @@ class _AnalyticsDashboardScreenState
               Text(
                 'Sales by Category',
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
-                ),
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
+                    ),
               ),
             ],
           ),
@@ -916,8 +983,7 @@ class _AnalyticsDashboardScreenState
           else
             ..._salesByCategory.map((category) {
               final catName = category['categoryName'] ?? 'Unknown';
-              final total =
-                  (category['totalRevenue'] as num?)?.toDouble() ?? 0;
+              final total = (category['totalRevenue'] as num?)?.toDouble() ?? 0;
               final color = _getCategoryColor(catName);
               final grandTotal = _salesByCategory.fold<double>(
                 0,
@@ -947,9 +1013,10 @@ class _AnalyticsDashboardScreenState
                             catName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: titleColor,
-                            ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: titleColor,
+                                    ),
                           ),
                         ),
                         const SizedBox(width: DesignSpacing.md),
@@ -959,10 +1026,13 @@ class _AnalyticsDashboardScreenState
                             alignment: Alignment.centerRight,
                             child: Text(
                               formatMoney(total),
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: titleColor,
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: titleColor,
+                                  ),
                             ),
                           ),
                         ),
@@ -970,7 +1040,8 @@ class _AnalyticsDashboardScreenState
                     ),
                     const SizedBox(height: DesignSpacing.sm - 2),
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(DesignSpacing.radiusSm - 2),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusSm - 2),
                       child: LinearProgressIndicator(
                         value: share,
                         valueColor: AlwaysStoppedAnimation<Color>(color),
@@ -1014,9 +1085,9 @@ class _AnalyticsDashboardScreenState
               Text(
                 'Hourly Sales Distribution',
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: titleColor,
-                ),
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
+                    ),
               ),
             ],
           ),
@@ -1033,13 +1104,12 @@ class _AnalyticsDashboardScreenState
                 BarChartData(
                   alignment: BarChartAlignment.spaceAround,
                   maxY: (_hourlySales.isNotEmpty
-                              ? _hourlySales.fold<double>(
-                                  0,
-                                  (sum, e) {
-                                    final amount =
-                                        (e['totalAmount'] as num?)?.toDouble() ?? 0;
-                                    return amount > sum ? amount : sum;
-                                  })
+                              ? _hourlySales.fold<double>(0, (sum, e) {
+                                  final amount =
+                                      (e['totalAmount'] as num?)?.toDouble() ??
+                                          0;
+                                  return amount > sum ? amount : sum;
+                                })
                               : 1000)
                           .toDouble() *
                       1.2,
@@ -1078,7 +1148,8 @@ class _AnalyticsDashboardScreenState
                           if (index % step != 0) return const SizedBox.shrink();
                           if (index >= 0 && index < _hourlySales.length) {
                             final date = DateTime.parse(
-                                _hourlySales[index]['date'] ?? '').toLocal();
+                                    _hourlySales[index]['date'] ?? '')
+                                .toLocal();
                             final hour = date.hour;
                             final time = hour == 0
                                 ? '12a'
@@ -1088,12 +1159,16 @@ class _AnalyticsDashboardScreenState
                                         ? '12p'
                                         : '${hour - 12}p';
                             return Padding(
-                              padding: const EdgeInsets.only(top: DesignSpacing.sm),
+                              padding:
+                                  const EdgeInsets.only(top: DesignSpacing.sm),
                               child: Text(
                                 time,
-                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: tertiaryColor,
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall
+                                    ?.copyWith(
+                                      color: tertiaryColor,
+                                    ),
                               ),
                             );
                           }

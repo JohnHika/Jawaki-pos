@@ -84,9 +84,9 @@ class ApiClient {
     _dio.options.baseUrl = url;
   }
 
-  /// Restore the URL configured when the Dio client was created. This keeps
-  /// the app's compile-time API_URL (or the production default) authoritative
-  /// after a user clears a custom backend override.
+  /// Restore the device-local URL configured when Dio was created. This keeps
+  /// the compile-time API_URL (or the loopback default) authoritative after a
+  /// user clears a local-server override.
   void resetBaseUrl() {
     _dio.options.baseUrl = _defaultBaseUrl;
   }
@@ -1815,19 +1815,9 @@ class ApiClient {
     String? imageBase64,
     String? branchId,
   }) async {
-    assert(imageUrl != null || imageBase64 != null);
-    final response = await _dio.post(
-      '/ai/receipts/scan',
-      data: {
-        if (imageBase64 != null) 'imageBase64': imageBase64,
-        if (imageBase64 == null && imageUrl != null) 'imageUrl': imageUrl,
-        if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
-      },
-      // Vision models take a while to read a long invoice.
-      options: Options(receiveTimeout: const Duration(seconds: 90)),
+    throw UnsupportedError(
+      'Receipt vision is available through Axon Gateway after its key is configured.',
     );
-    return (response.data as Map<String, dynamic>)['data']
-        as Map<String, dynamic>;
   }
 
   // ── Notification inbox ────────────────────────────────────────────────
@@ -1925,16 +1915,9 @@ class ApiClient {
     required String imageBase64,
     String? branchId,
   }) async {
-    final response = await _dio.post(
-      '/ai/products/identify',
-      data: {
-        'imageBase64': imageBase64,
-        if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
-      },
-      options: Options(receiveTimeout: const Duration(seconds: 60)),
+    throw UnsupportedError(
+      'Product vision is available through Axon Gateway after its key is configured.',
     );
-    return (response.data as Map<String, dynamic>)['data']
-        as Map<String, dynamic>;
   }
 
   /// General-purpose "what's in this photo" analysis — used when the AI
@@ -1947,13 +1930,9 @@ class ApiClient {
     required String prompt,
     String? branchId,
   }) async {
-    final response = await _dio.post('/ai/vision', data: {
-      'imageBase64': imageBase64,
-      'prompt': prompt,
-      if (branchId != null) 'branchId': branchId,
-    });
-    return (response.data as Map<String, dynamic>)['data']
-        as Map<String, dynamic>;
+    throw UnsupportedError(
+      'Image analysis is available through Axon Gateway after its key is configured.',
+    );
   }
 
   /// Durable shop memories the AI recalls across sessions (owner
@@ -1962,11 +1941,9 @@ class ApiClient {
   /// only supports create/list/delete (no edit-in-place).
   Future<List<Map<String, dynamic>>> getAiMemories(
       {required String branchId}) async {
-    final response =
-        await _dio.get('/ai/memory', queryParameters: {'branchId': branchId});
-    final data =
-        (response.data as Map<String, dynamic>)['data'] as List<dynamic>;
-    return data.cast<Map<String, dynamic>>();
+    throw UnsupportedError(
+      'AI memory is unavailable until local Gateway-backed memory is implemented.',
+    );
   }
 
   Future<Map<String, dynamic>> saveAiMemory({
@@ -1975,20 +1952,16 @@ class ApiClient {
     String? type,
     String? title,
   }) async {
-    final response = await _dio.post('/ai/memory', data: {
-      'content': content,
-      'branchId': branchId,
-      if (type != null) 'type': type,
-      if (title != null) 'title': title,
-    });
-    return (response.data as Map<String, dynamic>)['data']
-        as Map<String, dynamic>;
+    throw UnsupportedError(
+      'AI memory is unavailable until local Gateway-backed memory is implemented.',
+    );
   }
 
   Future<void> deleteAiMemory(
       {required String id, required String branchId}) async {
-    await _dio
-        .post('/ai/memory/delete', data: {'id': id, 'branchId': branchId});
+    throw UnsupportedError(
+      'AI memory is unavailable until local Gateway-backed memory is implemented.',
+    );
   }
 
   // ─── Shared-printer print queue ───────────────────────────────────────
@@ -2462,6 +2435,35 @@ class ApiClient {
 
   Future<List<Map<String, dynamic>>> getMpesaHistory() async =>
       _payloadList(await _dio.get('/mpesa/history'));
+
+  // ── Desktop sign-in pairing (phone-server mode) ──
+
+  /// Waiting desktop sign-in requests for the approvals screen.
+  Future<List<Map<String, dynamic>>> getPendingDesktopLinks() async {
+    final response = await _dio.get('/desktop-link/pending');
+    final data = response.data;
+    if (data is List) {
+      return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    final payload = data is Map ? data['payload'] : null;
+    if (payload is List) {
+      return payload.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return const [];
+  }
+
+  /// Approves or denies a desktop sign-in by its 6-digit code.
+  Future<Map<String, dynamic>> decideDesktopLink({
+    required String code,
+    required bool approve,
+  }) async {
+    final response = await _dio.post('/desktop-link/approve', data: {
+      'code': code,
+      'decision': approve ? 'approve' : 'deny',
+    });
+    final data = response.data;
+    return data is Map ? Map<String, dynamic>.from(data) : const {};
+  }
 
   String _mimeTypeForFile(String fileName) {
     final lower = fileName.toLowerCase();

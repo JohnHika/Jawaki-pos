@@ -42,6 +42,10 @@ String apiErrorMessage(Object error) {
   if (error is TimeoutException) {
     return "Couldn't finish in time. Check your connection and try again.";
   }
+  if (error is StateError) {
+    final message = error.message.toString().trim();
+    if (_isSafeExceptionMessage(message)) return message;
+  }
   if (error is Exception) {
     final message = error.toString().replaceFirst('Exception: ', '').trim();
     if (_isSafeExceptionMessage(message)) return message;

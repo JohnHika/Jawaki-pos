@@ -36,9 +36,8 @@ class StockCountSummary {
   bool get inProgress => status == 'IN_PROGRESS';
   bool get submitted => status == 'SUBMITTED';
   bool get approved => status == 'APPROVED';
-  String get displayTitle => (title == null || title!.trim().isEmpty)
-      ? 'Stock count'
-      : title!.trim();
+  String get displayTitle =>
+      (title == null || title!.trim().isEmpty) ? 'Stock count' : title!.trim();
 }
 
 class StockCountLine {
@@ -50,6 +49,7 @@ class StockCountLine {
     required this.varianceQty,
     required this.varianceValue,
     this.sku,
+    this.unit = 'piece',
     this.reason,
     this.countedByName,
   });
@@ -58,6 +58,7 @@ class StockCountLine {
         productId: '${json['productId'] ?? ''}',
         productName: '${json['productName'] ?? ''}',
         sku: json['sku']?.toString(),
+        unit: json['unit']?.toString() ?? 'piece',
         expectedQty:
             json['expectedQty'] == null ? null : asDouble(json['expectedQty']),
         countedQty:
@@ -74,6 +75,7 @@ class StockCountLine {
   final String productId;
   final String productName;
   final String? sku;
+  final String unit;
 
   /// Null while a blind count is still open and you may not see it.
   final double? expectedQty;
@@ -155,7 +157,6 @@ class StockCountDetail {
   bool get submitted => status == 'SUBMITTED';
   bool get approved => status == 'APPROVED';
   bool get cancelled => status == 'CANCELLED';
-  String get displayTitle => (title == null || title!.trim().isEmpty)
-      ? 'Stock count'
-      : title!.trim();
+  String get displayTitle =>
+      (title == null || title!.trim().isEmpty) ? 'Stock count' : title!.trim();
 }

@@ -224,8 +224,10 @@ class CartScreen extends ConsumerWidget {
           isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
       child: Column(
         children: [
-          const CouponRow(),
-          const SizedBox(height: DesignSpacing.sm),
+          if (!getIt<AuthService>().isLocalWorkspace) ...[
+            const CouponRow(),
+            const SizedBox(height: DesignSpacing.sm),
+          ],
           // Subtotal only earns its own line when something actually moves
           // it away from the final total (a discount or tax applied). When
           // there's neither, "Subtotal" and "Total" are the same number —

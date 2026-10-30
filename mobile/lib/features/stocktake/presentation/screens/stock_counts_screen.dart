@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/injection.dart';
+import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/services/storage_service.dart';
@@ -10,6 +11,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../domain/stocktake_models.dart';
 import '../providers/stocktake_provider.dart';
 
@@ -155,13 +157,22 @@ class _StartCountSheetState extends State<_StartCountSheet> {
       _error = null;
     });
     try {
-      final json = await getIt<ApiClient>().startStockCount(
-        branchId: branchId,
-        title: _title.text,
-        blind: _blind,
-      );
+      final localWorkspace = getIt<AuthService>().isLocalWorkspace;
+      final countId = localWorkspace
+          ? await getIt<AppDatabase>().startLocalStockCount(
+              branchId: branchId,
+              title: _title.text,
+              blind: _blind,
+              createdByName:
+                  getIt<AuthService>().currentUser?['name']?.toString(),
+            )
+          : '${(await getIt<ApiClient>().startStockCount(
+              branchId: branchId,
+              title: _title.text,
+              blind: _blind,
+            ))['id']}';
       if (!mounted) return;
-      Navigator.of(context).pop('${json['id']}');
+      Navigator.of(context).pop(countId);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -173,49 +184,55 @@ class _StartCountSheetState extends State<_StartCountSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg,
-          MediaQuery.of(context).viewInsets.bottom + DesignSpacing.lg),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Start a stock count',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: DesignSpacing.md),
-          TextField(
-            controller: _title,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: kitFieldDecoration(context,
-                label: 'Name (optional)', hint: 'e.g. Weekly shelf count'),
+    final media = MediaQuery.of(context);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg,
+            media.viewInsets.bottom + DesignSpacing.lg),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Start a stock count',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: DesignSpacing.md),
+              TextField(
+                controller: _title,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: kitFieldDecoration(context,
+                    label: 'Name (optional)', hint: 'e.g. Weekly shelf count'),
+              ),
+              const SizedBox(height: DesignSpacing.sm),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _blind,
+                activeThumbColor: DesignColors.accent,
+                onChanged: _busy ? null : (v) => setState(() => _blind = v),
+                title: const Text('Hide system quantities while counting'),
+                subtitle: const Text(
+                    'The counter reports what is really on the shelf, not what they expect to find.'),
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
+                  child: Text(_error!,
+                      style: const TextStyle(color: DesignColors.error)),
+                ),
+              const SizedBox(height: DesignSpacing.sm),
+              GradientButton(
+                label: 'Start counting',
+                icon: Icons.play_arrow_rounded,
+                isLoading: _busy,
+                onPressed: _busy ? null : _start,
+              ),
+            ],
           ),
-          const SizedBox(height: DesignSpacing.sm),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: _blind,
-            activeThumbColor: DesignColors.accent,
-            onChanged: (v) => setState(() => _blind = v),
-            title: const Text('Hide system quantities while counting'),
-            subtitle: const Text(
-                'The counter reports what is really on the shelf, not what they expect to find.'),
-          ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
-              child: Text(_error!,
-                  style: const TextStyle(color: DesignColors.error)),
-            ),
-          const SizedBox(height: DesignSpacing.sm),
-          GradientButton(
-            label: 'Start counting',
-            icon: Icons.play_arrow_rounded,
-            isLoading: _busy,
-            onPressed: _busy ? null : _start,
-          ),
-        ],
+        ),
       ),
     );
   }

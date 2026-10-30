@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../widgets/workspace_image.dart';
+
 /// The AI assistant's icon — the Axon hex mark with the tenant's own
 /// company logo merged on as a small badge, bottom-right, overlapping the
 /// hex edge. Mirrors the same "~3/4 Axon, ~1/4 company badge" composition
@@ -63,11 +65,10 @@ class AxonAiIcon extends StatelessWidget {
                   ),
                 ),
                 child: ClipOval(
-                  child: Image.network(
-                    logoUrl,
+                  child: WorkspaceImage(
+                    source: logoUrl,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                        const SizedBox.shrink(),
+                    placeholder: const SizedBox.shrink(),
                   ),
                 ),
               ),

@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/services/pricing_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../../core/utils/stock_quantity_display.dart';
+import '../../../../core/widgets/workspace_image.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/business_layout_search.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/catalog_provider.dart';
 import '../providers/cart_provider.dart';
 import '../../../../core/utils/format.dart';
@@ -23,6 +25,7 @@ class ProductGrid extends ConsumerWidget {
     this.catalogRefreshing = false,
     this.catalogSyncFailed = false,
     this.isOffline = false,
+    this.isLocalWorkspace = false,
     this.onRetryCatalog,
   });
 
@@ -36,12 +39,16 @@ class ProductGrid extends ConsumerWidget {
   final bool catalogRefreshing;
   final bool catalogSyncFailed;
   final bool isOffline;
+  final bool isLocalWorkspace;
   final VoidCallback? onRetryCatalog;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final businessLayout = ref.watch(businessLayoutProvider);
+    final canEditBusinessLayout =
+        ref.watch(permissionsProvider).has('branches.tenant.update');
     final catalogName = businessLayout.productsLabel.toLowerCase();
+    final productName = businessLayout.productSingular.toLowerCase();
     final categoryId = businessLayout.effectiveShowPosCategories
         ? ref.watch(selectedCategoryProvider)
         : null;
@@ -55,6 +62,7 @@ class ProductGrid extends ConsumerWidget {
                 searchQuery: normalizedSearchQuery.isEmpty
                     ? null
                     : normalizedSearchQuery,
+                productIds: productPageIds,
               ),
             ),
           )
@@ -87,6 +95,46 @@ class ProductGrid extends ConsumerWidget {
           }
           final hasActiveFilter =
               categoryId != null || normalizedSearchQuery.isNotEmpty;
+          if (isLocalWorkspace && hasActiveFilter) {
+            return EmptyState(
+              icon: Icons.search_off_rounded,
+              title: 'No matching $catalogName',
+              subtitle:
+                  'Clear the search or choose another category. Your catalog is stored on this device.',
+              actionLabel: 'Clear filters',
+              iconColor: DesignColors.warning,
+              onAction: () {
+                ref.read(searchQueryProvider.notifier).state = '';
+                ref.read(selectedCategoryProvider.notifier).state = null;
+              },
+            );
+          }
+          if (isLocalWorkspace && productPageIds != null && !hasActiveFilter) {
+            return EmptyState(
+              icon: Icons.grid_view_rounded,
+              title: 'No available $catalogName on this page',
+              subtitle: canEditBusinessLayout
+                  ? 'Add products to this page in Settings → Layout actions.'
+                  : 'Ask a shop admin to add active products to this page.',
+              actionLabel: canEditBusinessLayout ? 'Edit product page' : null,
+              actionIcon: Icons.tune_rounded,
+              iconColor: DesignColors.warning,
+              onAction: canEditBusinessLayout
+                  ? () => context.push('/settings/business-layout')
+                  : null,
+            );
+          }
+          if (isLocalWorkspace && productPageIds == null && !hasActiveFilter) {
+            return EmptyState(
+              icon: Icons.add_box_outlined,
+              title: 'Add your first $productName',
+              subtitle:
+                  'Add $catalogName in Products and they will be ready to sell here.',
+              actionLabel: 'Open Products',
+              iconColor: DesignColors.accent,
+              onAction: () => context.push('/products'),
+            );
+          }
           if (hasActiveFilter && (catalogSyncFailed || isOffline)) {
             return EmptyState(
               icon: Icons.cloud_off_rounded,
@@ -118,12 +166,18 @@ class ProductGrid extends ConsumerWidget {
             );
           }
           if (productPageIds != null && !hasActiveFilter) {
-            return const EmptyState(
+            return EmptyState(
               icon: Icons.grid_view_rounded,
               title: 'No available products on this page',
-              subtitle:
-                  'Some items may be inactive or removed. Update the page in Settings → Layout actions.',
+              subtitle: canEditBusinessLayout
+                  ? 'Some items may be inactive or removed. Review this page in Settings → Layout actions.'
+                  : 'Some items may be inactive or removed. Ask a shop admin to review this page.',
+              actionLabel: canEditBusinessLayout ? 'Edit product page' : null,
+              actionIcon: Icons.tune_rounded,
               iconColor: DesignColors.warning,
+              onAction: canEditBusinessLayout
+                  ? () => context.push('/settings/business-layout')
+                  : null,
             );
           }
           return _EmptyState(catalogName: catalogName);
@@ -210,6 +264,7 @@ class ProductGrid extends ConsumerWidget {
               categoryId: categoryId,
               searchQuery:
                   normalizedSearchQuery.isEmpty ? null : normalizedSearchQuery,
+              productIds: productPageIds,
             ),
           ));
           if (catalogSyncFailed || isOffline) onRetryCatalog?.call();
@@ -421,16 +476,11 @@ class _ProductCard extends ConsumerWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    imageUrl != null
-                        ? CachedNetworkImage(
-                            imageUrl: imageUrl,
-                            fit: BoxFit.cover,
-                            placeholder: (_, __) =>
-                                _ImagePlaceholder(name: productName),
-                            errorWidget: (_, __, ___) =>
-                                _ImagePlaceholder(name: productName),
-                          )
-                        : _ImagePlaceholder(name: productName),
+                    WorkspaceImage(
+                      source: imageUrl,
+                      fit: BoxFit.cover,
+                      placeholder: _ImagePlaceholder(name: productName),
+                    ),
                     Positioned(
                       top: 0,
                       right: 0,
@@ -602,16 +652,11 @@ class _ProductCard extends ConsumerWidget {
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(16),
                   ),
-                  child: imageUrl != null
-                      ? CachedNetworkImage(
-                          imageUrl: imageUrl,
-                          fit: BoxFit.cover,
-                          placeholder: (_, __) =>
-                              _ImagePlaceholder(name: productName),
-                          errorWidget: (_, __, ___) =>
-                              _ImagePlaceholder(name: productName),
-                        )
-                      : _ImagePlaceholder(name: productName),
+                  child: WorkspaceImage(
+                    source: imageUrl,
+                    fit: BoxFit.cover,
+                    placeholder: _ImagePlaceholder(name: productName),
+                  ),
                 ),
 
                 // Quantity Badge
@@ -792,7 +837,12 @@ class _ProductCard extends ConsumerWidget {
     final stock = (product['stock'] as num?)?.toDouble() ?? 0;
     final trackInventory = product['trackInventory'] as bool? ?? true;
     if (trackInventory && stock <= 0) {
-      _showStockBlocked(context, productName, stock);
+      _showStockBlocked(
+        context,
+        productName,
+        stock,
+        unitLabel: product['unit']?.toString(),
+      );
       return;
     }
     final base = PricingService.getAllPricingTiers(product).first;
@@ -810,7 +860,12 @@ class _ProductCard extends ConsumerWidget {
           allowFractions: product['allowFractions'] == true,
         );
     if (!context.mounted || result.success) return;
-    _showStockBlocked(context, productName, result.currentStock);
+    _showCartMutationError(
+      context,
+      productName,
+      result,
+      unitLabel: product['unit']?.toString(),
+    );
   }
 
   /// Steps a line already in the cart by one of the unit it was sold in (one
@@ -829,7 +884,12 @@ class _ProductCard extends ConsumerWidget {
         .read(cartProvider.notifier)
         .changeQuantityBy(productId, direction * step);
     if (!context.mounted || result.success) return;
-    _showStockBlocked(context, product['name'] as String, result.currentStock);
+    _showCartMutationError(
+      context,
+      product['name'] as String,
+      result,
+      unitLabel: product['unit']?.toString(),
+    );
   }
 
   static String _formatCount(double value) => value == value.roundToDouble()
@@ -853,7 +913,7 @@ class _ProductCard extends ConsumerWidget {
     if (!context.mounted) return;
 
     if (trackInventory && stock <= 0) {
-      _showStockBlocked(context, productName, stock);
+      _showStockBlocked(context, productName, stock, unitLabel: unit);
       return;
     }
 
@@ -921,7 +981,12 @@ class _ProductCard extends ConsumerWidget {
 
           if (!context.mounted) return;
           if (!result.success) {
-            _showStockBlocked(context, productName, result.currentStock);
+            _showCartMutationError(
+              context,
+              productName,
+              result,
+              unitLabel: unit,
+            );
             return;
           }
           ScaffoldMessenger.of(context).clearSnackBars();
@@ -939,15 +1004,42 @@ class _ProductCard extends ConsumerWidget {
   void _showStockBlocked(
     BuildContext context,
     String productName,
-    double currentStock,
-  ) {
+    double currentStock, {
+    String? unitLabel,
+  }) {
+    final unit = unitLabel?.trim();
     ScaffoldMessenger.of(context).clearSnackBars();
     showGlassSnackBar(
       context,
       currentStock <= 0
           ? '$productName is out of stock. Receive inventory before selling.'
-          : 'Only ${_ProductCard._formatCount(currentStock)} ${currentStock == 1 ? 'unit is' : 'units are'} available for $productName.',
+          : 'Only ${_ProductCard._formatCount(currentStock)} ${unit?.isNotEmpty == true ? unit : 'units'} available for $productName.',
       icon: Icons.inventory_2_outlined,
+      color: DesignColors.error,
+    );
+  }
+
+  void _showCartMutationError(
+    BuildContext context,
+    String productName,
+    CartMutationResult result, {
+    String? unitLabel,
+  }) {
+    if (result.isStockBlocked) {
+      _showStockBlocked(
+        context,
+        productName,
+        result.currentStock,
+        unitLabel: unitLabel,
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).clearSnackBars();
+    showGlassSnackBar(
+      context,
+      result.message,
+      icon: Icons.error_outline_rounded,
       color: DesignColors.error,
     );
   }
@@ -1326,15 +1418,11 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                     child: SizedBox(
                       width: 56,
                       height: 56,
-                      child: widget.imageUrl != null
-                          ? CachedNetworkImage(
-                              imageUrl: widget.imageUrl!,
-                              fit: BoxFit.cover,
-                              placeholder: (_, __) => const _ImagePlaceholder(),
-                              errorWidget: (_, __, ___) =>
-                                  const _ImagePlaceholder(),
-                            )
-                          : const _ImagePlaceholder(),
+                      child: WorkspaceImage(
+                        source: widget.imageUrl,
+                        fit: BoxFit.cover,
+                        placeholder: const _ImagePlaceholder(),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 14),

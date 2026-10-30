@@ -7,6 +7,7 @@ import 'package:drift/drift.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/storage_service.dart';
@@ -395,6 +396,13 @@ LocalStockCompanion? _stockToCompanion(
 
 Future<void> syncCatalogCacheFromApi(
     {void Function()? onProductsCached}) async {
+  if (getIt<AuthService>().isLocalWorkspace) {
+    // Local-first shops own their catalog on this device. Don't check network
+    // status or attempt to refresh it from the retired POS API.
+    onProductsCached?.call();
+    return;
+  }
+
   final connectivity = getIt<ConnectivityService>();
   // Connectivity is initialized before the app is shown. Reuse a confirmed
   // online state immediately; only repeat the platform check when the cached
@@ -713,19 +721,25 @@ Future<void> deleteCategoryFromCache(String categoryId) async {
 class FilterParams {
   final String? categoryId;
   final String? searchQuery;
+  final List<String>? productIds;
 
-  FilterParams({this.categoryId, this.searchQuery});
+  FilterParams({this.categoryId, this.searchQuery, this.productIds});
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     return other is FilterParams &&
         other.categoryId == categoryId &&
-        other.searchQuery == searchQuery;
+        other.searchQuery == searchQuery &&
+        listEquals(other.productIds, productIds);
   }
 
   @override
-  int get hashCode => categoryId.hashCode ^ searchQuery.hashCode;
+  int get hashCode => Object.hash(
+        categoryId,
+        searchQuery,
+        Object.hashAll(productIds ?? const <String>[]),
+      );
 }
 
 // Categories provider
@@ -770,35 +784,74 @@ final productSuggestionsProvider =
 // Search text is part of FilterParams, so each keystroke can create another
 // family instance. Dispose inactive results instead of retaining every prior
 // search's product, tier, and stock maps for the life of the app.
-final filteredProductsProvider = FutureProvider.autoDispose
+const _posCatalogBatchSize = 80;
+
+final filteredProductsProvider = StreamProvider.autoDispose
     .family<List<Map<String, dynamic>>, FilterParams>((
   ref,
   params,
-) async {
+) async* {
   final database = getIt<AppDatabase>();
   final layout = ref.watch(businessLayoutProvider);
   final searchQuery = params.searchQuery?.trim();
+  final productIds = params.productIds;
+  final accumulated = <Map<String, dynamic>>[];
+  var offset = 0;
 
-  List<Product> products;
+  // Yield the first 80 saleable items with their price and stock, then append
+  // each following page. The grid can paint immediately instead of waiting
+  // for every product and every metadata query in a large shop.
+  while (true) {
+    List<String>? pageIds;
+    if (productIds != null) {
+      if (offset >= productIds.length) break;
+      pageIds = productIds
+          .skip(offset)
+          .take(_posCatalogBatchSize)
+          .toList(growable: false);
+    }
 
-  if (searchQuery != null && searchQuery.isNotEmpty) {
-    final candidates = await database.searchProducts(searchQuery);
-    products = candidates
-        .where((product) => businessLayoutProductMatchesSearch(
-              name: product.name,
-              code: product.sku,
-              metadata: product.metadata,
-              layout: layout,
-              query: searchQuery,
-            ))
-        .toList(growable: false);
-  } else if (params.categoryId != null) {
-    products = await database.getProductsByCategory(params.categoryId!);
-  } else {
-    products = await database.getAllProducts();
+    final products = await database.getActivePosProducts(
+      categoryId: params.categoryId,
+      searchQuery: searchQuery,
+      productIds: pageIds,
+      limit: pageIds == null ? _posCatalogBatchSize : null,
+      offset: pageIds == null ? offset : 0,
+    );
+    if (products.isEmpty) {
+      if (pageIds != null) {
+        offset += pageIds.length;
+        continue;
+      }
+      break;
+    }
+
+    offset += pageIds?.length ?? products.length;
+    final matchingProducts = searchQuery == null || searchQuery.isEmpty
+        ? products
+        : products
+            .where((product) => businessLayoutProductMatchesSearch(
+                  name: product.name,
+                  code: product.sku,
+                  metadata: product.metadata,
+                  layout: layout,
+                  query: searchQuery,
+                ))
+            .toList(growable: false);
+    final mapped = await _productsToPosMaps(database, matchingProducts);
+    if (mapped.isNotEmpty) {
+      accumulated.addAll(mapped);
+      yield accumulated.toList(growable: false);
+    }
+
+    if (pageIds != null) {
+      if (offset >= productIds!.length) break;
+    } else if (products.length < _posCatalogBatchSize) {
+      break;
+    }
   }
 
-  return _productsToPosMaps(database, products);
+  if (accumulated.isEmpty) yield const <Map<String, dynamic>>[];
 });
 
 // Favorites provider

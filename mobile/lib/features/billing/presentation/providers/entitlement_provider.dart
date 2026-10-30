@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../domain/billing_entitlement.dart';
 
 /// Live fetch + offline fallback, invoked on login/resume and pull-to-refresh.
@@ -17,6 +18,11 @@ import '../../domain/billing_entitlement.dart';
 /// Never throws — without a cached snapshot it returns null; a cached
 /// licence without subscription details returns an UNKNOWN entitlement.
 Future<BillingEntitlement?> refreshEntitlement() async {
+  // Standalone workspaces have no subscription server. Treat their modules as
+  // device-owned and avoid waking the retired POS API just to render the home
+  // shell or decide whether a local screen should open.
+  if (getIt<AuthService>().isLocalWorkspace) return null;
+
   final service = getIt<EntitlementService>();
   try {
     final map = await getIt<ApiClient>().getBillingEntitlement();

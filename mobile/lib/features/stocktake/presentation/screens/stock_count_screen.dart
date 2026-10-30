@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/injection.dart';
+import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
@@ -40,9 +42,8 @@ class StockCountScreen extends ConsumerWidget {
             onRetry: () => ref.invalidate(stockCountProvider(countId)),
           ),
         ),
-        data: (d) => d.inProgress
-            ? _CountingView(detail: d)
-            : _ReviewView(detail: d),
+        data: (d) =>
+            d.inProgress ? _CountingView(detail: d) : _ReviewView(detail: d),
       ),
     );
   }
@@ -90,8 +91,7 @@ class _CountingViewState extends ConsumerState<_CountingView> {
   bool _isCounted(StockCountLine l) =>
       (_controllers[l.productId]?.text.trim().isNotEmpty ?? false);
 
-  int get _countedNow =>
-      widget.detail.items.where(_isCounted).length;
+  int get _countedNow => widget.detail.items.where(_isCounted).length;
 
   List<StockCountLine> _visible() {
     final q = _search.text.trim().toLowerCase();
@@ -111,21 +111,52 @@ class _CountingViewState extends ConsumerState<_CountingView> {
 
   Future<bool> _saveProgress({bool quiet = false}) async {
     if (_dirty.isEmpty) return true;
+    final localWorkspace = getIt<AuthService>().isLocalWorkspace;
     final entries = <Map<String, dynamic>>[];
     for (final id in _dirty) {
       final text = _controllers[id]?.text.trim() ?? '';
+      if (text.isEmpty) {
+        if (localWorkspace) {
+          entries.add({'productId': id, 'countedQty': null});
+          continue;
+        }
+        if (mounted) {
+          showGlassSnackBar(
+            context,
+            'This server cannot clear a saved count. Restore the quantity or continue in the local workspace.',
+            icon: Icons.info_outline_rounded,
+            color: DesignColors.warning,
+          );
+        }
+        return false;
+      }
       final qty = double.tryParse(text);
-      if (qty == null) continue;
+      if (qty == null || !qty.isFinite || qty < 0 || qty > 9999999.999) {
+        if (mounted) {
+          showGlassSnackBar(context, 'Enter a valid quantity for each item.',
+              icon: Icons.error_outline_rounded, color: DesignColors.error);
+        }
+        return false;
+      }
       entries.add({'productId': id, 'countedQty': qty});
     }
     if (entries.isEmpty) return true;
     try {
-      // Sent in slices so a long count never exceeds the request limit.
-      for (var i = 0; i < entries.length; i += 400) {
-        await getIt<ApiClient>().recordStockCounts(
-          widget.detail.id,
-          entries.sublist(i, i + 400 > entries.length ? entries.length : i + 400),
+      if (localWorkspace) {
+        await getIt<AppDatabase>().recordLocalStockCountEntries(
+          countId: widget.detail.id,
+          entries: entries,
+          countedByName: getIt<AuthService>().currentUser?['name']?.toString(),
         );
+      } else {
+        // Sent in slices so a long count never exceeds the request limit.
+        for (var i = 0; i < entries.length; i += 400) {
+          await getIt<ApiClient>().recordStockCounts(
+            widget.detail.id,
+            entries.sublist(
+                i, i + 400 > entries.length ? entries.length : i + 400),
+          );
+        }
       }
       _dirty.clear();
       if (!quiet && mounted) {
@@ -143,14 +174,17 @@ class _CountingViewState extends ConsumerState<_CountingView> {
   }
 
   Future<void> _handIn() async {
+    final localWorkspace = getIt<AuthService>().isLocalWorkspace;
     final left = widget.detail.totalLines - _countedNow;
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Hand in this count?'),
         content: Text(left > 0
-            ? '$left item${left == 1 ? '' : 's'} not counted will be left as they are in the system. A manager reviews the count before any stock changes.'
-            : 'A manager reviews the count before any stock changes.'),
+            ? '$left item${left == 1 ? '' : 's'} not counted will be left as they are in the system. ${localWorkspace ? 'Review the differences before applying any stock changes.' : 'A manager reviews the count before any stock changes.'}'
+            : localWorkspace
+                ? 'Review the differences before applying any stock changes.'
+                : 'A manager reviews the count before any stock changes.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -165,7 +199,15 @@ class _CountingViewState extends ConsumerState<_CountingView> {
     setState(() => _busy = true);
     try {
       if (!await _saveProgress(quiet: true)) return;
-      await getIt<ApiClient>().submitStockCount(widget.detail.id);
+      if (localWorkspace) {
+        await getIt<AppDatabase>().submitLocalStockCount(
+          countId: widget.detail.id,
+          submittedByName:
+              getIt<AuthService>().currentUser?['name']?.toString(),
+        );
+      } else {
+        await getIt<ApiClient>().submitStockCount(widget.detail.id);
+      }
       ref.invalidate(stockCountProvider(widget.detail.id));
       ref.invalidate(stockCountsProvider);
     } catch (e) {
@@ -293,9 +335,11 @@ class _CountingViewState extends ConsumerState<_CountingView> {
                                     line.expectedQty != null)
                                   Text(
                                     [
-                                      if ((line.sku ?? '').isNotEmpty) line.sku!,
+                                      if ((line.sku ?? '').isNotEmpty)
+                                        line.sku!,
+                                      line.unit,
                                       if (line.expectedQty != null)
-                                        'System: ${kitNumber(line.expectedQty!)}',
+                                        'System: ${kitNumber(line.expectedQty!)} ${line.unit}',
                                     ].join(' · '),
                                     style: TextStyle(
                                         color: secondary, fontSize: 12),
@@ -313,11 +357,16 @@ class _CountingViewState extends ConsumerState<_CountingView> {
                                   const TextInputType.numberWithOptions(
                                       decimal: true),
                               inputFormatters: [
-                                FilteringTextInputFormatter.allow(
-                                    RegExp(r'[0-9.]')),
+                                TextInputFormatter.withFunction(
+                                  (oldValue, newValue) => RegExp(
+                                    r'^\d{0,7}(?:\.\d{0,3})?$',
+                                  ).hasMatch(newValue.text)
+                                      ? newValue
+                                      : oldValue,
+                                ),
                               ],
-                              onChanged: (_) => setState(
-                                  () => _dirty.add(line.productId)),
+                              onChanged: (_) =>
+                                  setState(() => _dirty.add(line.productId)),
                               decoration: kitFieldDecoration(context,
                                   label: 'Counted', hint: '0'),
                             ),
@@ -373,6 +422,7 @@ class _ReviewViewState extends ConsumerState<_ReviewView> {
 
   Future<void> _approve() async {
     final d = widget.detail;
+    final localWorkspace = getIt<AuthService>().isLocalWorkspace;
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -390,11 +440,16 @@ class _ReviewViewState extends ConsumerState<_ReviewView> {
       ),
     );
     if (go != true) return;
-    await _run(
-      () => getIt<ApiClient>().approveStockCount(d.id),
-      'Stock updated',
-      refreshCatalog: true,
-    );
+    await _run(() async {
+      if (localWorkspace) {
+        await getIt<AppDatabase>().approveLocalStockCount(
+          countId: d.id,
+          approvedByName: getIt<AuthService>().currentUser?['name']?.toString(),
+        );
+      } else {
+        await getIt<ApiClient>().approveStockCount(d.id);
+      }
+    }, 'Stock updated', refreshCatalog: true);
   }
 
   Future<void> _cancel() async {
@@ -414,8 +469,14 @@ class _ReviewViewState extends ConsumerState<_ReviewView> {
       ),
     );
     if (go != true) return;
-    await _run(() => getIt<ApiClient>().cancelStockCount(widget.detail.id),
-        'Count cancelled');
+    if (getIt<AuthService>().isLocalWorkspace) {
+      await _run(
+          () => getIt<AppDatabase>().cancelLocalStockCount(widget.detail.id),
+          'Count cancelled');
+    } else {
+      await _run(() => getIt<ApiClient>().cancelStockCount(widget.detail.id),
+          'Count cancelled');
+    }
   }
 
   Future<void> _run(Future<dynamic> Function() action, String done,
@@ -424,12 +485,14 @@ class _ReviewViewState extends ConsumerState<_ReviewView> {
     try {
       await action();
       if (refreshCatalog) {
-        // Approval changes server stock. Pull the authoritative quantities
-        // before invalidating the till's cached product snapshots.
-        try {
-          await syncCatalogCacheFromApi();
-        } catch (_) {
-          // The stock count is already approved. Let the next sync refresh it.
+        if (!getIt<AuthService>().isLocalWorkspace) {
+          // Approval changes server stock. Pull the authoritative quantities
+          // before invalidating the till's cached product snapshots.
+          try {
+            await syncCatalogCacheFromApi();
+          } catch (_) {
+            // The stock count is already approved. Let the next sync refresh it.
+          }
         }
         if (mounted) {
           ref.invalidate(filteredProductsProvider);
@@ -464,12 +527,13 @@ class _ReviewViewState extends ConsumerState<_ReviewView> {
     final differences = d.items
         .where((l) => l.isCounted && (l.varianceQty ?? 0) != 0)
         .toList()
-      ..sort((a, b) =>
-          (a.varianceValue ?? 0).compareTo(b.varianceValue ?? 0));
+      ..sort((a, b) => (a.varianceValue ?? 0).compareTo(b.varianceValue ?? 0));
 
     final statusText = switch (d.status) {
-      'SUBMITTED' => 'Handed in${d.submittedByName != null ? ' by ${d.submittedByName}' : ''}. Waiting for approval.',
-      'APPROVED' => 'Approved${d.approvedByName != null ? ' by ${d.approvedByName}' : ''}. Stock was adjusted.',
+      'SUBMITTED' =>
+        'Handed in${d.submittedByName != null ? ' by ${d.submittedByName}' : ''}. Waiting for approval.',
+      'APPROVED' =>
+        'Approved${d.approvedByName != null ? ' by ${d.approvedByName}' : ''}. Stock was adjusted.',
       _ => 'This count was cancelled. No stock changed.',
     };
 

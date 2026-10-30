@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import '../network/api_client.dart';
+import 'axon_gateway_client.dart';
 import 'supplier_receipt_ocr_service.dart';
 
 /// Thrown when the vision model determines the scanned image isn't a
@@ -20,43 +20,81 @@ class NotAReceiptException implements Exception {
 /// the caller should fall back to on-device OCR (not tell the user their
 /// photo "isn't a receipt").
 class ReceiptAiUnavailableException implements Exception {
-  const ReceiptAiUnavailableException([this.message = 'Axon AI is unavailable']);
+  const ReceiptAiUnavailableException(
+      [this.message = 'Axon AI is unavailable']);
   final String message;
 
   @override
   String toString() => message;
 }
 
-/// AI vision parsing of a supplier receipt photo, via the backend's
-/// /ai/receipts/scan endpoint (which itself calls the Axon AI gateway).
-/// Requires connectivity and an active AI subscription for the branch —
-/// callers should fall back to SupplierReceiptOcrService when this fails
-/// for any reason other than NotAReceiptException.
+/// Receipt photos are analyzed only through the owner-keyed Axon Gateway.
+/// The caller must review the suggested invoice details before saving them.
 class ReceiptVisionService {
-  ReceiptVisionService({required ApiClient apiClient}) : _apiClient = apiClient;
+  ReceiptVisionService({AxonGatewayClient? gateway})
+      : _gateway = gateway ?? AxonGatewayClient();
 
-  final ApiClient _apiClient;
+  final AxonGatewayClient _gateway;
 
-  /// Reads a receipt photo straight from disk — sent inline as base64, so no
-  /// upload step is needed and the AI sees exactly what the camera took.
   Future<SupplierReceiptScan> scanFile(File image, {String? branchId}) async {
-    final bytes = await image.readAsBytes();
-    final result = await _apiClient.scanReceiptImage(
-      imageBase64: base64Encode(bytes),
-      branchId: branchId,
-    );
-    return parse(result, imagePath: image.path);
+    try {
+      final bytes = await image.readAsBytes();
+      if (bytes.length > AxonGatewayClient.maxVisionImageBytes) {
+        throw const ReceiptAiUnavailableException(
+          'This image is too large to analyze. Choose a smaller image.',
+        );
+      }
+      final response = await _gateway.vision(
+        prompt: 'Read this supplier receipt, invoice, or delivery note. Return '
+            'only a valid JSON object with these fields: isReceipt (boolean), '
+            'documentType (string), supplierName (string or null), '
+            'invoiceNumber (string or null), totalAmount (number), '
+            'paymentMethod (string or null), summary (string), and items '
+            '(array of objects with name, quantity, unit, unitCost, and '
+            'lineTotal). Use null or an empty array when a value is not '
+            'visible. Do not guess missing amounts. If this is not a supplier '
+            'receipt, invoice, or delivery note, set isReceipt to false.',
+        imageBase64: base64Encode(bytes),
+        maxTokens: 1600,
+      );
+      final normalized = response
+          .replaceFirst(RegExp(r'^```(?:json)?\s*', caseSensitive: false), '')
+          .replaceFirst(RegExp(r'\s*```$'), '')
+          .trim();
+      final decoded = jsonDecode(normalized);
+      if (decoded is! Map) {
+        throw const ReceiptAiUnavailableException(
+          'Axon AI returned unreadable receipt details. Try again or enter them manually.',
+        );
+      }
+      return parse(decoded.cast<String, dynamic>(), imagePath: image.path);
+    } on AxonGatewayException catch (error) {
+      throw ReceiptAiUnavailableException(error.message);
+    } on FormatException {
+      throw const ReceiptAiUnavailableException(
+        'Axon AI returned unreadable receipt details. Try again or enter them manually.',
+      );
+    } on FileSystemException {
+      throw const ReceiptAiUnavailableException(
+        'Could not open this image. Choose it again or enter the receipt manually.',
+      );
+    }
   }
 
   Future<SupplierReceiptScan> scan({
     required String imageUrl,
     String? branchId,
   }) async {
-    final result = await _apiClient.scanReceiptImage(
-      imageUrl: imageUrl,
+    final uri = Uri.tryParse(imageUrl);
+    if (uri == null || (uri.scheme.isNotEmpty && uri.scheme != 'file')) {
+      throw const ReceiptAiUnavailableException(
+        'Only an image stored on this device can be analyzed. Remote image links are not fetched.',
+      );
+    }
+    return scanFile(
+      File(uri.scheme == 'file' ? uri.toFilePath() : imageUrl),
       branchId: branchId,
     );
-    return parse(result, imagePath: imageUrl);
   }
 
   /// Turns the backend's ParsedReceiptResult JSON into a scan. Exposed for

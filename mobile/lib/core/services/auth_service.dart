@@ -2,13 +2,17 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:uuid/uuid.dart';
 import 'package:axon_pos/core/di/injection.dart' as di;
 import 'company_caches.dart';
 import 'storage_service.dart';
 import 'lifecycle_lock_controller.dart';
+import '../auth/app_roles.dart';
+import '../auth/local_staff_roles.dart';
 import '../../features/team/data/services/invitation_cache_service.dart';
 import '../database/app_database.dart';
 import '../network/api_client.dart';
+import '../network/local_first_network_guard.dart';
 
 enum AuthStatus {
   unknown,
@@ -37,6 +41,7 @@ class AuthService implements LifecycleLockAuth {
   Map<String, dynamic>? _currentUser;
   String? _accessToken;
   DateTime? _lastTenantSettingsRefreshAt;
+  bool _creatingLocalWorkspace = false;
 
   // ── Quick-unlock PIN throttle ──
   // Exponential backoff after consecutive wrong quick-unlock PINs, so a
@@ -71,6 +76,7 @@ class AuthService implements LifecycleLockAuth {
     try {
       debugPrint('[AuthService] Initializing auth service...');
       await _initializeAuth();
+      await _applySharedRegisterBiometricPolicy();
       debugPrint('[AuthService] Auth service initialized successfully');
     } catch (e, stackTrace) {
       debugPrint('[AuthService] Initialization error: $e');
@@ -95,10 +101,12 @@ class AuthService implements LifecycleLockAuth {
     // restore the session. Never let the interceptor reload that token while
     // the authentication challenge is still active.
     if (!isAuthenticated) return null;
-    if (_accessToken != null) return _accessToken;
+    if (_accessToken?.isNotEmpty == true) return _accessToken;
     final stored = await _storage.getAccessToken();
     if (stored != null && stored.isNotEmpty) {
       _accessToken = stored;
+    } else {
+      _accessToken = null;
     }
     return _accessToken;
   }
@@ -107,6 +115,50 @@ class AuthService implements LifecycleLockAuth {
   bool get isAuthenticated => _currentStatus == AuthStatus.authenticated;
   @override
   bool get isLocked => _currentStatus == AuthStatus.locked;
+  bool get isLocalWorkspace => _currentUser?['authMode'] == 'local';
+  bool get hasLocalWorkspace => _storage.hasLocalWorkspace();
+  bool get isLocalWorkspaceOwner {
+    if (!isLocalWorkspace) return false;
+    final owner = _storage.getLocalWorkspace()?['user'];
+    return owner is Map &&
+        owner['id']?.toString() == _currentUser?['id']?.toString();
+  }
+
+  List<Map<String, dynamic>> get localStaffAccounts =>
+      _storage.getLocalStaffAccounts();
+  bool get hasActiveLocalStaff =>
+      _storage.hasLocalWorkspace() &&
+      localStaffAccounts.any((account) => account['isActive'] != false);
+
+  /// Device biometrics confirm that an enrolled person matched, not which
+  /// staff member it was. Shared registers therefore require each person to
+  /// use their own PIN instead of unlocking the last-used owner's profile.
+  Future<void> _applySharedRegisterBiometricPolicy() async {
+    if (!hasActiveLocalStaff) return;
+    try {
+      await _storage.setBiometricEnabled(false);
+    } catch (error) {
+      debugPrint(
+          '[AuthService] Could not disable shared-register biometrics: $error');
+    }
+    if (_storage.getPrimaryLoginMethod() == 'biometric') {
+      try {
+        await _storage.setPrimaryLoginMethod('pin');
+      } catch (error) {
+        debugPrint(
+            '[AuthService] Could not set shared-register PIN as primary: $error');
+      }
+    }
+  }
+
+  bool get isUsingConfiguredLocalServer {
+    final serverUrl = _storage.getServerBaseUrl();
+    return serverUrl != null &&
+        LocalFirstNetworkGuard.isLocalNetworkUrl(serverUrl);
+  }
+
+  bool get requiresLocalWorkspaceAdoption =>
+      !isLocalWorkspace && !isUsingConfiguredLocalServer;
 
   String? get userId => _currentUser?['id'];
   String? get branchId => _storage.getBranchId();
@@ -114,6 +166,19 @@ class AuthService implements LifecycleLockAuth {
   String? get tenantId => _storage.getTenantId();
   String? get tenantSlug => _storage.getTenantSlug();
   String? get userRole => _currentUser?['role'];
+
+  /// Reload the local owner profile after a confirmed full workspace restore.
+  /// The receiving device's PIN and other secure credentials remain local.
+  Future<void> refreshLocalWorkspaceProfile() async {
+    final user = _storage.getUser();
+    if (user == null || user['authMode'] != 'local') {
+      throw StateError('The restored local owner profile is unavailable.');
+    }
+    _currentUser = user;
+    _accessToken = null;
+    await _storage.setAuthLocked(false);
+    _updateStatus(AuthStatus.authenticated);
+  }
 
   String? get activationStatus {
     final tenant = _currentUser?['tenant'];
@@ -160,7 +225,21 @@ class AuthService implements LifecycleLockAuth {
     _accessToken = await _storage.getAccessToken();
     _currentUser = _storage.getUser();
 
-    if (_accessToken?.isNotEmpty == true && _currentUser != null) {
+    // Upgrade older device-only installs that still remember Email or Google
+    // as their primary method. The standalone sign-in screen only supports a
+    // local PIN or an explicitly enabled biometric unlock.
+    if (_storage.hasLocalWorkspace() &&
+        !{'pin', 'biometric'}.contains(_storage.getPrimaryLoginMethod())) {
+      try {
+        await _storage.setPrimaryLoginMethod('pin');
+      } catch (_) {
+        // A preference migration must not prevent opening a local workspace.
+      }
+    }
+
+    final hasLocalSession = _currentUser?['authMode'] == 'local';
+    if (_currentUser != null &&
+        (hasLocalSession || _accessToken?.isNotEmpty == true)) {
       // "Remember me" was off at the last login: a stored session surviving
       // to a fresh cold start must not restore the account's authenticated
       // state.
@@ -183,12 +262,11 @@ class AuthService implements LifecycleLockAuth {
 
       final backgroundedAt = _storage.getAppBackgroundedAt();
       final autoLockMinutes = _storage.getAutoLockMinutes();
-      final shouldLockOnColdStart =
-          _storage.requireUnlockOnResume() ||
-              (autoLockMinutes > 0 &&
-                  backgroundedAt != null &&
-                  DateTime.now().difference(backgroundedAt) >=
-                      Duration(minutes: autoLockMinutes));
+      final shouldLockOnColdStart = _storage.requireUnlockOnResume() ||
+          (autoLockMinutes > 0 &&
+              backgroundedAt != null &&
+              DateTime.now().difference(backgroundedAt) >=
+                  Duration(minutes: autoLockMinutes));
       // This process has resumed from a prior background period. Consume the
       // timestamp before any navigation; a successful unlock clears it too.
       await _storage.clearAppBackgroundedAt();
@@ -203,7 +281,7 @@ class AuthService implements LifecycleLockAuth {
       // last login/refresh — stale if the backend was redeployed with a
       // newer permission set since then. This brings it current without
       // blocking startup on the network call.
-      unawaited(refreshPermissions());
+      if (isUsingConfiguredLocalServer) unawaited(refreshPermissions());
       return;
     }
 
@@ -297,6 +375,21 @@ class AuthService implements LifecycleLockAuth {
   /// real network round-trip against the account's server-side PIN, just
   /// like email/password login.
   Future<void> loginWithPin(String pin) async {
+    if (_storage.hasLocalWorkspace()) {
+      final throttleError = _pinThrottleRemaining();
+      if (throttleError != null) {
+        throw StateError(throttleError);
+      }
+      final localUser = await _localWorkspaceUserForPin(pin);
+      if (localUser == null) {
+        await _registerPinFailure();
+        throw StateError(_pinThrottleRemaining() ?? _defaultPinError);
+      }
+      await _activateLocalWorkspaceUser(localUser);
+      await _resetPinThrottle();
+      return;
+    }
+
     final resolvedDeviceId = await _storage.ensureDeviceId();
 
     final response = await _apiClient
@@ -308,6 +401,658 @@ class AuthService implements LifecycleLockAuth {
         .timeout(const Duration(seconds: 30));
 
     await _applyAuthResponse(response);
+  }
+
+  Future<Map<String, dynamic>?> _localWorkspaceUserForPin(String pin) async {
+    final workspace = _storage.getLocalWorkspace();
+    final owner = workspace?['user'];
+    if (owner is! Map) return null;
+    final ownerUser = Map<String, dynamic>.from(owner);
+    if (await _storage.verifyLocalPin(pin)) return ownerUser;
+
+    for (final staff in _storage.getLocalStaffAccounts()) {
+      final id = staff['id']?.toString().trim() ?? '';
+      final role = staff['role']?.toString() ?? '';
+      final permissions = LocalStaffRoles.permissionsFor(role);
+      // Fail closed for malformed/stale profile metadata. Local staff
+      // permissions are derived from the fixed role template, never trusted
+      // from the editable profile JSON. A staff ID must also never alias the
+      // owner ID, which is the local owner privilege boundary.
+      if (id.isEmpty ||
+          id == ownerUser['id']?.toString() ||
+          staff['isActive'] != true ||
+          permissions == null) {
+        continue;
+      }
+      if (await _storage.verifyLocalStaffPin(id, pin)) {
+        return <String, dynamic>{
+          ...staff,
+          'role': role,
+          'permissions': permissions,
+          'authMode': 'local',
+          'isLocalStaff': true,
+        };
+      }
+    }
+    return null;
+  }
+
+  Future<void> _activateLocalWorkspaceUser(
+    Map<String, dynamic> localUser,
+  ) async {
+    final tenantId = localUser['tenantId']?.toString().trim() ?? '';
+    final tenantSlug = localUser['tenantSlug']?.toString().trim() ?? '';
+    final branchId = localUser['branchId']?.toString().trim() ?? '';
+    if (localUser['authMode'] != 'local' ||
+        tenantId.isEmpty ||
+        tenantSlug.isEmpty ||
+        branchId.isEmpty) {
+      throw StateError(
+        'The saved workspace profile is incomplete. Restore a workspace backup before signing in.',
+      );
+    }
+    final workspaceOwner = _storage.getLocalWorkspace()?['user'];
+    if (workspaceOwner is Map &&
+        workspaceOwner['id']?.toString() != localUser['id']?.toString()) {
+      final ownerTenantId = workspaceOwner['tenantId']?.toString().trim() ?? '';
+      final ownerTenantSlug =
+          workspaceOwner['tenantSlug']?.toString().trim() ?? '';
+      if (tenantId != ownerTenantId || tenantSlug != ownerTenantSlug) {
+        throw StateError(
+          'This staff profile belongs to a different local shop. Ask the owner to update its shop access before signing in.',
+        );
+      }
+      final assignedBranches = localUser['branches'];
+      if (assignedBranches is List &&
+          assignedBranches.isNotEmpty &&
+          !assignedBranches.whereType<Map>().any(
+                (branch) => branch['id']?.toString() == branchId,
+              )) {
+        throw StateError(
+          'This staff profile is not assigned to its saved branch. Ask the owner to update its shop access.',
+        );
+      }
+    }
+
+    // Start from a clean session so no cloud token or previous staff identity
+    // survives a local sign-in or a switch between people at the till.
+    await _storage.clearSession();
+    await _storage.saveTenantId(tenantId);
+    await _storage.saveTenantSlug(tenantSlug);
+    await _storage.saveBranchId(branchId);
+    await _storage.setAuthLocked(false);
+    await _storage.saveUser(localUser);
+    _accessToken = null;
+    _currentUser = localUser;
+    _updateStatus(AuthStatus.authenticated);
+  }
+
+  /// Creates an offline-only staff profile on this installation. Accounts
+  /// are deliberately not described as invitations or cloud identities.
+  Future<void> createLocalStaffAccount({
+    required String name,
+    required String role,
+    required String pin,
+  }) async {
+    if (!isLocalWorkspaceOwner) {
+      throw StateError('Only the workspace owner can manage local staff.');
+    }
+    final normalizedName = name.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final permissions = LocalStaffRoles.permissionsFor(role);
+    if (normalizedName.length < 2 || normalizedName.length > 80) {
+      throw StateError('Enter a staff name between 2 and 80 characters.');
+    }
+    if (permissions == null) throw StateError('Choose a valid staff role.');
+    if (!RegExp(r'^\d{4,6}$').hasMatch(pin)) {
+      throw StateError('Staff PINs must contain 4 to 6 digits.');
+    }
+    if (await _localPinAlreadyAssigned(pin)) {
+      throw StateError('That PIN is already in use. Choose a different PIN.');
+    }
+
+    final workspace = _storage.getLocalWorkspace();
+    final owner = workspace?['user'];
+    final tenant = workspace?['tenant'];
+    final branch = workspace?['branch'];
+    if (owner is! Map || tenant is! Map || branch is! Map) {
+      throw StateError('The saved local workspace profile is incomplete.');
+    }
+    final id = const Uuid().v4();
+    final nameParts = normalizedName.split(' ');
+    final branchId = _currentUser?['branchId']?.toString() ?? '';
+    final profile = <String, dynamic>{
+      'id': id,
+      'name': normalizedName,
+      'firstName': nameParts.first,
+      'lastName': nameParts.skip(1).join(' '),
+      'email': null,
+      'role': role,
+      'permissions': permissions,
+      'tenantId': _currentUser?['tenantId'],
+      'tenantSlug': _currentUser?['tenantSlug'],
+      'tenant': Map<String, dynamic>.from(tenant),
+      'branchId': branchId,
+      'branchName': branch['name']?.toString() ?? '',
+      'branches': [Map<String, dynamic>.from(branch)],
+      'hasPinSet': true,
+      'authMode': 'local',
+      'isLocalStaff': true,
+      'isActive': true,
+      'createdAt': DateTime.now().toUtc().toIso8601String(),
+    };
+
+    await _storage.setLocalStaffPin(id, pin);
+    try {
+      await _storage.saveLocalStaffAccounts([
+        ..._storage.getLocalStaffAccounts(),
+        profile,
+      ]);
+    } catch (_) {
+      await _storage.clearLocalStaffPin(id);
+      rethrow;
+    }
+    await _applySharedRegisterBiometricPolicy();
+  }
+
+  /// Updates a local staff role, display name, active state, or optional PIN.
+  Future<void> updateLocalStaffAccount({
+    required String userId,
+    required String name,
+    required String role,
+    required bool isActive,
+    String? pin,
+  }) async {
+    if (!isLocalWorkspaceOwner) {
+      throw StateError('Only the workspace owner can manage local staff.');
+    }
+    final normalizedName = name.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final permissions = LocalStaffRoles.permissionsFor(role);
+    if (normalizedName.length < 2 || normalizedName.length > 80) {
+      throw StateError('Enter a staff name between 2 and 80 characters.');
+    }
+    if (permissions == null) throw StateError('Choose a valid staff role.');
+    final newPin = pin?.trim() ?? '';
+    if (newPin.isNotEmpty) {
+      if (!RegExp(r'^\d{4,6}$').hasMatch(newPin)) {
+        throw StateError('Staff PINs must contain 4 to 6 digits.');
+      }
+      if (await _localPinAlreadyAssigned(newPin, exceptUserId: userId)) {
+        throw StateError('That PIN is already in use. Choose a different PIN.');
+      }
+    }
+
+    final accounts = _storage.getLocalStaffAccounts().toList();
+    final index = accounts.indexWhere((account) => account['id'] == userId);
+    if (index < 0) {
+      throw StateError('That staff profile is no longer available.');
+    }
+    final oldPinCredential =
+        newPin.isNotEmpty ? await _storage.snapshotLocalStaffPin(userId) : null;
+    final old = accounts[index];
+    final updated = <String, dynamic>{
+      ...old,
+      'name': normalizedName,
+      'firstName': normalizedName.split(' ').first,
+      'lastName': normalizedName.split(' ').skip(1).join(' '),
+      'role': role,
+      'permissions': permissions,
+      'isActive': isActive,
+    };
+    accounts[index] = updated;
+    try {
+      if (newPin.isNotEmpty) await _storage.setLocalStaffPin(userId, newPin);
+      await _storage.saveLocalStaffAccounts(accounts);
+    } catch (_) {
+      if (newPin.isNotEmpty) {
+        await _storage.restoreLocalStaffPin(userId, oldPinCredential);
+      }
+      rethrow;
+    }
+    if (_currentUser?['id']?.toString() == userId) {
+      _currentUser = updated;
+      await _storage.saveUser(updated);
+      _updateStatus(_currentStatus);
+    }
+    await _applySharedRegisterBiometricPolicy();
+  }
+
+  Future<bool> _localPinAlreadyAssigned(
+    String pin, {
+    String? exceptUserId,
+  }) async {
+    if (await _storage.verifyLocalPin(pin)) return true;
+    for (final account in _storage.getLocalStaffAccounts()) {
+      final id = account['id']?.toString() ?? '';
+      if (id.isEmpty || id == exceptUserId) continue;
+      if (await _storage.verifyLocalStaffPin(id, pin)) return true;
+    }
+    return false;
+  }
+
+  Future<bool> _localStaffPinAlreadyAssigned(
+    String pin, {
+    String? exceptUserId,
+  }) async {
+    for (final account in _storage.getLocalStaffAccounts()) {
+      final id = account['id']?.toString() ?? '';
+      if (id.isEmpty || id == exceptUserId) continue;
+      if (await _storage.verifyLocalStaffPin(id, pin)) return true;
+    }
+    return false;
+  }
+
+  /// Creates the first shop directly on this device. No account, API, or
+  /// remote identity provider is involved; the owner PIN is stored as a
+  /// stretched digest in platform secure storage.
+  Future<void> createLocalWorkspace({
+    required WorkspaceCreationRequest workspace,
+    required String ownerEmail,
+    required String ownerPin,
+    required bool acceptedLocalDataNotice,
+  }) async {
+    if (_creatingLocalWorkspace) {
+      throw StateError('Workspace setup is already in progress.');
+    }
+    if (_storage.hasLocalWorkspace()) {
+      throw StateError('A local workspace already exists on this device.');
+    }
+    if (!RegExp(r'^\d{6}$').hasMatch(ownerPin)) {
+      throw ArgumentError.value(ownerPin, 'ownerPin', 'Use a six-digit PIN.');
+    }
+    if (!acceptedLocalDataNotice) {
+      throw StateError('Review the local data notice before continuing.');
+    }
+
+    final now = DateTime.now().toUtc().toIso8601String();
+    const uuid = Uuid();
+    final tenantId = uuid.v4();
+    final ownerId = uuid.v4();
+    final branchId = uuid.v4();
+    final slug = _localSlug(workspace.companyName);
+    final branch = <String, dynamic>{
+      'id': branchId,
+      'name': workspace.branch.name,
+      'code': workspace.branch.code ?? 'MAIN',
+      'location': workspace.branch.address ?? '',
+      'phone': workspace.branch.phone ?? '',
+      'isActive': true,
+      'isPrimary': true,
+      'createdAt': now,
+    };
+    final tenant = <String, dynamic>{
+      'id': tenantId,
+      'name': workspace.companyName.trim(),
+      'slug': slug,
+      'settings': workspace.settings ?? <String, dynamic>{},
+      'isActive': true,
+      'activationStatus': 'ACTIVE',
+    };
+    final user = <String, dynamic>{
+      'id': ownerId,
+      'email': ownerEmail.trim(),
+      'firstName': workspace.firstName.trim(),
+      'lastName': workspace.lastName.trim(),
+      'name': '${workspace.firstName.trim()} ${workspace.lastName.trim()}',
+      'role': 'admin',
+      'permissions': const ['*'],
+      'tenantId': tenantId,
+      'tenantSlug': slug,
+      'branchId': branchId,
+      'branchName': workspace.branch.name,
+      'branches': [branch],
+      'tenant': tenant,
+      'hasPinSet': true,
+      'authMode': 'local',
+    };
+    final localWorkspace = <String, dynamic>{
+      'schemaVersion': 1,
+      'createdAt': now,
+      'tenant': tenant,
+      'branch': branch,
+      'user': user,
+      'localDataNotice': {
+        'version': 'local-data-v1',
+        'acceptedAt': now,
+      },
+    };
+
+    _creatingLocalWorkspace = true;
+    LocalPinCredentialSnapshot? previousPin;
+    final previousRememberLogin = _storage.isRememberLoginEnabled();
+    final previousRememberedEmail = _storage.getRememberedEmail() ?? '';
+    final previousRememberedSlug = _storage.getRememberedTenantSlug() ?? '';
+    final previousPrimaryLoginMethod = _storage.getPrimaryLoginMethod();
+    var branchSeeded = false;
+    var setupStorageStarted = false;
+    try {
+      previousPin = await _storage.snapshotLocalPinCredential();
+      setupStorageStarted = true;
+      await _storage.clearSession();
+
+      // Seed the local database before publishing a workspace profile. This
+      // keeps failed database opens or branch setup from leaving a profile
+      // that blocks the owner from retrying setup.
+      await _database.transaction(() async {
+        await _database.insertBranch(
+          branchId,
+          workspace.branch.name,
+          workspace.branch.address ?? '',
+          workspace.branch.phone ?? '',
+        );
+        await _database.ensureLocalDefaultCategory();
+      });
+      branchSeeded = true;
+
+      await _storage.setLocalPin(ownerPin);
+      // The complete profile is the recovery source for a PIN sign-in. Save
+      // it before the session cache so a process interruption can recover the
+      // user and branch from this record.
+      await _storage.saveLocalWorkspace(localWorkspace);
+      await _storage.saveUser(user);
+      await _storage.saveTenantId(tenantId);
+      await _storage.saveTenantSlug(slug);
+      await _storage.saveBranchId(branchId);
+      await _storage.saveRememberedLogin(
+        enabled: true,
+        email: ownerEmail.trim(),
+        tenantSlug: slug,
+      );
+      // A device-only workspace unlocks with its local PIN. Do not leave the
+      // first-run screen claiming Email or Google is the primary method.
+      await _storage.setPrimaryLoginMethod('pin');
+      await _storage.setAuthLocked(false);
+      // A new workspace has a new PIN; never inherit throttling from a prior
+      // account or a previously configured PIN on this device.
+      await _resetPinThrottle();
+
+      _accessToken = null;
+      _currentUser = user;
+      _updateStatus(AuthStatus.authenticated);
+    } catch (_) {
+      // SharedPreferences, secure storage, and SQLite cannot share one
+      // transaction. Compensate each store so a normal setup failure returns
+      // the app to a retryable first-run state.
+      if (setupStorageStarted) {
+        try {
+          await _storage.clearLocalWorkspace();
+        } catch (_) {}
+        try {
+          await _storage.clearSession();
+        } catch (_) {}
+      }
+      if (branchSeeded) {
+        try {
+          await _database.deleteBranch(branchId);
+        } catch (_) {}
+      }
+      if (setupStorageStarted) {
+        try {
+          await _storage.saveRememberedLogin(
+            enabled: previousRememberLogin,
+            email: previousRememberedEmail,
+            tenantSlug: previousRememberedSlug,
+          );
+        } catch (_) {}
+        try {
+          await _storage.setPrimaryLoginMethod(previousPrimaryLoginMethod);
+        } catch (_) {}
+        if (previousPin != null) {
+          try {
+            await _storage.restoreLocalPinCredential(previousPin);
+          } catch (_) {}
+        }
+      }
+      rethrow;
+    } finally {
+      _creatingLocalWorkspace = false;
+    }
+  }
+
+  /// Converts the currently unlocked online session into a device-only
+  /// workspace while keeping its existing tenant and active branch IDs. The
+  /// encrypted local database is never cleared, so cached catalog, customers,
+  /// and device-recorded sales remain in the same scope. Server credentials
+  /// are removed only after the local profile and PIN are ready.
+  Future<void> adoptCurrentWorkspaceLocally({
+    required String ownerPin,
+    required bool acceptedLocalDataNotice,
+  }) async {
+    if (_creatingLocalWorkspace) {
+      throw StateError('Workspace setup is already in progress.');
+    }
+    if (!isAuthenticated || _currentUser == null || isLocalWorkspace) {
+      throw StateError('Sign in to the workspace before continuing.');
+    }
+    if (_storage.hasLocalWorkspace()) {
+      throw StateError('A local workspace already exists on this device.');
+    }
+    if (!RegExp(r'^\d{6}$').hasMatch(ownerPin)) {
+      throw ArgumentError.value(ownerPin, 'ownerPin', 'Use a six-digit PIN.');
+    }
+    if (!acceptedLocalDataNotice) {
+      throw StateError('Review the local data notice before continuing.');
+    }
+
+    final sourceUser = Map<String, dynamic>.from(_currentUser!);
+    final permissions = sourceUser['permissions'] is List
+        ? List<dynamic>.from(sourceUser['permissions'] as List)
+        : const <dynamic>[];
+    final permissionRole = RolePermissions(permissions).role;
+    final accountRole = sourceUser['role']?.toString().trim().toLowerCase();
+    if (permissionRole != AppRole.admin && accountRole != 'admin') {
+      throw StateError(
+        'Ask a workspace administrator to move this device to local mode.',
+      );
+    }
+
+    final rawTenant = sourceUser['tenant'];
+    final tenant = rawTenant is Map
+        ? Map<String, dynamic>.from(rawTenant)
+        : <String, dynamic>{};
+    final tenantId =
+        (tenant['id'] ?? sourceUser['tenantId'] ?? _storage.getTenantId())
+            ?.toString()
+            .trim();
+    final tenantName = (tenant['name'] ??
+            sourceUser['tenantName'] ??
+            sourceUser['companyName'])
+        ?.toString()
+        .trim();
+    if (tenantId == null ||
+        tenantId.isEmpty ||
+        tenantName == null ||
+        tenantName.isEmpty) {
+      throw StateError(
+        'This workspace is missing its saved business identity. Export its data before setting up a new local workspace.',
+      );
+    }
+
+    final rawBranches = sourceUser['branches'];
+    final branches = rawBranches is List
+        ? rawBranches.whereType<Map>().map(Map<String, dynamic>.from).toList()
+        : <Map<String, dynamic>>[];
+    final savedBranchId =
+        (_storage.getBranchId() ?? sourceUser['branchId'])?.toString().trim();
+    Map<String, dynamic>? branch;
+    if (savedBranchId != null && savedBranchId.isNotEmpty) {
+      for (final candidate in branches) {
+        if (candidate['id']?.toString() == savedBranchId) {
+          branch = candidate;
+          break;
+        }
+      }
+    } else if (branches.isNotEmpty) {
+      branch = branches.firstWhere(
+        (candidate) => candidate['isPrimary'] == true,
+        orElse: () => branches.first,
+      );
+    }
+    final branchId = savedBranchId?.isNotEmpty == true
+        ? savedBranchId
+        : branch?['id']?.toString().trim();
+    if (branchId == null || branchId.isEmpty) {
+      throw StateError(
+        'This workspace has no active branch saved on the device. Reopen it while connected and try again.',
+      );
+    }
+
+    final branchName = (branch?['name'] ?? sourceUser['branchName'])
+            ?.toString()
+            .trim()
+            .replaceAll(RegExp(r'\s+'), ' ') ??
+        '';
+    final branchRecord = <String, dynamic>{
+      if (branch != null) ...branch,
+      'id': branchId,
+      'name': branchName.isEmpty ? 'Main branch' : branchName,
+      'code': branch?['code']?.toString() ?? 'MAIN',
+      'location': (branch?['address'] ?? branch?['location'])?.toString() ?? '',
+      'phone': branch?['phone']?.toString() ?? '',
+      'isActive': true,
+      'isPrimary': true,
+      'createdAt': branch?['createdAt']?.toString() ??
+          DateTime.now().toUtc().toIso8601String(),
+    };
+    final tenantSlug =
+        (tenant['slug'] ?? sourceUser['tenantSlug'] ?? _storage.getTenantSlug())
+            ?.toString()
+            .trim();
+    final slug = tenantSlug == null || tenantSlug.isEmpty
+        ? _localSlug(tenantName)
+        : tenantSlug;
+    final localTenant = <String, dynamic>{
+      ...tenant,
+      'id': tenantId,
+      'name': tenantName,
+      'slug': slug,
+      'settings': tenant['settings'] is Map
+          ? Map<String, dynamic>.from(tenant['settings'] as Map)
+          : <String, dynamic>{},
+      'isActive': true,
+      'activationStatus': 'ACTIVE',
+    };
+    final localUser = <String, dynamic>{
+      ...sourceUser,
+      'id': sourceUser['id']?.toString() ?? const Uuid().v4(),
+      'tenantId': tenantId,
+      'tenantSlug': slug,
+      'tenant': localTenant,
+      'branchId': branchId,
+      'branchName': branchRecord['name'],
+      'branches': [branchRecord],
+      'permissions': permissions,
+      'hasPinSet': true,
+      'authMode': 'local',
+    };
+    for (final key in const [
+      'password',
+      'passwordHash',
+      'pin',
+      'offlineAccessPinHash',
+      'refreshToken',
+      'accessToken',
+    ]) {
+      localUser.remove(key);
+    }
+
+    final now = DateTime.now().toUtc().toIso8601String();
+    final localWorkspace = <String, dynamic>{
+      'schemaVersion': 1,
+      'createdAt': now,
+      'tenant': localTenant,
+      'branch': branchRecord,
+      'user': localUser,
+      'localDataNotice': {
+        'version': 'local-data-v1',
+        'acceptedAt': now,
+      },
+      'adoptedFromOnlineWorkspace': true,
+    };
+
+    final previousPin = await _storage.snapshotLocalPinCredential();
+    final previousUser = _storage.getUser();
+    final previousTenantId = _storage.getTenantId();
+    final previousTenantSlug = _storage.getTenantSlug();
+    final previousBranchId = _storage.getBranchId();
+    final previousAccessToken = await _storage.getAccessToken();
+    final previousRefreshToken = await _storage.getRefreshToken();
+    final previousPrimaryLoginMethod = _storage.getPrimaryLoginMethod();
+    var sessionStorageStarted = false;
+
+    _creatingLocalWorkspace = true;
+    try {
+      await _database.transaction(() async {
+        await _database.ensureLocalBranch(
+          id: branchId,
+          name: branchRecord['name'].toString(),
+          location: branchRecord['location'].toString(),
+          phone: branchRecord['phone'].toString(),
+        );
+        await _database.ensureLocalDefaultCategory();
+      });
+
+      sessionStorageStarted = true;
+      await _storage.setLocalPin(ownerPin);
+      // Keep an explicitly selected, enabled biometric preference. Legacy
+      // Email/Google preferences cannot unlock a standalone local workspace.
+      final localPrimaryMethod = previousPrimaryLoginMethod == 'biometric' &&
+              _storage.isBiometricEnabled()
+          ? 'biometric'
+          : 'pin';
+      await _storage.setPrimaryLoginMethod(localPrimaryMethod);
+      await _storage.clearSession();
+      await _storage.saveLocalWorkspace(localWorkspace);
+      await _storage.saveUser(localUser);
+      await _storage.saveTenantId(tenantId);
+      await _storage.saveTenantSlug(slug);
+      await _storage.saveBranchId(branchId);
+      await _storage.setAuthLocked(false);
+
+      _accessToken = null;
+      _currentUser = localUser;
+      await _resetPinThrottle();
+      _updateStatus(AuthStatus.authenticated);
+    } catch (_) {
+      if (sessionStorageStarted) {
+        try {
+          await _storage.clearLocalWorkspace();
+          await _storage.clearSession();
+          if (previousUser != null) await _storage.saveUser(previousUser);
+          if (previousTenantId != null) {
+            await _storage.saveTenantId(previousTenantId);
+          }
+          if (previousTenantSlug != null) {
+            await _storage.saveTenantSlug(previousTenantSlug);
+          }
+          if (previousBranchId != null) {
+            await _storage.saveBranchId(previousBranchId);
+          }
+          if (previousAccessToken != null) {
+            await _storage.saveAccessToken(previousAccessToken);
+          }
+          if (previousRefreshToken != null) {
+            await _storage.saveRefreshToken(previousRefreshToken);
+          }
+          await _storage.setPrimaryLoginMethod(previousPrimaryLoginMethod);
+          await _storage.restoreLocalPinCredential(previousPin);
+        } catch (_) {
+          // Preserve the original migration error; the device database and
+          // its cached records are still untouched.
+        }
+      }
+      rethrow;
+    } finally {
+      _creatingLocalWorkspace = false;
+    }
+  }
+
+  String _localSlug(String value) {
+    final slug = value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    return slug.isEmpty ? 'my-shop' : slug;
   }
 
   /// Logs into a phone-server (offline mode) using the offline-access PIN
@@ -332,7 +1077,37 @@ class AuthService implements LifecycleLockAuth {
   /// Sets (or replaces) this device's local quick-unlock PIN. Only call
   /// this while already authenticated — it does not itself grant access,
   /// it just configures the fast path for future unlocks.
-  Future<void> setLocalPin(String pin) => _storage.setLocalPin(pin);
+  Future<void> setLocalPin(String pin) async {
+    if (isLocalWorkspace) {
+      if (!isLocalWorkspaceOwner) {
+        throw StateError('Only the workspace owner can change the device PIN.');
+      }
+      if (await _localStaffPinAlreadyAssigned(pin)) {
+        throw StateError(
+          'That PIN is already assigned to a staff member. Choose a different PIN.',
+        );
+      }
+    }
+    await _storage.setLocalPin(pin);
+    await _resetPinThrottle();
+  }
+
+  /// Changes the signed-in local staff member's PIN without touching the
+  /// workspace owner's device PIN.
+  Future<void> setCurrentLocalStaffPin(String pin) async {
+    if (!isLocalWorkspace || _currentUser?['isLocalStaff'] != true) {
+      throw StateError('A local staff profile is not signed in.');
+    }
+    final userId = _currentUser?['id']?.toString() ?? '';
+    if (userId.isEmpty || !RegExp(r'^\d{4,6}$').hasMatch(pin)) {
+      throw StateError('Enter a valid 4–6 digit PIN.');
+    }
+    if (await _localPinAlreadyAssigned(pin, exceptUserId: userId)) {
+      throw StateError('That PIN is already in use. Choose a different PIN.');
+    }
+    await _storage.setLocalStaffPin(userId, pin);
+    await _resetPinThrottle();
+  }
 
   /// Verifies a PIN entirely on-device against the already-stored session,
   /// with no network call — the PIN equivalent of [loginWithBiometrics].
@@ -355,20 +1130,68 @@ class AuthService implements LifecycleLockAuth {
       return false;
     }
 
-    final validPin = await _storage.verifyLocalPin(pin);
+    final localWorkspaceUser = _storage.hasLocalWorkspace()
+        ? await _localWorkspaceUserForPin(pin)
+        : null;
+    final validPin = _storage.hasLocalWorkspace()
+        ? localWorkspaceUser != null
+        : await _storage.verifyLocalPin(pin);
     if (!validPin) {
       await _registerPinFailure();
       _pinThrottleMessage = _pinThrottleRemaining() ?? _defaultPinError;
       return false;
     }
 
+    if (localWorkspaceUser != null) {
+      try {
+        await _activateLocalWorkspaceUser(localWorkspaceUser);
+      } catch (_) {
+        _pinThrottleMessage = 'Could not open this local staff profile.';
+        return false;
+      }
+      await _resetPinThrottle();
+      return true;
+    }
+
     _accessToken = await _storage.getAccessToken();
     _currentUser = _storage.getUser();
-    if (_currentUser == null || _accessToken == null) return false;
+    if (_currentUser == null ||
+        (_accessToken?.isNotEmpty != true && !isLocalWorkspace)) {
+      return false;
+    }
 
     await _resetPinThrottle();
     await _storage.setAuthLocked(false);
     _updateStatus(AuthStatus.authenticated);
+    return true;
+  }
+
+  /// Verifies the current local PIN for a sensitive settings action without
+  /// changing the signed-in/locked state. Failed attempts share the same
+  /// persistent backoff as the normal unlock screen.
+  Future<bool> verifyLocalPinForSensitiveAction(String pin) async {
+    _pinThrottleMessage = null;
+    final throttleError = _pinThrottleRemaining();
+    if (throttleError != null) {
+      _pinThrottleMessage = throttleError;
+      return false;
+    }
+
+    final validPin = isLocalWorkspace
+        ? (_currentUser?['isLocalStaff'] == true
+            ? await _storage.verifyLocalStaffPin(
+                _currentUser?['id']?.toString() ?? '',
+                pin,
+              )
+            : await _storage.verifyLocalPin(pin))
+        : await _storage.verifyLocalPin(pin);
+    if (!validPin) {
+      await _registerPinFailure();
+      _pinThrottleMessage = _pinThrottleRemaining() ?? _defaultPinError;
+      return false;
+    }
+
+    await _resetPinThrottle();
     return true;
   }
 
@@ -432,6 +1255,9 @@ class AuthService implements LifecycleLockAuth {
   }
 
   Future<void> refreshTokens({String? expectedTenantId}) async {
+    if (isLocalWorkspace) {
+      throw StateError('Local workspaces do not use remote sessions.');
+    }
     if (expectedTenantId != null && tenantId != expectedTenantId) {
       throw StateError('The signed-in workspace changed during sync.');
     }
@@ -465,15 +1291,19 @@ class AuthService implements LifecycleLockAuth {
   }
 
   Future<void> logout({bool allDevices = false}) async {
-    final refreshToken = allDevices ? null : await _storage.getRefreshToken();
+    final localWorkspace = isLocalWorkspace;
+    final refreshToken =
+        allDevices || localWorkspace ? null : await _storage.getRefreshToken();
 
-    try {
-      await _apiClient.logout(
-        refreshToken: refreshToken,
-        allDevices: allDevices,
-      );
-    } catch (_) {
-      // Ignore logout API errors
+    if (!localWorkspace) {
+      try {
+        await _apiClient.logout(
+          refreshToken: refreshToken,
+          allDevices: allDevices,
+        );
+      } catch (_) {
+        // Ignore logout API errors
+      }
     }
 
     await _storage.clearSession();
@@ -484,11 +1314,13 @@ class AuthService implements LifecycleLockAuth {
     // happened to be cached locally (or an empty cache from a sync that
     // never succeeded). Deliberately does not touch cart/pending-sales/
     // sync-queue tables, which may hold unsynced offline data.
-    try {
-      await _database.clearCatalogCache();
-    } catch (_) {
-      // Non-fatal: the next login's sync will still overwrite stale rows
-      // once it succeeds.
+    if (!localWorkspace) {
+      try {
+        await _database.clearCatalogCache();
+      } catch (_) {
+        // Non-fatal: the next login's sync will still overwrite stale rows
+        // once it succeeds.
+      }
     }
 
     // Till rules and coupons belong to one company too.
@@ -523,7 +1355,12 @@ class AuthService implements LifecycleLockAuth {
   /// to call opportunistically (e.g. on app resume) — a network failure
   /// here just means permissions stay as they were until the next try.
   Future<void> refreshPermissions() async {
-    if (_currentUser == null || !isAuthenticated) return;
+    if (_currentUser == null ||
+        !isAuthenticated ||
+        isLocalWorkspace ||
+        !isUsingConfiguredLocalServer) {
+      return;
+    }
 
     try {
       final permissions = await _apiClient.getMyPermissions();
@@ -544,7 +1381,12 @@ class AuthService implements LifecycleLockAuth {
   /// foreground. This lets layout and terminology changes made on another
   /// device reach the current session without forcing staff to sign in again.
   Future<void> refreshTenantSettings() async {
-    if (_currentUser == null || !isAuthenticated) return;
+    if (_currentUser == null ||
+        !isAuthenticated ||
+        isLocalWorkspace ||
+        !isUsingConfiguredLocalServer) {
+      return;
+    }
     final now = DateTime.now();
     final lastRefresh = _lastTenantSettingsRefreshAt;
     if (lastRefresh != null && now.difference(lastRefresh).inSeconds < 60) {
@@ -595,25 +1437,283 @@ class AuthService implements LifecycleLockAuth {
   }
 
   Future<void> updateTenantSession(Map<String, dynamic> tenantData) async {
-    if (_currentUser == null) return;
+    final previousUser = _currentUser;
+    if (previousUser == null) return;
 
-    final currentTenant = _currentUser!['tenant'] is Map<String, dynamic>
-        ? Map<String, dynamic>.from(_currentUser!['tenant'])
+    final currentTenant = previousUser['tenant'] is Map
+        ? Map<String, dynamic>.from(previousUser['tenant'] as Map)
         : <String, dynamic>{};
-
-    _currentUser = {
-      ..._currentUser!,
-      'tenant': {
-        ...currentTenant,
-        ...tenantData,
-      },
+    final updatedTenant = <String, dynamic>{...currentTenant, ...tenantData};
+    final updatedUser = <String, dynamic>{
+      ...previousUser,
+      'tenant': updatedTenant,
     };
 
-    await _storage.saveUser(_currentUser!);
+    // Local workspaces keep their canonical owner profile inside the local
+    // workspace record too. Persist settings there as well, so signing out
+    // and back in with the owner PIN does not restore stale business settings.
+    if (isLocalWorkspace) {
+      final previousWorkspace = _storage.getLocalWorkspace();
+      if (previousWorkspace == null) {
+        throw StateError('The saved local shop profile is missing.');
+      }
+      final previousTenantSlug = _storage.getTenantSlug();
+      final updatedWorkspace = <String, dynamic>{
+        ...previousWorkspace,
+        'tenant': updatedTenant,
+        'user': updatedUser,
+      };
+      final updatedTenantSlug = tenantData['slug'] as String?;
+
+      try {
+        await _storage.saveLocalWorkspace(updatedWorkspace);
+        await _storage.saveUser(updatedUser);
+        if (updatedTenantSlug != null && updatedTenantSlug.isNotEmpty) {
+          await _storage.saveTenantSlug(updatedTenantSlug);
+        }
+        _currentUser = updatedUser;
+      } catch (_) {
+        // Keep the active profile and the PIN-unlock profile in step if one
+        // of the local preference writes fails partway through.
+        _currentUser = previousUser;
+        try {
+          await _storage.saveLocalWorkspace(previousWorkspace);
+          await _storage.saveUser(previousUser);
+          if (updatedTenantSlug != null && updatedTenantSlug.isNotEmpty) {
+            if (previousTenantSlug == null || previousTenantSlug.isEmpty) {
+              await _storage.clearTenantSlug();
+            } else {
+              await _storage.saveTenantSlug(previousTenantSlug);
+            }
+          }
+        } catch (_) {
+          // Preserve the original save failure for the caller.
+        }
+        rethrow;
+      }
+      return;
+    }
+
+    _currentUser = updatedUser;
+    await _storage.saveUser(updatedUser);
 
     final updatedTenantSlug = tenantData['slug'] as String?;
     if (updatedTenantSlug != null && updatedTenantSlug.isNotEmpty) {
       await _storage.saveTenantSlug(updatedTenantSlug);
+    }
+  }
+
+  /// Adds imported branches to an unlocked local owner profile while keeping
+  /// the current branch selected. Both copies of the local profile are
+  /// updated so the added branches survive a sign-out and PIN unlock.
+  Future<void> updateLocalWorkspaceBranches(
+    List<Map<String, dynamic>> branches,
+  ) async {
+    if (!isLocalWorkspace || !isAuthenticated || _currentUser == null) {
+      throw StateError('Unlock the local shop before updating its branches.');
+    }
+    final activeBranchId = _storage.getBranchId()?.trim();
+    if (activeBranchId == null ||
+        !branches.any((branch) => branch['id']?.toString() == activeBranchId)) {
+      throw StateError(
+        'The archive does not contain this device’s active shop branch.',
+      );
+    }
+
+    final normalizedBranches = branches
+        .map((branch) => <String, dynamic>{
+              ...branch,
+              'isPrimary': branch['id']?.toString() == activeBranchId,
+            })
+        .toList(growable: false);
+    final previousUser = Map<String, dynamic>.from(_currentUser!);
+    final updatedUser = <String, dynamic>{
+      ...previousUser,
+      'branches': normalizedBranches,
+    };
+    final previousWorkspace = _storage.getLocalWorkspace();
+    if (previousWorkspace == null) {
+      throw StateError('The saved local shop profile is missing.');
+    }
+    final updatedWorkspace = <String, dynamic>{
+      ...previousWorkspace,
+      'branches': normalizedBranches,
+      'user': updatedUser,
+    };
+    final availableBranches = {
+      for (final branch in normalizedBranches)
+        branch['id']?.toString() ?? '': branch,
+    }..remove('');
+    final previousStaffAccounts = _storage.getLocalStaffAccounts();
+    final updatedStaffAccounts = previousStaffAccounts.map((staff) {
+      final assignedBranchIds = <String>[];
+      final staffBranches = staff['branches'];
+      if (staffBranches is List) {
+        for (final value in staffBranches.whereType<Map>()) {
+          final id = value['id']?.toString() ?? '';
+          if (availableBranches.containsKey(id) &&
+              !assignedBranchIds.contains(id)) {
+            assignedBranchIds.add(id);
+          }
+        }
+      }
+      var staffBranchId = staff['branchId']?.toString() ?? '';
+      if (!availableBranches.containsKey(staffBranchId)) {
+        staffBranchId = assignedBranchIds.isEmpty
+            ? activeBranchId
+            : assignedBranchIds.first;
+      }
+      if (assignedBranchIds.isEmpty) assignedBranchIds.add(staffBranchId);
+      final scopedBranches = assignedBranchIds
+          .map((id) => <String, dynamic>{
+                ...availableBranches[id]!,
+                'isPrimary': id == staffBranchId,
+              })
+          .toList(growable: false);
+      final tenant = updatedUser['tenant'];
+      return <String, dynamic>{
+        ...staff,
+        'tenantId': updatedUser['tenantId'],
+        'tenantSlug': updatedUser['tenantSlug'],
+        if (tenant is Map) 'tenant': Map<String, dynamic>.from(tenant),
+        'branchId': staffBranchId,
+        'branchName': availableBranches[staffBranchId]!['name'],
+        'branches': scopedBranches,
+      };
+    }).toList(growable: false);
+
+    try {
+      await _storage.saveLocalWorkspace(updatedWorkspace);
+      await _storage.saveUser(updatedUser);
+      if (previousStaffAccounts.isNotEmpty) {
+        await _storage.saveLocalStaffAccounts(updatedStaffAccounts);
+      }
+      _currentUser = updatedUser;
+    } catch (_) {
+      try {
+        await _storage.saveLocalWorkspace(previousWorkspace);
+        await _storage.saveUser(previousUser);
+        if (previousStaffAccounts.isNotEmpty) {
+          await _storage.saveLocalStaffAccounts(previousStaffAccounts);
+        }
+      } catch (_) {
+        // Keep the original persistence error for the user.
+      }
+      rethrow;
+    }
+  }
+
+  /// Binds a new, empty local workspace to the identity from a trusted shop
+  /// archive. The caller must verify the workspace has no business records
+  /// before invoking this migration.
+  Future<void> adoptLocalArchiveIdentity({
+    required String tenantId,
+    required String tenantName,
+    required String tenantSlug,
+    required String activeBranchId,
+    required List<Map<String, dynamic>> branches,
+  }) async {
+    if (!isLocalWorkspace || !isAuthenticated || _currentUser == null) {
+      throw StateError('Unlock the local shop before restoring its archive.');
+    }
+    if (tenantId.trim().isEmpty ||
+        tenantName.trim().isEmpty ||
+        tenantSlug.trim().isEmpty) {
+      throw StateError('The archive shop identity is incomplete.');
+    }
+    if (!branches.any((branch) => branch['id']?.toString() == activeBranchId)) {
+      throw StateError('The archive has no selected branch.');
+    }
+
+    final normalizedBranches = branches
+        .map((branch) => <String, dynamic>{
+              ...branch,
+              'isPrimary': branch['id']?.toString() == activeBranchId,
+            })
+        .toList(growable: false);
+    final previousUser = Map<String, dynamic>.from(_currentUser!);
+    final previousWorkspace = _storage.getLocalWorkspace();
+    if (previousWorkspace == null) {
+      throw StateError('The saved local shop profile is missing.');
+    }
+    final previousStaffAccounts = _storage.getLocalStaffAccounts();
+    final previousTenantId = _storage.getTenantId();
+    final previousTenantSlug = _storage.getTenantSlug();
+    final previousBranchId = _storage.getBranchId();
+    final previousTenant = previousUser['tenant'] is Map
+        ? Map<String, dynamic>.from(previousUser['tenant'] as Map)
+        : <String, dynamic>{};
+    final updatedTenant = <String, dynamic>{
+      ...previousTenant,
+      'id': tenantId,
+      'name': tenantName,
+      'slug': tenantSlug,
+      'isActive': true,
+    };
+    final activeBranch = normalizedBranches.firstWhere(
+      (branch) => branch['id']?.toString() == activeBranchId,
+    );
+    final updatedUser = <String, dynamic>{
+      ...previousUser,
+      'tenantId': tenantId,
+      'tenantSlug': tenantSlug,
+      'tenant': updatedTenant,
+      'branchId': activeBranchId,
+      'branchName': activeBranch['name'],
+      'branches': normalizedBranches,
+    };
+    final updatedWorkspace = <String, dynamic>{
+      ...previousWorkspace,
+      'tenant': updatedTenant,
+      'branch': activeBranch,
+      'branches': normalizedBranches,
+      'user': updatedUser,
+      'restoredFromArchiveAt': DateTime.now().toUtc().toIso8601String(),
+    };
+    final updatedStaffAccounts = previousStaffAccounts
+        .map((staff) => <String, dynamic>{
+              ...staff,
+              'tenantId': tenantId,
+              'tenantSlug': tenantSlug,
+              'tenant': updatedTenant,
+              'branchId': activeBranchId,
+              'branchName': activeBranch['name'],
+              // Existing device-local staff keep their roles and PINs, but
+              // must not retain a branch assignment from the previous shop.
+              'branches': [Map<String, dynamic>.from(activeBranch)],
+            })
+        .toList(growable: false);
+
+    try {
+      await _storage.saveLocalWorkspace(updatedWorkspace);
+      await _storage.saveUser(updatedUser);
+      await _storage.saveTenantId(tenantId);
+      await _storage.saveTenantSlug(tenantSlug);
+      await _storage.saveBranchId(activeBranchId);
+      if (previousStaffAccounts.isNotEmpty) {
+        await _storage.saveLocalStaffAccounts(updatedStaffAccounts);
+      }
+      _currentUser = updatedUser;
+    } catch (_) {
+      try {
+        await _storage.saveLocalWorkspace(previousWorkspace);
+        await _storage.saveUser(previousUser);
+        if (previousStaffAccounts.isNotEmpty) {
+          await _storage.saveLocalStaffAccounts(previousStaffAccounts);
+        }
+        if (previousTenantId != null) {
+          await _storage.saveTenantId(previousTenantId);
+        }
+        if (previousTenantSlug != null) {
+          await _storage.saveTenantSlug(previousTenantSlug);
+        }
+        if (previousBranchId != null) {
+          await _storage.saveBranchId(previousBranchId);
+        }
+      } catch (_) {
+        // Preserve the original profile persistence error.
+      }
+      rethrow;
     }
   }
 
@@ -672,6 +1772,7 @@ class AuthService implements LifecycleLockAuth {
   /// nice-to-have side effect of login, not something login should ever
   /// fail over.
   Future<void> _registerDeviceIfPossible() async {
+    if (isLocalWorkspace) return;
     final deviceId = await _storage.ensureDeviceId();
     final branchId = _currentUser?['branchId'] as String?;
     if (branchId == null) return;
@@ -711,8 +1812,14 @@ class AuthService implements LifecycleLockAuth {
   Future<void> lockSession() async {
     if (!isAuthenticated) return;
 
+    // The preference can outlive the enrolled fingerprint/face or its saved
+    // session. Only count biometrics as an unlock route when the same checks
+    // used by the lock screen confirm that this device can restore the
+    // current session right now.
+    final hasBiometricUnlock =
+        _storage.isBiometricEnabled() && await isBiometricAvailable();
     final hasUnlockMethod = await _storage.hasLocalPinSet() ||
-        _storage.isBiometricEnabled() ||
+        hasBiometricUnlock ||
         hasServerPinSet;
     if (!hasUnlockMethod) return;
 
@@ -754,6 +1861,7 @@ class AuthService implements LifecycleLockAuth {
   /// cancelled or failed prompt means the setting must NOT be enabled.
   Future<bool> confirmBiometricEnrollment() async {
     try {
+      if (_storage.hasLocalWorkspace() && hasActiveLocalStaff) return false;
       final canCheck = await _localAuth.canCheckBiometrics;
       final isSupported = await _localAuth.isDeviceSupported();
       if (!canCheck || !isSupported) return false;
@@ -775,6 +1883,7 @@ class AuthService implements LifecycleLockAuth {
 
   Future<bool> isBiometricAvailable() async {
     try {
+      if (_storage.hasLocalWorkspace() && hasActiveLocalStaff) return false;
       final canCheck = await _localAuth.canCheckBiometrics;
       final isSupported = await _localAuth.isDeviceSupported();
 
@@ -787,12 +1896,23 @@ class AuthService implements LifecycleLockAuth {
       debugPrint('[AuthService] Available biometrics: $availableBiometrics');
 
       final storedAccessToken = await _storage.getAccessToken();
-      final hasStoredSession = _storage.getUser() != null &&
-          (storedAccessToken?.isNotEmpty ?? false);
+      final storedUser = _storage.getUser();
+      final hasStoredSession = storedUser != null &&
+          ((storedAccessToken?.isNotEmpty ?? false) ||
+              storedUser['authMode'] == 'local');
+      final localWorkspaceUser = _storage.getLocalWorkspace()?['user'];
+      final hasLocalWorkspaceProfile = localWorkspaceUser is Map &&
+          localWorkspaceUser['authMode'] == 'local' &&
+          (localWorkspaceUser['tenantId']?.toString().trim().isNotEmpty ??
+              false) &&
+          (localWorkspaceUser['tenantSlug']?.toString().trim().isNotEmpty ??
+              false) &&
+          (localWorkspaceUser['branchId']?.toString().trim().isNotEmpty ??
+              false);
       return canCheck &&
           isSupported &&
           availableBiometrics.isNotEmpty &&
-          hasStoredSession;
+          (hasStoredSession || hasLocalWorkspaceProfile);
     } catch (e) {
       debugPrint('[AuthService] Biometric availability check failed: $e');
       return false;
@@ -810,6 +1930,10 @@ class AuthService implements LifecycleLockAuth {
   Future<bool> loginWithBiometrics() async {
     try {
       debugPrint('[AuthService] Starting biometric authentication...');
+
+      // Biometric APIs do not identify which enrolled person authenticated.
+      // Never use one to sign a shared local register into its saved owner.
+      if (_storage.hasLocalWorkspace() && hasActiveLocalStaff) return false;
 
       if (!_storage.isBiometricEnabled()) {
         debugPrint('[AuthService] Biometric login is disabled in settings');
@@ -836,12 +1960,55 @@ class AuthService implements LifecycleLockAuth {
         // Check if we have a stored user session to restore
         _accessToken = await _storage.getAccessToken();
         _currentUser = _storage.getUser();
+        var restoredLocalWorkspaceProfile = false;
+        final hasRestorableSession = _currentUser != null &&
+            (_currentUser!['authMode'] == 'local' ||
+                _accessToken?.isNotEmpty == true);
+
+        // A full local-workspace logout clears the cached session user but
+        // intentionally keeps the device-owned workspace profile and PIN.
+        // Restore that profile after successful device biometric proof, just
+        // as loginWithPin does, instead of showing a biometric button that
+        // can never complete sign-in. A stale cloud user with an empty token
+        // must not prevent recovery of the saved local workspace either.
+        if (!hasRestorableSession && _storage.hasLocalWorkspace()) {
+          _currentUser = null;
+          _accessToken = null;
+          final rawUser = _storage.getLocalWorkspace()?['user'];
+          if (rawUser is Map) {
+            final localUser = Map<String, dynamic>.from(rawUser);
+            final tenantId = localUser['tenantId']?.toString().trim() ?? '';
+            final tenantSlug = localUser['tenantSlug']?.toString().trim() ?? '';
+            final branchId = localUser['branchId']?.toString().trim() ?? '';
+            if (localUser['authMode'] == 'local' &&
+                tenantId.isNotEmpty &&
+                tenantSlug.isNotEmpty &&
+                branchId.isNotEmpty) {
+              await _storage.saveTenantId(tenantId);
+              await _storage.saveTenantSlug(tenantSlug);
+              await _storage.saveBranchId(branchId);
+              await _storage.setAuthLocked(false);
+              await _resetPinThrottle();
+              // Persist the user last: a partial secure-storage recovery must
+              // not leave a cached local session that cold-start auth could
+              // mistake for a completed biometric sign-in.
+              await _storage.saveUser(localUser);
+              _currentUser = localUser;
+              _accessToken = null;
+              restoredLocalWorkspaceProfile = true;
+            }
+          }
+        }
 
         debugPrint(
-            '[AuthService] Restored session - accessToken: ${_accessToken != null}, user: ${_currentUser != null}');
+            '[AuthService] Restored session - accessToken: ${_accessToken?.isNotEmpty == true}, user: ${_currentUser != null}');
 
-        if (_currentUser != null && _accessToken != null) {
-          await _storage.setAuthLocked(false);
+        if (_currentUser != null &&
+            (_accessToken?.isNotEmpty == true || isLocalWorkspace)) {
+          if (!restoredLocalWorkspaceProfile) {
+            await _resetPinThrottle();
+            await _storage.setAuthLocked(false);
+          }
           _updateStatus(AuthStatus.authenticated);
           debugPrint('[AuthService] Biometric login successful!');
           return true;

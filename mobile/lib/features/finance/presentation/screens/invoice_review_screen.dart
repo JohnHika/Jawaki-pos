@@ -3,8 +3,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 
 import '../../../../core/di/injection.dart';
+import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/connectivity_service.dart';
@@ -95,9 +98,22 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
   double get _paid => double.tryParse(_paidController.text) ?? 0;
   double get _due => (_total - _paid).clamp(0, double.infinity).toDouble();
 
-  bool get _canSave =>
-      _supplierController.text.trim().isNotEmpty &&
-      _itemRows.any((item) => item.name.trim().isNotEmpty);
+  bool get _canSave {
+    final items = _itemRows.where((item) => item.name.isNotEmpty).toList();
+    final paid = double.tryParse(_paidController.text.trim());
+    return _supplierController.text.trim().isNotEmpty &&
+        items.isNotEmpty &&
+        _total.isFinite &&
+        paid != null &&
+        paid.isFinite &&
+        paid >= 0 &&
+        paid <= _total + 0.005 &&
+        items.every((item) =>
+            item.quantity.isFinite &&
+            item.quantity > 0 &&
+            item.unitCost.isFinite &&
+            item.unitCost >= 0);
+  }
 
   InputDecoration _fieldDecoration(
     BuildContext context, {
@@ -453,14 +469,49 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
     };
 
     try {
-      if (getIt<ConnectivityService>().isOnline) {
+      final authService = getIt<AuthService>();
+      if (authService.isLocalWorkspace) {
+        final receiptPath =
+            await _copyReceiptIntoWorkspace(widget.scan.imagePath);
+        final localItems = _itemRows
+            .where((item) => item.name.isNotEmpty)
+            .map((item) => <String, dynamic>{
+                  'name': item.name,
+                  'sku': item.skuController.text.trim(),
+                  'quantity': item.quantity,
+                  'unit': 'piece',
+                  'unitCost': item.unitCost,
+                  'lineTotal': item.lineTotal,
+                })
+            .toList(growable: false);
+        await getIt<AppDatabase>().recordSupplierInvoice(
+          branchId: branchId,
+          supplierName: _supplierController.text.trim(),
+          invoiceNumber: _invoiceController.text.trim().isEmpty
+              ? null
+              : _invoiceController.text.trim(),
+          receiptImagePath: receiptPath,
+          ocrText: widget.scan.rawText,
+          summary: widget.scan.summary,
+          terms: _termsController.text.trim().isEmpty
+              ? 'pay_later'
+              : _termsController.text.trim(),
+          paidAmount: double.parse(_paidController.text.trim()),
+          dueDate: _dueDate,
+          items: localItems,
+        );
+        if (mounted) {
+          showGlassSnackBar(context,
+              'Supplier invoice saved on this device and stock updated',
+              icon: Icons.check_circle_rounded, color: DesignColors.success);
+        }
+      } else if (getIt<ConnectivityService>().isOnline) {
         await getIt<ApiClient>().createSupplierInvoice(payload);
         if (mounted) {
           showGlassSnackBar(context, 'Supplier invoice saved and stock updated',
               icon: Icons.check_circle_rounded, color: DesignColors.success);
         }
       } else {
-        final authService = getIt<AuthService>();
         await getIt<SyncService>().queueSyncItem(
           tableName: 'suppliers',
           recordId: 'offline-invoice-${DateTime.now().microsecondsSinceEpoch}',
@@ -489,6 +540,31 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<String?> _copyReceiptIntoWorkspace(String sourcePath) async {
+    if (sourcePath.isEmpty || sourcePath.startsWith('http')) return null;
+    try {
+      final source = File(sourcePath);
+      if (!await source.exists()) return null;
+      final support = await getApplicationSupportDirectory();
+      final directory = Directory(
+        path.join(support.path, 'Counterbase', 'supplier-receipts'),
+      );
+      await directory.create(recursive: true);
+      final extension = path.extension(sourcePath).toLowerCase();
+      final safeExtension =
+          RegExp(r'^\.[a-z0-9]{1,8}$').hasMatch(extension) ? extension : '.jpg';
+      final target = path.join(
+        directory.path,
+        'receipt-${DateTime.now().microsecondsSinceEpoch}$safeExtension',
+      );
+      return (await source.copy(target)).path;
+    } catch (_) {
+      // The invoice and inventory update are still useful if the temporary
+      // camera file has disappeared or storage is unavailable.
+      return null;
     }
   }
 }
@@ -556,8 +632,11 @@ class _InvoiceItemCard extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: DesignSpacing.md),
       child: Container(
         padding: const EdgeInsets.all(DesignSpacing.radiusMd + 2),
-        decoration:
-            BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
+        decoration: BoxDecoration(
+          color: surface,
+          border: Border.all(color: border),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -726,7 +805,11 @@ class _InvoiceTotalsCard extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.lg),
-      decoration: BoxDecoration(color: fill, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
+      decoration: BoxDecoration(
+        color: fill,
+        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+      ),
       child: Column(
         children: [
           _row('Total', total, secondaryColor, titleColor),

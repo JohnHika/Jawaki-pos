@@ -19,6 +19,7 @@ import '../../../../core/utils/format.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import 'cart_provider.dart';
 
+const _maxSafeCurrencyAmount = 90071992547409.9;
 const _uuid = Uuid();
 
 /// One payment component of a split sale, e.g. { method: CASH, amount: 500 }.
@@ -130,7 +131,11 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         _connectivity = connectivity,
         _storageService = storageService,
         super(const PaymentState()) {
-    unawaited(ensurePendingMerchantPaymentLoaded());
+    // A local workspace has no provider-backed M-Pesa flow. Recovery belongs
+    // to the retired online checkout and must not delay or lock local sales.
+    if (!_authService.isLocalWorkspace) {
+      unawaited(ensurePendingMerchantPaymentLoaded());
+    }
   }
 
   bool get hasUnresolvedMerchantPayment => _hasUnresolvedMerchantPayment;
@@ -167,6 +172,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   /// When [force] is true, it also refreshes the backend's saved status for the
   /// same request; it never creates or retries a provider charge.
   Future<void> ensurePendingMerchantPaymentLoaded({bool force = false}) {
+    if (_authService.isLocalWorkspace) return Future<void>.value();
     final scope = _currentMerchantPaymentScope();
     if (scope == null) return Future<void>.value();
     if (_hasUnresolvedMerchantPayment && !_isRecoveredMerchantPayment) {
@@ -454,7 +460,18 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     if (!amount.isFinite ||
         !tenderedAmount.isFinite ||
         amount <= 0 ||
-        (tenderedAmount * 100).round() < (amount * 100).round()) {
+        amount > _maxSafeCurrencyAmount ||
+        tenderedAmount > _maxSafeCurrencyAmount ||
+        !discountAmount.isFinite ||
+        discountAmount < 0 ||
+        items.isEmpty) {
+      state = state.copyWith(
+        isProcessing: false,
+        error: 'Check the sale amount and items before recording payment.',
+      );
+      return null;
+    }
+    if ((tenderedAmount * 100).round() < (amount * 100).round()) {
       state = state.copyWith(
         isProcessing: false,
         error: 'Cash received must cover the sale total.',
@@ -511,6 +528,13 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String? customerId,
     String? couponCode,
   }) async {
+    if (_authService.isLocalWorkspace) {
+      state = state.copyWith(
+        isProcessing: false,
+        error: 'Online M-Pesa is unavailable in this local-only edition.',
+      );
+      return null;
+    }
     await ensurePendingMerchantPaymentLoaded();
     if (_isRecoveredMerchantPayment) {
       state = state.copyWith(
@@ -785,9 +809,22 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     final sessionGeneration = _sessionGeneration;
     state = state.copyWith(isProcessing: true, error: null);
 
+    if (!amount.isFinite ||
+        amount <= 0 ||
+        amount > _maxSafeCurrencyAmount ||
+        !discountAmount.isFinite ||
+        discountAmount < 0 ||
+        items.isEmpty) {
+      state = state.copyWith(
+        isProcessing: false,
+        error: 'Check the sale amount and items before recording credit.',
+      );
+      return null;
+    }
+
     // A credit (debt) sale must be attributable to a customer — otherwise
     // there's no one to record the debt against and no way to collect it.
-    if (customerId == null) {
+    if (customerId == null || customerId.trim().isEmpty) {
       state = state.copyWith(
         isProcessing: false,
         error: 'Select a customer before selling on debt',
@@ -851,6 +888,19 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     final sessionGeneration = _sessionGeneration;
     state = state.copyWith(isProcessing: true, error: null);
 
+    if (!amount.isFinite ||
+        amount <= 0 ||
+        amount > _maxSafeCurrencyAmount ||
+        !discountAmount.isFinite ||
+        discountAmount < 0 ||
+        items.isEmpty) {
+      state = state.copyWith(
+        isProcessing: false,
+        error: 'Check the sale amount and items before splitting payment.',
+      );
+      return null;
+    }
+
     if (tenders.any((tender) => tender.method == 'MPESA')) {
       state = state.copyWith(
         isProcessing: false,
@@ -878,10 +928,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     }
 
     final tenderTotal = tenders.fold<double>(0, (sum, t) => sum + t.amount);
-    const maxSafeCurrencyAmount = 90071992547409.9;
     if (!tenderTotal.isFinite ||
-        tenderTotal > maxSafeCurrencyAmount ||
-        amount > maxSafeCurrencyAmount) {
+        tenderTotal > _maxSafeCurrencyAmount ||
+        amount > _maxSafeCurrencyAmount) {
       state = state.copyWith(
         isProcessing: false,
         error: 'The split amounts are too large. Check them and try again.',
@@ -897,7 +946,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     }
 
     final debtPortion = debtTenders.single.amount;
-    if (debtPortion > 0 && customerId == null) {
+    if (debtPortion > 0 && (customerId == null || customerId.trim().isEmpty)) {
       state = state.copyWith(
         isProcessing: false,
         error: 'Select a customer before adding a debt portion',
@@ -980,6 +1029,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         cashierId: _authService.userId!,
         branchId: _authService.branchId!,
         status: const Value('COMPLETED'),
+        isSynced: Value(_authService.isLocalWorkspace),
+        syncedAt: _authService.isLocalWorkspace
+            ? Value(DateTime.now())
+            : const Value.absent(),
         createdAt: DateTime.now(),
       ),
       items
@@ -990,6 +1043,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
                 sku: item.sku,
                 quantity: item.quantity,
                 unitPrice: item.unitPrice,
+                discount: Value(item.discount),
                 total: item.total,
                 // Capture the tier this line was sold at so the receipt can
                 // show "1 box @ 1,200 (12 pcs @ 100/pc)". saleUnit is the sold
@@ -1000,6 +1054,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           .toList(),
       customerBalanceDelta: customerBalanceDelta,
       decrementLocalStock: true,
+      recordLocalCustomerPurchase: _authService.isLocalWorkspace,
     );
   }
 
@@ -1013,6 +1068,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String? customerId,
     _SaleExtras extras = const _SaleExtras(),
   ]) async {
+    if (_authService.isLocalWorkspace) return;
     final sessionGeneration = _sessionGeneration;
     // The sale and stock deduction are already committed locally. Persist its
     // outbox event before returning, then let the normal sync worker upload it

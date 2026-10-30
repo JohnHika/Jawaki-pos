@@ -226,16 +226,18 @@ class ReceiptPrinterService {
       bytes.addAll(generator.text('Paid by: $paymentMethod'));
     }
 
-    // Balance owed on credit.
-    final owed = (receipt['outstandingBalance'] as num?)?.toDouble() ?? 0;
-    if (owed > 0.01) {
+    // This is the amount added at checkout, not the customer's current
+    // account balance after later collections.
+    final creditAdded =
+        (receipt['creditAmountAtSale'] as num?)?.toDouble() ?? 0;
+    if (creditAdded > 0.01) {
       bytes.addAll(generator.row([
         PosColumn(
-            text: 'BALANCE OWED',
+            text: 'CREDIT ADDED',
             width: 6,
             styles: const PosStyles(bold: true)),
         PosColumn(
-            text: owed.toStringAsFixed(2),
+            text: creditAdded.toStringAsFixed(2),
             width: 6,
             styles: const PosStyles(align: PosAlign.right, bold: true)),
       ]));

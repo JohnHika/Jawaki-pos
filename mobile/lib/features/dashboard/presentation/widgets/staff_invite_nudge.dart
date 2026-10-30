@@ -37,9 +37,9 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
   @override
   void didUpdateWidget(covariant StaffInviteNudge oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Re-check on every dashboard rebuild so the nudge stays in sync
-    // with the onboarding state (e.g. after returning from /invite-staff).
-    _checkStaffStatus();
+    if (oldWidget.onboardingLoader != widget.onboardingLoader) {
+      _checkStaffStatus();
+    }
   }
 
   Future<void> _checkStaffStatus() async {
@@ -167,7 +167,10 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
                       child: GradientButton(
                         label: 'Invite Staff Now',
                         icon: Icons.send_rounded,
-                        onPressed: () => context.push('/users'),
+                        onPressed: () async {
+                          await context.push('/users');
+                          if (mounted) await _checkStaffStatus();
+                        },
                         height: 42,
                         borderRadius: 10,
                       ),

@@ -20,19 +20,22 @@ enum AppRole {
 
   /// Display label.
   String get label => switch (this) {
-    AppRole.seller       => 'Seller',
-    AppRole.stockKeeper  => 'Stock Keeper',
-    AppRole.storeManager => 'Store Manager',
-    AppRole.admin        => 'Admin',
-  };
+        AppRole.seller => 'Seller',
+        AppRole.stockKeeper => 'Stock Keeper',
+        AppRole.storeManager => 'Store Manager',
+        AppRole.admin => 'Admin',
+      };
 
   /// Best-effort display role derived from a granular permission set —
   /// used only for a UI chip, never for gating. Highest tier wins.
   static AppRole fromPermissions(Set<String> permissions) {
-    if (permissions.contains('roles.update') || permissions.contains('audit.read')) {
+    if (permissions.contains('*')) return AppRole.admin;
+    if (permissions.contains('roles.update') ||
+        permissions.contains('audit.read')) {
       return AppRole.admin;
     }
-    if (permissions.contains('reporting.dashboard') || permissions.contains('products.create')) {
+    if (permissions.contains('reporting.dashboard') ||
+        permissions.contains('products.create')) {
       return AppRole.storeManager;
     }
     if (permissions.contains('inventory.stock.adjust')) {
@@ -44,11 +47,11 @@ enum AppRole {
   /// Legacy string parse, kept for any code still passing the old
   /// LegacyUserRole string (e.g. before permissions are fetched).
   static AppRole fromString(String? value) => switch (value?.toLowerCase()) {
-    'admin'         => AppRole.admin,
-    'manager' || 'store_manager' || 'storemanager' => AppRole.storeManager,
-    'supervisor' || 'stock_keeper' || 'stockkeeper' => AppRole.stockKeeper,
-    _               => AppRole.seller,
-  };
+        'admin' => AppRole.admin,
+        'manager' || 'store_manager' || 'storemanager' => AppRole.storeManager,
+        'supervisor' || 'stock_keeper' || 'stockkeeper' => AppRole.stockKeeper,
+        _ => AppRole.seller,
+      };
 }
 
 /// Thin reflector over the backend-computed effective permission set.
@@ -59,7 +62,8 @@ class RolePermissions {
   final AppRole role;
 
   RolePermissions(List<dynamic>? permissions)
-      : _permissions = (permissions ?? const []).map((e) => e.toString()).toSet(),
+      : _permissions =
+            (permissions ?? const []).map((e) => e.toString()).toSet(),
         role = AppRole.fromPermissions(
           (permissions ?? const []).map((e) => e.toString()).toSet(),
         );
@@ -67,21 +71,24 @@ class RolePermissions {
   /// Escape hatch for raw key checks — used by the role editor / user
   /// permission override screens, which need every one of the ~130 keys,
   /// not just the fixed getters below.
-  bool has(String key) => _permissions.contains(key);
+  bool has(String key) =>
+      _permissions.contains('*') || _permissions.contains(key);
 
-  bool _any(List<String> keys) => keys.any(_permissions.contains);
+  bool _any(List<String> keys) =>
+      _permissions.contains('*') || keys.any(_permissions.contains);
 
   // ── Bottom-nav tabs ──────────────────────────
-  bool get canSeePOS        => canMakeSales;
-  bool get canSeeDashboard  => has('reporting.dashboard');
-  bool get canSeeProducts   => has('products.view');
-  bool get canSeeInventory  => has('inventory.stock.view');
-  bool get canSeeReports    => _any(['reporting.sales_summary', 'reporting.dashboard']);
-  bool get canSeeSettings   => true; // everyone, but content differs
+  bool get canSeePOS => canMakeSales;
+  bool get canSeeDashboard => has('reporting.dashboard');
+  bool get canSeeProducts => has('products.view');
+  bool get canSeeInventory => has('inventory.stock.view');
+  bool get canSeeReports =>
+      _any(['reporting.sales_summary', 'reporting.dashboard']);
+  bool get canSeeSettings => true; // everyone, but content differs
   bool get canSeePayments =>
       _any(['payments.view_status', 'payments.view_methods']);
   bool get canSeeCustomers => has('customers.view');
-  bool get canSeeReceipts  => has('sales.view');
+  bool get canSeeReceipts => has('sales.view');
 
   /// First useful surface the current role is allowed to open.
   String get homePath {
@@ -98,55 +105,56 @@ class RolePermissions {
   }
 
   // ── Product capabilities ─────────────────────
-  bool get canViewProducts  => has('products.view');
-  bool get canEditProducts  => has('products.update');
+  bool get canViewProducts => has('products.view');
+  bool get canEditProducts => has('products.update');
 
   // ── Inventory ────────────────────────────────
-  bool get canManageStock   => has('inventory.stock.adjust');
+  bool get canManageStock => has('inventory.stock.adjust');
 
   // ── Sales ────────────────────────────────────
-  bool get canMakeSales     => has('sales.create');
-  bool get canViewAllSales  => has('sales.view_all');
-  bool get canVoidSales     => has('sales.void');
+  bool get canMakeSales => has('sales.create');
+  bool get canViewAllSales => has('sales.view_all');
+  bool get canVoidSales => has('sales.void');
   bool get canApplyDiscount => has('sales.discount');
 
   // ── Settings sections ────────────────────────
-  bool get canConfigurePrinter       => has('settings.printer_configure');
-  bool get canConfigureSync          => has('settings.sync_configure');
+  bool get canConfigurePrinter => has('settings.printer_configure');
+  bool get canConfigureSync => has('settings.sync_configure');
   bool get canConfigureNotifications => has('settings.notifications_configure');
-  bool get canChangePin              => true;
-  bool get canConfigureSecurity      => has('settings.security_configure');
-  bool get canSeeHelpSupport         => true;
-  bool get canSeeAbout               => true;
-  bool get canSeeAppearance          => true;
+  bool get canChangePin => true;
+  bool get canConfigureSecurity => has('settings.security_configure');
+  bool get canSeeHelpSupport => true;
+  bool get canSeeAbout => true;
+  bool get canSeeAppearance => true;
 
   // ── Admin-only ───────────────────────────────
-  bool get canManageUsers             => has('users.view');
-  bool get canInviteStaff             => has('users.create');
-  bool get canManageBranches          => has('branches.create');
-  bool get canUpdateBranches          => has('branches.update');
-  bool get canDeleteBranches          => has('branches.delete');
-  bool get canViewFinance              => has('finance.view');
-  bool get canManageReceivables        => has('finance.manage_receivables');
-  bool get canManageMerchantPayout     => has('payments.manage_payout');
-  bool get canRecordSupplierPayment    => has('suppliers.payments_record');
-  bool get canSeeFinancialReports     => has('reporting.financial');
-  bool get canSeeAuditTrail           => has('audit.read');
-  bool get canExportData              => has('data.export');
-  bool get canConfigureSystemSecurity => has('settings.system_security_configure');
+  bool get canManageUsers => has('users.view');
+  bool get canInviteStaff => has('users.create');
+  bool get canManageBranches => has('branches.create');
+  bool get canUpdateBranches => has('branches.update');
+  bool get canDeleteBranches => has('branches.delete');
+  bool get canViewFinance => has('finance.view');
+  bool get canManageReceivables => has('finance.manage_receivables');
+  bool get canManageMerchantPayout => has('payments.manage_payout');
+  bool get canRecordSupplierPayment => has('suppliers.payments_record');
+  bool get canSeeFinancialReports => has('reporting.financial');
+  bool get canSeeAuditTrail => has('audit.read');
+  bool get canExportData => has('data.export');
+  bool get canConfigureSystemSecurity =>
+      has('settings.system_security_configure');
 
   // ── Cash flow & restocking ───────────────────
-  bool get canViewCashFlow   => has('cash_flow.settings_view');
-  bool get canRecordRestock  => has('suppliers.invoices_create');
-  bool get canReconcileCash  => has('cash_reconciliation.create');
-  bool get canCloseEndOfDay  => has('sales.close_end_of_day');
+  bool get canViewCashFlow => has('cash_flow.settings_view');
+  bool get canRecordRestock => has('suppliers.invoices_create');
+  bool get canReconcileCash => has('cash_reconciliation.create');
+  bool get canCloseEndOfDay => has('sales.close_end_of_day');
 
   // ── Roles & permissions admin (new) ──────────
-  bool get canManageRoles            => has('roles.view');
-  bool get canCreateRoles             => has('roles.create');
-  bool get canUpdateRoles             => has('roles.update');
-  bool get canDeleteRoles             => has('roles.delete');
-  bool get canAssignRoles            => has('permissions.assign_role');
+  bool get canManageRoles => has('roles.view');
+  bool get canCreateRoles => has('roles.create');
+  bool get canUpdateRoles => has('roles.update');
+  bool get canDeleteRoles => has('roles.delete');
+  bool get canAssignRoles => has('permissions.assign_role');
   bool get canOverrideUserPermissions => has('permissions.override_user');
 
   /// True only for the Admin display role (see [AppRole.fromPermissions]).

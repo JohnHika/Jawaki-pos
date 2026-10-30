@@ -1,59 +1,22 @@
-import 'dart:async';
-
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:axon_pos/core/config/google_auth_config.dart';
+import 'package:axon_pos/core/auth/app_roles.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
-import 'package:axon_pos/core/legal/policy_catalog.dart';
 import 'package:axon_pos/core/providers/business_layout_provider.dart';
+import 'package:axon_pos/core/providers/local_workspace_capabilities.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
-import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/core/widgets/business_layout_preview.dart';
 import 'package:axon_pos/core/widgets/business_layout_profile_picker.dart';
 import 'package:axon_pos/core/widgets/motion.dart';
 
-String companySetupErrorMessage(Object error) {
-  if (error is DioException) {
-    final status = error.response?.statusCode;
-    final data = error.response?.data;
-    final message =
-        (data is Map ? data['message'] : null)?.toString().toLowerCase() ?? '';
-    if (message.contains('already exists')) {
-      return 'A workspace with this name already exists. Choose a different name.';
-    }
-    if (message.contains('expired') || message.contains('invalid')) {
-      return 'That verification code is invalid or expired. Request a new code and try again.';
-    }
-    if (status == 409) return 'A workspace with these details already exists.';
-    if (status == 400 || status == 422) {
-      return 'Check the details and verification code, then try again.';
-    }
-    if (status == 401) return 'Verification was not accepted. Try again.';
-    if (status != null && status >= 500) {
-      return 'Counterbase could not create your workspace right now. Try again shortly.';
-    }
-    if (error.type == DioExceptionType.connectionError) {
-      return 'We could not reach Counterbase. Check your connection and try again.';
-    }
-    if (error.type == DioExceptionType.connectionTimeout ||
-        error.type == DioExceptionType.receiveTimeout ||
-        error.type == DioExceptionType.sendTimeout) {
-      return 'The connection timed out. Check your network and try again.';
-    }
-  }
-  return 'We could not complete verification. Please try again.';
-}
-
-enum _VerificationMode { google, emailOtp }
-
-/// Creates a first workspace only after Google or email ownership verification.
-/// Passwords are intentionally neither collected nor sent by this screen.
+/// Creates the first workspace locally on this device. The owner's PIN is
+/// protected by platform secure storage and no identity or business data is
+/// sent to an online POS service.
 class CompanySetupScreen extends ConsumerStatefulWidget {
   const CompanySetupScreen({super.key});
 
@@ -72,23 +35,25 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   final _branchCodeController = TextEditingController();
   final _branchAddressController = TextEditingController();
   final _branchPhoneController = TextEditingController();
-  final _otpController = TextEditingController();
-  final _businessLayoutSearchController = TextEditingController();
-
+  final _ownerPinController = TextEditingController();
+  final _confirmOwnerPinController = TextEditingController();
   int _currentStep = 0;
   bool _isLoading = false;
-  bool _acceptedSignupPolicies = false;
-  bool _showAllBusinessLayouts = false;
+  bool _acceptedLocalDataNotice = false;
   String _businessLayoutId = 'general_retail';
   List<String> _additionalBusinessLayoutIds = [];
   List<String> _posQuickActions =
       businessLayoutDefaultPosQuickActions('general_retail', const []);
-  String _businessLayoutSearch = '';
   String? _errorMessage;
-  String? _challengeId;
-  String? _challengeEmail;
-  String? _verifiedGoogleEmail;
-  _VerificationMode _verificationMode = _VerificationMode.google;
+
+  @override
+  void initState() {
+    super.initState();
+    // A standalone install starts with one location. Give it a clear, usable
+    // default so owners are not forced to invent an internal branch code.
+    _branchNameController.text = 'Main location';
+    _branchCodeController.text = 'MAIN';
+  }
 
   @override
   void dispose() {
@@ -101,8 +66,8 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
       _branchCodeController,
       _branchAddressController,
       _branchPhoneController,
-      _otpController,
-      _businessLayoutSearchController,
+      _ownerPinController,
+      _confirmOwnerPinController,
     ]) {
       controller.dispose();
     }
@@ -123,15 +88,14 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
       deviceId: getIt<AuthService>().deviceId,
       branch: WorkspaceBranchDetails(
         name: _branchNameController.text.trim(),
-        code: _branchCodeController.text.trim().toUpperCase(),
+        code: _optional(_branchCodeController)?.toUpperCase(),
         address: _optional(_branchAddressController),
         phone: _optional(_branchPhoneController),
-        email: _verificationMode == _VerificationMode.google &&
-                _verifiedGoogleEmail != null
-            ? _verifiedGoogleEmail!
-            : _emailController.text.trim(),
+        email: _emailController.text.trim(),
       ),
-      acceptedPolicyTypes: kSignupPolicyTypes,
+      // Local setup records the explicit local-data notice instead of
+      // pretending that remote signup policies were accepted.
+      acceptedPolicyTypes: const [],
       settings: {
         'businessLayout': BusinessLayoutConfig(
           preset: preset,
@@ -197,16 +161,175 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     });
   }
 
+  Future<void> _choosePrimaryBusinessProfile() async {
+    final searchController = TextEditingController();
+    String? selectedId;
+    try {
+      selectedId = await showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: context.themed(DesignColors.darkSurface),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        ),
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            final query = searchController.text.trim().toLowerCase();
+            final profiles = businessLayoutPresets
+                .where((profile) =>
+                    businessLayoutProfileMatchesSearch(profile, query))
+                .toList(growable: false);
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+              ),
+              child: SizedBox(
+                height: MediaQuery.sizeOf(sheetContext).height * .82,
+                child: Column(
+                  children: [
+                    const SizedBox(height: 10),
+                    Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: context.themed(DesignColors.darkBorder),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Choose your shop type',
+                            style: Theme.of(sheetContext)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            'This sets helpful starting defaults. You can fine-tune the layout later.',
+                            style: Theme.of(sheetContext)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: context.themed(
+                                      DesignColors.darkTextSecondary),
+                                ),
+                          ),
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: searchController,
+                            onChanged: (_) => setSheetState(() {}),
+                            decoration: InputDecoration(
+                              hintText: 'Search shop types',
+                              prefixIcon: const Icon(Icons.search_rounded),
+                              suffixIcon: query.isEmpty
+                                  ? null
+                                  : IconButton(
+                                      tooltip: 'Clear search',
+                                      onPressed: () {
+                                        searchController.clear();
+                                        setSheetState(() {});
+                                      },
+                                      icon: const Icon(Icons.close_rounded),
+                                    ),
+                              border: const OutlineInputBorder(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: profiles.isEmpty
+                          ? const Center(child: Text('No shop types match.'))
+                          : ListView.separated(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              itemCount: profiles.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 6),
+                              itemBuilder: (context, index) {
+                                final profile = profiles[index];
+                                final selected =
+                                    profile.id == _businessLayoutId;
+                                return ListTile(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                    side: BorderSide(
+                                      color: selected
+                                          ? DesignColors.brand
+                                          : context.themed(
+                                              DesignColors.darkBorder),
+                                    ),
+                                  ),
+                                  leading: CircleAvatar(
+                                    backgroundColor: DesignColors.brand
+                                        .withValues(alpha: .12),
+                                    child: Icon(profile.icon,
+                                        color: DesignColors.brand, size: 20),
+                                  ),
+                                  title: Text(profile.name),
+                                  subtitle: Text(profile.description),
+                                  trailing: selected
+                                      ? const Icon(Icons.check_circle_rounded,
+                                          color: DesignColors.brand)
+                                      : const Icon(Icons.chevron_right_rounded),
+                                  onTap: () => Navigator.of(sheetContext)
+                                      .pop(profile.id),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    } finally {
+      searchController.dispose();
+    }
+    if (selectedId == null || !mounted || selectedId == _businessLayoutId) {
+      return;
+    }
+
+    final previousProfileId = _businessLayoutId;
+    final previousAdditionalIds = [..._additionalBusinessLayoutIds];
+    setState(() {
+      _businessLayoutId = selectedId!;
+      _additionalBusinessLayoutIds.remove(selectedId);
+      _posQuickActions = businessLayoutReconcileRecommendations(
+        current: _posQuickActions,
+        previousRecommendations: businessLayoutDefaultPosQuickActions(
+          previousProfileId,
+          previousAdditionalIds,
+        ),
+        nextRecommendations: businessLayoutDefaultPosQuickActions(
+          _businessLayoutId,
+          _additionalBusinessLayoutIds,
+        ),
+      );
+    });
+  }
+
   String? _optional(TextEditingController controller) {
     final value = controller.text.trim();
     return value.isEmpty ? null : value;
   }
 
-  Future<void> _createWithGoogle() async {
-    if (_isLoading) return;
-    if (!_acceptedSignupPolicies) {
-      _showError(
-          'Accept the Terms of Service and Data Processing Addendum, and review the Privacy Notice, to create a workspace.');
+  Future<void> _createLocalWorkspace() async {
+    if (_isLoading || !(_formKey.currentState?.validate() ?? false)) return;
+    if (_ownerPinController.text != _confirmOwnerPinController.text) {
+      _showError('The two PIN entries do not match.');
+      return;
+    }
+    if (!_acceptedLocalDataNotice) {
+      _showError('Acknowledge the local data notice to create the workspace.');
       return;
     }
     setState(() {
@@ -214,88 +337,29 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
       _errorMessage = null;
     });
     try {
-      await googleSignIn.signOut();
-      final account = await googleSignIn.signIn();
-      if (account == null) return;
-      final verifiedEmail = account.email.trim();
-      if (verifiedEmail.isEmpty) {
-        throw StateError('Google did not return an email address');
-      }
-      if (mounted) {
-        setState(() {
-          _verifiedGoogleEmail = verifiedEmail;
-          _emailController.text = verifiedEmail;
-        });
-      }
-      final idToken = (await account.authentication).idToken;
-      if (idToken == null || idToken.isEmpty) {
-        throw StateError('Google did not return an identity token');
-      }
-      await getIt<AuthService>().createWorkspaceWithGoogle(
-        idToken: idToken,
+      await getIt<AuthService>().createLocalWorkspace(
         workspace: _workspaceRequest(),
+        ownerEmail: _emailController.text.trim(),
+        ownerPin: _ownerPinController.text.trim(),
+        acceptedLocalDataNotice: _acceptedLocalDataNotice,
       );
-      await _finishCreation();
-    } catch (error) {
-      _showError(companySetupErrorMessage(error));
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _requestEmailOtp() async {
-    if (_isLoading) return;
-    if (_emailValidator(_emailController.text) != null) {
-      _showError('Enter the owner email you can access to receive a code.');
-      return;
-    }
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-    try {
-      final response = await getIt<AuthService>()
-          .requestWorkspaceEmailOtp(_emailController.text.trim());
-      final challengeId = response['challengeId'] as String?;
-      if (challengeId == null || challengeId.isEmpty) {
-        throw StateError('Missing verification challenge');
-      }
-      if (!mounted) return;
-      setState(() {
-        _challengeId = challengeId;
-        _challengeEmail = _emailController.text.trim();
-        _verificationMode = _VerificationMode.emailOtp;
-        _otpController.clear();
-      });
-    } catch (error) {
-      _showError(companySetupErrorMessage(error));
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _createWithEmailOtp() async {
-    if (_isLoading || _challengeId == null) return;
-    if (!_acceptedSignupPolicies) {
+    } catch (_) {
+      // Database and platform errors are often implementation details. Keep
+      // those out of the owner's setup flow and give them a useful next step.
       _showError(
-          'Accept the Terms of Service and Data Processing Addendum, and review the Privacy Notice, to create a workspace.');
+        'Could not create the workspace. Check the details and available device storage, then try again.',
+      );
+      if (mounted) setState(() => _isLoading = false);
       return;
     }
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+
+    // The workspace is durable now. A failure in the success dialog or a
+    // first-run preference must never send the owner back to setup with a
+    // false “creation failed” message; continue into the shop instead.
     try {
-      await getIt<AuthService>().createWorkspaceWithEmailOtp(
-        email: _emailController.text.trim(),
-        challengeId: _challengeId!,
-        code: _otpController.text.trim(),
-        workspace: _workspaceRequest(),
-      );
       await _finishCreation();
-    } catch (error) {
-      _showError(companySetupErrorMessage(error));
+    } catch (_) {
+      _openCreatedWorkspace();
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -303,13 +367,21 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
 
   void _showError(String message) {
     if (!mounted) return;
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _errorMessage = message);
-    showGlassSnackBar(
-      context,
-      message,
-      icon: Icons.error_outline_rounded,
-      color: DesignColors.error,
-    );
+    // Keep one persistent error surface instead of stacking an identical
+    // snackbar over the inline panel. Scroll the panel into view so errors
+    // remain easy to find on short screens and while the keyboard is open.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_setupScrollController.hasClients) return;
+      _setupScrollController.animateTo(
+        _setupScrollController.position.maxScrollExtent,
+        duration: reducedMotion(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   Future<void> _finishCreation() async {
@@ -321,24 +393,25 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     final companyName = name?.trim().isNotEmpty == true
         ? name!.trim()
         : _companyNameController.text.trim();
-    final companyCode =
-        user?['tenantSlug']?.toString().trim().isNotEmpty == true
-            ? user!['tenantSlug'].toString().trim()
-            : _slugify(companyName);
-
     await _showCompanyCreatedDialog(
       companyName: companyName,
-      companyCode: companyCode,
     );
-    if (!mounted) return;
-    await getIt<UpdateCheckService>().checkAfterLogin();
     if (!mounted) return;
     await getIt<StorageService>().setHasSeenStaffTour(true);
     if (!mounted) return;
-    context.go(
-      auth.requiresTenantActivation ? '/activation' : '/owner-welcome',
-      extra: companyName,
+    _openCreatedWorkspace();
+  }
+
+  void _openCreatedWorkspace() {
+    if (!mounted) return;
+    final user = getIt<AuthService>().currentUser;
+    final permissions = RolePermissions(
+      user?['permissions'] as List<dynamic>?,
     );
+    final layout = businessLayoutFromUser(user);
+    // The first screen after setup should match the profile's saved start
+    // action (for example POS for a counter-first shop), just like cold start.
+    context.go(LocalWorkspaceCapabilities.homePathFor(permissions, layout));
   }
 
   void _nextStep() {
@@ -384,7 +457,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
       'Workspace identity',
       'Owner profile',
       'First counter',
-      'Verify ownership',
+      'Device security',
     ];
     return Theme(
       data: Theme.of(context).copyWith(
@@ -445,21 +518,44 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   }
 
   Widget _buildStep() {
+    final selectedProfile = businessLayoutPreset(_businessLayoutId);
     switch (_currentStep) {
       case 0:
         return _StepContent(
           title: 'Build your workspace',
-          subtitle:
-              'Give your business a home. You can refine its details as you grow.',
+          subtitle: 'Set up your shop for the way you sell.',
           children: [
-            const _SetupEditorialCard(
-              index: '01 / BUSINESS',
-              icon: Icons.storefront_outlined,
-              title: 'One place for every sale.',
-              detail:
-                  'Your workspace connects counters, people, stock and payments under your business name.',
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: context.themed(DesignColors.darkSurface),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: context.themed(DesignColors.darkBorder),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.devices_rounded,
+                    size: 21,
+                    color: context.themed(DesignColors.brand),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Local-first · Sales and stock stay on this device. Use an encrypted backup to move phones.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: context.themed(DesignColors.darkTextTertiary),
+                            height: 1.4,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 22),
             _field(
               _companyNameController,
               label: 'Business name',
@@ -470,7 +566,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              'This name appears on receipts and your team workspace.',
+              'Shown on receipts and throughout this workspace.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: context.themed(DesignColors.darkTextTertiary),
                   ),
@@ -485,344 +581,292 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Counterbase will tailor the POS, product details, customer wording, dashboard and shortcuts. Adjust the layout later in Settings → Layout actions, then create fast product pages after adding your catalog.',
+              'Checkout, product details and dashboard adapt to your trade.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: context.themed(DesignColors.darkTextTertiary),
                     height: 1.4,
                   ),
             ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _businessLayoutSearchController,
-              onChanged: (value) =>
-                  setState(() => _businessLayoutSearch = value),
-              decoration: InputDecoration(
-                hintText: 'Find your type of shop',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _businessLayoutSearch.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: 'Clear shop profile search',
-                        onPressed: () {
-                          _businessLayoutSearchController.clear();
-                          setState(() => _businessLayoutSearch = '');
-                        },
-                        icon: const Icon(Icons.close_rounded),
+            const SizedBox(height: 12),
+            Material(
+              color: context.themed(DesignColors.darkSurfaceElevated),
+              borderRadius: BorderRadius.circular(16),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: _choosePrimaryBusinessProfile,
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: context.themed(DesignColors.brand),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor:
+                            DesignColors.brand.withValues(alpha: .14),
+                        child: Icon(selectedProfile.icon,
+                            color: DesignColors.brand, size: 20),
                       ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            LayoutBuilder(builder: (context, constraints) {
-              // Profile cards were forced into two columns on every device.
-              // On a phone that left only ~130 px for the name and summary,
-              // making the most important setup choice difficult to scan.
-              final columns = constraints.maxWidth >= 620 ? 2 : 1;
-              const spacing = 12.0;
-              final cardWidth = columns == 1
-                  ? constraints.maxWidth
-                  : (constraints.maxWidth - spacing) / columns;
-              final profileQuery = _businessLayoutSearch.trim().toLowerCase();
-              const featuredProfileIds = {
-                'general_retail',
-                'service_counter',
-                'bookshop',
-                'kamukunji_counter',
-                'grocery',
-                'cafe_takeaway',
-                'fashion',
-                'hardware',
-              };
-              final availableProfiles = _showAllBusinessLayouts ||
-                      profileQuery.isNotEmpty
-                  ? businessLayoutPresets
-                  : businessLayoutPresets
-                      .where((preset) => featuredProfileIds.contains(preset.id))
-                      .toList(growable: false);
-              final shownProfiles = availableProfiles
-                  .where((preset) => businessLayoutProfileMatchesSearch(
-                        preset,
-                        profileQuery,
-                      ))
-                  .toList(growable: false);
-              if (shownProfiles.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
-                  child: Text('No shop profiles match that search.'),
-                );
-              }
-              return Wrap(
-                spacing: spacing,
-                runSpacing: spacing,
-                children: shownProfiles.map((preset) {
-                  final selected = _businessLayoutId == preset.id;
-                  return SizedBox(
-                    width: cardWidth,
-                    child: Semantics(
-                      button: true,
-                      selected: selected,
-                      label: '${preset.name}. ${preset.description}',
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () => setState(() {
-                          _businessLayoutId = preset.id;
-                          _additionalBusinessLayoutIds.remove(preset.id);
-                          _posQuickActions = [
-                            ...businessLayoutDefaultPosQuickActions(
-                              _businessLayoutId,
-                              _additionalBusinessLayoutIds,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              selectedProfile.name,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w700),
                             ),
-                          ];
-                        }),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          constraints: const BoxConstraints(minHeight: 84),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: context.themed(selected
-                                ? DesignColors.brand.withValues(alpha: 0.16)
-                                : DesignColors.darkSurfaceElevated),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: context.themed(selected
-                                  ? DesignColors.brand
-                                  : DesignColors.darkBorder),
-                              width: selected ? 1.5 : 1,
+                            Text(
+                              selectedProfile.description,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: context.themed(
+                                        DesignColors.darkTextTertiary),
+                                  ),
                             ),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(preset.icon,
-                                  size: 22,
-                                  color: context.themed(selected
-                                      ? DesignColors.brand
-                                      : DesignColors.darkTextSecondary)),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      preset.name,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: context.themed(
-                                            DesignColors.darkTextPrimary),
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      preset.description,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: context.themed(
-                                            DesignColors.darkTextTertiary),
-                                        fontSize: 12,
-                                        height: 1.3,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              if (selected) ...[
-                                const SizedBox(width: 8),
-                                const Icon(Icons.check_circle_rounded,
-                                    color: DesignColors.brand, size: 20),
-                              ],
-                            ],
-                          ),
+                          ],
                         ),
                       ),
-                    ),
-                  );
-                }).toList(),
-              );
-            }),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => setState(() {
-                  _showAllBusinessLayouts = !_showAllBusinessLayouts;
-                }),
-                icon: Icon(_showAllBusinessLayouts
-                    ? Icons.expand_less_rounded
-                    : Icons.expand_more_rounded),
-                label: Text(_showAllBusinessLayouts
-                    ? 'Show popular profiles'
-                    : 'Show all ${businessLayoutPresets.length} shop profiles'),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: _choosePrimaryBusinessProfile,
+                        child: const Text('Change'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Does the shop sell other kinds of products too?',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: context.themed(DesignColors.darkTextPrimary),
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Add up to three profiles. The main profile controls the wording; the others add relevant product details and work areas.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: context.themed(DesignColors.darkTextTertiary),
-                    height: 1.35,
-                  ),
-            ),
-            const SizedBox(height: 8),
-            if (_additionalBusinessLayoutIds.isNotEmpty)
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: businessLayoutAdditionalPresets(
-                  _businessLayoutId,
-                  _additionalBusinessLayoutIds,
-                ).map((profile) {
-                  return InputChip(
-                    avatar: Icon(profile.icon, size: 18),
-                    label: Text(profile.name),
-                    onDeleted: () => setState(() {
-                      _additionalBusinessLayoutIds.remove(profile.id);
-                    }),
-                  );
-                }).toList(growable: false),
-              ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: _chooseAdditionalBusinessProfiles,
-                icon: const Icon(Icons.add_rounded),
-                label: Text(_additionalBusinessLayoutIds.isEmpty
-                    ? 'Add another shop profile'
-                    : 'Edit additional profiles'),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Builder(builder: (context) {
-              final preset = businessLayoutPreset(_businessLayoutId);
-              final priorityPaths = businessLayoutDefaultPriorityPaths(
-                _businessLayoutId,
-                _additionalBusinessLayoutIds,
-              );
-              return BusinessLayoutPreview(
-                layout: BusinessLayoutConfig(
-                  preset: preset,
-                  additionalProfileIds: _additionalBusinessLayoutIds,
-                  priorityPaths: priorityPaths,
-                  hiddenPaths: _businessLayoutHiddenPaths(),
-                  startPath: priorityPaths.firstOrNull,
-                  posQuickActions: _posQuickActions,
-                  showPosFavorites: _posQuickActions.contains('favorites'),
-                  showPosCustomer: _posQuickActions.contains('customer'),
-                  dashboardMetrics: businessLayoutDefaultDashboardMetrics(
-                    _businessLayoutId,
-                    _additionalBusinessLayoutIds,
-                  ),
-                  dashboardSections: businessLayoutDefaultDashboardSections(
-                    _businessLayoutId,
-                    _additionalBusinessLayoutIds,
-                  ),
-                  productFieldKeys: businessLayoutDefaultProductFieldKeys(
-                    _businessLayoutId,
-                    _additionalBusinessLayoutIds,
-                  ),
-                ),
-              );
-            }),
-            const SizedBox(height: 14),
             Container(
               decoration: BoxDecoration(
-                color: context.themed(DesignColors.darkSurfaceElevated),
-                borderRadius: BorderRadius.circular(16),
+                color: context.themed(DesignColors.darkSurface),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
                 border:
                     Border.all(color: context.themed(DesignColors.darkBorder)),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
-                    child: Text(
-                      'POS toolbar shortcuts',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: context.themed(DesignColors.darkTextPrimary),
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
+              child: Theme(
+                data: Theme.of(context)
+                    .copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  key: const PageStorageKey('setup-layout-advanced-options'),
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                  childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  leading: Icon(Icons.tune_rounded,
+                      color: context.themed(DesignColors.brand)),
+                  title: Text(
+                    'Fine-tune your workspace',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: context.themed(DesignColors.darkTextPrimary),
+                          fontWeight: FontWeight.w700,
+                        ),
                   ),
-                  Text(
-                    'Choose what the cashier sees at this counter. You can reorder and adjust shortcuts later in Layout actions.',
+                  subtitle: Text(
+                    'Optional · extra profiles, preview and POS shortcuts',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: context.themed(DesignColors.darkTextTertiary),
-                          height: 1.35,
                         ),
                   ),
-                  const SizedBox(height: 4),
-                  ...businessLayoutPosActions.map((action) {
-                    final enabled = _posQuickActions.contains(action.id);
-                    return Material(
-                      color: Colors.transparent,
-                      child: SwitchListTile.adaptive(
-                        contentPadding:
-                            const EdgeInsets.symmetric(horizontal: 4),
-                        title: Text(
-                          action.label,
-                          style: TextStyle(
-                            color: context.themed(DesignColors.darkTextPrimary),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        subtitle: Text(
-                          action.id == 'cart'
-                              ? 'Always available to finish checkout.'
-                              : action.description,
-                          style: TextStyle(
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Does the shop sell other kinds of products too?',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              color:
+                                  context.themed(DesignColors.darkTextPrimary),
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Add up to three profiles. The main profile controls the wording; the others add relevant product details and work areas.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color:
                                 context.themed(DesignColors.darkTextTertiary),
+                            height: 1.35,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (_additionalBusinessLayoutIds.isNotEmpty)
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: businessLayoutAdditionalPresets(
+                          _businessLayoutId,
+                          _additionalBusinessLayoutIds,
+                        ).map((profile) {
+                          return InputChip(
+                            avatar: Icon(profile.icon, size: 18),
+                            label: Text(profile.name),
+                            onDeleted: () => setState(() {
+                              _additionalBusinessLayoutIds.remove(profile.id);
+                            }),
+                          );
+                        }).toList(growable: false),
+                      ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        onPressed: _chooseAdditionalBusinessProfiles,
+                        icon: const Icon(Icons.add_rounded),
+                        label: Text(_additionalBusinessLayoutIds.isEmpty
+                            ? 'Add another shop profile'
+                            : 'Edit additional profiles'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Builder(builder: (context) {
+                      final preset = businessLayoutPreset(_businessLayoutId);
+                      final priorityPaths = businessLayoutDefaultPriorityPaths(
+                        _businessLayoutId,
+                        _additionalBusinessLayoutIds,
+                      );
+                      return BusinessLayoutPreview(
+                        layout: BusinessLayoutConfig(
+                          preset: preset,
+                          additionalProfileIds: _additionalBusinessLayoutIds,
+                          priorityPaths: priorityPaths,
+                          hiddenPaths: _businessLayoutHiddenPaths(),
+                          startPath: priorityPaths.firstOrNull,
+                          posQuickActions: _posQuickActions,
+                          showPosFavorites:
+                              _posQuickActions.contains('favorites'),
+                          showPosCustomer:
+                              _posQuickActions.contains('customer'),
+                          dashboardMetrics:
+                              businessLayoutDefaultDashboardMetrics(
+                            _businessLayoutId,
+                            _additionalBusinessLayoutIds,
+                          ),
+                          dashboardSections:
+                              businessLayoutDefaultDashboardSections(
+                            _businessLayoutId,
+                            _additionalBusinessLayoutIds,
+                          ),
+                          productFieldKeys:
+                              businessLayoutDefaultProductFieldKeys(
+                            _businessLayoutId,
+                            _additionalBusinessLayoutIds,
                           ),
                         ),
-                        secondary: Icon(action.icon,
-                            color: context.themed(DesignColors.brand)),
-                        value: enabled,
-                        activeTrackColor: DesignColors.brand,
-                        onChanged: action.id == 'cart'
-                            ? null
-                            : (value) => setState(() {
-                                  if (value) {
-                                    if (!_posQuickActions.contains(action.id)) {
-                                      _posQuickActions.add(action.id);
-                                    }
-                                  } else {
-                                    _posQuickActions.remove(action.id);
-                                  }
-                                }),
+                      );
+                    }),
+                    const SizedBox(height: 14),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: context.themed(DesignColors.darkSurfaceElevated),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                            color: context.themed(DesignColors.darkBorder)),
                       ),
-                    );
-                  }),
-                ],
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+                            child: Text(
+                              'POS toolbar shortcuts',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(
+                                    color: context
+                                        .themed(DesignColors.darkTextPrimary),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                          ),
+                          Text(
+                            'Choose what the cashier sees at this counter. You can reorder and adjust shortcuts later in Layout actions.',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color: context
+                                      .themed(DesignColors.darkTextTertiary),
+                                  height: 1.35,
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          ...businessLayoutPosActions.map((action) {
+                            final enabled =
+                                _posQuickActions.contains(action.id);
+                            return Material(
+                              color: Colors.transparent,
+                              child: SwitchListTile.adaptive(
+                                contentPadding:
+                                    const EdgeInsets.symmetric(horizontal: 4),
+                                title: Text(
+                                  action.label,
+                                  style: TextStyle(
+                                    color: context
+                                        .themed(DesignColors.darkTextPrimary),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  action.id == 'cart'
+                                      ? 'Always available to finish checkout.'
+                                      : action.description,
+                                  style: TextStyle(
+                                    color: context
+                                        .themed(DesignColors.darkTextTertiary),
+                                  ),
+                                ),
+                                secondary: Icon(action.icon,
+                                    color: context.themed(DesignColors.brand)),
+                                value: enabled,
+                                activeTrackColor: DesignColors.brand,
+                                onChanged: action.id == 'cart'
+                                    ? null
+                                    : (value) => setState(() {
+                                          if (value) {
+                                            if (!_posQuickActions
+                                                .contains(action.id)) {
+                                              _posQuickActions.add(action.id);
+                                            }
+                                          } else {
+                                            _posQuickActions.remove(action.id);
+                                          }
+                                        }),
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
         );
       case 1:
         return _StepContent(
-          title: 'Meet the owner',
-          subtitle:
-              'This person will control access, billing and payout settings.',
+          title: 'About the owner',
+          subtitle: 'Save the owner details for this device-local workspace.',
           children: [
             const _SetupEditorialCard(
               index: '02 / OWNER',
               icon: Icons.admin_panel_settings_outlined,
-              title: 'Your account stays yours.',
+              title: 'Your shop stays under your control.',
               detail:
-                  'Only the verified owner can create this workspace. You can invite your team after setup.',
+                  'This owner profile is stored on this device. The email is optional and is not used to sign in.',
             ),
             const SizedBox(height: 28),
             LayoutBuilder(builder: (context, constraints) {
@@ -860,26 +904,11 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
               hint: 'name@business.com',
               icon: Icons.email_outlined,
               keyboardType: TextInputType.emailAddress,
-              onChanged: (value) {
-                if (_challengeId != null && value.trim() != _challengeEmail) {
-                  setState(() {
-                    _challengeId = null;
-                    _otpController.clear();
-                  });
-                }
-              },
-              validator: (value) {
-                final email = value?.trim() ?? '';
-                if (email.isEmpty &&
-                    _verificationMode == _VerificationMode.google) {
-                  return null;
-                }
-                return _emailValidator(value);
-              },
+              validator: _emailValidator,
             ),
             const SizedBox(height: 10),
             Text(
-              'Use this address for an email code, or continue with Google in the final step.',
+              'Optional. This stays in the local owner profile and is not used to sign in.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: context.themed(DesignColors.darkTextTertiary),
                     height: 1.45,
@@ -897,15 +926,15 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
               icon: Icons.point_of_sale_outlined,
               title: 'Ready for the first customer.',
               detail:
-                  'A branch keeps sales and inventory together. Add more locations later from Settings.',
+                  'Sales and inventory recorded on this device will belong to this location.',
             ),
             const SizedBox(height: 28),
             LayoutBuilder(builder: (context, constraints) {
               final wide = constraints.maxWidth >= 580;
               final name = _field(
                 _branchNameController,
-                label: 'Branch name',
-                hint: 'Main Store',
+                label: 'Location name',
+                hint: 'Main location',
                 icon: Icons.store_rounded,
                 validator: (value) => value == null || value.trim().length < 2
                     ? 'Enter at least 2 characters'
@@ -913,7 +942,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
               );
               final code = _field(
                 _branchCodeController,
-                label: 'Branch code',
+                label: 'Location code · optional',
                 hint: 'MAIN',
                 icon: Icons.tag_rounded,
                 inputFormatters: [
@@ -921,9 +950,11 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                   FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
                   LengthLimitingTextInputFormatter(20),
                 ],
-                validator: (value) => value == null || value.trim().length < 2
-                    ? 'Enter at least 2 characters'
-                    : null,
+                validator: (value) {
+                  final code = value?.trim() ?? '';
+                  if (code.isEmpty || code.length >= 2) return null;
+                  return 'Use at least 2 characters';
+                },
               );
               if (!wide) {
                 return Column(children: [
@@ -942,7 +973,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
             }),
             const SizedBox(height: 10),
             Text(
-              'The code helps your team identify this branch in reports.',
+              'This code helps identify the location in your shop records.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: context.themed(DesignColors.darkTextTertiary),
                   ),
@@ -971,96 +1002,56 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   }
 
   Widget _buildVerificationStep() {
-    final byGoogle = _verificationMode == _VerificationMode.google;
     return _StepContent(
-      title: 'Verify your ownership',
-      subtitle: 'One final check before your business goes live.',
+      title: 'Secure this device',
+      subtitle: 'Choose the PIN that opens your local workspace.',
       children: [
         const _SetupEditorialCard(
-          index: '04 / OWNERSHIP',
-          icon: Icons.verified_user_outlined,
-          title: 'Secure ownership check',
+          index: '04 / DEVICE SECURITY',
+          icon: Icons.phonelink_lock_rounded,
+          title: 'Your shop stays on this device.',
           detail:
-              'Confirm your identity to protect your team, payments and business data.',
+              'The workspace is created locally. No account, online POS server, or internet connection is needed.',
         ),
         const SizedBox(height: 28),
-        Text('CHOOSE A METHOD',
-            style: DesignType.numeric(
-                fontSize: 11,
-                color: context.themed(DesignColors.darkTextTertiary),
-                letterSpacing: 1.2)),
-        const SizedBox(height: 12),
-        _VerificationMethodOption(
-          icon: Icons.g_mobiledata_rounded,
-          title: 'Continue with Google',
-          detail: 'Secure sign-in with your Google account',
-          selected: byGoogle,
-          onTap: _isLoading
-              ? null
-              : () =>
-                  setState(() => _verificationMode = _VerificationMode.google),
-        ),
-        const SizedBox(height: 10),
-        _VerificationMethodOption(
-          icon: Icons.mail_outline_rounded,
-          title: 'Use an email code instead',
-          detail: 'Send a one-time code to your inbox',
-          selected: !byGoogle,
-          onTap: _isLoading
-              ? null
-              : () => setState(
-                  () => _verificationMode = _VerificationMode.emailOtp),
-        ),
-        if (!byGoogle) ...[
-          const SizedBox(height: 24),
-          _field(
-            _emailController,
-            label: 'Email for verification',
-            hint: 'name@business.com',
-            icon: Icons.alternate_email_rounded,
-            keyboardType: TextInputType.emailAddress,
-            validator: _emailValidator,
-            onChanged: (value) {
-              if (_challengeId != null && value.trim() != _challengeEmail) {
-                setState(() {
-                  _challengeId = null;
-                  _otpController.clear();
-                });
-              }
-            },
-          ),
-          if (_challengeId != null) ...[
-            const SizedBox(height: 18),
-            Text('Code sent to $_challengeEmail',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: DesignColors.success)),
-            const SizedBox(height: 12),
-            _field(
-              _otpController,
-              label: 'Verification code',
-              hint: '6–8 digits',
-              icon: Icons.password_rounded,
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(8),
-              ],
-              validator: (value) =>
-                  RegExp(r'^\d{6,8}$').hasMatch(value?.trim() ?? '')
-                      ? null
-                      : 'Enter the 6–8 digit code from your email',
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: _isLoading ? null : _requestEmailOtp,
-                child: const Text('Resend code'),
-              ),
-            ),
+        _field(
+          _ownerPinController,
+          label: 'Owner PIN · 6 digits',
+          hint: '••••••',
+          icon: Icons.password_rounded,
+          keyboardType: TextInputType.number,
+          obscureText: true,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(6),
           ],
-        ],
+          validator: (value) => RegExp(r'^\d{6}$').hasMatch(value ?? '')
+              ? null
+              : 'Choose exactly 6 digits',
+        ),
+        const SizedBox(height: 16),
+        _field(
+          _confirmOwnerPinController,
+          label: 'Confirm owner PIN',
+          hint: 'Enter the same 6 digits again',
+          icon: Icons.verified_user_outlined,
+          keyboardType: TextInputType.number,
+          obscureText: true,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(6),
+          ],
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          validator: (value) {
+            if ((value?.length ?? 0) != 6) {
+              return 'Enter the same 6 digits again';
+            }
+            if (value != _ownerPinController.text) {
+              return 'The PINs do not match';
+            }
+            return null;
+          },
+        ),
         const SizedBox(height: 24),
         Container(
           padding: const EdgeInsets.fromLTRB(12, 8, 16, 12),
@@ -1072,21 +1063,21 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
           child: Column(children: [
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Checkbox(
-                  value: _acceptedSignupPolicies,
+                  value: _acceptedLocalDataNotice,
                   onChanged: _isLoading
                       ? null
                       : (value) => setState(
-                          () => _acceptedSignupPolicies = value ?? false)),
+                          () => _acceptedLocalDataNotice = value ?? false)),
               Expanded(
                 child: InkWell(
                   onTap: _isLoading
                       ? null
                       : () => setState(() =>
-                          _acceptedSignupPolicies = !_acceptedSignupPolicies),
+                          _acceptedLocalDataNotice = !_acceptedLocalDataNotice),
                   child: Padding(
                     padding: const EdgeInsets.only(top: 14),
                     child: Text(
-                      'I agree to the Terms of Service and Data Processing Addendum, and acknowledge the Privacy Notice.',
+                      'I understand the workspace and its records stay on this device. They will not sync to another device unless I create and move a backup.',
                       style: Theme.of(context)
                           .textTheme
                           .bodySmall
@@ -1096,46 +1087,20 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                 ),
               ),
             ]),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Wrap(spacing: 4, children: [
-                _legalLink('Terms', '/legal/terms'),
-                _legalLink('Privacy', '/legal/privacy'),
-                _legalLink('Data Processing', '/legal/data-processing'),
-              ]),
-            ),
           ]),
         ),
         const SizedBox(height: 24),
         GradientButton(
-          label: byGoogle
-              ? 'Verify and create workspace'
-              : _challengeId == null
-                  ? 'Send verification code'
-                  : 'Verify email & create workspace',
-          icon: byGoogle
-              ? Icons.arrow_forward_rounded
-              : _challengeId == null
-                  ? Icons.mark_email_unread_outlined
-                  : Icons.verified_rounded,
+          label: 'Create local workspace',
+          icon: Icons.store_mall_directory_outlined,
           isLoading: _isLoading,
-          onPressed: _isLoading ||
-                  (byGoogle && !_acceptedSignupPolicies) ||
-                  (!byGoogle &&
-                      _challengeId != null &&
-                      !_acceptedSignupPolicies)
-              ? null
-              : byGoogle
-                  ? _createWithGoogle
-                  : _challengeId == null
-                      ? _requestEmailOtp
-                      : _createWithEmailOtp,
+          onPressed: _isLoading ? null : _createLocalWorkspace,
           height: 54,
           borderRadius: 14,
         ),
         const SizedBox(height: 16),
         Text(
-          'Counterbase does not collect or store an owner password during workspace setup.',
+          'Moving an existing shop? After setup, restore its .cbmobile backup or import the encrypted .cbarchive in Settings → Local data before recording sales. A different shop can only be imported into an empty workspace.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
               color: context.themed(DesignColors.darkTextTertiary),
@@ -1144,16 +1109,6 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
       ],
     );
   }
-
-  Widget _legalLink(String label, String route) => TextButton.icon(
-        onPressed: _isLoading ? null : () => context.push(route),
-        icon: const Icon(Icons.open_in_new_rounded, size: 14),
-        label: Text(label),
-        style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          visualDensity: VisualDensity.compact,
-        ),
-      );
 
   Widget _buildFooter() {
     if (_currentStep == 3) {
@@ -1185,6 +1140,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     required IconData icon,
     String? Function(String?)? validator,
     TextInputType? keyboardType,
+    bool obscureText = false,
     int maxLines = 1,
     List<TextInputFormatter>? inputFormatters,
     AutovalidateMode? autovalidateMode,
@@ -1202,6 +1158,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
             onChanged: onChanged,
             validator: validator,
             keyboardType: keyboardType,
+            obscureText: obscureText,
             maxLines: maxLines,
             inputFormatters: inputFormatters,
             autovalidateMode: autovalidateMode,
@@ -1247,20 +1204,16 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   String? _requiredName(String? value) =>
       (value?.trim().isNotEmpty ?? false) ? null : 'Required';
 
-  String? _emailValidator(String? value) =>
-      RegExp(r'^[\w.+-]+@([\w-]+\.)+[\w-]{2,}$').hasMatch(value?.trim() ?? '')
-          ? null
-          : 'Enter a valid email address';
-
-  String _slugify(String value) => value
-      .toLowerCase()
-      .trim()
-      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
-      .replaceAll(RegExp(r'^-+|-+$'), '');
+  String? _emailValidator(String? value) {
+    final email = value?.trim() ?? '';
+    if (email.isEmpty) return null;
+    return RegExp(r'^[\w.+-]+@([\w-]+\.)+[\w-]{2,}$').hasMatch(email)
+        ? null
+        : 'Enter a valid email address';
+  }
 
   Future<void> _showCompanyCreatedDialog({
     required String companyName,
-    required String companyCode,
   }) =>
       showDialog<void>(
         context: context,
@@ -1271,8 +1224,8 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
             SizedBox(width: 12),
             Text('Workspace ready'),
           ]),
-          content:
-              Text('$companyName is ready. Your company code is $companyCode.'),
+          content: Text(
+              '$companyName is ready on this device. If you are moving an existing shop, restore its .cbmobile backup or import the encrypted .cbarchive in Settings → Local data before recording sales. Keep your owner PIN safe and create an encrypted backup before changing devices.'),
           actions: [
             FilledButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
@@ -1448,72 +1401,6 @@ class _OptionalLocationDetails extends StatelessWidget {
           ],
         ),
       );
-}
-
-class _VerificationMethodOption extends StatelessWidget {
-  const _VerificationMethodOption({
-    required this.icon,
-    required this.title,
-    required this.detail,
-    required this.selected,
-    required this.onTap,
-  });
-  final IconData icon;
-  final String title;
-  final String detail;
-  final bool selected;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) => Material(
-      color: Colors.transparent,
-      child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-          child: AnimatedContainer(
-            duration: DesignAnimation.fast,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: selected
-                  ? DesignColors.accent.withValues(alpha: 0.09)
-                  : context.themed(DesignColors.darkSurface),
-              borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-              border: Border.all(
-                  color: selected
-                      ? DesignColors.accent
-                      : context.themed(DesignColors.darkBorder)),
-            ),
-            child: Row(children: [
-              Icon(icon,
-                  color: selected
-                      ? DesignColors.accent
-                      : context.themed(DesignColors.darkTextSecondary),
-                  size: 29),
-              const SizedBox(width: 14),
-              Expanded(
-                  child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: context.themed(DesignColors.darkTextPrimary))),
-                  const SizedBox(height: 3),
-                  Text(detail,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color:
-                              context.themed(DesignColors.darkTextSecondary))),
-                ],
-              )),
-              Icon(
-                  selected
-                      ? Icons.radio_button_checked_rounded
-                      : Icons.radio_button_off_rounded,
-                  color: selected
-                      ? DesignColors.accent
-                      : context.themed(DesignColors.darkTextTertiary),
-                  size: 20),
-            ]),
-          )));
 }
 
 class _ErrorPanel extends StatelessWidget {

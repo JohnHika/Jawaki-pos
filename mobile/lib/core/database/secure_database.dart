@@ -6,6 +6,14 @@ import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:sqlite3/open.dart';
+import 'package:sqlcipher_flutter_libs/sqlcipher_flutter_libs.dart';
+
+Future<void> _configureSqlCipherForDatabaseIsolate() async {
+  if (Platform.isAndroid) {
+    open.overrideFor(OperatingSystem.android, openCipherOnAndroid);
+  }
+}
 
 /// Secure database connection with SQLCipher encryption
 /// Key is stored in flutter_secure_storage (iOS Keychain / Android Keystore)
@@ -22,6 +30,24 @@ class SecureDatabaseConnection {
   static const _dbKeyName = 'pos_database_key';
   static const _dbKeyBackupName = 'pos_database_key_backup';
   static const _dbKeyPendingName = 'pos_database_key_pending';
+  static const List<int> _sqliteFileHeader = [
+    0x53,
+    0x51,
+    0x4c,
+    0x69,
+    0x74,
+    0x65,
+    0x20,
+    0x66,
+    0x6f,
+    0x72,
+    0x6d,
+    0x61,
+    0x74,
+    0x20,
+    0x33,
+    0x00,
+  ];
 
   /// Generate a cryptographically secure 256-bit key (64 hex chars)
   static String _generateKey() {
@@ -64,38 +90,58 @@ class SecureDatabaseConnection {
     return LazyDatabase(() async {
       final dbFolder = await getApplicationDocumentsDirectory();
       final file = File(p.join(dbFolder.path, 'pos_database_encrypted.sqlite'));
+      final existingPlaintextDatabase = await _hasPlaintextSqliteHeader(file);
 
       // Get encryption key
       final key = await _getOrCreateKey();
 
       return NativeDatabase.createInBackground(
         file,
+        isolateSetup: _configureSqlCipherForDatabaseIsolate,
         setup: (rawDb) async {
-          try {
-            // Set encryption key using PRAGMA key
-            rawDb.execute("PRAGMA key = '$key';");
+          final cipherVersion = rawDb.select('PRAGMA cipher_version;');
+          if (cipherVersion.isEmpty) {
+            throw StateError(
+              'SQLCipher is unavailable. The local database was not opened.',
+            );
+          }
 
-            // Verify encryption is working - but don't throw, just log
-            try {
-              final result = rawDb.select('SELECT count(*) FROM sqlite_master');
-              if (result.isEmpty) {
-                // Encryption verification failed - this could be a key mismatch
-                // Don't throw, let the app continue (database will be empty but usable)
-                debugPrint(
-                    '[SecureDatabase] Database verification returned no schema rows');
-              }
-            } catch (e) {
-              // Verification query failed, but database might still work
-              debugPrint('[SecureDatabase] Database verification failed: $e');
-            }
-          } catch (e) {
+          if (existingPlaintextDatabase) {
+            // Earlier builds used regular SQLite, which silently ignored
+            // PRAGMA key and left the database readable as plaintext. Rekey
+            // that existing file in place before Drift runs any migrations.
+            rawDb.execute("PRAGMA rekey = '$key';");
+          } else {
+            // New databases and already encrypted databases need the key
+            // before their first schema read.
+            rawDb.execute("PRAGMA key = '$key';");
+          }
+
+          try {
+            rawDb.select('SELECT count(*) FROM sqlite_master');
+          } catch (error) {
             // Never silently swap to a different key. Continuing would make
             // an encrypted database look empty and risks overwriting data.
-            throw StateError('Unable to open encrypted local database: $e');
+            throw StateError('Unable to open encrypted local database: $error');
           }
         },
       );
     });
+  }
+
+  static Future<bool> _hasPlaintextSqliteHeader(File file) async {
+    if (!await file.exists() ||
+        await file.length() < _sqliteFileHeader.length) {
+      return false;
+    }
+
+    final handle = await file.open(mode: FileMode.read);
+    try {
+      final header = await handle.read(_sqliteFileHeader.length);
+      return listEquals(header, _sqliteFileHeader);
+    } finally {
+      await handle.close();
+    }
   }
 
   /// Change the database encryption key atomically.

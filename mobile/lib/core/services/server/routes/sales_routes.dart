@@ -458,11 +458,16 @@ class SalesRoutes {
     // marks the receipt and restores stock atomically, and is idempotent if
     // the caller retries after losing the response.
     if (sale.status != 'VOIDED') {
-      await _db.voidPendingSale(
-        id,
-        reason: reason,
-        voidedBy: access.userId,
-      );
+      try {
+        await _db.voidPendingSale(
+          id,
+          reason: reason,
+          voidedBy: access.userId,
+          guardUnallocatedCollections: true,
+        );
+      } on LocalSaleVoidConflict catch (error) {
+        return _error(409, error.message);
+      }
     }
     return shelf.Response.ok(
       jsonEncode({

@@ -37,6 +37,7 @@ final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((ref) {
   final updates = StreamController<Map<String, dynamic>>();
   Map<String, dynamic>? localSnapshot;
   Map<String, dynamic>? serverSalesSnapshot;
+  final localWorkspace = getIt<AuthService>().isLocalWorkspace;
   var localRevision = 0;
   var serverRefreshInFlight = false;
   var disposed = false;
@@ -56,7 +57,7 @@ final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((ref) {
   }
 
   Future<void> refreshServer() async {
-    if (disposed || serverRefreshInFlight) return;
+    if (localWorkspace || disposed || serverRefreshInFlight) return;
     serverRefreshInFlight = true;
     try {
       final data = await getIt<ApiClient>().getDashboard();
@@ -80,13 +81,15 @@ final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((ref) {
   }, onError: (Object error, StackTrace stackTrace) {
     if (!disposed) updates.addError(error, stackTrace);
   });
-  final timer = Timer.periodic(
-    const Duration(seconds: 45),
-    (_) => unawaited(refreshServer()),
-  );
+  final timer = localWorkspace
+      ? null
+      : Timer.periodic(
+          const Duration(seconds: 45),
+          (_) => unawaited(refreshServer()),
+        );
   ref.onDispose(() {
     disposed = true;
-    timer.cancel();
+    timer?.cancel();
     salesSub.cancel();
     updates.close();
   });
@@ -156,12 +159,60 @@ final _todaysCostProvider = FutureProvider.autoDispose<double>((ref) async {
 /// already distinguishes that from a load failure via its own exception.
 final _eodStatusProvider =
     FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
-  final branchId = getIt<AuthService>().branchId;
-  if (branchId == null) return null;
+  final auth = getIt<AuthService>();
+  final branchId = auth.branchId;
+  if (branchId == null || branchId.isEmpty) return null;
+  if (auth.isLocalWorkspace) {
+    final db = getIt<AppDatabase>();
+    final today = DateTime.now();
+    final summary = await db.getDailySalesSummary(branchId, today);
+    final close = await db.getLatestLocalDailyClose(
+      branchId: branchId,
+      businessDate: summary['date']?.toString() ?? '',
+    );
+    var needsReconciliation = false;
+    final closedAt = DateTime.tryParse(close?['closedAt']?.toString() ?? '');
+    if (closedAt != null) {
+      final start = DateTime(today.year, today.month, today.day);
+      final end = start.add(const Duration(days: 1));
+      needsReconciliation = await db.hasSalesActivityAfterClose(
+            branchId: branchId,
+            from: start,
+            to: end,
+            closedAt: closedAt,
+          ) ||
+          await db.hasLocalCashPayoutsAfterClose(
+            branchId: branchId,
+            from: start,
+            to: end,
+            closedAt: closedAt,
+          ) ||
+          _amountForDashboard(summary['cashCollections']) -
+                  _amountForDashboard(close?['cashCollections']) >
+              0.005 ||
+          _amountForDashboard(summary['cashPayouts']) -
+                  _amountForDashboard(close?['cashPayouts']) >
+              0.005 ||
+          _amountForDashboard(summary['cashRefunds']) -
+                  _amountForDashboard(close?['cashRefunds']) >
+              0.005 ||
+          _amountForDashboard(summary['voidedCashReceived']) -
+                  _amountForDashboard(close?['voidedCashReceived']) >
+              0.005;
+    }
+    return {
+      'localOnly': true,
+      'close': close,
+      'closeNeedsReconciliation': needsReconciliation,
+    };
+  }
   // Let the backend resolve "today" using the branch timezone so this card
   // agrees with End of Day when a device clock or timezone differs.
   return getIt<ApiClient>().getDailyClose(branchId);
 });
+
+double _amountForDashboard(Object? value) =>
+    value is num && value.isFinite ? value.toDouble() : 0.0;
 
 /// Real AI-generated brief for the dashboard, replacing the previous
 /// hardcoded template snippets. Null means "no live brief available" —
@@ -212,7 +263,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   void _maybePromptEndOfDay() {
-    if (!mounted) return;
+    if (!mounted || getIt<AuthService>().isLocalWorkspace) return;
     EndOfDayPrompt.maybePrompt(context, ref.read(permissionsProvider));
   }
 
@@ -272,8 +323,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     if (mounted) setState(() {}); // refresh the header date too
   }
 
+  Future<void> _refreshDashboard(WidgetRef ref) async {
+    ref.invalidate(_dashboardSummaryProvider);
+    ref.invalidate(_recentSalesProvider);
+    ref.invalidate(_todaysCostProvider);
+    ref.invalidate(_eodStatusProvider);
+    ref.invalidate(_aiDailyBriefProvider);
+
+    // Wait for the visible dashboard data to refresh so pull-to-refresh gives
+    // useful feedback. Keep the gesture bounded if an optional network-backed
+    // card (such as the AI brief) is slow or unavailable.
+    final refreshes = <Future<void>>[
+      ref.read(_dashboardSummaryProvider.future),
+      ref.read(_recentSalesProvider.future),
+      ref.read(_todaysCostProvider.future),
+      ref.read(_eodStatusProvider.future),
+      ref.read(_aiDailyBriefProvider.future),
+    ].map((future) => future.then<void>((_) {}).catchError((_) {}));
+    await Future.wait(refreshes).timeout(
+      const Duration(seconds: 12),
+      onTimeout: () => const <void>[],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final summaryAsync = ref.watch(_dashboardSummaryProvider);
     final salesAsync = ref.watch(_recentSalesProvider);
     final identity = ref.watch(tenantIdentityProvider);
@@ -360,7 +435,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           child: TenantBrandMark(logoUrl: identity.logoUrl, size: 34),
         ),
         actions: [
-          const NotificationBell(),
+          if (!getIt<AuthService>().isLocalWorkspace) const NotificationBell(),
           IconButton(
             tooltip: 'Browse a previous day',
             icon: const Icon(Icons.calendar_month_rounded),
@@ -374,8 +449,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             onSelected: (value) {
               switch (value) {
                 case 'refresh':
-                  ref.invalidate(_dashboardSummaryProvider);
-                  ref.invalidate(_recentSalesProvider);
+                  unawaited(_refreshDashboard(ref));
                 case 'share':
                   _shareDashboardReport(context, ref);
                 case 'logout':
@@ -412,10 +486,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(_dashboardSummaryProvider);
-          ref.invalidate(_recentSalesProvider);
-        },
+        onRefresh: () => _refreshDashboard(ref),
         child: PageContainer(
           withScroll: true,
           child: Column(
@@ -472,7 +543,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               ),
               const SizedBox(height: DesignSpacing.xl),
 
-              if (ref.watch(permissionsProvider).has('news.view') &&
+              if (!isLocalWorkspace &&
+                  ref.watch(permissionsProvider).has('news.view') &&
                   businessLayout.isActionVisible('/news')) ...[
                 _BusinessNewsEntryCard(
                   onOpen: () => context.push('/news'),
@@ -481,11 +553,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               ],
 
               // Anything in the shop that needs the owner's eye (or an all-clear).
-              const ShopAttentionCard(),
+              if (!isLocalWorkspace) const ShopAttentionCard(),
 
               // Staff invite nudge — persistent across sessions until
               // at least one staff invitation is accepted.
-              const StaffInviteNudge(),
+              if (!isLocalWorkspace) const StaffInviteNudge(),
 
               // End of Day — admin-only. Previously this lived only inside
               // Finance › Cash Flow, several taps deep; admins asked for it
@@ -796,6 +868,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   Widget _buildAiBrief(
       BuildContext context, WidgetRef ref, Map<String, dynamic> summary) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final briefAsync = ref.watch(_aiDailyBriefProvider);
 
     final cardBorder =
@@ -827,7 +900,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                         ),
                         const SizedBox(width: DesignSpacing.sm),
                         Text(
-                          'AI BRIEF',
+                          isLocalWorkspace ? 'BUSINESS SNAPSHOT' : 'AI BRIEF',
                           style:
                               Theme.of(context).textTheme.labelSmall?.copyWith(
                                     fontWeight: FontWeight.w800,
@@ -941,6 +1014,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final border =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final closeAsync = ref.watch(_eodStatusProvider);
 
     return Material(
@@ -948,7 +1022,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
       child: InkWell(
         borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-        onTap: () => context.push('/cash-flow/end-of-day'),
+        onTap: () async {
+          await context.push('/cash-flow/end-of-day');
+          if (context.mounted) ref.invalidate(_eodStatusProvider);
+        },
         child: Container(
           padding: const EdgeInsets.all(DesignSpacing.lg),
           decoration: BoxDecoration(
@@ -981,23 +1058,49 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               titleColor: titleColor,
               secondaryColor: secondaryColor,
             ),
-            data: (close) => close == null
-                ? _buildEodCardContent(
+            data: (close) {
+              if (isLocalWorkspace) {
+                if (close?['close'] == null) {
+                  return _buildEodCardContent(
                     title: 'End of Day',
-                    subtitle: 'Today is open — review sales and count the till',
+                    subtitle: 'Review today\'s sales and count the till',
                     status: 'Open',
                     statusColor: DesignColors.accent,
                     titleColor: titleColor,
                     secondaryColor: secondaryColor,
-                  )
-                : _buildEodCardContent(
+                  );
+                }
+                if (close?['closeNeedsReconciliation'] == true) {
+                  return _buildEodCardContent(
                     title: 'End of Day',
-                    subtitle: 'Today\'s close is complete — view the summary',
-                    status: 'Closed',
-                    statusColor: DesignColors.success,
+                    subtitle:
+                        'Till activity changed after closing — review and count again',
+                    status: 'Review',
+                    statusColor: DesignColors.warning,
                     titleColor: titleColor,
                     secondaryColor: secondaryColor,
-                  ),
+                  );
+                }
+              }
+              if (close == null) {
+                return _buildEodCardContent(
+                  title: 'End of Day',
+                  subtitle: 'Today is open — review sales and count the till',
+                  status: 'Open',
+                  statusColor: DesignColors.accent,
+                  titleColor: titleColor,
+                  secondaryColor: secondaryColor,
+                );
+              }
+              return _buildEodCardContent(
+                title: 'End of Day',
+                subtitle: 'Today\'s close is complete — view the summary',
+                status: 'Closed',
+                statusColor: DesignColors.success,
+                titleColor: titleColor,
+                secondaryColor: secondaryColor,
+              );
+            },
           ),
         ),
       ),
@@ -1084,6 +1187,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     bool isLoading = false,
   }) {
     final profit = revenue - cost;
+    final canAdjustCost = ref.watch(permissionsProvider).canRecordRestock;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBorder =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
@@ -1117,46 +1221,47 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     // ADJUST control, with a >=44px hit target (the bare
                     // InkWell around a 14px icon row was far below it).
                     // Ink paints on this transparent Material, not the card.
-                    Material(
-                      color: Colors.transparent,
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusFull),
-                      child: InkWell(
-                        onTap: isLoading
-                            ? null
-                            : () => _openProfitAdjustment(
-                                context, ref, revenue, cost),
+                    if (canAdjustCost)
+                      Material(
+                        color: Colors.transparent,
                         borderRadius:
                             BorderRadius.circular(DesignSpacing.radiusFull),
-                        child: Container(
-                          constraints: const BoxConstraints(
-                            minWidth: DesignSpacing.huge,
-                            minHeight: DesignSpacing.huge,
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: DesignSpacing.sm + DesignSpacing.xs,
-                          ),
-                          alignment: Alignment.center,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.tune_rounded,
-                                  size: 14, color: DesignColors.accent),
-                              const SizedBox(width: DesignSpacing.xs),
-                              Text('ADJUST',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelSmall
-                                      ?.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 0.5,
-                                        color: DesignColors.accent,
-                                      )),
-                            ],
+                        child: InkWell(
+                          onTap: isLoading
+                              ? null
+                              : () => _openProfitAdjustment(
+                                  context, ref, revenue, cost),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusFull),
+                          child: Container(
+                            constraints: const BoxConstraints(
+                              minWidth: DesignSpacing.huge,
+                              minHeight: DesignSpacing.huge,
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: DesignSpacing.sm + DesignSpacing.xs,
+                            ),
+                            alignment: Alignment.center,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.tune_rounded,
+                                    size: 14, color: DesignColors.accent),
+                                const SizedBox(width: DesignSpacing.xs),
+                                Text('ADJUST',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0.5,
+                                          color: DesignColors.accent,
+                                        )),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: DesignSpacing.md + 2),
@@ -1320,8 +1425,10 @@ Sent from your POS workspace
       return;
     }
 
-    final logoBytes =
-        await ExportDocumentService.fetchLogoBytes(identity.logoUrl);
+    final logoBytes = await ExportDocumentService.fetchLogoBytes(
+      identity.logoUrl,
+      allowNetwork: !getIt<AuthService>().isLocalWorkspace,
+    );
     final bytes = await ExportDocumentService.buildPdfReport(
       title: 'Daily Sales Report',
       companyName: identity.companyName,

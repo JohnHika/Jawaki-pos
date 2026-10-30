@@ -2,11 +2,96 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
+import 'package:uuid/uuid.dart';
 import '../services/storage_service.dart';
+import '../utils/format.dart';
 
 import 'secure_database.dart';
 
 part 'app_database.g.dart';
+
+class LocalSaleVoidConflict implements Exception {
+  const LocalSaleVoidConflict(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class CustomerInsertOutcome {
+  const CustomerInsertOutcome({
+    required this.id,
+    required this.name,
+    required this.created,
+  });
+
+  final String id;
+  final String name;
+  final bool created;
+}
+
+String _customerPhoneIdentity(String? value) {
+  final digits = (value ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+  if (digits.startsWith('254') && digits.length == 12) {
+    return digits.substring(3);
+  }
+  if (digits.startsWith('0') && digits.length == 10) {
+    return digits.substring(1);
+  }
+  return digits;
+}
+
+String _customerEmailIdentity(String? value) =>
+    (value ?? '').trim().toLowerCase();
+
+const double _maxSafeLocalSaleAmount = 90071992547409.9;
+
+bool _sameLocalCurrencyAmount(double left, double right) =>
+    left.isFinite &&
+    right.isFinite &&
+    left.abs() <= _maxSafeLocalSaleAmount &&
+    right.abs() <= _maxSafeLocalSaleAmount &&
+    (roundCurrency(left) * 100).round() == (roundCurrency(right) * 100).round();
+
+bool _hasValidLocalSplitTenders({
+  required String? reference,
+  required double total,
+  required double debtAmount,
+}) {
+  if (reference == null || reference.isEmpty) return false;
+  try {
+    final decoded = jsonDecode(reference);
+    if (decoded is! List || decoded.length != 2) return false;
+
+    double? cashAmount;
+    double? creditAmount;
+    for (final row in decoded) {
+      if (row is! Map) return false;
+      final method = row['method']?.toString().trim().toUpperCase();
+      final rawAmount = row['amount'];
+      if (rawAmount is! num) return false;
+      final amount = rawAmount.toDouble();
+      if (!amount.isFinite || amount <= 0 || amount > _maxSafeLocalSaleAmount) {
+        return false;
+      }
+      if (method == 'CASH' && cashAmount == null) {
+        cashAmount = amount;
+      } else if (method == 'CREDIT' && creditAmount == null) {
+        creditAmount = amount;
+      } else {
+        return false;
+      }
+    }
+
+    return cashAmount != null &&
+        creditAmount != null &&
+        _sameLocalCurrencyAmount(cashAmount + creditAmount, total) &&
+        _sameLocalCurrencyAmount(creditAmount, debtAmount);
+  } catch (_) {
+    return false;
+  }
+}
 
 // Categories table
 class Categories extends Table {
@@ -382,12 +467,20 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   int get schemaVersion =>
-      15; // v15: offline cache for industry-specific product details
+      16; // v16: branch/date index for responsive local sales summaries
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (Migrator m) async {
           await m.createAll();
+          try {
+            await customStatement(
+              'CREATE INDEX IF NOT EXISTS idx_pending_sales_branch_created '
+              'ON pending_sales (branch_id, created_at)',
+            );
+          } catch (e) {
+            debugPrint('[DB] skip pending sales index: $e');
+          }
           await _createSupplierFinanceTables();
         },
         onUpgrade: (Migrator m, int from, int to) async {
@@ -554,6 +647,18 @@ class AppDatabase extends _$AppDatabase {
               await m.addColumn(products, products.metadata);
             }
           }
+          if (from < 16) {
+            // This is a pure performance index. A damaged or unusual legacy
+            // file must still open so the owner can use their existing data.
+            try {
+              await customStatement(
+                'CREATE INDEX IF NOT EXISTS idx_pending_sales_branch_created '
+                'ON pending_sales (branch_id, created_at)',
+              );
+            } catch (e) {
+              debugPrint('[DB] skip pending sales index: $e');
+            }
+          }
         },
         beforeOpen: (details) async {
           await _ensureLocalStockUniqueKey();
@@ -593,6 +698,84 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
+  Future<void> _ensureLocalAiMemoriesTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS local_ai_memories (
+        id TEXT NOT NULL PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        title TEXT,
+        content TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_local_ai_memories_tenant_created '
+      'ON local_ai_memories (tenant_id, created_at DESC)',
+    );
+  }
+
+  /// Lists private, device-local AI notes for the active shop. These notes are
+  /// never included in Axon Gateway requests automatically.
+  Future<List<Map<String, dynamic>>> getLocalAiMemories() async {
+    final tenantId = _requireCustomerTenantId();
+    await _ensureLocalAiMemoriesTable();
+    final rows = await customSelect(
+      'SELECT id, type, title, content, created_at AS createdAt '
+      'FROM local_ai_memories WHERE tenant_id = ? '
+      'ORDER BY created_at DESC, id',
+      variables: [Variable.withString(tenantId)],
+    ).get();
+    return rows.map((row) => Map<String, dynamic>.from(row.data)).toList();
+  }
+
+  Future<String> addLocalAiMemory({
+    required String type,
+    String? title,
+    required String content,
+  }) async {
+    final tenantId = _requireCustomerTenantId();
+    final normalizedContent = content.trim();
+    final normalizedTitle = title?.trim();
+    if (!const {'fact', 'preference', 'customer', 'policy'}.contains(type) ||
+        normalizedContent.isEmpty ||
+        normalizedContent.length > 2000 ||
+        (normalizedTitle?.length ?? 0) > 60) {
+      throw const FormatException('Check the memory details and try again.');
+    }
+    await _ensureLocalAiMemoriesTable();
+    final id = const Uuid().v4();
+    await customStatement(
+      'INSERT INTO local_ai_memories '
+      '(id, tenant_id, type, title, content, created_at) '
+      'VALUES (?, ?, ?, ?, ?, ?)',
+      [
+        id,
+        tenantId,
+        type,
+        normalizedTitle == null || normalizedTitle.isEmpty
+            ? null
+            : normalizedTitle,
+        normalizedContent,
+        DateTime.now().millisecondsSinceEpoch,
+      ],
+    );
+    return id;
+  }
+
+  Future<bool> deleteLocalAiMemory(String id) async {
+    final tenantId = _requireCustomerTenantId();
+    await _ensureLocalAiMemoriesTable();
+    final deleted = await customUpdate(
+      'DELETE FROM local_ai_memories WHERE id = ? AND tenant_id = ?',
+      variables: [
+        Variable.withString(id),
+        Variable.withString(tenantId),
+      ],
+    );
+    return deleted > 0;
+  }
+
   Future<void> _createSupplierFinanceTables() async {
     await customStatement('''
       CREATE TABLE IF NOT EXISTS suppliers (
@@ -620,13 +803,78 @@ class AppDatabase extends _$AppDatabase {
       CREATE TABLE IF NOT EXISTS supplier_payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         supplier_id TEXT NOT NULL,
+        branch_id TEXT,
         amount REAL NOT NULL,
         notes TEXT,
         payment_date TEXT NOT NULL,
         created_at TEXT NOT NULL,
+        invoice_id TEXT,
+        request_id TEXT,
+        funding_source TEXT NOT NULL DEFAULT 'CASH_TILL',
         FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
       )
     ''');
+    final paymentColumns = await customSelect(
+      'PRAGMA table_info(supplier_payments)',
+    ).get();
+    if (!paymentColumns
+        .any((row) => row.read<String>('name') == 'invoice_id')) {
+      try {
+        await customStatement(
+          'ALTER TABLE supplier_payments ADD COLUMN invoice_id TEXT',
+        );
+      } catch (_) {
+        // Another concurrent Finance read may have applied this upgrade.
+      }
+    }
+    if (!paymentColumns
+        .any((row) => row.read<String>('name') == 'request_id')) {
+      try {
+        await customStatement(
+          'ALTER TABLE supplier_payments ADD COLUMN request_id TEXT',
+        );
+      } catch (_) {
+        // Another concurrent Finance read may have applied this upgrade.
+      }
+    }
+    if (!paymentColumns
+        .any((row) => row.read<String>('name') == 'funding_source')) {
+      try {
+        await customStatement(
+          "ALTER TABLE supplier_payments ADD COLUMN funding_source TEXT NOT NULL DEFAULT 'CASH_TILL'",
+        );
+      } catch (_) {
+        // Another concurrent Finance read may have applied this upgrade.
+      }
+    }
+    if (!paymentColumns.any((row) => row.read<String>('name') == 'branch_id')) {
+      try {
+        await customStatement(
+          'ALTER TABLE supplier_payments ADD COLUMN branch_id TEXT',
+        );
+      } catch (_) {
+        // Another concurrent Finance read may have applied this upgrade.
+      }
+    }
+    await customStatement(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_supplier_payment_request ON supplier_payments(request_id) WHERE request_id IS NOT NULL',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_supplier_payment_branch_date ON supplier_payments (branch_id, payment_date)',
+    );
+    final activeBranches = _activeBranchIds();
+    final tenantId = _customerTenantId;
+    if (activeBranches.length == 1 && tenantId != null) {
+      // Older single-branch standalone payments had no branch column. It is
+      // safe to attribute those to the only branch in the local workspace;
+      // multi-branch history stays unassigned rather than inflating a till.
+      await customStatement(
+        'UPDATE supplier_payments SET branch_id = ? '
+        'WHERE branch_id IS NULL AND supplier_id IN '
+        '(SELECT id FROM suppliers WHERE tenant_id = ?)',
+        [activeBranches.single, tenantId],
+      );
+    }
     await customStatement('''
       CREATE TABLE IF NOT EXISTS supplier_invoices (
         id TEXT NOT NULL PRIMARY KEY,
@@ -642,11 +890,25 @@ class AppDatabase extends _$AppDatabase {
         due_amount REAL NOT NULL DEFAULT 0,
         due_date TEXT,
         status TEXT NOT NULL DEFAULT 'open',
+        funding_source TEXT NOT NULL DEFAULT 'CASH_TILL',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
       )
     ''');
+    final invoiceColumns = await customSelect(
+      'PRAGMA table_info(supplier_invoices)',
+    ).get();
+    if (!invoiceColumns
+        .any((row) => row.read<String>('name') == 'funding_source')) {
+      try {
+        await customStatement(
+          "ALTER TABLE supplier_invoices ADD COLUMN funding_source TEXT NOT NULL DEFAULT 'CASH_TILL'",
+        );
+      } catch (_) {
+        // Another concurrent Finance read may have applied this upgrade.
+      }
+    }
     await customStatement('''
       CREATE TABLE IF NOT EXISTS supplier_invoice_items (
         id TEXT NOT NULL PRIMARY KEY,
@@ -665,6 +927,9 @@ class AppDatabase extends _$AppDatabase {
       )
     ''');
   }
+
+  Future<void> ensureLocalSupplierFinanceSchema() =>
+      _createSupplierFinanceTables();
 
   // Categories
   Future<List<Category>> getAllCategories() => select(categories).get();
@@ -714,6 +979,100 @@ class AppDatabase extends _$AppDatabase {
         .get();
   }
 
+  /// Reads only sellable catalog rows for the POS. Archived products remain
+  /// available to product management and the local server, but should not be
+  /// materialized (or trigger pricing/stock lookups) during checkout.
+  Future<List<Product>> getActivePosProducts({
+    String? categoryId,
+    String? searchQuery,
+    Iterable<String>? productIds,
+    int? limit,
+    int offset = 0,
+  }) async {
+    final normalizedSearch = searchQuery?.trim();
+    final hasSearch = normalizedSearch != null && normalizedSearch.isNotEmpty;
+    final ids = productIds
+        ?.map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+
+    if (ids == null) {
+      final query = select(products)..where((p) => p.isActive.equals(true));
+      if (categoryId != null && categoryId.isNotEmpty) {
+        query.where((p) => p.categoryId.equals(categoryId));
+      }
+      if (hasSearch) {
+        final like = '%$normalizedSearch%';
+        query.where((p) =>
+            p.name.like(like) | p.sku.like(like) | p.metadata.like(like));
+      }
+      query.orderBy([
+        (p) => OrderingTerm.asc(p.name),
+        (p) => OrderingTerm.asc(p.id),
+      ]);
+      if (limit != null) {
+        query.limit(limit, offset: offset.clamp(0, 0x7fffffff));
+      } else if (offset > 0) {
+        query.limit(0x7fffffff, offset: offset.clamp(0, 0x7fffffff));
+      }
+      return query.get();
+    }
+    if (ids.isEmpty) return const <Product>[];
+
+    // SQLite limits the number of bound variables per statement. Keep page
+    // ids chunked and restore the configured page order after the query.
+    final productsById = <String, Product>{};
+    for (var offset = 0; offset < ids.length; offset += 400) {
+      final chunk = ids.skip(offset).take(400).toList(growable: false);
+      final query = select(products)
+        ..where((p) => p.isActive.equals(true) & p.id.isIn(chunk));
+      if (categoryId != null && categoryId.isNotEmpty) {
+        query.where((p) => p.categoryId.equals(categoryId));
+      }
+      if (hasSearch) {
+        final like = '%$normalizedSearch%';
+        query.where((p) =>
+            p.name.like(like) | p.sku.like(like) | p.metadata.like(like));
+      }
+      for (final product in await query.get()) {
+        productsById[product.id] = product;
+      }
+    }
+    return ids
+        .map((id) => productsById[id])
+        .whereType<Product>()
+        .toList(growable: false);
+  }
+
+  /// Loads only products assigned to a POS quick page. Large shops can have
+  /// thousands of catalog rows while each quick page contains a small set;
+  /// querying that set directly avoids mapping every product and fetching
+  /// pricing and stock metadata for products that cannot appear on the page.
+  Future<List<Product>> getProductsByIds(Iterable<String> productIds) async {
+    final ids = productIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (ids.isEmpty) return const <Product>[];
+
+    final productsById = <String, Product>{};
+    for (var offset = 0; offset < ids.length; offset += 400) {
+      final chunk = ids.skip(offset).take(400).toList(growable: false);
+      final rows =
+          await (select(products)..where((p) => p.id.isIn(chunk))).get();
+      for (final product in rows) {
+        productsById[product.id] = product;
+      }
+    }
+
+    return ids
+        .map((id) => productsById[id])
+        .whereType<Product>()
+        .toList(growable: false);
+  }
+
   Future<List<Product>> searchProducts(String query) {
     return (select(
       products,
@@ -743,6 +1102,36 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Stream<List<Product>> watchAllProducts() => select(products).watch();
+
+  /// Watches only the rows the catalogue can currently show. Filtering the
+  /// active/archive state, category, and broad search candidates in SQLite
+  /// avoids loading the entire shop catalog into Dart on every query change.
+  /// The screen still applies its business-layout-aware matcher so metadata
+  /// fields that are hidden for a shop can never create visible false matches.
+  Stream<List<Product>> watchCatalogProducts({
+    required bool isActive,
+    String? categoryId,
+    String? searchQuery,
+  }) {
+    final query = select(products)
+      ..where((product) => product.isActive.equals(isActive));
+    if (categoryId != null) {
+      query.where((product) => product.categoryId.equals(categoryId));
+    }
+    final normalizedSearch = searchQuery?.trim();
+    if (normalizedSearch != null && normalizedSearch.isNotEmpty) {
+      final candidate = '%$normalizedSearch%';
+      query.where((product) =>
+          product.name.like(candidate) |
+          product.sku.like(candidate) |
+          product.metadata.like(candidate));
+    }
+    query.orderBy([
+      (product) => OrderingTerm.asc(product.name),
+      (product) => OrderingTerm.asc(product.id),
+    ]);
+    return query.watch();
+  }
 
   Future<void> insertProducts(List<ProductsCompanion> items) async {
     await batch((batch) {
@@ -937,16 +1326,104 @@ class AppDatabase extends _$AppDatabase {
     List<PendingSaleItemsCompanion> items, {
     double customerBalanceDelta = 0,
     bool decrementLocalStock = false,
+    bool recordLocalCustomerPurchase = false,
   }) async {
     await transaction(() async {
+      if (decrementLocalStock) {
+        final subtotal = sale.subtotal.value;
+        final discount = sale.discount.present ? sale.discount.value : 0.0;
+        final tax = sale.tax.present ? sale.tax.value : 0.0;
+        final total = sale.total.value;
+        var lineSubtotal = 0.0;
+        if (items.isEmpty ||
+            !subtotal.isFinite ||
+            subtotal <= 0 ||
+            subtotal > _maxSafeLocalSaleAmount ||
+            !discount.isFinite ||
+            discount < 0 ||
+            discount > subtotal + 0.005 ||
+            !tax.isFinite ||
+            tax < 0 ||
+            tax > _maxSafeLocalSaleAmount ||
+            !total.isFinite ||
+            total <= 0 ||
+            total > _maxSafeLocalSaleAmount) {
+          throw StateError('Check the sale amounts and try again.');
+        }
+        for (final item in items) {
+          if (!item.quantity.present ||
+              !item.unitPrice.present ||
+              !item.total.present) {
+            throw StateError(
+                'A sale item is incomplete. Refresh the cart and try again.');
+          }
+          final quantity = item.quantity.value;
+          final unitPrice = item.unitPrice.value;
+          final itemDiscount =
+              item.discount.present ? item.discount.value : 0.0;
+          final lineTotal = item.total.value;
+          final gross = quantity * unitPrice;
+          if (!quantity.isFinite ||
+              quantity <= 0 ||
+              !unitPrice.isFinite ||
+              unitPrice < 0 ||
+              !itemDiscount.isFinite ||
+              itemDiscount < 0 ||
+              !gross.isFinite ||
+              gross > _maxSafeLocalSaleAmount ||
+              itemDiscount > gross + 0.005 ||
+              !lineTotal.isFinite ||
+              lineTotal < 0 ||
+              !_sameLocalCurrencyAmount(lineTotal, gross - itemDiscount)) {
+            throw StateError(
+                'A sale item price changed. Refresh the cart and try again.');
+          }
+          lineSubtotal += lineTotal;
+          if (!lineSubtotal.isFinite ||
+              lineSubtotal > _maxSafeLocalSaleAmount) {
+            throw StateError('The sale amount is too large to record.');
+          }
+        }
+        if (!_sameLocalCurrencyAmount(subtotal, lineSubtotal) ||
+            !_sameLocalCurrencyAmount(
+              total,
+              roundCurrency(subtotal - discount + tax),
+            )) {
+          throw StateError(
+              'The sale total no longer matches its items and tax. Refresh the cart and try again.');
+        }
+        if (!customerBalanceDelta.isFinite ||
+            customerBalanceDelta < 0 ||
+            customerBalanceDelta > total + 0.005) {
+          throw StateError('Check the customer balance for this sale.');
+        }
+        final method = sale.paymentMethod.value.trim().toUpperCase();
+        final paymentReference =
+            sale.paymentReference.present ? sale.paymentReference.value : null;
+        if ((method == 'CREDIT' &&
+                !_sameLocalCurrencyAmount(customerBalanceDelta, total)) ||
+            (method == 'SPLIT' &&
+                !_hasValidLocalSplitTenders(
+                  reference: paymentReference,
+                  total: total,
+                  debtAmount: customerBalanceDelta,
+                )) ||
+            (method != 'CREDIT' &&
+                method != 'SPLIT' &&
+                customerBalanceDelta != 0)) {
+          throw StateError(
+              'The recorded payment does not match the sale tender.');
+        }
+      }
       await into(pendingSales).insert(sale);
       await batch((batch) {
         batch.insertAll(pendingSaleItems, items);
       });
 
-      // A local sale, its stock deductions, and any new customer debt must
-      // commit together. Otherwise an error between these writes can leave a
-      // receipt without matching stock or debt, and a retry can double-charge.
+      // A local sale, its stock deductions, customer aggregates, and any new
+      // customer debt must commit together. Otherwise an error between these
+      // writes can leave a receipt without matching records and a retry can
+      // double-charge.
       if (customerBalanceDelta != 0) {
         final customerId =
             sale.customerId.present ? sale.customerId.value : null;
@@ -956,15 +1433,76 @@ class AppDatabase extends _$AppDatabase {
         await createCustomersTable();
         final tenantId = _requireCustomerTenantId();
         final updatedCustomers = await customUpdate(
-          'UPDATE customers SET balance = balance + ? WHERE id = ? AND tenant_id = ?',
+          'UPDATE customers SET balance = balance + ? '
+          'WHERE id = ? AND tenant_id = ? '
+          'AND (credit_limit <= 0 OR balance + ? <= credit_limit + 0.005)',
           variables: [
             Variable.withReal(customerBalanceDelta),
             Variable.withString(customerId),
             Variable.withString(tenantId),
+            Variable.withReal(customerBalanceDelta),
           ],
         );
         if (updatedCustomers != 1) {
-          throw StateError('The selected customer could not be found');
+          final customer = await customSelect(
+            'SELECT balance, credit_limit FROM customers '
+            'WHERE id = ? AND tenant_id = ?',
+            variables: [
+              Variable.withString(customerId),
+              Variable.withString(tenantId),
+            ],
+          ).getSingleOrNull();
+          if (customer == null) {
+            throw StateError('The selected customer could not be found');
+          }
+          final balance = customer.read<double>('balance');
+          final creditLimit = customer.read<double>('credit_limit');
+          if (customerBalanceDelta > 0 &&
+              creditLimit > 0 &&
+              balance + customerBalanceDelta > creditLimit + 0.005) {
+            throw StateError(
+              'This sale would exceed the customer’s saved credit limit. Choose cash or collect part of the balance first.',
+            );
+          }
+          throw StateError('The selected customer could not be updated');
+        }
+      }
+
+      // In standalone mode, the sale and customer lifetime totals are one
+      // local operation. Do not leave a committed receipt with stale customer
+      // purchase totals if the app closes during checkout.
+      if (recordLocalCustomerPurchase &&
+          sale.status.present &&
+          sale.status.value.toUpperCase() == 'COMPLETED') {
+        final customerId =
+            sale.customerId.present ? sale.customerId.value : null;
+        if (customerId == null || customerId.isEmpty) {
+          // Anonymous sales do not have customer purchase totals to update.
+        } else {
+          final tenantId = _requireCustomerTenantId();
+          await createCustomersTable();
+          final purchaseTotal = sale.total.value;
+          if (!purchaseTotal.isFinite || purchaseTotal < 0) {
+            throw StateError('Check the customer purchase amount.');
+          }
+          final changed = await customUpdate(
+            'UPDATE customers SET total_purchases = total_purchases + 1, '
+            'total_spent = total_spent + ?, last_purchase_at = ? '
+            'WHERE id = ? AND tenant_id = ?',
+            variables: [
+              Variable.withReal(purchaseTotal),
+              Variable.withString(
+                sale.createdAt.present
+                    ? sale.createdAt.value.toUtc().toIso8601String()
+                    : DateTime.now().toUtc().toIso8601String(),
+              ),
+              Variable.withString(customerId),
+              Variable.withString(tenantId),
+            ],
+          );
+          if (changed != 1) {
+            throw StateError('The selected customer could not be updated');
+          }
         }
       }
 
@@ -973,8 +1511,52 @@ class AppDatabase extends _$AppDatabase {
           throw StateError('A branch is required to update local stock');
         }
         final branchId = sale.branchId.value;
+
+        // Cart checks can become stale while the payment sheet is open, or
+        // when another till on the local network sells the same item. Check
+        // the combined quantity for every tracked product inside this sale
+        // transaction before committing either the receipt or stock changes.
+        final requiredByProduct = <String, double>{};
         for (final item in items) {
-          if (!item.productId.present || !item.quantity.present) continue;
+          if (!item.productId.present ||
+              item.productId.value.isEmpty ||
+              !item.quantity.present) {
+            throw StateError(
+              'A product changed while this sale was open. Refresh the cart and try again.',
+            );
+          }
+          final quantity = item.quantity.value;
+          if (!quantity.isFinite || quantity <= 0) {
+            throw StateError('Sale quantities must be greater than zero.');
+          }
+          requiredByProduct.update(
+            item.productId.value,
+            (current) => current + quantity,
+            ifAbsent: () => quantity,
+          );
+        }
+
+        for (final entry in requiredByProduct.entries) {
+          final product = await (select(products)
+                ..where((product) => product.id.equals(entry.key)))
+              .getSingleOrNull();
+          if (product == null || !product.isActive) {
+            throw StateError(
+              'A product is no longer available. Refresh the cart and try again.',
+            );
+          }
+          if (!product.trackInventory) continue;
+          final stock = await getProductStock(entry.key, branchId);
+          if (stock == null ||
+              !stock.quantity.isFinite ||
+              stock.quantity + 0.000001 < entry.value) {
+            throw StateError(
+              'Stock changed while this sale was open. Refresh the cart and try again.',
+            );
+          }
+        }
+
+        for (final item in items) {
           await decrementStock(
             item.productId.value,
             branchId,
@@ -1669,12 +2251,869 @@ class AppDatabase extends _$AppDatabase {
     return row.read<double>('quantity');
   }
 
+  /// Records an offline stock receipt and applies its quantities as one
+  /// transaction. The receipt id makes a retry safe if the device is
+  /// interrupted after SQLite commits but before the screen can close.
+  Future<Map<String, Object>> recordLocalStockReceipt({
+    required String receiptId,
+    required String productId,
+    required String branchId,
+    required List<Map<String, dynamic>> batches,
+    required DateTime receivedAt,
+  }) async {
+    final tenantId = _requireCustomerTenantId();
+    final normalizedReceiptId = receiptId.trim();
+    if (normalizedReceiptId.isEmpty || productId.trim().isEmpty) {
+      throw ArgumentError('A receipt and product are required.');
+    }
+    if (!_activeBranchIds().contains(branchId)) {
+      throw StateError('This device cannot receive stock for that branch.');
+    }
+    if (await getProduct(productId) == null) {
+      throw StateError('This product is not available in the local catalog.');
+    }
+    if (batches.isEmpty) {
+      throw ArgumentError('Add at least one stock batch.');
+    }
+
+    final rows = <Map<String, Object?>>[];
+    var totalBaseQuantity = 0.0;
+    for (var index = 0; index < batches.length; index++) {
+      final batch = batches[index];
+      final quantity = (batch['quantity'] as num?)?.toDouble();
+      final factor = (batch['unitsPerQuantity'] as num?)?.toDouble() ?? 1.0;
+      final unit = batch['unit']?.toString().trim() ?? '';
+      final costPrice = (batch['costPrice'] as num?)?.toDouble();
+      if (quantity == null || !quantity.isFinite || quantity <= 0) {
+        throw ArgumentError('Each batch needs a quantity greater than zero.');
+      }
+      if (!factor.isFinite || factor <= 0 || unit.isEmpty) {
+        throw ArgumentError('Each batch needs a valid unit.');
+      }
+      if (costPrice != null && (!costPrice.isFinite || costPrice < 0)) {
+        throw ArgumentError('A batch cost cannot be negative.');
+      }
+      final baseQuantity = quantity * factor;
+      if (!baseQuantity.isFinite || baseQuantity <= 0) {
+        throw ArgumentError('The converted stock quantity is invalid.');
+      }
+      totalBaseQuantity += baseQuantity;
+      rows.add({
+        'lineIndex': index,
+        'quantity': quantity,
+        'unit': unit,
+        'unitsPerQuantity': factor,
+        'baseQuantity': baseQuantity,
+        'costPrice': costPrice,
+        'supplierRef': _optionalReceiptText(batch['supplierRef']),
+        'notes': _optionalReceiptText(batch['notes']),
+        'expiryDate': _optionalReceiptText(batch['expiryDate']),
+        'manufactureDate': _optionalReceiptText(batch['manufactureDate']),
+      });
+    }
+    if (!totalBaseQuantity.isFinite || totalBaseQuantity <= 0) {
+      throw ArgumentError('The total received stock is invalid.');
+    }
+    final hasCompleteCosts = rows.every((row) => row['costPrice'] != null);
+    double? totalCost;
+    if (hasCompleteCosts) {
+      totalCost = rows.fold<double>(
+        0,
+        (sum, row) =>
+            sum +
+            (row['costPrice'] as double) * (row['baseQuantity'] as double),
+      );
+      if (!totalCost.isFinite || totalCost < 0) {
+        throw ArgumentError('The total purchase cost is invalid.');
+      }
+    }
+
+    await _ensureLocalStockReceiptsTable();
+    final timestamp = receivedAt.toUtc().toIso8601String();
+    return transaction(() async {
+      final priorLines = await customSelect(
+        'SELECT line_index, branch_id, product_id, quantity, unit, '
+        'units_per_quantity, base_quantity, cost_price, supplier_ref, notes, '
+        'expiry_date, manufacture_date '
+        'FROM local_stock_receipts WHERE tenant_id = ? AND receipt_id = ? '
+        'ORDER BY line_index',
+        variables: [
+          Variable.withString(tenantId),
+          Variable.withString(normalizedReceiptId),
+        ],
+      ).get();
+      if (priorLines.isNotEmpty) {
+        if (priorLines.length != rows.length) {
+          throw StateError(
+            'This receipt was already used for different stock details.',
+          );
+        }
+        for (var index = 0; index < rows.length; index++) {
+          final prior = priorLines[index];
+          final requested = rows[index];
+          final sameLine =
+              prior.read<int>('line_index') == requested['lineIndex'] &&
+                  prior.read<String>('branch_id') == branchId &&
+                  prior.read<String>('product_id') == productId &&
+                  prior.read<double>('quantity') == requested['quantity'] &&
+                  prior.read<String>('unit') == requested['unit'] &&
+                  prior.read<double>('units_per_quantity') ==
+                      requested['unitsPerQuantity'] &&
+                  prior.read<double>('base_quantity') ==
+                      requested['baseQuantity'] &&
+                  prior.readNullable<double>('cost_price') ==
+                      requested['costPrice'] &&
+                  prior.readNullable<String>('supplier_ref') ==
+                      requested['supplierRef'] &&
+                  prior.readNullable<String>('notes') == requested['notes'] &&
+                  prior.readNullable<String>('expiry_date') ==
+                      requested['expiryDate'] &&
+                  prior.readNullable<String>('manufacture_date') ==
+                      requested['manufactureDate'];
+          if (!sameLine) {
+            throw StateError(
+              'This receipt was already used for different stock details.',
+            );
+          }
+        }
+        final existingStock = await getProductStock(productId, branchId);
+        final recordedPurchase = await customSelect(
+          'SELECT 1 AS found FROM daily_purchases WHERE id = ? LIMIT 1',
+          variables: [
+            Variable.withString('purchase-$normalizedReceiptId'),
+          ],
+        ).getSingleOrNull();
+        return {
+          'totalQuantity': priorLines.fold<double>(
+            0,
+            (sum, line) => sum + line.read<double>('base_quantity'),
+          ),
+          'currentQuantity': existingStock?.quantity.toDouble() ?? 0.0,
+          'purchaseCostRecorded': recordedPurchase != null,
+        };
+      }
+
+      final existingStock = await getProductStock(productId, branchId);
+      final currentQuantity =
+          (existingStock?.quantity ?? 0).toDouble() + totalBaseQuantity;
+      if (!currentQuantity.isFinite || currentQuantity < 0) {
+        throw ArgumentError('The resulting stock quantity is invalid.');
+      }
+      final lastBatch = rows.last;
+      await upsertAuthoritativeStock(
+        productId: productId,
+        branchId: branchId,
+        quantity: currentQuantity,
+        displayUnit: lastBatch['unit'] as String,
+        displayQuantityPerUnit: lastBatch['unitsPerQuantity'] as double,
+        lastReceivedQuantity: lastBatch['quantity'] as double,
+        lastReceivedAt: receivedAt,
+      );
+
+      for (final row in rows) {
+        final lineIndex = row['lineIndex'] as int;
+        await customStatement(
+          'INSERT INTO local_stock_receipts '
+          '(id, receipt_id, line_index, tenant_id, branch_id, product_id, '
+          'quantity, unit, units_per_quantity, base_quantity, cost_price, '
+          'supplier_ref, notes, expiry_date, manufacture_date, received_at) '
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [
+            Variable.withString('$normalizedReceiptId-$lineIndex'),
+            Variable.withString(normalizedReceiptId),
+            Variable.withInt(lineIndex),
+            Variable.withString(tenantId),
+            Variable.withString(branchId),
+            Variable.withString(productId),
+            Variable.withReal(row['quantity'] as double),
+            Variable.withString(row['unit'] as String),
+            Variable.withReal(row['unitsPerQuantity'] as double),
+            Variable.withReal(row['baseQuantity'] as double),
+            row['costPrice'] == null
+                ? const Variable<double>(null)
+                : Variable.withReal(row['costPrice'] as double),
+            row['supplierRef'] == null
+                ? const Variable<String>(null)
+                : Variable.withString(row['supplierRef'] as String),
+            row['notes'] == null
+                ? const Variable<String>(null)
+                : Variable.withString(row['notes'] as String),
+            row['expiryDate'] == null
+                ? const Variable<String>(null)
+                : Variable.withString(row['expiryDate'] as String),
+            row['manufactureDate'] == null
+                ? const Variable<String>(null)
+                : Variable.withString(row['manufactureDate'] as String),
+            Variable.withString(timestamp),
+          ],
+        );
+      }
+
+      if (hasCompleteCosts) {
+        await into(dailyPurchases).insert(
+          DailyPurchasesCompanion.insert(
+            id: 'purchase-$normalizedReceiptId',
+            branchId: branchId,
+            amount: totalCost!,
+            description: const Value('Stock receipt'),
+            purchaseDate: receivedAt,
+            isManual: const Value(false),
+          ),
+          mode: InsertMode.insertOrIgnore,
+        );
+      }
+      return {
+        'totalQuantity': totalBaseQuantity,
+        'currentQuantity': currentQuantity,
+        'purchaseCostRecorded': hasCompleteCosts,
+      };
+    });
+  }
+
+  String? _optionalReceiptText(Object? value) {
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
+  Future<void> _ensureLocalStockReceiptsTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS local_stock_receipts (
+        id TEXT NOT NULL PRIMARY KEY,
+        receipt_id TEXT NOT NULL,
+        line_index INTEGER NOT NULL,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        unit TEXT NOT NULL,
+        units_per_quantity REAL NOT NULL,
+        base_quantity REAL NOT NULL,
+        cost_price REAL,
+        supplier_ref TEXT,
+        notes TEXT,
+        expiry_date TEXT,
+        manufacture_date TEXT,
+        received_at TEXT NOT NULL,
+        UNIQUE (tenant_id, receipt_id, line_index)
+      )
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_local_stock_receipts_scope
+      ON local_stock_receipts (tenant_id, branch_id, received_at)
+    ''');
+  }
+
+  Future<void> _ensureLocalStockCountTables() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS local_stock_counts (
+        id TEXT NOT NULL PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
+        title TEXT,
+        blind INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'IN_PROGRESS',
+        created_by_name TEXT,
+        submitted_by_name TEXT,
+        approved_by_name TEXT,
+        created_at TEXT NOT NULL,
+        submitted_at TEXT,
+        approved_at TEXT,
+        cancelled_at TEXT
+      )
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS local_stock_count_lines (
+        id TEXT NOT NULL PRIMARY KEY,
+        count_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        sku TEXT,
+        unit TEXT NOT NULL DEFAULT 'piece',
+        allow_fractions INTEGER NOT NULL DEFAULT 0,
+        expected_qty REAL NOT NULL,
+        expected_stock_updated_at INTEGER,
+        counted_qty REAL,
+        cost_price REAL NOT NULL DEFAULT 0,
+        counted_by_name TEXT,
+        UNIQUE (count_id, product_id)
+      )
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_local_stock_counts_scope
+      ON local_stock_counts (tenant_id, branch_id, created_at)
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_local_stock_count_lines_count
+      ON local_stock_count_lines (count_id, product_name)
+    ''');
+    final lineColumns = await customSelect(
+      'PRAGMA table_info(local_stock_count_lines)',
+    ).get();
+    if (!lineColumns.any(
+      (column) => column.read<String>('name') == 'expected_stock_updated_at',
+    )) {
+      await customStatement(
+        'ALTER TABLE local_stock_count_lines '
+        'ADD COLUMN expected_stock_updated_at INTEGER',
+      );
+    }
+  }
+
+  /// Starts a count from the active branch's inventory snapshot. Products and
+  /// expected quantities are copied into the count so later catalog edits do
+  /// not rewrite the audit record.
+  Future<String> startLocalStockCount({
+    required String branchId,
+    required bool blind,
+    String? title,
+    String? createdByName,
+  }) async {
+    final tenantId = _requireCustomerTenantId();
+    if (!_activeBranchIds().contains(branchId)) {
+      throw StateError(
+          'Select an active branch before starting a stock count.');
+    }
+    await _ensureLocalStockCountTables();
+    final normalizedTitle = _optionalReceiptText(title);
+    final normalizedCreator = _optionalReceiptText(createdByName);
+    final countId = const Uuid().v4();
+    final createdAt = DateTime.now().toUtc().toIso8601String();
+
+    await transaction(() async {
+      final products = await customSelect(
+        'SELECT p.id, p.name, p.sku, p.unit, p.allow_fractions, '
+        'COALESCE(p.cost_price, 0) AS cost_price, '
+        'COALESCE(s.quantity, 0) AS expected_qty, '
+        's.updated_at AS expected_stock_updated_at '
+        'FROM products p LEFT JOIN local_stock s '
+        'ON s.product_id = p.id AND s.branch_id = ? '
+        'WHERE p.is_active = 1 AND p.track_inventory = 1 '
+        'ORDER BY p.name COLLATE NOCASE, p.id',
+        variables: [Variable.withString(branchId)],
+      ).get();
+      if (products.isEmpty) {
+        throw StateError(
+          'There are no active inventory-tracked products to count in this branch.',
+        );
+      }
+      await customStatement(
+        'INSERT INTO local_stock_counts '
+        '(id, tenant_id, branch_id, title, blind, status, created_by_name, created_at) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          Variable.withString(countId),
+          Variable.withString(tenantId),
+          Variable.withString(branchId),
+          normalizedTitle == null
+              ? const Variable<String>(null)
+              : Variable.withString(normalizedTitle),
+          Variable.withInt(blind ? 1 : 0),
+          Variable.withString('IN_PROGRESS'),
+          normalizedCreator == null
+              ? const Variable<String>(null)
+              : Variable.withString(normalizedCreator),
+          Variable.withString(createdAt),
+        ],
+      );
+      for (var offset = 0; offset < products.length; offset += 90) {
+        final batch = products.sublist(
+          offset,
+          offset + 90 > products.length ? products.length : offset + 90,
+        );
+        final placeholders =
+            List.filled(batch.length, '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                .join(', ');
+        final variables = <dynamic>[];
+        for (var index = 0; index < batch.length; index++) {
+          final product = batch[index];
+          final productId = product.read<String>('id');
+          variables.addAll([
+            Variable.withString('$countId-${offset + index}'),
+            Variable.withString(countId),
+            Variable.withString(productId),
+            Variable.withString(product.read<String>('name')),
+            Variable.withString(product.read<String>('sku')),
+            Variable.withString(product.read<String>('unit')),
+            Variable.withInt(product.read<int>('allow_fractions') == 1 ? 1 : 0),
+            Variable.withReal(product.read<double>('expected_qty')),
+            product.readNullable<int>('expected_stock_updated_at') == null
+                ? const Variable<int>(null)
+                : Variable.withInt(
+                    product.read<int>('expected_stock_updated_at')),
+            Variable.withReal(product.read<double>('cost_price')),
+          ]);
+        }
+        await customStatement(
+          'INSERT INTO local_stock_count_lines '
+          '(id, count_id, product_id, product_name, sku, unit, allow_fractions, '
+          'expected_qty, expected_stock_updated_at, cost_price) '
+          'VALUES $placeholders',
+          variables,
+        );
+      }
+    });
+    return countId;
+  }
+
+  Future<List<Map<String, dynamic>>> getLocalStockCounts(
+      {int limit = 100}) async {
+    final tenantId = _customerTenantId;
+    final branchIds = _activeBranchIds().toList()..sort();
+    if (tenantId == null || branchIds.isEmpty) {
+      return const <Map<String, dynamic>>[];
+    }
+    await _ensureLocalStockCountTables();
+    final placeholders = List.filled(branchIds.length, '?').join(', ');
+    final rows = await customSelect(
+      'SELECT c.id, c.title, c.status, c.blind, c.created_at, '
+      'c.created_by_name, COUNT(l.product_id) AS item_count, '
+      'SUM(CASE WHEN l.counted_qty IS NOT NULL THEN 1 ELSE 0 END) AS counted_lines, '
+      'SUM(CASE WHEN l.counted_qty IS NOT NULL '
+      'THEN (l.counted_qty - l.expected_qty) * l.cost_price ELSE 0 END) AS net_value '
+      'FROM local_stock_counts c LEFT JOIN local_stock_count_lines l '
+      'ON l.count_id = c.id WHERE c.tenant_id = ? '
+      'AND c.branch_id IN ($placeholders) '
+      'GROUP BY c.id ORDER BY c.created_at DESC LIMIT ?',
+      variables: [
+        Variable.withString(tenantId),
+        ...branchIds.map(Variable.withString),
+        Variable.withInt(limit.clamp(1, 250).toInt()),
+      ],
+    ).get();
+    return rows.map((row) {
+      final blindInProgress = row.read<int>('blind') == 1 &&
+          row.read<String>('status') == 'IN_PROGRESS';
+      return <String, dynamic>{
+        'id': row.read<String>('id'),
+        'title': row.readNullable<String>('title'),
+        'status': row.read<String>('status'),
+        'itemCount': row.read<int>('item_count'),
+        'createdAt': row.read<String>('created_at'),
+        'createdByName': row.readNullable<String>('created_by_name'),
+        'totalVarianceValue':
+            blindInProgress ? null : row.read<double>('net_value'),
+      };
+    }).toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>> getLocalStockCount(String countId) async {
+    final tenantId = _requireCustomerTenantId();
+    final branchIds = _activeBranchIds().toList()..sort();
+    if (branchIds.isEmpty) throw StateError('Select an active branch first.');
+    await _ensureLocalStockCountTables();
+    final count = await customSelect(
+      'SELECT * FROM local_stock_counts WHERE id = ? AND tenant_id = ? '
+      'AND branch_id IN (${List.filled(branchIds.length, '?').join(', ')})',
+      variables: [
+        Variable.withString(countId),
+        Variable.withString(tenantId),
+        ...branchIds.map(Variable.withString),
+      ],
+    ).getSingleOrNull();
+    if (count == null) {
+      throw StateError('This stock count is not available here.');
+    }
+    final status = count.read<String>('status');
+    final blind = count.read<int>('blind') == 1;
+    final expectedHidden = blind && status == 'IN_PROGRESS';
+    final lines = await customSelect(
+      'SELECT * FROM local_stock_count_lines WHERE count_id = ? '
+      'ORDER BY product_name COLLATE NOCASE, product_id',
+      variables: [Variable.withString(countId)],
+    ).get();
+    final items = <Map<String, dynamic>>[];
+    var countedLines = 0;
+    var lossValue = 0.0;
+    var gainValue = 0.0;
+    var shortLines = 0;
+    var overLines = 0;
+    for (final line in lines) {
+      final expected = line.read<double>('expected_qty');
+      final counted = line.readNullable<double>('counted_qty');
+      final cost = line.read<double>('cost_price');
+      final variance = counted == null ? null : counted - expected;
+      final varianceValue = variance == null ? null : variance * cost;
+      if (counted != null) countedLines++;
+      if (variance != null && variance < -0.000001) {
+        shortLines++;
+        lossValue += variance.abs() * cost;
+      } else if (variance != null && variance > 0.000001) {
+        overLines++;
+        gainValue += variance * cost;
+      }
+      items.add({
+        'productId': line.read<String>('product_id'),
+        'productName': line.read<String>('product_name'),
+        'sku': line.read<String>('sku'),
+        'unit': line.read<String>('unit'),
+        'expectedQty': expectedHidden ? null : expected,
+        'countedQty': counted,
+        'varianceQty': expectedHidden ? null : variance,
+        'varianceValue': expectedHidden ? null : varianceValue,
+        'countedByName': line.readNullable<String>('counted_by_name'),
+      });
+    }
+    final totalLines = lines.length;
+    return {
+      'id': countId,
+      'status': status,
+      'blind': blind,
+      'expectedHidden': expectedHidden,
+      'title': count.readNullable<String>('title'),
+      'createdByName': count.readNullable<String>('created_by_name'),
+      'submittedByName': count.readNullable<String>('submitted_by_name'),
+      'approvedByName': count.readNullable<String>('approved_by_name'),
+      'items': items,
+      'summary': {
+        'totalLines': totalLines,
+        'countedLines': countedLines,
+        'completionPercent':
+            totalLines == 0 ? 0 : (countedLines * 100 / totalLines).round(),
+        'lossValue': lossValue,
+        'gainValue': gainValue,
+        'netValue': gainValue - lossValue,
+        'shortLines': shortLines,
+        'overLines': overLines,
+      },
+    };
+  }
+
+  Future<void> recordLocalStockCountEntries({
+    required String countId,
+    required List<Map<String, dynamic>> entries,
+    String? countedByName,
+  }) async {
+    final tenantId = _requireCustomerTenantId();
+    final branchIds = _activeBranchIds().toList()..sort();
+    if (branchIds.isEmpty) throw StateError('Select an active branch first.');
+    final normalizedCounter = _optionalReceiptText(countedByName);
+    await _ensureLocalStockCountTables();
+    await transaction(() async {
+      final count = await customSelect(
+        'SELECT id FROM local_stock_counts WHERE id = ? AND tenant_id = ? '
+        'AND branch_id IN (${List.filled(branchIds.length, '?').join(', ')}) '
+        "AND status = 'IN_PROGRESS'",
+        variables: [
+          Variable.withString(countId),
+          Variable.withString(tenantId),
+          ...branchIds.map(Variable.withString),
+        ],
+      ).getSingleOrNull();
+      if (count == null) {
+        throw StateError('This count is no longer open. Refresh it.');
+      }
+      for (final entry in entries) {
+        final productId = entry['productId']?.toString().trim() ?? '';
+        final rawQuantity = entry['countedQty'];
+        if (productId.isEmpty || (rawQuantity != null && rawQuantity is! num)) {
+          throw ArgumentError('Enter a valid quantity for every product.');
+        }
+        final line = await customSelect(
+          'SELECT allow_fractions FROM local_stock_count_lines '
+          'WHERE count_id = ? AND product_id = ?',
+          variables: [
+            Variable.withString(countId),
+            Variable.withString(productId),
+          ],
+        ).getSingleOrNull();
+        if (line == null) {
+          throw StateError('A counted product is not in this count.');
+        }
+        if (rawQuantity == null) {
+          await customStatement(
+            'UPDATE local_stock_count_lines SET counted_qty = NULL, counted_by_name = NULL '
+            'WHERE count_id = ? AND product_id = ?',
+            [Variable.withString(countId), Variable.withString(productId)],
+          );
+          continue;
+        }
+        final quantity = (rawQuantity as num).toDouble();
+        if (!quantity.isFinite || quantity < 0 || quantity > 1000000000) {
+          throw ArgumentError('Counted quantities must be zero or greater.');
+        }
+        if (line.read<int>('allow_fractions') == 0 &&
+            (quantity - quantity.round()).abs() > 0.000001) {
+          throw ArgumentError('This product is counted in whole units.');
+        }
+        await customStatement(
+          'UPDATE local_stock_count_lines SET counted_qty = ?, counted_by_name = ? '
+          'WHERE count_id = ? AND product_id = ?',
+          [
+            Variable.withReal(quantity),
+            normalizedCounter == null
+                ? const Variable<String>(null)
+                : Variable.withString(normalizedCounter),
+            Variable.withString(countId),
+            Variable.withString(productId),
+          ],
+        );
+      }
+    });
+  }
+
+  Future<void> submitLocalStockCount({
+    required String countId,
+    String? submittedByName,
+  }) async {
+    final tenantId = _requireCustomerTenantId();
+    await _ensureLocalStockCountTables();
+    final currentBranches = _activeBranchIds();
+    if (currentBranches.isEmpty) {
+      throw StateError('Select an active branch first.');
+    }
+    await transaction(() async {
+      final state = await customSelect(
+        'SELECT status FROM local_stock_counts WHERE id = ? AND tenant_id = ? '
+        'AND branch_id IN (${List.filled(currentBranches.length, '?').join(', ')})',
+        variables: [
+          Variable.withString(countId),
+          Variable.withString(tenantId),
+          ...currentBranches.map(Variable.withString),
+        ],
+      ).getSingleOrNull();
+      if (state == null) {
+        throw StateError('This stock count is not available here.');
+      }
+      final status = state.read<String>('status');
+      if (status == 'SUBMITTED' || status == 'APPROVED') return;
+      if (status != 'IN_PROGRESS') {
+        throw StateError('This stock count is closed.');
+      }
+      final count = await customSelect(
+        'SELECT COUNT(*) AS total FROM local_stock_count_lines '
+        'WHERE count_id = ? AND counted_qty IS NOT NULL',
+        variables: [Variable.withString(countId)],
+      ).getSingle();
+      if (count.read<int>('total') == 0) {
+        throw StateError(
+            'Count at least one product before handing in the count.');
+      }
+      await customStatement(
+        "UPDATE local_stock_counts SET status = 'SUBMITTED', submitted_by_name = ?, submitted_at = ? WHERE id = ? AND status = 'IN_PROGRESS'",
+        [
+          submittedByName == null
+              ? const Variable<String>(null)
+              : Variable.withString(submittedByName.trim()),
+          Variable.withString(DateTime.now().toUtc().toIso8601String()),
+          Variable.withString(countId),
+        ],
+      );
+    });
+  }
+
+  Future<void> approveLocalStockCount({
+    required String countId,
+    String? approvedByName,
+  }) async {
+    final tenantId = _requireCustomerTenantId();
+    await _ensureLocalStockCountTables();
+    final currentBranches = _activeBranchIds();
+    if (currentBranches.isEmpty) {
+      throw StateError('Select an active branch first.');
+    }
+    await transaction(() async {
+      final count = await customSelect(
+        'SELECT branch_id, status FROM local_stock_counts WHERE id = ? AND tenant_id = ? '
+        'AND branch_id IN (${List.filled(currentBranches.length, '?').join(', ')})',
+        variables: [
+          Variable.withString(countId),
+          Variable.withString(tenantId),
+          ...currentBranches.map(Variable.withString),
+        ],
+      ).getSingleOrNull();
+      if (count == null) {
+        throw StateError('This stock count is not available here.');
+      }
+      if (count.read<String>('status') == 'APPROVED') return;
+      if (count.read<String>('status') != 'SUBMITTED') {
+        throw StateError('Hand in the count before adjusting stock.');
+      }
+      final branchId = count.read<String>('branch_id');
+      final lines = await customSelect(
+        'SELECT l.product_id, l.product_name, l.counted_qty, l.expected_qty, '
+        'l.expected_stock_updated_at, '
+        'p.track_inventory AS product_track_inventory, '
+        'p.is_active AS product_is_active, '
+        's.updated_at AS current_stock_updated_at, '
+        's.quantity AS current_stock_quantity '
+        'FROM local_stock_count_lines l '
+        'LEFT JOIN products p ON p.id = l.product_id '
+        'LEFT JOIN local_stock s ON s.product_id = l.product_id AND s.branch_id = ? '
+        'WHERE l.count_id = ? AND l.counted_qty IS NOT NULL',
+        variables: [
+          Variable.withString(branchId),
+          Variable.withString(countId),
+        ],
+      ).get();
+      if (lines.isEmpty) {
+        throw StateError('There are no counted products to apply.');
+      }
+      for (final line in lines) {
+        final productName = line.read<String>('product_name');
+        if (line.readNullable<int>('product_track_inventory') != 1 ||
+            line.readNullable<int>('product_is_active') != 1) {
+          throw StateError(
+            '$productName is no longer an active inventory item. Reopen it or cancel and restart the count before adjusting stock.',
+          );
+        }
+        final expectedUpdatedAt =
+            line.readNullable<int>('expected_stock_updated_at');
+        final currentUpdatedAt =
+            line.readNullable<int>('current_stock_updated_at');
+        final expectedQuantity = line.read<double>('expected_qty');
+        final currentQuantity =
+            line.readNullable<double>('current_stock_quantity') ?? 0;
+        if (expectedUpdatedAt != currentUpdatedAt ||
+            (expectedQuantity - currentQuantity).abs() > 0.000001) {
+          throw StateError(
+            'Stock for $productName changed after this count began. Cancel this count and start a fresh one before adjusting stock.',
+          );
+        }
+      }
+      final updatedAt = DateTime.now();
+      for (var offset = 0; offset < lines.length; offset += 100) {
+        final batch = lines.sublist(
+          offset,
+          offset + 100 > lines.length ? lines.length : offset + 100,
+        );
+        final placeholders =
+            List.filled(batch.length, '(?, ?, ?, ?, ?)').join(', ');
+        final variables = <dynamic>[];
+        for (final line in batch) {
+          final productId = line.read<String>('product_id');
+          variables.addAll([
+            Variable.withString('stock-$branchId-$productId'),
+            Variable.withString(productId),
+            Variable.withString(branchId),
+            Variable.withReal(line.read<double>('counted_qty')),
+            Variable.withDateTime(updatedAt),
+          ]);
+        }
+        await customStatement(
+          'INSERT INTO local_stock '
+          '(id, product_id, branch_id, quantity, updated_at) '
+          'VALUES $placeholders '
+          'ON CONFLICT(product_id, branch_id) DO UPDATE SET '
+          'quantity = excluded.quantity, updated_at = excluded.updated_at',
+          variables,
+        );
+      }
+      await customStatement(
+        "UPDATE local_stock_counts SET status = 'APPROVED', approved_by_name = ?, approved_at = ? WHERE id = ? AND status = 'SUBMITTED'",
+        [
+          approvedByName == null
+              ? const Variable<String>(null)
+              : Variable.withString(approvedByName.trim()),
+          Variable.withString(DateTime.now().toUtc().toIso8601String()),
+          Variable.withString(countId),
+        ],
+      );
+    });
+  }
+
+  Future<void> cancelLocalStockCount(String countId) async {
+    final tenantId = _requireCustomerTenantId();
+    await _ensureLocalStockCountTables();
+    final currentBranches = _activeBranchIds();
+    if (currentBranches.isEmpty) {
+      throw StateError('Select an active branch first.');
+    }
+    final changed = await customUpdate(
+      "UPDATE local_stock_counts SET status = 'CANCELLED', cancelled_at = ? "
+      "WHERE id = ? AND tenant_id = ? AND branch_id IN (${List.filled(currentBranches.length, '?').join(', ')}) "
+      "AND status IN ('IN_PROGRESS', 'SUBMITTED')",
+      variables: [
+        Variable.withString(DateTime.now().toUtc().toIso8601String()),
+        Variable.withString(countId),
+        Variable.withString(tenantId),
+        ...currentBranches.map(Variable.withString),
+      ],
+    );
+    if (changed > 0) return;
+    final existing = await customSelect(
+      'SELECT status FROM local_stock_counts WHERE id = ? AND tenant_id = ? '
+      'AND branch_id IN (${List.filled(currentBranches.length, '?').join(', ')})',
+      variables: [
+        Variable.withString(countId),
+        Variable.withString(tenantId),
+        ...currentBranches.map(Variable.withString),
+      ],
+    ).getSingleOrNull();
+    if (existing == null) {
+      throw StateError('This stock count is not available here.');
+    }
+    if (existing.read<String>('status') == 'CANCELLED') return;
+    throw StateError('Only an open or submitted count can be cancelled.');
+  }
+
+  Future<List<Map<String, dynamic>>> getLocalStockReceiptHistory({
+    int limit = 100,
+  }) async {
+    final tenantId = _customerTenantId;
+    final branchIds = _activeBranchIds().toList()..sort();
+    if (tenantId == null || branchIds.isEmpty) {
+      return const <Map<String, dynamic>>[];
+    }
+    await _ensureLocalStockReceiptsTable();
+    final placeholders = List.filled(branchIds.length, '?').join(', ');
+    final safeLimit = limit.clamp(1, 250);
+    final rows = await customSelect(
+      '''
+        SELECT r.receipt_id, r.product_id,
+          COALESCE(p.name, 'Removed product') AS product_name,
+          COALESCE(p.unit, 'unit') AS base_unit,
+          r.branch_id, r.received_at,
+          SUM(r.base_quantity) AS total_quantity,
+          COUNT(*) AS batch_count,
+          SUM(CASE WHEN r.cost_price IS NULL THEN 1 ELSE 0 END) AS missing_cost_count,
+          COALESCE(SUM(r.cost_price * r.base_quantity), 0) AS total_cost,
+          GROUP_CONCAT(DISTINCT r.supplier_ref) AS supplier_references
+        FROM local_stock_receipts r
+        LEFT JOIN products p ON p.id = r.product_id
+        WHERE r.tenant_id = ? AND r.branch_id IN ($placeholders)
+        GROUP BY r.tenant_id, r.receipt_id, r.product_id, r.branch_id,
+          r.received_at, p.name, p.unit
+        ORDER BY r.received_at DESC, r.receipt_id DESC
+        LIMIT ?
+      ''',
+      variables: [
+        Variable.withString(tenantId),
+        ...branchIds.map(Variable.withString),
+        Variable.withInt(safeLimit),
+      ],
+    ).get();
+    return rows
+        .map((row) => <String, dynamic>{
+              'receiptId': row.read<String>('receipt_id'),
+              'productId': row.read<String>('product_id'),
+              'productName': row.read<String>('product_name'),
+              'unit': row.read<String>('base_unit'),
+              'branchId': row.read<String>('branch_id'),
+              'receivedAt': row.read<String>('received_at'),
+              'totalQuantity': row.read<double>('total_quantity'),
+              'batchCount': row.read<int>('batch_count'),
+              'costComplete': row.read<int>('missing_cost_count') == 0,
+              'totalCost': row.read<double>('total_cost'),
+              'supplierReferences':
+                  row.readNullable<String>('supplier_references'),
+            })
+        .toList(growable: false);
+  }
+
   Future<void> decrementStock(
     String productId,
     String branchId,
     num quantity,
   ) async {
     final amount = quantity.toDouble();
+    if (!amount.isFinite || amount <= 0) {
+      throw ArgumentError('Stock deduction must be a positive quantity');
+    }
+    final product = await (select(products)
+          ..where((p) => p.id.equals(productId)))
+        .getSingleOrNull();
+    if (product == null || !product.trackInventory) return;
+
     final stock = await getProductStock(productId, branchId);
     if (stock != null) {
       await (update(localStock)
@@ -1772,7 +3211,12 @@ class AppDatabase extends _$AppDatabase {
   // Low Stock Alerts — uses each product's real minStock (reorder threshold),
   // matching the backend's getLowStockAlerts() semantics (quantity <= minStock),
   // instead of a flat hardcoded threshold.
-  Future<List<Map<String, dynamic>>> getLowStockProducts() async {
+  Future<List<Map<String, dynamic>>> getLowStockProducts(
+      {String? branchId}) async {
+    final requestedBranch = branchId?.trim();
+    final effectiveBranchId = requestedBranch == null || requestedBranch.isEmpty
+        ? _storage.getBranchId()
+        : requestedBranch;
     final result = await customSelect(
       'SELECT p.id, p.name, p.sku, p.price, p.min_stock, p.unit, '
       'ls.quantity, ls.branch_id, ls.display_unit, '
@@ -1781,8 +3225,13 @@ class AppDatabase extends _$AppDatabase {
       '(SELECT name FROM categories WHERE id = p.category_id) as category_name '
       'FROM products p '
       'LEFT JOIN local_stock ls ON ls.product_id = p.id '
-      'WHERE p.is_active = 1 AND COALESCE(ls.quantity, 0) <= p.min_stock '
+      "${effectiveBranchId == null ? '' : 'AND ls.branch_id = ? '}"
+      'WHERE p.is_active = 1 AND p.track_inventory = 1 '
+      'AND COALESCE(ls.quantity, 0) <= p.min_stock '
       'ORDER BY (p.min_stock - COALESCE(ls.quantity, 0)) DESC, p.name ASC',
+      variables: effectiveBranchId == null
+          ? const []
+          : [Variable.withString(effectiveBranchId)],
     ).get();
 
     final rows = result
@@ -1869,6 +3318,100 @@ class AppDatabase extends _$AppDatabase {
           )
           ..orderBy([(s) => OrderingTerm.desc(s.createdAt)]))
         .get();
+  }
+
+  /// Sales for one selected branch within [from]..[to]. Unlike the general
+  /// workspace query above, this is for branch-specific reports and must not
+  /// combine receipts from other active branches into the selected branch's
+  /// totals.
+  Future<List<PendingSale>> getSalesByDateRangeForBranch(
+    String branchId,
+    DateTime from,
+    DateTime to,
+  ) async {
+    if (_customerTenantId == null) {
+      throw StateError('Sign in to a local shop before viewing sales.');
+    }
+    if (!_activeBranchIds().contains(branchId)) {
+      throw StateError(
+        'The selected branch is not available on this device. Choose an active branch and refresh.',
+      );
+    }
+    return (select(pendingSales)
+          ..where(
+            (sale) =>
+                sale.branchId.equals(branchId) &
+                sale.createdAt.isBiggerOrEqualValue(from) &
+                sale.createdAt.isSmallerOrEqualValue(to),
+          )
+          ..orderBy([(sale) => OrderingTerm.desc(sale.createdAt)]))
+        .get();
+  }
+
+  /// Checks whether a sale was added or voided after a local till close.
+  /// Uses an indexed existence query rather than loading every sale and item
+  /// into Dart, and treats [to] as the exclusive end of the business day.
+  Future<bool> hasSalesActivityAfterClose({
+    required String branchId,
+    required DateTime from,
+    required DateTime to,
+    required DateTime closedAt,
+  }) async {
+    if (_customerTenantId == null || !_activeBranchIds().contains(branchId)) {
+      throw Exception(
+        'The selected branch is not available on this device. Choose an active branch and refresh.',
+      );
+    }
+
+    final result = await customSelect(
+      'SELECT EXISTS('
+      'SELECT 1 FROM pending_sales '
+      'WHERE branch_id = ? AND created_at >= ? AND created_at < ? '
+      'AND (created_at > ? OR voided_at > ?)'
+      ') AS has_activity',
+      variables: [
+        Variable.withString(branchId),
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+        Variable.withDateTime(closedAt),
+        Variable.withDateTime(closedAt),
+      ],
+    ).getSingle();
+    return result.read<int>('has_activity') != 0;
+  }
+
+  /// A cash-funded supplier payment after a till close changes expected cash
+  /// just like a sale or customer collection and therefore needs a re-count.
+  Future<bool> hasLocalCashPayoutsAfterClose({
+    required String branchId,
+    required DateTime from,
+    required DateTime to,
+    required DateTime closedAt,
+  }) async {
+    if (_customerTenantId == null || !_activeBranchIds().contains(branchId)) {
+      throw Exception(
+        'The selected branch is not available on this device. Choose an active branch and refresh.',
+      );
+    }
+    await _createSupplierFinanceTables();
+    final result = await customSelect(
+      'SELECT EXISTS('
+      'SELECT 1 FROM supplier_payments sp '
+      'JOIN suppliers s ON s.id = sp.supplier_id '
+      'WHERE s.tenant_id = ? AND sp.branch_id = ? '
+      'AND UPPER(TRIM(sp.funding_source)) = \'CASH_TILL\' '
+      'AND sp.payment_date >= ? AND sp.payment_date < ? '
+      'AND sp.payment_date > ?'
+      ') AS has_activity',
+      variables: [
+        Variable.withString(_customerTenantId!),
+        Variable.withString(branchId),
+        Variable.withString(from.toUtc().toIso8601String()),
+        Variable.withString(to.toUtc().toIso8601String()),
+        Variable.withString(closedAt.toUtc().toIso8601String()),
+      ],
+    ).getSingle();
+    return result.read<int>('has_activity') != 0;
   }
 
   /// Stream of all sales (for real-time).
@@ -1986,13 +3529,52 @@ class AppDatabase extends _$AppDatabase {
     String saleId, {
     required String reason,
     String? voidedBy,
+    bool guardUnallocatedCollections = false,
+    bool recordCashRefund = false,
   }) async {
+    if (guardUnallocatedCollections) {
+      await _ensureLocalCashCollectionsTable();
+      await createCustomerInstallmentsTable();
+    }
+    if (recordCashRefund) await _ensureLocalCashRefundsTable();
     await transaction(() async {
       final sale = await getPendingSaleById(saleId);
       if (sale == null || sale.status == 'VOIDED') return;
+      if (guardUnallocatedCollections && sale.status != 'COMPLETED') {
+        throw const LocalSaleVoidConflict(
+          'This sale is not marked complete, so its payment and stock changes cannot be safely reversed here. Verify the payment first; no records were changed.',
+        );
+      }
 
       final branchIds = _activeBranchIds();
       if (branchIds.isEmpty || _customerTenantId == null) return;
+
+      if (recordCashRefund) {
+        final refundCents = _pendingSaleCashTenderCents(sale);
+        if (refundCents <= 0) {
+          throw const LocalSaleVoidConflict(
+            'This receipt has no verified cash tender to refund from the till. The sale was left unchanged.',
+          );
+        }
+        final now = DateTime.now().toUtc();
+        await customStatement(
+          'INSERT INTO local_cash_refunds '
+          '(id, tenant_id, branch_id, sale_id, amount, refunded_at, recorded_by, reason) '
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [
+            Variable.withString('cash-refund-$saleId'),
+            Variable.withString(_customerTenantId!),
+            Variable.withString(sale.branchId),
+            Variable.withString(saleId),
+            Variable.withReal(refundCents / 100),
+            Variable.withString(now.toIso8601String()),
+            voidedBy == null
+                ? const Variable<String>(null)
+                : Variable.withString(voidedBy),
+            Variable.withString(reason.trim()),
+          ],
+        );
+      }
 
       // Credit and split sales add their debt to the local customer balance
       // when the receipt is committed. Reverse that exact sale contribution
@@ -2005,6 +3587,60 @@ class AppDatabase extends _$AppDatabase {
           throw StateError('This debt sale has no customer to adjust');
         }
         final tenantId = _requireCustomerTenantId();
+        if (guardUnallocatedCollections) {
+          final saleCreatedAt = sale.createdAt.toUtc().toIso8601String();
+          final laterCollection = await customSelect(
+            'SELECT 1 AS found FROM local_cash_collections '
+            'WHERE tenant_id = ? AND customer_id = ? AND collected_at >= ? '
+            'LIMIT 1',
+            variables: [
+              Variable.withString(tenantId),
+              Variable.withString(customerId),
+              Variable.withString(saleCreatedAt),
+            ],
+          ).getSingleOrNull();
+          if (laterCollection != null) {
+            throw const LocalSaleVoidConflict(
+              'This credit sale can’t be voided safely because a customer payment was recorded after it. Customer payments are account-level and are not linked to individual sales. The sale, balance, and stock were left unchanged.',
+            );
+          }
+
+          final customer = await customSelect(
+            'SELECT balance FROM customers WHERE id = ? AND tenant_id = ?',
+            variables: [
+              Variable.withString(customerId),
+              Variable.withString(tenantId),
+            ],
+          ).getSingleOrNull();
+          if (customer == null) {
+            throw StateError('The debt customer could not be found');
+          }
+          if (customer.read<double>('balance') + 0.005 < debtAmount) {
+            throw const LocalSaleVoidConflict(
+              'This credit sale can’t be voided safely because the customer’s current balance is lower than the sale’s debt. The sale, balance, and stock were left unchanged.',
+            );
+          }
+          final remainingBalance =
+              (customer.read<double>('balance') - debtAmount)
+                  .clamp(0, double.infinity)
+                  .toDouble();
+          final scheduled = await customSelect(
+            'SELECT COALESCE(SUM(amount - COALESCE(paid_amount, 0)), 0) AS amount_due '
+            'FROM customer_installments WHERE tenant_id = ? AND customer_id = ? '
+            'AND status IN (\'pending\', \'overdue\')',
+            variables: [
+              Variable.withString(tenantId),
+              Variable.withString(customerId),
+            ],
+          ).getSingle();
+          final scheduledBalance = scheduled.read<double>('amount_due');
+          if (!scheduledBalance.isFinite ||
+              scheduledBalance > remainingBalance + 0.005) {
+            throw const LocalSaleVoidConflict(
+              'This credit sale can’t be voided safely because active payment schedules would exceed the customer’s remaining balance. Cancel or adjust the affected due dates, refresh, and try again. The sale, balance, and stock were left unchanged.',
+            );
+          }
+        }
         final updatedCustomers = await customUpdate(
           'UPDATE customers SET balance = CASE WHEN balance > ? '
           'THEN balance - ? ELSE 0 END WHERE id = ? AND tenant_id = ?',
@@ -2018,6 +3654,48 @@ class AppDatabase extends _$AppDatabase {
         if (updatedCustomers != 1) {
           throw StateError('The debt customer could not be found');
         }
+      }
+
+      // A voided receipt is not a completed customer purchase. Reverse its
+      // aggregate contribution in the same transaction and move the last-
+      // purchase date back to the most recent completed receipt, if any.
+      final customerId = sale.customerId;
+      final tenantId = _customerTenantId;
+      if (sale.status.toUpperCase() == 'COMPLETED' &&
+          customerId != null &&
+          customerId.isNotEmpty &&
+          tenantId != null) {
+        final purchaseScope = _salesBranchScope('ps');
+        final lastPurchase = await customSelect(
+          'SELECT strftime(\'%Y-%m-%dT%H:%M:%fZ\', MAX(ps.created_at), \'unixepoch\') AS last_purchase_at '
+          'FROM pending_sales ps '
+          'INNER JOIN customers c ON c.id = ps.customer_id '
+          'WHERE ps.customer_id = ? AND c.tenant_id = ? AND ps.id <> ? '
+          "AND UPPER(ps.status) = 'COMPLETED'${purchaseScope.clause}",
+          variables: [
+            Variable.withString(customerId),
+            Variable.withString(tenantId),
+            Variable.withString(saleId),
+            ...purchaseScope.variables,
+          ],
+        ).getSingle();
+        final lastPurchaseAt =
+            lastPurchase.readNullable<String>('last_purchase_at');
+        await customUpdate(
+          'UPDATE customers SET '
+          'total_purchases = MAX(total_purchases - 1, 0), '
+          'total_spent = MAX(total_spent - ?, 0), '
+          'last_purchase_at = ? '
+          'WHERE id = ? AND tenant_id = ?',
+          variables: [
+            Variable.withReal(sale.total),
+            lastPurchaseAt == null
+                ? const Variable<String>(null)
+                : Variable.withString(lastPurchaseAt),
+            Variable.withString(customerId),
+            Variable.withString(tenantId),
+          ],
+        );
       }
 
       await (update(pendingSales)
@@ -2034,7 +3712,14 @@ class AppDatabase extends _$AppDatabase {
       // Return each line's quantity to the local stock cache.
       final items = await getSaleItems(saleId);
       for (final item in items) {
-        final stock = await getStockForProduct(item.productId);
+        final product = await (select(products)
+              ..where((p) => p.id.equals(item.productId)))
+            .getSingleOrNull();
+        if (product == null || !product.trackInventory) continue;
+
+        // Restore inventory to the branch where the sale happened, even if
+        // the owner switched branches before opening this receipt.
+        final stock = await getProductStock(item.productId, sale.branchId);
         if (stock != null) {
           await (update(localStock)..where((s) => s.id.equals(stock.id))).write(
             LocalStockCompanion(
@@ -2042,9 +3727,38 @@ class AppDatabase extends _$AppDatabase {
               updatedAt: Value(DateTime.now()),
             ),
           );
+        } else {
+          // A local stock row may have been removed after the sale. Restore
+          // the sale quantity so a void cannot silently discard inventory.
+          await into(localStock).insert(
+            LocalStockCompanion.insert(
+              id: 'stock-${sale.branchId}-${item.productId}',
+              productId: item.productId,
+              branchId: sale.branchId,
+              quantity: item.quantity,
+              updatedAt: DateTime.now(),
+            ),
+            mode: InsertMode.insertOrReplace,
+          );
         }
       }
     });
+  }
+
+  int _pendingSaleCashTenderCents(PendingSale sale) {
+    final totalCents = _amountToCents(sale.total);
+    switch (sale.paymentMethod.trim().toUpperCase()) {
+      case 'CASH':
+        return totalCents;
+      case 'SPLIT':
+        return _splitTenderCents(
+              sale.paymentReference,
+              expectedTotalCents: totalCents,
+            )['CASH'] ??
+            0;
+      default:
+        return 0;
+    }
   }
 
   double _pendingSaleDebtAmount(PendingSale sale) {
@@ -2107,6 +3821,7 @@ class AppDatabase extends _$AppDatabase {
       'SELECT payment_method, COUNT(*) as count, SUM(total) as total_amount '
       'FROM pending_sales '
       'WHERE created_at >= ? AND created_at <= ?${scope.clause} '
+      "AND UPPER(status) = 'COMPLETED' "
       'GROUP BY payment_method '
       'ORDER BY total_amount DESC',
       variables: [
@@ -2136,6 +3851,7 @@ class AppDatabase extends _$AppDatabase {
       'SELECT cashier_id, COUNT(*) as count, SUM(total) as total_amount '
       'FROM pending_sales '
       'WHERE created_at >= ? AND created_at <= ?${scope.clause} '
+      "AND UPPER(status) = 'COMPLETED' "
       'GROUP BY cashier_id '
       'ORDER BY total_amount DESC',
       variables: [
@@ -2167,6 +3883,7 @@ class AppDatabase extends _$AppDatabase {
       'FROM pending_sale_items psi '
       'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
       'WHERE ps.created_at >= ? AND ps.created_at <= ?${scope.clause} '
+      "AND UPPER(ps.status) = 'COMPLETED' "
       'GROUP BY psi.product_id, psi.product_name '
       'ORDER BY total_qty DESC '
       'LIMIT ?',
@@ -2202,7 +3919,7 @@ class AppDatabase extends _$AppDatabase {
       'FROM categories c '
       'LEFT JOIN products p ON p.category_id = c.id '
       'LEFT JOIN pending_sale_items psi ON psi.product_id = p.id '
-      'LEFT JOIN pending_sales ps ON ps.id = psi.sale_id AND ps.created_at >= ? AND ps.created_at <= ?${scope.clause} '
+      'LEFT JOIN pending_sales ps ON ps.id = psi.sale_id AND ps.created_at >= ? AND ps.created_at <= ?${scope.clause} AND UPPER(ps.status) = \'COMPLETED\' '
       'GROUP BY c.id, c.name '
       'ORDER BY total_revenue DESC',
       variables: [
@@ -2265,6 +3982,29 @@ class AppDatabase extends _$AppDatabase {
         .toList();
   }
 
+  /// Counts stock alerts for one branch without loading its product catalog.
+  /// Used by compact dashboard insights that only need totals, not item data.
+  Future<Map<String, int>> getInventoryAlertCounts(String branchId) async {
+    final normalizedBranchId = branchId.trim();
+    if (normalizedBranchId.isEmpty) {
+      throw ArgumentError('A branch is required to count stock alerts.');
+    }
+    final row = await customSelect(
+      'SELECT '
+      'COALESCE(SUM(CASE WHEN COALESCE(ls.quantity, 0) <= 0 THEN 1 ELSE 0 END), 0) AS out_of_stock, '
+      'COALESCE(SUM(CASE WHEN p.min_stock > 0 AND COALESCE(ls.quantity, 0) > 0 AND COALESCE(ls.quantity, 0) <= p.min_stock THEN 1 ELSE 0 END), 0) AS low_stock '
+      'FROM products p '
+      'LEFT JOIN local_stock ls ON ls.product_id = p.id AND ls.branch_id = ? '
+      'WHERE p.is_active = 1 AND p.track_inventory = 1',
+      variables: [Variable.withString(normalizedBranchId)],
+      readsFrom: {products, localStock},
+    ).getSingle();
+    return {
+      'outOfStock': row.read<int>('out_of_stock'),
+      'lowStock': row.read<int>('low_stock'),
+    };
+  }
+
   /// Dashboard summary: total sales, revenue, avg ticket for today.
   Future<Map<String, dynamic>> getDashboardSummary({String? branchId}) async {
     final scope = _salesBranchScope('pending_sales', onlyBranchId: branchId);
@@ -2317,20 +4057,16 @@ class AppDatabase extends _$AppDatabase {
     String branchId,
     DateTime date,
   ) async {
-    if (_customerTenantId == null || !_activeBranchIds().contains(branchId)) {
-      return {
-        'date':
-            '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
-        'totalSales': 0.0,
-        'totalTransactions': 0,
-        'totalTax': 0.0,
-        'totalDiscount': 0.0,
-        'cashSales': 0.0,
-        'mpesaSales': 0.0,
-        'cardSales': 0.0,
-        'creditSales': 0.0,
-        'outstandingBalance': 0.0,
-      };
+    if (_customerTenantId == null) {
+      throw Exception('Sign in to a local shop before viewing sales totals.');
+    }
+    if (!_activeBranchIds().contains(branchId)) {
+      // Do not turn a stale or mismatched branch selection into a convincing
+      // zero-sales report. This is especially important on End of Day, where
+      // the owner may otherwise close a till against figures from no branch.
+      throw Exception(
+        'The selected branch is not available on this device. Choose an active branch and refresh.',
+      );
     }
     final startOfDay = DateTime(date.year, date.month, date.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
@@ -2369,6 +4105,8 @@ class AppDatabase extends _$AppDatabase {
     var mpesaSalesCents = 0;
     var cardSalesCents = 0;
     var creditSalesCents = 0;
+    var otherSalesCents = 0;
+    final otherPaymentMethodsCents = <String, int>{};
     for (final sale in paymentRows) {
       final method = sale.read<String>('payment_method').trim().toUpperCase();
       final totalCents = _amountToCents(sale.read<double>('total'));
@@ -2384,18 +4122,82 @@ class AppDatabase extends _$AppDatabase {
         case 'CARD':
           cardSalesCents += totalCents;
         case 'SPLIT':
+          try {
+            final split = _splitTenderCents(
+              sale.readNullable<String>('payment_reference'),
+              expectedTotalCents: totalCents,
+            );
+            cashSalesCents += split['CASH'] ?? 0;
+            creditSalesCents += split['CREDIT'] ?? 0;
+          } on FormatException {
+            // Preserve the report if a legacy split lacks its tender detail.
+            // The screen surfaces this amount as unreconciled and does not
+            // silently fold it into cash or credit.
+            otherSalesCents += totalCents;
+            otherPaymentMethodsCents.update(
+              'SPLIT (UNRECONCILED)',
+              (amount) => amount + totalCents,
+              ifAbsent: () => totalCents,
+            );
+          }
+        default:
+          // A legacy/imported method should not make the whole End of Day
+          // screen fail. Keep its value in the overall sales total and show
+          // it separately; never silently treat an unknown method as cash.
+          final label = method.isEmpty ? 'UNSPECIFIED' : method;
+          otherSalesCents += totalCents;
+          otherPaymentMethodsCents.update(
+            label,
+            (amount) => amount + totalCents,
+            ifAbsent: () => totalCents,
+          );
+      }
+    }
+
+    // A completed cash tender remains a physical till inflow after its sale
+    // is voided. Keep it out of sales revenue, but include the tender here so
+    // the till stays balanced until a separate cash refund is actually paid.
+    final voidedPaymentRows = await customSelect(
+      'SELECT payment_method, total, payment_reference FROM pending_sales '
+      'WHERE branch_id = ? AND created_at >= ? AND created_at < ? '
+      "AND UPPER(status) = 'VOIDED'",
+      variables: [
+        Variable.withString(branchId),
+        Variable.withDateTime(startOfDay),
+        Variable.withDateTime(endOfDay),
+      ],
+    ).get();
+    var voidedCashReceivedCents = 0;
+    for (final sale in voidedPaymentRows) {
+      final method = sale.read<String>('payment_method').trim().toUpperCase();
+      final totalCents = _amountToCents(sale.read<double>('total'));
+      if (method == 'CASH') {
+        voidedCashReceivedCents += totalCents;
+      } else if (method == 'SPLIT') {
+        try {
           final split = _splitTenderCents(
             sale.readNullable<String>('payment_reference'),
             expectedTotalCents: totalCents,
           );
-          cashSalesCents += split['CASH'] ?? 0;
-          creditSalesCents += split['CREDIT'] ?? 0;
-        default:
-          throw FormatException(
-            'Cannot reconcile local End of Day payment method "$method".',
-          );
+          voidedCashReceivedCents += split['CASH'] ?? 0;
+        } on FormatException {
+          // Malformed legacy split details are not guessed as cash.
+        }
       }
     }
+
+    final cashCollections = await _sumLocalCashCollections(
+      branchId: branchId,
+      date: date,
+    );
+    final cashRefunds = await _sumLocalCashRefunds(
+      branchId: branchId,
+      date: date,
+    );
+    final cashPayouts = await _sumLocalCashSupplierPayments(
+      branchId: branchId,
+      date: date,
+    );
 
     return {
       'date':
@@ -2405,11 +4207,447 @@ class AppDatabase extends _$AppDatabase {
       'totalTax': row.read<double>('total_tax'),
       'totalDiscount': row.read<double>('total_discount'),
       'cashSales': cashSalesCents / 100,
+      'cashCollections': cashCollections,
+      'cashPayouts': cashPayouts,
+      'cashRefunds': cashRefunds,
+      'voidedCashReceived': voidedCashReceivedCents / 100,
       'mpesaSales': mpesaSalesCents / 100,
       'cardSales': cardSalesCents / 100,
       'creditSales': creditSalesCents / 100,
+      'otherSales': otherSalesCents / 100,
+      'otherPaymentMethods': otherPaymentMethodsCents.entries
+          .map((entry) => {
+                'method': entry.key,
+                'amount': entry.value / 100,
+              })
+          .toList(),
       'outstandingBalance': 0.0,
     };
+  }
+
+  Future<void> _ensureLocalDailyClosesTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS local_daily_closes (
+        id TEXT PRIMARY KEY NOT NULL,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
+        business_date TEXT NOT NULL,
+        opening_float REAL NOT NULL,
+        cash_sales REAL NOT NULL,
+        cash_collections REAL NOT NULL,
+        cash_payouts REAL NOT NULL DEFAULT 0,
+        cash_refunds REAL NOT NULL DEFAULT 0,
+        voided_cash_received REAL NOT NULL DEFAULT 0,
+        net_cash_movement REAL NOT NULL,
+        expected_cash REAL NOT NULL,
+        counted_cash REAL NOT NULL,
+        discrepancy REAL NOT NULL,
+        notes TEXT,
+        closed_by TEXT NOT NULL,
+        closed_at TEXT NOT NULL
+      )
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_local_daily_closes_scope
+      ON local_daily_closes (tenant_id, branch_id, business_date, closed_at)
+    ''');
+    // Devices may already have the first local-close schema from an earlier
+    // build. Add the later reconciliation field without discarding close
+    // records or requiring a cloud migration.
+    final columns =
+        await customSelect('PRAGMA table_info(local_daily_closes)').get();
+    if (!columns
+        .any((column) => column.read<String>('name') == 'cash_collections')) {
+      await customStatement(
+        'ALTER TABLE local_daily_closes '
+        'ADD COLUMN cash_collections REAL NOT NULL DEFAULT 0',
+      );
+    }
+    if (!columns
+        .any((column) => column.read<String>('name') == 'cash_payouts')) {
+      await customStatement(
+        'ALTER TABLE local_daily_closes '
+        'ADD COLUMN cash_payouts REAL NOT NULL DEFAULT 0',
+      );
+    }
+    if (!columns
+        .any((column) => column.read<String>('name') == 'cash_refunds')) {
+      await customStatement(
+        'ALTER TABLE local_daily_closes '
+        'ADD COLUMN cash_refunds REAL NOT NULL DEFAULT 0',
+      );
+    }
+    if (!columns.any(
+        (column) => column.read<String>('name') == 'voided_cash_received')) {
+      await customStatement(
+        'ALTER TABLE local_daily_closes '
+        'ADD COLUMN voided_cash_received REAL NOT NULL DEFAULT 0',
+      );
+    }
+  }
+
+  /// Saves a local till close as an auditable event. Re-closing a day inserts
+  /// another event so the previous count and discrepancy remain available.
+  Future<void> saveLocalDailyClose({
+    required String branchId,
+    required String businessDate,
+    required double openingFloat,
+    required double cashSales,
+    required double cashCollections,
+    required double cashPayouts,
+    required double cashRefunds,
+    required double voidedCashReceived,
+    required double netCashMovement,
+    required double countedCash,
+    required String closedBy,
+    String? notes,
+  }) async {
+    final tenantId = _requireCustomerTenantId();
+    if (!_activeBranchIds().contains(branchId)) {
+      throw StateError('This branch is not part of the active workspace.');
+    }
+    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(businessDate)) {
+      throw ArgumentError.value(businessDate, 'businessDate');
+    }
+    final openingCents = _amountToCents(openingFloat);
+    final salesCents = _amountToCents(cashSales);
+    final collectionCents = _amountToCents(cashCollections);
+    final payoutCents = _amountToCents(cashPayouts);
+    final refundCents = _amountToCents(cashRefunds);
+    final voidedReceivedCents = _amountToCents(voidedCashReceived);
+    final movementCents = netCashMovement.isFinite
+        ? (netCashMovement * 100).round()
+        : throw ArgumentError.value(netCashMovement, 'netCashMovement');
+    final countedCents = _amountToCents(countedCash);
+    if (openingCents < 0 || countedCents < 0) {
+      throw ArgumentError('Opening float and counted cash cannot be negative.');
+    }
+    final expectedCents = openingCents +
+        salesCents +
+        collectionCents -
+        payoutCents +
+        voidedReceivedCents -
+        refundCents +
+        movementCents;
+    if (expectedCents < 0) {
+      throw ArgumentError('Net cash movements cannot exceed available cash.');
+    }
+    final notesMissing = notes?.trim().isEmpty ?? true;
+    if (movementCents != 0 && notesMissing) {
+      throw StateError(
+        'Explain other cash added or removed before closing.',
+      );
+    }
+    if (countedCents != expectedCents && notesMissing) {
+      throw StateError('Explain the cash discrepancy before closing.');
+    }
+    await _ensureLocalDailyClosesTable();
+    await transaction(() async {
+      // The user may have left the count sheet open while another staff
+      // member records a sale, debt collection, refund, or supplier payment.
+      // Re-read every till-affecting total inside the same transaction as the
+      // close insert so we never certify a stale count as the final close.
+      final current = await getDailySalesSummary(
+        branchId,
+        DateTime.parse(businessDate),
+      );
+      final currentAmounts = <String, double>{
+        'cash sales': (current['cashSales'] as num).toDouble(),
+        'cash collections': (current['cashCollections'] as num).toDouble(),
+        'cash supplier payments': (current['cashPayouts'] as num).toDouble(),
+        'cash refunds': (current['cashRefunds'] as num).toDouble(),
+        'cash received on voided sales':
+            (current['voidedCashReceived'] as num).toDouble(),
+      };
+      final savedAmounts = <String, double>{
+        'cash sales': cashSales,
+        'cash collections': cashCollections,
+        'cash supplier payments': cashPayouts,
+        'cash refunds': cashRefunds,
+        'cash received on voided sales': voidedCashReceived,
+      };
+      final changedAmounts = currentAmounts.entries
+          .where((entry) =>
+              _amountToCents(entry.value) !=
+              _amountToCents(savedAmounts[entry.key]!))
+          .map((entry) => entry.key)
+          .toList(growable: false);
+      if (changedAmounts.isNotEmpty) {
+        throw StateError(
+          'Till activity changed while you were counting. Refresh the figures and count again.',
+        );
+      }
+
+      final now = DateTime.now().toUtc();
+      final closeId = '$branchId-$businessDate-${now.microsecondsSinceEpoch}';
+      await customStatement(
+        'INSERT INTO local_daily_closes ('
+        'id, tenant_id, branch_id, business_date, opening_float, cash_sales, '
+        'cash_collections, cash_payouts, cash_refunds, voided_cash_received, '
+        'net_cash_movement, expected_cash, '
+        'counted_cash, discrepancy, notes, closed_by, closed_at) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          Variable.withString(closeId),
+          Variable.withString(tenantId),
+          Variable.withString(branchId),
+          Variable.withString(businessDate),
+          Variable.withReal(openingCents / 100),
+          Variable.withReal(salesCents / 100),
+          Variable.withReal(collectionCents / 100),
+          Variable.withReal(payoutCents / 100),
+          Variable.withReal(refundCents / 100),
+          Variable.withReal(voidedReceivedCents / 100),
+          Variable.withReal(movementCents / 100),
+          Variable.withReal(expectedCents / 100),
+          Variable.withReal(countedCents / 100),
+          Variable.withReal((countedCents - expectedCents) / 100),
+          notes == null
+              ? const Variable<String>(null)
+              : Variable.withString(notes),
+          Variable.withString(closedBy),
+          Variable.withString(now.toIso8601String()),
+        ],
+      );
+    });
+  }
+
+  Future<Map<String, dynamic>?> getLatestLocalDailyClose({
+    required String branchId,
+    required String businessDate,
+  }) async {
+    final tenantId = _customerTenantId;
+    if (tenantId == null || !_activeBranchIds().contains(branchId)) return null;
+    await _ensureLocalDailyClosesTable();
+    final rows = await customSelect(
+      'SELECT * FROM local_daily_closes '
+      'WHERE tenant_id = ? AND branch_id = ? AND business_date = ? '
+      'ORDER BY closed_at DESC LIMIT 1',
+      variables: [
+        Variable.withString(tenantId),
+        Variable.withString(branchId),
+        Variable.withString(businessDate),
+      ],
+    ).get();
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    return {
+      'id': row.read<String>('id'),
+      'branchId': row.read<String>('branch_id'),
+      'businessDate': row.read<String>('business_date'),
+      'openingFloat': row.read<double>('opening_float'),
+      'cashSales': row.read<double>('cash_sales'),
+      'cashCollections': row.read<double>('cash_collections'),
+      'cashPayouts': row.read<double>('cash_payouts'),
+      'cashRefunds': row.read<double>('cash_refunds'),
+      'voidedCashReceived': row.read<double>('voided_cash_received'),
+      'netCashMovement': row.read<double>('net_cash_movement'),
+      'expectedCash': row.read<double>('expected_cash'),
+      'countedCash': row.read<double>('counted_cash'),
+      'cashDiscrepancy': row.read<double>('discrepancy'),
+      'notes': row.readNullable<String>('notes'),
+      'closedByName': row.read<String>('closed_by'),
+      'closedAt': row.read<String>('closed_at'),
+    };
+  }
+
+  /// Returns recent local till-close events for the active shop and branch.
+  /// Each close is retained as an audit event, including when a day is
+  /// reopened and closed again after new activity.
+  Future<List<Map<String, dynamic>>> getLocalDailyCloseHistory({
+    required String branchId,
+    int limit = 20,
+  }) async {
+    final tenantId = _customerTenantId;
+    if (tenantId == null || !_activeBranchIds().contains(branchId)) {
+      return const <Map<String, dynamic>>[];
+    }
+    final safeLimit = limit.clamp(1, 100);
+    await _ensureLocalDailyClosesTable();
+    final rows = await customSelect(
+      'SELECT * FROM local_daily_closes '
+      'WHERE tenant_id = ? AND branch_id = ? '
+      'ORDER BY closed_at DESC LIMIT ?',
+      variables: [
+        Variable.withString(tenantId),
+        Variable.withString(branchId),
+        Variable.withInt(safeLimit),
+      ],
+    ).get();
+    return rows
+        .map((row) => <String, dynamic>{
+              'id': row.read<String>('id'),
+              'branchId': row.read<String>('branch_id'),
+              'businessDate': row.read<String>('business_date'),
+              'openingFloat': row.read<double>('opening_float'),
+              'cashSales': row.read<double>('cash_sales'),
+              'cashCollections': row.read<double>('cash_collections'),
+              'cashPayouts': row.read<double>('cash_payouts'),
+              'cashRefunds': row.read<double>('cash_refunds'),
+              'voidedCashReceived': row.read<double>('voided_cash_received'),
+              'netCashMovement': row.read<double>('net_cash_movement'),
+              'expectedCash': row.read<double>('expected_cash'),
+              'countedCash': row.read<double>('counted_cash'),
+              'discrepancy': row.read<double>('discrepancy'),
+              'notes': row.readNullable<String>('notes'),
+              'closedByName': row.read<String>('closed_by'),
+              'closedAt': row.read<String>('closed_at'),
+              // Aliases keep the shared reconciliation card reusable across
+              // server and local close records.
+              'createdAt': row.read<String>('closed_at'),
+            })
+        .toList(growable: false);
+  }
+
+  Future<void> _ensureLocalCashCollectionsTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS local_cash_collections (
+        id TEXT PRIMARY KEY NOT NULL,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
+        customer_id TEXT NOT NULL,
+        amount REAL NOT NULL,
+        collected_at TEXT NOT NULL,
+        payment_method TEXT NOT NULL DEFAULT 'CASH',
+        reference TEXT
+      )
+    ''');
+    final columns = await customSelect(
+      'PRAGMA table_info(local_cash_collections)',
+    ).get();
+    if (!columns.any((row) => row.read<String>('name') == 'payment_method')) {
+      try {
+        await customStatement(
+          "ALTER TABLE local_cash_collections ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'CASH'",
+        );
+      } catch (_) {
+        // Another concurrent Finance read may have applied this upgrade.
+      }
+    }
+    if (!columns.any((row) => row.read<String>('name') == 'reference')) {
+      try {
+        await customStatement(
+          'ALTER TABLE local_cash_collections ADD COLUMN reference TEXT',
+        );
+      } catch (_) {
+        // Another concurrent Finance read may have applied this upgrade.
+      }
+    }
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_local_cash_collections_scope
+      ON local_cash_collections (tenant_id, branch_id, collected_at)
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_local_cash_collections_customer_date
+      ON local_cash_collections (tenant_id, customer_id, collected_at)
+    ''');
+  }
+
+  Future<void> _ensureLocalCashRefundsTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS local_cash_refunds (
+        id TEXT PRIMARY KEY NOT NULL,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
+        sale_id TEXT NOT NULL UNIQUE,
+        amount REAL NOT NULL CHECK (amount > 0),
+        refunded_at TEXT NOT NULL,
+        recorded_by TEXT,
+        reason TEXT NOT NULL
+      )
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_local_cash_refunds_scope
+      ON local_cash_refunds (tenant_id, branch_id, refunded_at)
+    ''');
+  }
+
+  Future<double> _sumLocalCashRefunds({
+    required String branchId,
+    required DateTime date,
+  }) async {
+    await _ensureLocalCashRefundsTable();
+    final tenantId = _customerTenantId;
+    if (tenantId == null || !_activeBranchIds().contains(branchId)) return 0;
+    final start =
+        DateTime(date.year, date.month, date.day).toUtc().toIso8601String();
+    final end = DateTime(date.year, date.month, date.day)
+        .add(const Duration(days: 1))
+        .toUtc()
+        .toIso8601String();
+    final row = await customSelect(
+      'SELECT COALESCE(SUM(amount), 0) AS total FROM local_cash_refunds '
+      'WHERE tenant_id = ? AND branch_id = ? '
+      'AND refunded_at >= ? AND refunded_at < ?',
+      variables: [
+        Variable.withString(tenantId),
+        Variable.withString(branchId),
+        Variable.withString(start),
+        Variable.withString(end),
+      ],
+    ).getSingle();
+    return row.read<double>('total');
+  }
+
+  Future<void> ensureLocalCashCollectionsSchema() =>
+      _ensureLocalCashCollectionsTable();
+
+  Future<double> _sumLocalCashCollections({
+    required String branchId,
+    required DateTime date,
+  }) async {
+    await _ensureLocalCashCollectionsTable();
+    final tenantId = _customerTenantId;
+    if (tenantId == null || !_activeBranchIds().contains(branchId)) return 0;
+    final start =
+        DateTime(date.year, date.month, date.day).toUtc().toIso8601String();
+    final end = DateTime(date.year, date.month, date.day)
+        .add(const Duration(days: 1))
+        .toUtc()
+        .toIso8601String();
+    final row = await customSelect(
+      'SELECT COALESCE(SUM(amount), 0) AS total FROM local_cash_collections '
+      'WHERE tenant_id = ? AND branch_id = ? '
+      'AND UPPER(TRIM(payment_method)) = \'CASH\' '
+      'AND collected_at >= ? AND collected_at < ?',
+      variables: [
+        Variable.withString(tenantId),
+        Variable.withString(branchId),
+        Variable.withString(start),
+        Variable.withString(end),
+      ],
+    ).getSingle();
+    return row.read<double>('total');
+  }
+
+  Future<double> _sumLocalCashSupplierPayments({
+    required String branchId,
+    required DateTime date,
+  }) async {
+    await _createSupplierFinanceTables();
+    final tenantId = _customerTenantId;
+    if (tenantId == null || !_activeBranchIds().contains(branchId)) return 0;
+    final start =
+        DateTime(date.year, date.month, date.day).toUtc().toIso8601String();
+    final end = DateTime(date.year, date.month, date.day)
+        .add(const Duration(days: 1))
+        .toUtc()
+        .toIso8601String();
+    final row = await customSelect(
+      'SELECT COALESCE(SUM(sp.amount), 0) AS total '
+      'FROM supplier_payments sp '
+      'JOIN suppliers s ON s.id = sp.supplier_id '
+      'WHERE s.tenant_id = ? AND sp.branch_id = ? '
+      'AND UPPER(TRIM(sp.funding_source)) = \'CASH_TILL\' '
+      'AND sp.payment_date >= ? AND sp.payment_date < ?',
+      variables: [
+        Variable.withString(tenantId),
+        Variable.withString(branchId),
+        Variable.withString(start),
+        Variable.withString(end),
+      ],
+    ).getSingle();
+    return row.read<double>('total');
   }
 
   int _amountToCents(double amount) {
@@ -2488,8 +4726,7 @@ class AppDatabase extends _$AppDatabase {
       'SELECT COALESCE(COUNT(*), 0) as count, COALESCE(SUM(total), 0) as revenue, '
       'COALESCE(AVG(total), 0) as avg_ticket '
       'FROM pending_sales WHERE created_at >= ? AND created_at <= ?${scope.clause} '
-      "AND UPPER(status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
-      "AND UPPER(payment_method) <> 'MPESA'",
+      "AND UPPER(status) = 'COMPLETED'",
       variables: [
         Variable.withDateTime(from),
         Variable.withDateTime(to),
@@ -2501,8 +4738,7 @@ class AppDatabase extends _$AppDatabase {
       'FROM pending_sale_items psi '
       'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
       'WHERE ps.created_at >= ? AND ps.created_at <= ?${itemScope.clause} '
-      "AND UPPER(ps.status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
-      "AND UPPER(ps.payment_method) <> 'MPESA'",
+      "AND UPPER(ps.status) = 'COMPLETED'",
       variables: [
         Variable.withDateTime(from),
         Variable.withDateTime(to),
@@ -2528,8 +4764,7 @@ class AppDatabase extends _$AppDatabase {
       'SELECT COALESCE(COUNT(*), 0) as count, COALESCE(SUM(total), 0) as revenue, '
       'COALESCE(AVG(total), 0) as avg_ticket '
       'FROM pending_sales WHERE created_at >= ? AND created_at <= ?${scope.clause} '
-      "AND UPPER(status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
-      "AND UPPER(payment_method) <> 'MPESA'",
+      "AND UPPER(status) = 'COMPLETED'",
       variables: [
         Variable.withDateTime(from),
         Variable.withDateTime(to),
@@ -2541,8 +4776,7 @@ class AppDatabase extends _$AppDatabase {
       'FROM pending_sale_items psi '
       'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
       'WHERE ps.created_at >= ? AND ps.created_at <= ?${itemScope.clause} '
-      "AND UPPER(ps.status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
-      "AND UPPER(ps.payment_method) <> 'MPESA'",
+      "AND UPPER(ps.status) = 'COMPLETED'",
       variables: [
         Variable.withDateTime(from),
         Variable.withDateTime(to),
@@ -2564,10 +4798,15 @@ class AppDatabase extends _$AppDatabase {
   ) async {
     final scope = _salesBranchScope('pending_sales');
     final result = await customSelect(
-      'SELECT strftime(\'%H\', created_at) as hour, COUNT(*) as transaction_count, SUM(total) as total_amount '
+      // Drift stores DateTime columns as Unix seconds. Interpret them
+      // explicitly and group by the device's local business hour; passing the
+      // integer directly to strftime treats it as a Julian day and returns
+      // NULL, which used to break local payment analytics.
+      'SELECT strftime(\'%H\', created_at, \'unixepoch\', \'localtime\') as hour, COUNT(*) as transaction_count, SUM(total) as total_amount '
       'FROM pending_sales '
       'WHERE created_at >= ? AND created_at <= ?${scope.clause} '
-      'GROUP BY strftime(\'%H\', created_at) '
+      "AND UPPER(status) = 'COMPLETED' "
+      'GROUP BY strftime(\'%H\', created_at, \'unixepoch\', \'localtime\') '
       'ORDER BY hour',
       variables: [
         Variable.withDateTime(from),
@@ -2594,10 +4833,11 @@ class AppDatabase extends _$AppDatabase {
   ) async {
     final scope = _salesBranchScope('pending_sales');
     final result = await customSelect(
-      'SELECT date(created_at) as date, COUNT(*) as transaction_count, SUM(total) as total_amount '
+      'SELECT date(created_at, \'unixepoch\', \'localtime\') as date, COUNT(*) as transaction_count, SUM(total) as total_amount '
       'FROM pending_sales '
       'WHERE created_at >= ? AND created_at <= ?${scope.clause} '
-      'GROUP BY date(created_at) '
+      "AND UPPER(status) = 'COMPLETED' "
+      'GROUP BY date(created_at, \'unixepoch\', \'localtime\') '
       'ORDER BY date',
       variables: [
         Variable.withDateTime(from),
@@ -2624,11 +4864,12 @@ class AppDatabase extends _$AppDatabase {
   ) async {
     final scope = _salesBranchScope('ps');
     final result = await customSelect(
-      'SELECT date(ps.created_at) as date, COALESCE(SUM(psi.quantity), 0) as items_sold '
+      'SELECT date(ps.created_at, \'unixepoch\', \'localtime\') as date, COALESCE(SUM(psi.quantity), 0) as items_sold '
       'FROM pending_sales ps '
       'INNER JOIN pending_sale_items psi ON psi.sale_id = ps.id '
       'WHERE ps.created_at >= ? AND ps.created_at <= ?${scope.clause} '
-      'GROUP BY date(ps.created_at) '
+      "AND UPPER(ps.status) = 'COMPLETED' "
+      'GROUP BY date(ps.created_at, \'unixepoch\', \'localtime\') '
       'ORDER BY date',
       variables: [
         Variable.withDateTime(from),
@@ -2657,11 +4898,12 @@ class AppDatabase extends _$AppDatabase {
       'COALESCE(COUNT(*), 0) as transaction_count, '
       'COALESCE(SUM(total), 0.0) as total_amount, '
       'COALESCE(AVG(total), 0.0) as avg_payment, '
-      'COALESCE(SUM(CASE WHEN payment_method = \'cash\' THEN 1 ELSE 0 END), 0) as cash_count, '
-      'COALESCE(SUM(CASE WHEN payment_method LIKE \'%card%\' OR payment_method LIKE \'%credit%\' THEN 1 ELSE 0 END), 0) as card_count, '
-      'COALESCE(SUM(CASE WHEN payment_method LIKE \'%mpesa%\' OR payment_method LIKE \'%pesapal%\' OR payment_method LIKE \'%touristtap%\' THEN 1 ELSE 0 END), 0) as digital_count '
+      'COALESCE(SUM(CASE WHEN UPPER(payment_method) = \'CASH\' THEN 1 ELSE 0 END), 0) as cash_count, '
+      'COALESCE(SUM(CASE WHEN UPPER(payment_method) LIKE \'%CARD%\' OR UPPER(payment_method) LIKE \'%CREDIT%\' THEN 1 ELSE 0 END), 0) as card_count, '
+      'COALESCE(SUM(CASE WHEN UPPER(payment_method) LIKE \'%MPESA%\' OR UPPER(payment_method) LIKE \'%PESAPAL%\' OR UPPER(payment_method) LIKE \'%TOURISTTAP%\' THEN 1 ELSE 0 END), 0) as digital_count '
       'FROM pending_sales '
-      'WHERE created_at >= ? AND created_at <= ?${scope.clause}',
+      'WHERE created_at >= ? AND created_at <= ?${scope.clause} '
+      "AND UPPER(status) = 'COMPLETED'",
       variables: [
         Variable.withDateTime(from),
         Variable.withDateTime(to),
@@ -2685,10 +4927,11 @@ class AppDatabase extends _$AppDatabase {
   ) async {
     final scope = _salesBranchScope('pending_sales');
     final result = await customSelect(
-      'SELECT strftime(\'%H\', created_at) as hour, COUNT(*) as transaction_count, SUM(total) as total_amount '
+      'SELECT strftime(\'%H\', created_at, \'unixepoch\', \'localtime\') as hour, COUNT(*) as transaction_count, SUM(total) as total_amount '
       'FROM pending_sales '
       'WHERE created_at >= ? AND created_at <= ?${scope.clause} '
-      'GROUP BY strftime(\'%H\', created_at) '
+      "AND UPPER(status) = 'COMPLETED' "
+      'GROUP BY strftime(\'%H\', created_at, \'unixepoch\', \'localtime\') '
       'ORDER BY transaction_count DESC '
       'LIMIT 5',
       variables: [
@@ -2722,6 +4965,7 @@ class AppDatabase extends _$AppDatabase {
       'FROM pending_sale_items psi '
       'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
       'WHERE ps.created_at >= ? AND ps.created_at <= ?${scope.clause} '
+      "AND UPPER(ps.status) = 'COMPLETED' "
       'GROUP BY psi.product_id, psi.product_name '
       'HAVING total_qty < 5 '
       'ORDER BY total_qty ASC '
@@ -2803,6 +5047,30 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  /// Ensures an already-known cloud branch is present in the local branch
+  /// index without replacing its existing metadata. Used when an authenticated
+  /// workspace is adopted by the downloadable, device-only edition.
+  Future<void> ensureLocalBranch({
+    required String id,
+    required String name,
+    required String location,
+    required String phone,
+  }) async {
+    await createBranchesTable();
+    await customInsert(
+      'INSERT OR IGNORE INTO branches '
+      '(id, name, location, phone, is_active, created_at) '
+      'VALUES (?, ?, ?, ?, 1, ?)',
+      variables: [
+        Variable.withString(id),
+        Variable.withString(name),
+        Variable.withString(location),
+        Variable.withString(phone),
+        Variable.withString(DateTime.now().toUtc().toIso8601String()),
+      ],
+    );
+  }
+
   Future<void> deleteBranch(String id) async {
     await customStatement('DELETE FROM branches WHERE id = ?', [id]);
   }
@@ -2878,7 +5146,11 @@ class AppDatabase extends _$AppDatabase {
       '  status TEXT NOT NULL DEFAULT \'pending\', ' // pending, paid, overdue
       '  created_at TEXT NOT NULL, '
       '  paid_at TEXT, '
-      '  collection_allocations TEXT'
+      '  collection_allocations TEXT, '
+      '  paid_amount REAL NOT NULL DEFAULT 0, '
+      '  cancelled_at TEXT, '
+      '  cancelled_by TEXT, '
+      '  cancel_reason TEXT'
       ')',
     );
     final columns = await customSelect(
@@ -2894,6 +5166,42 @@ class AppDatabase extends _$AppDatabase {
       await customStatement(
         'ALTER TABLE customer_installments ADD COLUMN tenant_id TEXT',
       );
+    }
+    if (!columns.any((row) => row.read<String>('name') == 'paid_amount')) {
+      try {
+        await customStatement(
+          'ALTER TABLE customer_installments ADD COLUMN paid_amount REAL NOT NULL DEFAULT 0',
+        );
+      } catch (_) {
+        // Another concurrent Finance or Customer read may have applied it.
+      }
+    }
+    if (!columns.any((row) => row.read<String>('name') == 'cancelled_at')) {
+      try {
+        await customStatement(
+          'ALTER TABLE customer_installments ADD COLUMN cancelled_at TEXT',
+        );
+      } catch (_) {
+        // Another concurrent customer/Finance read may have applied it.
+      }
+    }
+    if (!columns.any((row) => row.read<String>('name') == 'cancelled_by')) {
+      try {
+        await customStatement(
+          'ALTER TABLE customer_installments ADD COLUMN cancelled_by TEXT',
+        );
+      } catch (_) {
+        // Another concurrent customer/Finance read may have applied it.
+      }
+    }
+    if (!columns.any((row) => row.read<String>('name') == 'cancel_reason')) {
+      try {
+        await customStatement(
+          'ALTER TABLE customer_installments ADD COLUMN cancel_reason TEXT',
+        );
+      } catch (_) {
+        // Another concurrent customer/Finance read may have applied it.
+      }
     }
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_customer_installments_tenant_due '
@@ -2912,28 +5220,50 @@ class AppDatabase extends _$AppDatabase {
     }
     await createCustomerInstallmentsTable();
     final tenantId = _requireCustomerTenantId();
-    final customer = await customSelect(
-      'SELECT id FROM customers WHERE id = ? AND tenant_id = ?',
-      variables: [
-        Variable.withString(customerId),
-        Variable.withString(tenantId),
-      ],
-    ).getSingleOrNull();
-    if (customer == null) throw StateError('Customer was not found');
     final id = 'inst-${DateTime.now().microsecondsSinceEpoch}';
-    await customInsert(
-      'INSERT INTO customer_installments (id, tenant_id, customer_id, amount, due_date, note, status, created_at) '
-      'VALUES (?, ?, ?, ?, ?, ?, \'pending\', ?)',
-      variables: [
-        Variable.withString(id),
-        Variable.withString(tenantId),
-        Variable.withString(customerId),
-        Variable.withReal(amount),
-        Variable.withString(dueDate.toIso8601String()),
-        Variable.withString(note ?? ''),
-        Variable.withString(DateTime.now().toIso8601String()),
-      ],
-    );
+    await transaction(() async {
+      final customer = await customSelect(
+        'SELECT balance FROM customers WHERE id = ? AND tenant_id = ?',
+        variables: [
+          Variable.withString(customerId),
+          Variable.withString(tenantId),
+        ],
+      ).getSingleOrNull();
+      if (customer == null) throw StateError('Customer was not found');
+
+      final balance = customer.read<double>('balance');
+      final scheduled = await customSelect(
+        'SELECT COALESCE(SUM(amount - COALESCE(paid_amount, 0)), 0) AS total '
+        'FROM customer_installments WHERE customer_id = ? AND tenant_id = ? '
+        'AND status IN (\'pending\', \'overdue\')',
+        variables: [
+          Variable.withString(customerId),
+          Variable.withString(tenantId),
+        ],
+      ).getSingle();
+      final alreadyScheduled = scheduled.read<double>('total');
+      final available =
+          (balance - alreadyScheduled).clamp(0, double.infinity).toDouble();
+      if (!balance.isFinite || amount > available + 0.005) {
+        throw StateError(
+          'This amount exceeds the customer balance still available to schedule.',
+        );
+      }
+
+      await customInsert(
+        'INSERT INTO customer_installments (id, tenant_id, customer_id, amount, due_date, note, status, created_at) '
+        'VALUES (?, ?, ?, ?, ?, ?, \'pending\', ?)',
+        variables: [
+          Variable.withString(id),
+          Variable.withString(tenantId),
+          Variable.withString(customerId),
+          Variable.withReal(amount),
+          Variable.withString(dueDate.toIso8601String()),
+          Variable.withString(note ?? ''),
+          Variable.withString(DateTime.now().toIso8601String()),
+        ],
+      );
+    });
     return id;
   }
 
@@ -2950,22 +5280,105 @@ class AppDatabase extends _$AppDatabase {
         Variable.withString(tenantId),
       ],
     ).get();
-    return result
-        .map(
-          (r) => <String, dynamic>{
-            'id': r.read<String>('id'),
-            'customerId': r.read<String>('customer_id'),
-            'amount': r.read<double>('amount'),
-            'dueDate': r.read<String>('due_date'),
-            'note': r.readNullable<String>('note') ?? '',
-            'status': r.read<String>('status'),
-            'createdAt': r.read<String>('created_at'),
-            'paidAt': r.readNullable<String>('paid_at'),
-            'collectionAllocations':
-                r.readNullable<String>('collection_allocations'),
-          },
-        )
-        .toList();
+    return result.map((r) {
+      final scheduledAmount = r.read<double>('amount');
+      final paidAmount = r.readNullable<double>('paid_amount') ?? 0;
+      final status = r.read<String>('status');
+      final remainingAmount =
+          (scheduledAmount - paidAmount).clamp(0, double.infinity).toDouble();
+      return <String, dynamic>{
+        'id': r.read<String>('id'),
+        'customerId': r.read<String>('customer_id'),
+        'amount':
+            status.toLowerCase() == 'paid' ? scheduledAmount : remainingAmount,
+        'scheduledAmount': scheduledAmount,
+        'paidAmount': paidAmount,
+        'dueDate': r.read<String>('due_date'),
+        'note': r.readNullable<String>('note') ?? '',
+        'status': status,
+        'createdAt': r.read<String>('created_at'),
+        'paidAt': r.readNullable<String>('paid_at'),
+        'cancelledAt': r.readNullable<String>('cancelled_at'),
+        'cancelledBy': r.readNullable<String>('cancelled_by'),
+        'cancelReason': r.readNullable<String>('cancel_reason'),
+        'collectionAllocations':
+            r.readNullable<String>('collection_allocations'),
+      };
+    }).toList(growable: false);
+  }
+
+  /// Recent customer sales for a locally generated account statement. Keep
+  /// this query tenant- and branch-scoped and bounded so a long customer
+  /// history cannot stall sharing from the profile screen.
+  Future<List<Map<String, dynamic>>> getRecentCustomerSales(
+    String customerId, {
+    int limit = 8,
+  }) async {
+    final tenantId = _customerTenantId;
+    final scope = _salesBranchScope('ps');
+    if (tenantId == null || _activeBranchIds().isEmpty) {
+      return const <Map<String, dynamic>>[];
+    }
+    final safeLimit = limit.clamp(1, 50).toInt();
+    final rows = await customSelect(
+      // Drift stores this generated DateTime column as Unix seconds. Format
+      // it in SQLite before reading a string for the shareable statement.
+      "SELECT ps.id, ps.receipt_number, ps.total, ps.payment_method, "
+      "strftime('%Y-%m-%dT%H:%M:%fZ', ps.created_at, 'unixepoch') AS created_at "
+      "FROM pending_sales ps "
+      "INNER JOIN customers c ON c.id = ps.customer_id "
+      "WHERE ps.customer_id = ? AND c.tenant_id = ? "
+      // A pending M-Pesa/card record is not proof that the customer paid.
+      "AND UPPER(ps.status) = 'COMPLETED'"
+      '${scope.clause} ORDER BY ps.created_at DESC LIMIT ?',
+      variables: [
+        Variable.withString(customerId),
+        Variable.withString(tenantId),
+        ...scope.variables,
+        Variable.withInt(safeLimit),
+      ],
+    ).get();
+    return rows
+        .map((row) => <String, dynamic>{
+              'id': row.read<String>('id'),
+              'receiptNumber': row.readNullable<String>('receipt_number'),
+              'total': row.read<double>('total'),
+              'paymentMethod': row.read<String>('payment_method'),
+              'createdAt': row.read<String>('created_at'),
+            })
+        .toList(growable: false);
+  }
+
+  /// Recent debt collections recorded on this device, for local statements.
+  Future<List<Map<String, dynamic>>> getRecentCustomerCollections(
+    String customerId, {
+    int limit = 8,
+  }) async {
+    await createCustomersTable();
+    await _ensureLocalCashCollectionsTable();
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return const <Map<String, dynamic>>[];
+    final safeLimit = limit.clamp(1, 50).toInt();
+    final rows = await customSelect(
+      'SELECT id, amount, payment_method, reference, collected_at '
+      'FROM local_cash_collections '
+      'WHERE customer_id = ? AND tenant_id = ? '
+      'ORDER BY collected_at DESC LIMIT ?',
+      variables: [
+        Variable.withString(customerId),
+        Variable.withString(tenantId),
+        Variable.withInt(safeLimit),
+      ],
+    ).get();
+    return rows
+        .map((row) => <String, dynamic>{
+              'id': row.read<String>('id'),
+              'amount': row.read<double>('amount'),
+              'paymentMethod': row.read<String>('payment_method'),
+              'reference': row.readNullable<String>('reference'),
+              'collectedAt': row.read<String>('collected_at'),
+            })
+        .toList(growable: false);
   }
 
   /// Persist the exact receivable split before sending a cash collection. If
@@ -3018,14 +5431,24 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  Future<bool> markInstallmentPaid(String installmentId) async {
+  Future<bool> markInstallmentPaid(
+    String installmentId, {
+    bool recordLocalCashCollection = false,
+  }) async {
     await createCustomerInstallmentsTable();
     await createCustomersTable();
     final tenantId = _customerTenantId;
     if (tenantId == null) return false;
+    final branchId = recordLocalCashCollection ? _storage.getBranchId() : null;
+    if (recordLocalCashCollection &&
+        (branchId == null || !_activeBranchIds().contains(branchId))) {
+      throw StateError(
+          'Select a branch before recording this cash collection.');
+    }
+    if (recordLocalCashCollection) await _ensureLocalCashCollectionsTable();
     return transaction(() async {
       final installment = await customSelect(
-        'SELECT customer_id, amount, status FROM customer_installments WHERE id = ? AND tenant_id = ?',
+        'SELECT customer_id, amount, paid_amount, status FROM customer_installments WHERE id = ? AND tenant_id = ?',
         variables: [
           Variable.withString(installmentId),
           Variable.withString(tenantId),
@@ -3037,10 +5460,14 @@ class AppDatabase extends _$AppDatabase {
       }
 
       final customerId = installment.read<String>('customer_id');
-      final amount = installment.read<double>('amount');
+      final scheduledAmount = installment.read<double>('amount');
+      final alreadyPaid = installment.read<double>('paid_amount');
+      final amount =
+          (scheduledAmount - alreadyPaid).clamp(0, double.infinity).toDouble();
+      if (amount <= 0.005) return false;
       final paidAt = DateTime.now().toIso8601String();
       final updatedInstallments = await customUpdate(
-        'UPDATE customer_installments SET status = \'paid\', paid_at = ? '
+        'UPDATE customer_installments SET status = \'paid\', paid_at = ?, paid_amount = amount '
         'WHERE id = ? AND tenant_id = ? AND status IN (\'pending\', \'overdue\')',
         variables: [
           Variable.withString(paidAt),
@@ -3054,7 +5481,7 @@ class AppDatabase extends _$AppDatabase {
       // zero. If the outstanding balance changed, roll back the paid marker as
       // part of this transaction and ask the caller to refresh.
       final updatedCustomers = await customUpdate(
-        'UPDATE customers SET balance = balance - ? '
+        'UPDATE customers SET balance = MAX(balance - ?, 0) '
         'WHERE id = ? AND tenant_id = ? AND balance >= ? - 0.005',
         variables: [
           Variable.withReal(amount),
@@ -3068,8 +5495,53 @@ class AppDatabase extends _$AppDatabase {
           'The outstanding balance changed. Refresh the customer and try again.',
         );
       }
+      if (recordLocalCashCollection) {
+        await customStatement(
+          'INSERT INTO local_cash_collections '
+          '(id, tenant_id, branch_id, customer_id, amount, collected_at) '
+          'VALUES (?, ?, ?, ?, ?, ?)',
+          [
+            Variable.withString(installmentId),
+            Variable.withString(tenantId),
+            Variable.withString(branchId!),
+            Variable.withString(customerId),
+            Variable.withReal(amount),
+            Variable.withString(DateTime.now().toUtc().toIso8601String()),
+          ],
+        );
+      }
       return true;
     });
+  }
+
+  /// Cancels a customer payment reminder without forgiving or changing the
+  /// customer's debt. The cancellation remains in the schedule history.
+  Future<bool> cancelCustomerInstallment(
+    String installmentId, {
+    String? cancelledBy,
+    String? reason,
+  }) async {
+    await createCustomerInstallmentsTable();
+    final tenantId = _requireCustomerTenantId();
+    final cleanReason = reason?.trim();
+    final cleanActor = cancelledBy?.trim();
+    final changed = await customUpdate(
+      'UPDATE customer_installments SET status = \'cancelled\', cancelled_at = ?, '
+      'cancelled_by = ?, cancel_reason = ? '
+      'WHERE id = ? AND tenant_id = ? AND status IN (\'pending\', \'overdue\')',
+      variables: [
+        Variable.withString(DateTime.now().toUtc().toIso8601String()),
+        cleanActor == null || cleanActor.isEmpty
+            ? const Variable<String>(null)
+            : Variable.withString(cleanActor),
+        cleanReason == null || cleanReason.isEmpty
+            ? const Variable<String>(null)
+            : Variable.withString(cleanReason),
+        Variable.withString(installmentId),
+        Variable.withString(tenantId),
+      ],
+    );
+    return changed == 1;
   }
 
   /// Installments past their due date and still unpaid, across all
@@ -3080,10 +5552,11 @@ class AppDatabase extends _$AppDatabase {
     final tenantId = _customerTenantId;
     if (tenantId == null) return const [];
     final result = await customSelect(
-      'SELECT ci.*, c.name as customer_name, c.phone as customer_phone '
+      'SELECT ci.id, ci.customer_id, ci.amount - COALESCE(ci.paid_amount, 0) AS amount, '
+      'ci.due_date, ci.note, c.name as customer_name, c.phone as customer_phone '
       'FROM customer_installments ci '
       'JOIN customers c ON c.id = ci.customer_id AND c.tenant_id = ci.tenant_id '
-      'WHERE ci.tenant_id = ? AND ci.status = \'pending\' '
+      'WHERE ci.tenant_id = ? AND ci.status IN (\'pending\', \'overdue\') '
       'AND date(ci.due_date) < date(\'now\', \'localtime\') '
       'ORDER BY ci.due_date ASC',
       variables: [Variable.withString(tenantId)],
@@ -3227,49 +5700,229 @@ class AppDatabase extends _$AppDatabase {
     String? notes,
     double initialBalance = 0,
     double creditLimit = 0,
+  }) async =>
+      (await insertOrGetCustomerWithStatus(
+        id,
+        name,
+        phone: phone,
+        location: location,
+        email: email,
+        notes: notes,
+        initialBalance: initialBalance,
+        creditLimit: creditLimit,
+      ))
+          .id;
+
+  /// Finds a customer by name plus a supplied phone/email identity, or creates
+  /// a separate record when the same name belongs to another person. A name
+  /// alone is never enough to overwrite an existing customer's contact data.
+  Future<CustomerInsertOutcome> insertOrGetCustomerWithStatus(
+    String id,
+    String name, {
+    String? phone,
+    String? location,
+    String? email,
+    String? notes,
+    double initialBalance = 0,
+    double creditLimit = 0,
   }) async {
+    final nameValue = name.trim();
+    if (nameValue.isEmpty) {
+      throw ArgumentError.value(name, 'name', 'Must not be empty');
+    }
+    if (!initialBalance.isFinite || initialBalance < 0) {
+      throw ArgumentError.value(
+        initialBalance,
+        'initialBalance',
+        'Must be a non-negative amount',
+      );
+    }
+    if (!creditLimit.isFinite || creditLimit < 0) {
+      throw ArgumentError.value(
+        creditLimit,
+        'creditLimit',
+        'Must be a non-negative amount',
+      );
+    }
     await createCustomersTable();
     final tenantId = _requireCustomerTenantId();
-    // Check if customer exists by name (case-insensitive)
-    final existing = await customSelect(
-      'SELECT id FROM customers WHERE tenant_id = ? AND LOWER(name) = LOWER(?)',
-      variables: [Variable.withString(tenantId), Variable.withString(name)],
-    ).get();
-    if (existing.isNotEmpty) {
-      final existingId = existing.first.read<String>('id');
-      // Update contact/location details if provided
-      if (phone != null && phone.isNotEmpty) {
-        await customStatement(
-          'UPDATE customers SET phone = ? WHERE id = ? AND tenant_id = ?',
-          [phone, existingId, tenantId],
-        );
-      }
-      if (location != null && location.isNotEmpty) {
-        await customStatement(
-          'UPDATE customers SET location = ? WHERE id = ? AND tenant_id = ?',
-          [location, existingId, tenantId],
-        );
-      }
-      return existingId;
+    final phoneValue = phone?.trim() ?? '';
+    final emailValue = email?.trim() ?? '';
+    final phoneKey = _customerPhoneIdentity(phoneValue);
+    final emailKey = _customerEmailIdentity(emailValue);
+    if (phoneValue.isNotEmpty && phoneKey.isEmpty) {
+      throw ArgumentError.value(phone, 'phone', 'Must contain digits');
     }
-    // Insert new
-    await customInsert(
-      'INSERT INTO customers (id, tenant_id, name, phone, email, location, notes, total_purchases, total_spent, created_at, balance, credit_limit, loyalty_points) '
-      'VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, 0)',
-      variables: [
-        Variable.withString(id),
-        Variable.withString(tenantId),
-        Variable.withString(name),
-        Variable.withString(phone ?? ''),
-        Variable.withString(email ?? ''),
-        Variable.withString(location ?? ''),
-        Variable.withString(notes ?? ''),
-        Variable.withString(DateTime.now().toIso8601String()),
-        Variable.withReal(initialBalance),
-        Variable.withReal(creditLimit),
-      ],
-    );
-    return id;
+
+    return transaction(() async {
+      final sameName = await customSelect(
+        'SELECT id, name, phone, email FROM customers '
+        'WHERE tenant_id = ? AND LOWER(name) = LOWER(?) ORDER BY created_at, id',
+        variables: [
+          Variable.withString(tenantId),
+          Variable.withString(nameValue),
+        ],
+      ).get();
+
+      if (phoneKey.isEmpty && emailKey.isEmpty && sameName.isNotEmpty) {
+        throw StateError(
+          'A customer with this name is already saved. Choose the existing customer or add a phone number to identify a different person.',
+        );
+      }
+
+      List<QueryRow> identityMatches = const [];
+      if (phoneKey.isNotEmpty) {
+        identityMatches = sameName
+            .where((row) =>
+                _customerPhoneIdentity(row.readNullable<String>('phone')) ==
+                phoneKey)
+            .toList();
+      } else if (emailKey.isNotEmpty) {
+        identityMatches = sameName
+            .where((row) =>
+                _customerEmailIdentity(row.readNullable<String>('email')) ==
+                emailKey)
+            .toList();
+      }
+
+      if (identityMatches.length > 1) {
+        throw StateError(
+          'More than one saved customer matches these details. Select the correct customer from the list before continuing.',
+        );
+      }
+      final existing = identityMatches.isEmpty ? null : identityMatches.single;
+      if (existing != null) {
+        final existingId = existing.read<String>('id');
+        final existingPhone = existing.readNullable<String>('phone') ?? '';
+        final existingEmail = existing.readNullable<String>('email') ?? '';
+        if (phoneValue.isNotEmpty && existingPhone.trim().isEmpty) {
+          await customStatement(
+            'UPDATE customers SET phone = ? WHERE id = ? AND tenant_id = ?',
+            [phoneValue, existingId, tenantId],
+          );
+        }
+        if (emailValue.isNotEmpty && existingEmail.trim().isEmpty) {
+          await customStatement(
+            'UPDATE customers SET email = ? WHERE id = ? AND tenant_id = ?',
+            [emailValue, existingId, tenantId],
+          );
+        }
+        if (location != null && location.trim().isNotEmpty) {
+          await customStatement(
+            'UPDATE customers SET location = ? WHERE id = ? AND tenant_id = ?',
+            [location.trim(), existingId, tenantId],
+          );
+        }
+        return CustomerInsertOutcome(
+          id: existingId,
+          name: existing.read<String>('name'),
+          created: false,
+        );
+      }
+
+      await customInsert(
+        'INSERT INTO customers (id, tenant_id, name, phone, email, location, notes, total_purchases, total_spent, created_at, balance, credit_limit, loyalty_points) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, 0)',
+        variables: [
+          Variable.withString(id),
+          Variable.withString(tenantId),
+          Variable.withString(nameValue),
+          Variable.withString(phoneValue),
+          Variable.withString(emailValue),
+          Variable.withString(location?.trim() ?? ''),
+          Variable.withString(notes?.trim() ?? ''),
+          Variable.withString(DateTime.now().toIso8601String()),
+          Variable.withReal(initialBalance),
+          Variable.withReal(creditLimit),
+        ],
+      );
+      return CustomerInsertOutcome(id: id, name: nameValue, created: true);
+    });
+  }
+
+  /// Creates a new customer and their opening credit schedule as one local
+  /// operation. A failed schedule insert must not leave behind a customer with
+  /// an opening balance that the form reported as unsaved.
+  Future<String> createCustomerWithInitialCredit({
+    required String id,
+    required String name,
+    required String phone,
+    required String location,
+    required String notes,
+    required double amount,
+    required DateTime dueDate,
+  }) async {
+    final nameValue = name.trim();
+    final phoneValue = phone.trim();
+    final phoneKey = _customerPhoneIdentity(phoneValue);
+    if (nameValue.isEmpty) {
+      throw ArgumentError.value(name, 'name', 'Must not be empty');
+    }
+    if (phoneKey.isEmpty) {
+      throw ArgumentError.value(phone, 'phone', 'Must contain a phone number');
+    }
+    if (!amount.isFinite || amount <= 0) {
+      throw ArgumentError.value(amount, 'amount', 'Must be a positive amount');
+    }
+    await createCustomersTable();
+    await createCustomerInstallmentsTable();
+    final tenantId = _requireCustomerTenantId();
+    final installmentId = 'inst-${DateTime.now().microsecondsSinceEpoch}';
+    final now = DateTime.now().toIso8601String();
+
+    return transaction(() async {
+      final sameName = await customSelect(
+        'SELECT id, phone FROM customers '
+        'WHERE tenant_id = ? AND LOWER(name) = LOWER(?)',
+        variables: [
+          Variable.withString(tenantId),
+          Variable.withString(nameValue),
+        ],
+      ).get();
+      final existingIdentity = sameName.any((row) {
+        if (phoneKey.isEmpty) return true;
+        final savedPhone = _customerPhoneIdentity(
+          row.readNullable<String>('phone'),
+        );
+        return savedPhone.isNotEmpty && savedPhone == phoneKey;
+      });
+      if (existingIdentity) {
+        throw StateError(
+          phoneKey.isEmpty
+              ? 'A customer with this name is already saved. Add a phone number to identify a different person, or open the saved profile to record additional credit.'
+              : 'A customer with this name and phone number is already saved. Open their profile to record additional credit.',
+        );
+      }
+
+      await customInsert(
+        'INSERT INTO customers (id, tenant_id, name, phone, email, location, notes, total_purchases, total_spent, created_at, balance, credit_limit, loyalty_points) '
+        'VALUES (?, ?, ?, ?, \'\', ?, ?, 0, 0, ?, ?, 0, 0)',
+        variables: [
+          Variable.withString(id),
+          Variable.withString(tenantId),
+          Variable.withString(nameValue),
+          Variable.withString(phoneValue),
+          Variable.withString(location),
+          Variable.withString(notes),
+          Variable.withString(now),
+          Variable.withReal(amount),
+        ],
+      );
+      await customInsert(
+        'INSERT INTO customer_installments (id, tenant_id, customer_id, amount, due_date, note, status, created_at) '
+        'VALUES (?, ?, ?, ?, ?, ?, \'pending\', ?)',
+        variables: [
+          Variable.withString(installmentId),
+          Variable.withString(tenantId),
+          Variable.withString(id),
+          Variable.withReal(amount),
+          Variable.withString(dueDate.toIso8601String()),
+          Variable.withString('Initial credit sale'),
+          Variable.withString(now),
+        ],
+      );
+      return id;
+    });
   }
 
   Future<void> upsertCustomerById(
@@ -3372,6 +6025,13 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> setCustomerCreditLimit(String customerId, double limit) async {
+    if (!limit.isFinite || limit < 0) {
+      throw ArgumentError.value(
+        limit,
+        'limit',
+        'Credit limit must be a finite amount of zero or more.',
+      );
+    }
     await createCustomersTable();
     final tenantId = _requireCustomerTenantId();
     await customStatement(
@@ -3444,11 +6104,11 @@ class AppDatabase extends _$AppDatabase {
     if (tenantId == null || _activeBranchIds().isEmpty) return const [];
     await createCustomersTable();
     final result = await customSelect(
-      'SELECT psi.product_id, psi.product_name, SUM(psi.quantity) as total_qty, COUNT(*) as times_bought '
+      'SELECT psi.product_id, psi.product_name, SUM(psi.quantity) as total_qty, COUNT(DISTINCT ps.id) as times_bought '
       'FROM pending_sale_items psi '
       'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
       'INNER JOIN customers c ON c.id = ps.customer_id '
-      'WHERE ps.customer_id = ? AND c.tenant_id = ?${scope.clause} '
+      "WHERE ps.customer_id = ? AND c.tenant_id = ? AND UPPER(ps.status) = 'COMPLETED'${scope.clause} "
       'GROUP BY psi.product_id, psi.product_name '
       'ORDER BY total_qty DESC LIMIT 10',
       variables: [
@@ -3480,7 +6140,7 @@ class AppDatabase extends _$AppDatabase {
     return customSelect(
       'SELECT ps.* FROM pending_sales ps '
       'INNER JOIN customers c ON c.id = ps.customer_id '
-      'WHERE ps.customer_id = ? AND c.tenant_id = ?${scope.clause} '
+      "WHERE ps.customer_id = ? AND c.tenant_id = ? AND UPPER(ps.status) = 'COMPLETED'${scope.clause} "
       'ORDER BY ps.created_at DESC',
       variables: [
         Variable.withString(customerId),
@@ -3510,6 +6170,165 @@ class AppDatabase extends _$AppDatabase {
         .getSingleOrNull();
   }
 
+  /// Gives a new local workspace a stable category so products can be sold
+  /// immediately even when the merchant skips category setup.
+  Future<String> ensureLocalDefaultCategory() async {
+    const id = 'local-default-category';
+    if (await getCategory(id) == null) {
+      final now = DateTime.now();
+      await insertCategory(CategoriesCompanion.insert(
+        id: id,
+        name: 'General',
+        description: const Value('Default local product category'),
+        sortOrder: const Value(0),
+        isActive: const Value(true),
+        createdAt: now,
+        updatedAt: now,
+      ));
+    }
+    return id;
+  }
+
+  /// Atomically stores a local catalog item, its selling tiers, and its
+  /// initial branch stock row. A partially saved product would otherwise
+  /// appear in the POS without its prices or stock state.
+  Future<void> saveLocalProduct({
+    required ProductsCompanion product,
+    required String productId,
+    required List<ProductPricingTiersCompanion> tiers,
+    required String branchId,
+  }) async {
+    await transaction(() async {
+      final savedId = product.id.present ? product.id.value.trim() : '';
+      final sku = product.sku.present ? product.sku.value.trim() : '';
+      final name = product.name.present ? product.name.value.trim() : '';
+      final categoryId =
+          product.categoryId.present ? product.categoryId.value.trim() : '';
+      final price = product.price.present ? product.price.value : double.nan;
+      final minStock = product.minStock.present ? product.minStock.value : -1;
+      if (productId.trim().isEmpty ||
+          branchId.trim().isEmpty ||
+          savedId.isEmpty ||
+          savedId != productId ||
+          sku.isEmpty ||
+          name.isEmpty ||
+          categoryId.isEmpty ||
+          !price.isFinite ||
+          price < 0 ||
+          minStock < 0 ||
+          minStock > 2147483647) {
+        throw StateError(
+            'Check the product name, item code, price, and stock.');
+      }
+
+      if (product.costPrice.present) {
+        final costPrice = product.costPrice.value;
+        if (costPrice != null && (!costPrice.isFinite || costPrice < 0)) {
+          throw StateError('Enter a valid product cost.');
+        }
+      }
+
+      final category = await (select(categories)
+            ..where((row) => row.id.equals(categoryId)))
+          .getSingleOrNull();
+      if (category == null) {
+        throw StateError('Choose a category that is available on this device.');
+      }
+
+      final duplicateSku = await customSelect(
+        'SELECT id FROM products WHERE sku = ? AND id <> ? LIMIT 1',
+        variables: [
+          Variable.withString(sku),
+          Variable.withString(savedId),
+        ],
+      ).getSingleOrNull();
+      if (duplicateSku != null) {
+        throw StateError('That item code is already used by another product.');
+      }
+
+      final seenUnits = <String>{};
+      final seenTierIds = <String>{};
+      for (final tier in tiers) {
+        final tierId = tier.id.present ? tier.id.value.trim() : '';
+        final tierProductId =
+            tier.productId.present ? tier.productId.value.trim() : '';
+        final unit = tier.unit.present ? tier.unit.value.trim() : '';
+        final quantity = tier.quantityPerUnit.present
+            ? tier.quantityPerUnit.value
+            : double.nan;
+        final tierPrice = tier.price.present ? tier.price.value : double.nan;
+        if (tierId.isEmpty ||
+            !seenTierIds.add(tierId) ||
+            tierProductId != savedId ||
+            unit.isEmpty ||
+            !seenUnits.add(unit.toLowerCase()) ||
+            !quantity.isFinite ||
+            quantity <= 0 ||
+            !tierPrice.isFinite ||
+            tierPrice < 0) {
+          throw StateError(
+              'Check the unit, quantity, and price for each tier.');
+        }
+      }
+
+      final existingProduct = await (select(products)
+            ..where((row) => row.id.equals(savedId)))
+          .getSingleOrNull();
+      if (existingProduct == null) {
+        await into(products).insert(product);
+      } else {
+        // Update the row in place. SQLite REPLACE deletes and reinserts a row,
+        // which can break references from receipts and stock history.
+        await (update(products)..where((row) => row.id.equals(savedId)))
+            .write(product);
+      }
+      await (delete(productPricingTiers)
+            ..where((tier) => tier.productId.equals(savedId)))
+          .go();
+      if (tiers.isNotEmpty) {
+        await batch((batch) {
+          batch.insertAllOnConflictUpdate(productPricingTiers, tiers);
+        });
+      }
+
+      final existingStock = await (select(localStock)
+            ..where((stock) =>
+                stock.productId.equals(savedId) &
+                stock.branchId.equals(branchId)))
+          .getSingleOrNull();
+      if (existingStock == null) {
+        await into(localStock).insert(LocalStockCompanion.insert(
+          id: 'stock-$branchId-$savedId',
+          productId: savedId,
+          branchId: branchId,
+          quantity: 0,
+          updatedAt: DateTime.now(),
+        ));
+      }
+    });
+  }
+
+  /// Archives/restores a local category without rewriting product or sales
+  /// history. Archived categories stay available to reports and can be
+  /// restored from category management.
+  Future<void> setLocalCategoryActive(
+    String categoryId, {
+    required bool isActive,
+  }) async {
+    final category = await getCategory(categoryId);
+    if (category == null) throw StateError('Category was not found.');
+    if (!isActive && categoryId == 'local-default-category') {
+      throw StateError('The General category cannot be archived.');
+    }
+    await updateCategory(
+      categoryId,
+      CategoriesCompanion(
+        isActive: Value(isActive),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
   Future<void> insertProduct(ProductsCompanion item) {
     return into(products).insert(item, mode: InsertMode.insertOrReplace);
   }
@@ -3536,9 +6355,33 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// Hides a local product from the POS while preserving its sales, stock,
+  /// supplier, and reporting references. Archived products can be restored.
+  Future<void> setLocalProductActive(
+    String productId, {
+    required bool isActive,
+  }) async {
+    await transaction(() async {
+      final product = await getProduct(productId);
+      if (product == null) throw StateError('Product was not found.');
+      await updateProduct(
+        productId,
+        ProductsCompanion(
+          isActive: Value(isActive),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+      if (!isActive) {
+        await (delete(favoriteProducts)
+              ..where((favorite) => favorite.productId.equals(productId)))
+            .go();
+      }
+    });
+  }
+
   Future<int> getProductCount() async {
     final result = await customSelect(
-      'SELECT COUNT(*) as count FROM products',
+      'SELECT COUNT(*) as count FROM products WHERE is_active = 1',
     ).getSingle();
     return result.read<int>('count');
   }
@@ -3551,6 +6394,393 @@ class AppDatabase extends _$AppDatabase {
   }
 
   // ── Supplier Finance Tracking ──
+
+  /// Returns one invoice per supplier payable for the standalone Finance
+  /// workspace, including payment history recorded on this device.
+  Future<List<Map<String, dynamic>>> getLocalFinanceSupplierInvoices() async {
+    await _createSupplierFinanceTables();
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return const <Map<String, dynamic>>[];
+    final invoices = await customSelect(
+      'SELECT si.*, s.id AS supplier_record_id, s.name AS supplier_name, s.phone AS supplier_phone FROM supplier_invoices si JOIN suppliers s ON s.id = si.supplier_id WHERE s.tenant_id = ? ORDER BY si.created_at DESC',
+      variables: [Variable.withString(tenantId)],
+    ).get();
+    final paymentRows = await customSelect(
+      'SELECT sp.invoice_id, sp.id, sp.amount, sp.notes, sp.payment_date, sp.funding_source FROM supplier_payments sp JOIN supplier_invoices si ON si.id = sp.invoice_id JOIN suppliers s ON s.id = si.supplier_id WHERE s.tenant_id = ? ORDER BY sp.payment_date DESC',
+      variables: [Variable.withString(tenantId)],
+    ).get();
+    final paymentsByInvoice = <String, List<QueryRow>>{};
+    for (final row in paymentRows) {
+      final invoiceId = row.read<String>('invoice_id');
+      paymentsByInvoice.putIfAbsent(invoiceId, () => <QueryRow>[]).add(row);
+    }
+    final result = <Map<String, dynamic>>[];
+    for (final invoice in invoices) {
+      final invoiceId = invoice.read<String>('id');
+      final payments = paymentsByInvoice[invoiceId] ?? const <QueryRow>[];
+      result.add(<String, dynamic>{
+        'id': invoiceId,
+        'supplierId': invoice.read<String>('supplier_record_id'),
+        'supplierName': invoice.read<String>('supplier_name'),
+        'supplierPhone': invoice.readNullable<String>('supplier_phone'),
+        'invoiceNumber': invoice.readNullable<String>('invoice_number'),
+        'totalAmount': invoice.read<double>('total_amount'),
+        'paidAmount': invoice.read<double>('paid_amount'),
+        'outstandingAmount': invoice.read<double>('due_amount'),
+        'dueDate': invoice.readNullable<String>('due_date'),
+        'status': invoice.read<String>('status'),
+        'createdAt': invoice.read<String>('created_at'),
+        'payments': payments
+            .map((payment) => <String, dynamic>{
+                  'id': 'local-supplier-payment-${payment.read<int>('id')}',
+                  'amount': payment.read<double>('amount'),
+                  'fundingSource': payment.read<String>('funding_source'),
+                  'paidAt': payment.read<String>('payment_date'),
+                  'notes': payment.readNullable<String>('notes'),
+                })
+            .toList(growable: false),
+      });
+    }
+    return result;
+  }
+
+  /// Records money actually received against local customer balances. A
+  /// stable request ID makes repeated taps/retries idempotent.
+  Future<void> recordLocalCustomerCollections({
+    required String branchId,
+    required List<Map<String, dynamic>> allocations,
+    required String requestId,
+    String? reference,
+  }) async {
+    await createCustomersTable();
+    await _ensureLocalCashCollectionsTable();
+    final tenantId = _requireCustomerTenantId();
+    final normalizedBranch = branchId.trim();
+    final normalizedRequest = requestId.trim();
+    final normalizedReference =
+        reference?.trim().isNotEmpty == true ? reference!.trim() : null;
+    if (normalizedBranch.isEmpty ||
+        !_activeBranchIds().contains(normalizedBranch)) {
+      throw StateError('Select a valid branch before recording a collection.');
+    }
+    if (normalizedRequest.isEmpty ||
+        allocations.isEmpty ||
+        allocations.length > 50) {
+      throw ArgumentError('Select up to 50 customer balances to collect.');
+    }
+
+    final normalized = <({String customerId, double amount})>[];
+    final seen = <String>{};
+    for (final allocation in allocations) {
+      final rawId = allocation['receivableId']?.toString() ?? '';
+      const prefix = 'local-customer:';
+      if (!rawId.startsWith(prefix)) {
+        throw ArgumentError('This customer balance is not stored locally.');
+      }
+      final customerId = rawId.substring(prefix.length);
+      final amount = (allocation['amount'] as num?)?.toDouble();
+      if (customerId.isEmpty ||
+          !seen.add(customerId) ||
+          amount == null ||
+          !amount.isFinite ||
+          amount <= 0) {
+        throw ArgumentError('Check the customer collection amount.');
+      }
+      normalized.add((customerId: customerId, amount: amount));
+    }
+
+    await transaction(() async {
+      final recordIds = normalized
+          .map((allocation) => '$normalizedRequest:${allocation.customerId}')
+          .toList(growable: false);
+      final existing = await customSelect(
+        'SELECT id, customer_id, branch_id, amount, reference FROM local_cash_collections WHERE tenant_id = ? AND id IN (${List.filled(recordIds.length, '?').join(',')})',
+        variables: [
+          Variable.withString(tenantId),
+          ...recordIds.map((id) => Variable.withString(id)),
+        ],
+      ).get();
+      if (existing.length == recordIds.length) {
+        final savedById = <String,
+            ({
+          String customerId,
+          String branchId,
+          double amount,
+          String? reference
+        })>{
+          for (final row in existing)
+            row.read<String>('id'): (
+              customerId: row.read<String>('customer_id'),
+              branchId: row.read<String>('branch_id'),
+              amount: row.read<double>('amount'),
+              reference: row.readNullable<String>('reference'),
+            ),
+        };
+        final matches = normalized.asMap().entries.every((entry) {
+          final saved = savedById[recordIds[entry.key]];
+          return saved != null &&
+              saved.customerId == entry.value.customerId &&
+              saved.branchId == normalizedBranch &&
+              saved.reference == normalizedReference &&
+              (saved.amount - entry.value.amount).abs() < 0.005;
+        });
+        if (!matches) {
+          throw StateError(
+              'This collection ID was already used for a different payment. Refresh before retrying.');
+        }
+        return;
+      }
+      if (existing.isNotEmpty) {
+        throw StateError(
+            'This collection was only partly recorded. Refresh before retrying.');
+      }
+
+      final collectedAt = DateTime.now().toUtc().toIso8601String();
+      for (var index = 0; index < normalized.length; index++) {
+        final allocation = normalized[index];
+        final updated = await customUpdate(
+          'UPDATE customers SET balance = MAX(balance - ?, 0) WHERE id = ? AND tenant_id = ? AND balance >= ? - 0.005',
+          variables: [
+            Variable.withReal(allocation.amount),
+            Variable.withString(allocation.customerId),
+            Variable.withString(tenantId),
+            Variable.withReal(allocation.amount),
+          ],
+        );
+        if (updated != 1) {
+          throw StateError(
+              'A customer balance changed. Refresh and try again.');
+        }
+        await customStatement(
+          'INSERT INTO local_cash_collections (id, tenant_id, branch_id, customer_id, amount, collected_at, payment_method, reference) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [
+            recordIds[index],
+            tenantId,
+            normalizedBranch,
+            allocation.customerId,
+            allocation.amount,
+            collectedAt,
+            'CASH',
+            normalizedReference,
+          ],
+        );
+        await _applyLocalCollectionToInstallments(
+          tenantId: tenantId,
+          customerId: allocation.customerId,
+          amount: allocation.amount,
+          collectedAt: collectedAt,
+        );
+      }
+    });
+  }
+
+  /// A general customer collection also pays scheduled dues oldest-first.
+  /// Keeping the schedule in step with the balance prevents a later reminder
+  /// or collection from asking for money that has already been received.
+  Future<void> _applyLocalCollectionToInstallments({
+    required String tenantId,
+    required String customerId,
+    required double amount,
+    required String collectedAt,
+  }) async {
+    var remaining = amount;
+    final installments = await customSelect(
+      'SELECT id, amount - COALESCE(paid_amount, 0) AS amount_due '
+      'FROM customer_installments '
+      'WHERE tenant_id = ? AND customer_id = ? '
+      'AND status IN (\'pending\', \'overdue\') '
+      'ORDER BY due_date ASC, created_at ASC, id ASC',
+      variables: [
+        Variable.withString(tenantId),
+        Variable.withString(customerId),
+      ],
+    ).get();
+
+    for (final installment in installments) {
+      if (remaining <= 0.005) break;
+      final due = installment.read<double>('amount_due');
+      if (!due.isFinite || due <= 0) continue;
+      final applied = remaining < due ? remaining : due;
+      final nextDue = due - applied;
+      final id = installment.read<String>('id');
+      final changed = nextDue <= 0.005
+          ? await customUpdate(
+              'UPDATE customer_installments SET status = \'paid\', paid_at = ?, paid_amount = amount '
+              'WHERE id = ? AND tenant_id = ? AND status IN (\'pending\', \'overdue\')',
+              variables: [
+                Variable.withString(collectedAt),
+                Variable.withString(id),
+                Variable.withString(tenantId),
+              ],
+            )
+          : await customUpdate(
+              'UPDATE customer_installments SET paid_amount = COALESCE(paid_amount, 0) + ? '
+              'WHERE id = ? AND tenant_id = ? AND status IN (\'pending\', \'overdue\')',
+              variables: [
+                Variable.withReal(applied),
+                Variable.withString(id),
+                Variable.withString(tenantId),
+              ],
+            );
+      if (changed != 1) {
+        throw StateError(
+          'A scheduled customer payment changed. Refresh and try again.',
+        );
+      }
+      remaining -= applied;
+    }
+  }
+
+  /// Customers with a current balance and the cash collections recorded on
+  /// this device. The balance remains the source of truth for what is owed.
+  Future<List<Map<String, dynamic>>>
+      getLocalFinanceCustomerReceivables() async {
+    await createCustomersTable();
+    await createCustomerInstallmentsTable();
+    await _ensureLocalCashCollectionsTable();
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return const <Map<String, dynamic>>[];
+    final customers = await customSelect(
+      'SELECT id, name, balance, created_at FROM customers WHERE tenant_id = ? AND (balance > 0.005 OR EXISTS (SELECT 1 FROM local_cash_collections lcc WHERE lcc.tenant_id = customers.tenant_id AND lcc.customer_id = customers.id)) ORDER BY balance DESC, name ASC',
+      variables: [Variable.withString(tenantId)],
+    ).get();
+    final collectionRows = await customSelect(
+      'SELECT customer_id, id, amount, payment_method, reference, collected_at FROM local_cash_collections WHERE tenant_id = ? ORDER BY collected_at DESC',
+      variables: [Variable.withString(tenantId)],
+    ).get();
+    final collectionsByCustomer = <String, List<QueryRow>>{};
+    for (final row in collectionRows) {
+      collectionsByCustomer
+          .putIfAbsent(row.read<String>('customer_id'), () => <QueryRow>[])
+          .add(row);
+    }
+    final dueRows = await customSelect(
+      "SELECT customer_id, MIN(due_date) AS due_date FROM customer_installments WHERE tenant_id = ? AND status IN ('pending', 'overdue') GROUP BY customer_id",
+      variables: [Variable.withString(tenantId)],
+    ).get();
+    final dueByCustomer = <String, String?>{
+      for (final row in dueRows)
+        row.read<String>('customer_id'): row.readNullable<String>('due_date'),
+    };
+    final result = <Map<String, dynamic>>[];
+    for (final customer in customers) {
+      final customerId = customer.read<String>('id');
+      final rows = collectionsByCustomer[customerId] ?? const <QueryRow>[];
+      final payments = rows
+          .map((row) => <String, dynamic>{
+                'id': row.read<String>('id'),
+                'amount': row.read<double>('amount'),
+                'method': row.read<String>('payment_method'),
+                'reference': row.readNullable<String>('reference'),
+                'paidAt': row.read<String>('collected_at'),
+                'createdAt': row.read<String>('collected_at'),
+              })
+          .toList(growable: false);
+      final balance = customer.read<double>('balance');
+      final collected = rows.fold<double>(
+        0,
+        (sum, row) => sum + row.read<double>('amount'),
+      );
+      result.add(<String, dynamic>{
+        'id': customerId,
+        'name': customer.read<String>('name'),
+        'balance': balance,
+        'originalAmount': balance + collected,
+        'createdAt': customer.read<String>('created_at'),
+        'dueDate': dueByCustomer[customerId],
+        'payments': payments,
+      });
+    }
+    return result;
+  }
+
+  /// Records a supplier payment against one invoice, with an optimistic
+  /// balance check and request-level idempotency.
+  Future<void> recordLocalSupplierInvoicePayment({
+    required String invoiceId,
+    required String branchId,
+    required double amount,
+    required String fundingSource,
+    required String requestId,
+    String? notes,
+  }) async {
+    await _createSupplierFinanceTables();
+    final tenantId = _requireCustomerTenantId();
+    final normalizedRequest = requestId.trim();
+    if (!amount.isFinite || amount <= 0 || normalizedRequest.isEmpty) {
+      throw ArgumentError('Enter a valid supplier payment.');
+    }
+    if (branchId.trim().isEmpty || !_activeBranchIds().contains(branchId)) {
+      throw StateError('Select an active branch before recording payment.');
+    }
+    final normalizedSource = fundingSource.trim().toUpperCase();
+    if (normalizedSource != 'CASH_TILL' &&
+        normalizedSource != 'BANK_OR_MPESA') {
+      throw ArgumentError('Choose a valid payment source.');
+    }
+    await transaction(() async {
+      final duplicate = await customSelect(
+        'SELECT id, invoice_id, amount, branch_id, funding_source FROM supplier_payments WHERE request_id = ? LIMIT 1',
+        variables: [Variable.withString(normalizedRequest)],
+      ).getSingleOrNull();
+      if (duplicate != null) {
+        if (duplicate.readNullable<String>('invoice_id') == invoiceId &&
+            duplicate.readNullable<String>('branch_id') == branchId &&
+            duplicate.read<String>('funding_source') == normalizedSource &&
+            (duplicate.read<double>('amount') - amount).abs() < 0.005) {
+          return;
+        }
+        throw StateError('This payment request ID was already used.');
+      }
+      final invoice = await customSelect(
+        'SELECT si.supplier_id, si.total_amount, si.paid_amount FROM supplier_invoices si JOIN suppliers s ON s.id = si.supplier_id WHERE si.id = ? AND s.tenant_id = ?',
+        variables: [
+          Variable.withString(invoiceId),
+          Variable.withString(tenantId),
+        ],
+      ).getSingleOrNull();
+      if (invoice == null) throw StateError('Supplier invoice not found.');
+      final total = invoice.read<double>('total_amount');
+      final paid = invoice.read<double>('paid_amount');
+      final outstanding = (total - paid).clamp(0, double.infinity).toDouble();
+      if (amount > outstanding + 0.005) {
+        throw StateError(
+            'Payment exceeds the invoice balance. Refresh and try again.');
+      }
+      final newPaid = (paid + amount).clamp(0, total).toDouble();
+      final newDue = (total - newPaid).clamp(0, double.infinity).toDouble();
+      final now = DateTime.now().toUtc().toIso8601String();
+      final updated = await customUpdate(
+        'UPDATE supplier_invoices SET paid_amount = ?, due_amount = ?, status = ?, updated_at = ? WHERE id = ? AND paid_amount = ?',
+        variables: [
+          Variable.withReal(newPaid),
+          Variable.withReal(newDue),
+          Variable.withString(newDue <= 0.005 ? 'paid' : 'partial'),
+          Variable.withString(now),
+          Variable.withString(invoiceId),
+          Variable.withReal(paid),
+        ],
+      );
+      if (updated != 1) {
+        throw StateError('Invoice balance changed. Refresh and try again.');
+      }
+      final cleanNotes = notes?.trim();
+      await customStatement(
+        'INSERT INTO supplier_payments (supplier_id, branch_id, amount, notes, payment_date, created_at, invoice_id, request_id, funding_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          invoice.read<String>('supplier_id'),
+          branchId,
+          amount,
+          cleanNotes == null || cleanNotes.isEmpty ? null : cleanNotes,
+          now,
+          now,
+          invoiceId,
+          normalizedRequest,
+          normalizedSource,
+        ],
+      );
+    });
+  }
 
   /// Add or update a supplier record
   Future<String> insertOrGetSupplier(
@@ -3627,6 +6857,9 @@ class AppDatabase extends _$AppDatabase {
     String supplierId,
     double amount, {
     String? notes,
+    String? invoiceId,
+    String? branchId,
+    String fundingSource = 'CASH_TILL',
   }) async {
     await _createSupplierFinanceTables();
     final tenantId = _requireCustomerTenantId();
@@ -3640,8 +6873,8 @@ class AppDatabase extends _$AppDatabase {
     if (supplier == null) throw StateError('Supplier not found in this shop');
     final now = DateTime.now().toIso8601String();
     await customStatement(
-      'INSERT INTO supplier_payments (supplier_id, amount, notes, payment_date, created_at) VALUES (?, ?, ?, ?, ?)',
-      [supplierId, amount, notes, now, now],
+      'INSERT INTO supplier_payments (supplier_id, branch_id, amount, notes, payment_date, created_at, invoice_id, funding_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [supplierId, branchId, amount, notes, now, now, invoiceId, fundingSource],
     );
   }
 
@@ -3812,6 +7045,7 @@ class AppDatabase extends _$AppDatabase {
     final invoiceRecordId = stableInvoiceId == null || stableInvoiceId.isEmpty
         ? 'supplier-invoice-${now.microsecondsSinceEpoch}'
         : stableInvoiceId;
+    final targetBranchId = branchId ?? _storage.getBranchId() ?? 'branch-main';
     final subtotal = items.fold<double>(
       0,
       (sum, item) => sum + ((item['lineTotal'] as num?)?.toDouble() ?? 0),
@@ -3848,8 +7082,6 @@ class AppDatabase extends _$AppDatabase {
         ],
       );
 
-      final targetBranchId =
-          branchId ?? _storage.getBranchId() ?? 'branch-main';
       for (final item in items) {
         final name = ((item['name'] as String?) ?? '').trim();
         if (name.isEmpty) continue;
@@ -3905,6 +7137,8 @@ class AppDatabase extends _$AppDatabase {
           paidAmount,
           notes:
               'Initial payment for invoice ${invoiceNumber ?? invoiceRecordId}',
+          invoiceId: invoiceRecordId,
+          branchId: targetBranchId,
         );
       }
     });
@@ -3993,5 +7227,596 @@ class AppDatabase extends _$AppDatabase {
     final prefix =
         cleaned.isEmpty ? 'ITEM' : cleaned.split('-').take(3).join('-');
     return 'SUP-$prefix';
+  }
+
+  static const _portableMetadataTable = 'counterbase_transfer_metadata';
+  static const _portableAssetsTable = 'counterbase_transfer_assets';
+  static const _portableFormat = 'counterbase-mobile-workspace';
+  static const _maxPortableAssetBytes = 128 * 1024 * 1024;
+  static const _maxPortableAssetFileBytes = 16 * 1024 * 1024;
+
+  /// Shop images referenced by local catalog, profile, and supplier-invoice
+  /// records. These paths are device-specific and are rebased on restore.
+  Future<List<String>> getPortableImageReferences() async {
+    await _createSupplierFinanceTables();
+    final rows = await customSelect('''
+      SELECT image_url FROM products WHERE image_url IS NOT NULL AND image_url != ''
+      UNION
+      SELECT image_url FROM categories WHERE image_url IS NOT NULL AND image_url != ''
+      UNION
+      SELECT receipt_image_path FROM supplier_invoices
+        WHERE receipt_image_path IS NOT NULL AND receipt_image_path != ''
+    ''').get();
+    return rows
+        .map((row) => row.read<String>('image_url'))
+        .toSet()
+        .toList(growable: false);
+  }
+
+  /// Writes a consistent, password-encrypted snapshot of the full local
+  /// database. SQLCipher copies the live connection into a separately keyed
+  /// attached database, so the export includes committed WAL data without
+  /// copying the device's private database key.
+  Future<void> createPortableBackup({
+    required String path,
+    required String passphrase,
+    required Map<String, dynamic> metadata,
+    Map<String, Uint8List?> transferImages = const <String, Uint8List?>{},
+  }) async {
+    _validatePortablePassphrase(passphrase);
+    await _ensurePortableRestoreSchema();
+    final attach = _portableAttachSql(path, passphrase);
+    var attached = false;
+    try {
+      await customStatement(attach);
+      attached = true;
+      await customSelect("SELECT sqlcipher_export('portable')").get();
+      await customStatement('PRAGMA portable.user_version = $schemaVersion');
+      await customStatement('''
+        CREATE TABLE portable.$_portableMetadataTable (
+          payload TEXT NOT NULL
+        )
+      ''');
+      final payload = <String, dynamic>{
+        ...metadata,
+        'format': _portableFormat,
+        'formatVersion': 2,
+        'schemaVersion': schemaVersion,
+        'createdAt': DateTime.now().toUtc().toIso8601String(),
+      };
+      await customStatement(
+        'INSERT INTO portable.$_portableMetadataTable (payload) VALUES (${_portableSqlString(jsonEncode(payload))})',
+      );
+      await customStatement('''
+        CREATE TABLE portable.$_portableAssetsTable (
+          original_path TEXT PRIMARY KEY NOT NULL,
+          contents BLOB
+        )
+      ''');
+      for (final entry in transferImages.entries) {
+        await customStatement(
+          'INSERT INTO portable.$_portableAssetsTable (original_path, contents) VALUES (?, ?)',
+          [
+            Variable.withString(entry.key),
+            entry.value == null
+                ? const Variable<Uint8List>(null)
+                : Variable.withBlob(entry.value!),
+          ],
+        );
+      }
+      await _validatePortableDatabase();
+    } catch (_) {
+      // The SQLCipher ATTACH statement contains the backup passphrase. Never
+      // include its native exception text in logs, where SQL may be echoed.
+      debugPrint('[DB] Portable backup export failed.');
+      rethrow;
+    } finally {
+      if (attached) {
+        await customStatement('DETACH DATABASE portable');
+      }
+    }
+  }
+
+  /// Opens and validates a transfer backup without changing the live shop.
+  /// The returned profile contains only owner/shop identity fields; callers
+  /// must show it to the owner before replacing local data.
+  Future<Map<String, dynamic>> inspectPortableBackup({
+    required String path,
+    required String passphrase,
+  }) async {
+    _validatePortablePassphrase(passphrase);
+    final attach = _portableAttachSql(path, passphrase);
+    var attached = false;
+    try {
+      await customStatement(attach);
+      attached = true;
+      return await _readPortablePreview();
+    } catch (error) {
+      debugPrint('[DB] Portable backup inspection failed.');
+      if (error is FormatException) rethrow;
+      throw const FormatException(
+        'Counterbase could not unlock that backup. Check the password and file.',
+      );
+    } finally {
+      if (attached) {
+        await customStatement('DETACH DATABASE portable');
+      }
+    }
+  }
+
+  /// Returns image assets from a validated mobile backup. A null value means
+  /// the source catalog referenced that local image but its file was already
+  /// missing when the backup was created.
+  Future<Map<String, Uint8List?>> readPortableImageAssets({
+    required String path,
+    required String passphrase,
+  }) async {
+    _validatePortablePassphrase(passphrase);
+    final attach = _portableAttachSql(path, passphrase);
+    var attached = false;
+    try {
+      await customStatement(attach);
+      attached = true;
+      await _readPortablePreview();
+      final table = await customSelect(
+        'SELECT 1 FROM portable.sqlite_master WHERE type = ? AND name = ? LIMIT 1',
+        variables: [
+          const Variable<String>('table'),
+          Variable.withString(_portableAssetsTable),
+        ],
+      ).getSingleOrNull();
+      if (table == null) return const <String, Uint8List?>{};
+      final rows = await customSelect(
+        'SELECT original_path, contents FROM portable.$_portableAssetsTable',
+      ).get();
+      return {
+        for (final row in rows)
+          row.read<String>('original_path'): row.readNullable<Uint8List>(
+            'contents',
+          ),
+      };
+    } catch (_) {
+      debugPrint('[DB] Portable image extraction failed.');
+      rethrow;
+    } finally {
+      if (attached) await customStatement('DETACH DATABASE portable');
+    }
+  }
+
+  /// Replaces this install's local business rows from a verified transfer
+  /// backup in one SQLite transaction. Secure device credentials are not
+  /// copied; the recipient keeps its own PIN and Gateway key.
+  Future<Map<String, dynamic>> restorePortableBackup({
+    required String path,
+    required String passphrase,
+    required StorageService storage,
+    Map<String, String?> assetPathRemap = const <String, String?>{},
+    void Function()? validateOwner,
+  }) async {
+    _validatePortablePassphrase(passphrase);
+    final preview = await inspectPortableBackup(
+      path: path,
+      passphrase: passphrase,
+    );
+    final payload = _remapPortableAssetPaths(
+      preview['payload'] as Map<String, dynamic>,
+      assetPathRemap,
+    );
+    final workspace = Map<String, dynamic>.from(
+      payload['workspace'] as Map,
+    );
+    final user = Map<String, dynamic>.from(payload['user'] as Map);
+    final tenant = Map<String, dynamic>.from(payload['tenant'] as Map);
+    final branch = Map<String, dynamic>.from(payload['branch'] as Map);
+    final tenantId = payload['tenantId'].toString();
+    final tenantSlug = payload['tenantSlug'].toString();
+    final branchId = payload['branchId'].toString();
+    if (tenantId.isEmpty ||
+        tenantSlug.isEmpty ||
+        branchId.isEmpty ||
+        user['id']?.toString().isEmpty != false ||
+        user['authMode'] != 'local' ||
+        user['tenantId']?.toString() != tenantId ||
+        user['tenantSlug']?.toString() != tenantSlug ||
+        user['branchId']?.toString() != branchId ||
+        tenant['id']?.toString() != tenantId ||
+        branch['id']?.toString() != branchId ||
+        (workspace['tenant'] is! Map) ||
+        (workspace['branch'] is! Map) ||
+        (workspace['user'] is! Map) ||
+        (workspace['tenant'] as Map)['id']?.toString() != tenantId ||
+        (workspace['branch'] as Map)['id']?.toString() != branchId ||
+        (workspace['user'] as Map)['id']?.toString() !=
+            user['id']?.toString()) {
+      throw const FormatException(
+        'This backup is missing the local shop profile needed for restore.',
+      );
+    }
+
+    final previousWorkspace = storage.getLocalWorkspace();
+    final previousUser = storage.getUser();
+    final previousTenantId = storage.getTenantId();
+    final previousTenantSlug = storage.getTenantSlug();
+    final previousBranchId = storage.getBranchId();
+    if (previousWorkspace == null ||
+        previousUser == null ||
+        previousTenantId == null ||
+        previousTenantSlug == null ||
+        previousBranchId == null) {
+      throw StateError(
+        'Set up or unlock a local workspace before restoring a transfer backup.',
+      );
+    }
+    final previousTargetHeldSales = await storage.getSecureHeldSalesSnapshot(
+      tenantId: tenantId,
+      branchId: branchId,
+    );
+
+    final attach = _portableAttachSql(path, passphrase);
+    var attached = false;
+    var foreignKeysDisabled = false;
+    try {
+      await customStatement(attach);
+      attached = true;
+      final sourceTables = await _portableTableNames('portable');
+      await _ensurePortableRestoreSchema();
+      final liveTables = await _portableTableNames('main');
+      final sourceTableSet = sourceTables.toSet();
+      final liveTableSet = liveTables.toSet();
+      final missingFromBackup = liveTableSet.difference(sourceTableSet);
+      final unknownInBackup = sourceTableSet.difference(liveTableSet);
+      // Backups created before private AI notes existed remain restorable;
+      // the new table stays empty. Unknown/newer tables still fail closed.
+      if (unknownInBackup.isNotEmpty ||
+          !const {'local_ai_memories'}.containsAll(missingFromBackup)) {
+        throw const FormatException(
+          'This backup was made by a different Counterbase database version. Update both apps and try again.',
+        );
+      }
+      for (final table in sourceTables) {
+        final liveColumns = await _portableColumnNames('main', table);
+        final backupColumns = await _portableColumnNames('portable', table);
+        if (liveColumns.length != backupColumns.length ||
+            !liveColumns.toSet().containsAll(backupColumns)) {
+          throw const FormatException(
+            'This backup does not match the database version on this device.',
+          );
+        }
+      }
+
+      validateOwner?.call();
+      await customStatement('PRAGMA foreign_keys = OFF');
+      foreignKeysDisabled = true;
+      await transaction(() async {
+        validateOwner?.call();
+        for (final table in liveTables.reversed) {
+          await customStatement(
+              'DELETE FROM main.${_portableIdentifier(table)}');
+        }
+        final hasSequence = liveTables.contains('sqlite_sequence');
+        if (hasSequence) {
+          await customStatement('DELETE FROM main.sqlite_sequence');
+        }
+        for (final table in sourceTables) {
+          await customStatement('''
+            INSERT INTO main.${_portableIdentifier(table)}
+            SELECT * FROM portable.${_portableIdentifier(table)}
+          ''');
+        }
+        if (assetPathRemap.isNotEmpty) {
+          const assetColumns = <String, List<String>>{
+            'products': ['image_url'],
+            'categories': ['image_url'],
+            'supplier_invoices': ['receipt_image_path'],
+          };
+          for (final entry in assetColumns.entries) {
+            if (!sourceTableSet.contains(entry.key)) continue;
+            for (final column in entry.value) {
+              for (final pathEntry in assetPathRemap.entries) {
+                final identifier = _portableIdentifier(column);
+                await customStatement(
+                  'UPDATE main.${_portableIdentifier(entry.key)} '
+                  'SET $identifier = ? WHERE $identifier = ?',
+                  [
+                    pathEntry.value == null
+                        ? const Variable<String>(null)
+                        : Variable.withString(pathEntry.value!),
+                    Variable.withString(pathEntry.key),
+                  ],
+                );
+              }
+            }
+          }
+        }
+        await _restorePortableSequences();
+        await _validatePortableDatabase(schema: 'main');
+        final foreignKeyErrors = await customSelect(
+          'PRAGMA main.foreign_key_check',
+        ).get();
+        if (foreignKeyErrors.isNotEmpty) {
+          throw StateError(
+            'This backup has related records that do not match.',
+          );
+        }
+
+        validateOwner?.call();
+        await storage.saveLocalWorkspace(workspace);
+        await storage.saveUser(user);
+        await storage.saveTenantId(tenantId);
+        await storage.saveTenantSlug(tenantSlug);
+        await storage.saveBranchId(branchId);
+        await storage.clearSecureHeldSalesSnapshot(
+          tenantId: tenantId,
+          branchId: branchId,
+        );
+        final heldSales = payload['heldSales']?.toString();
+        if (heldSales != null && heldSales.isNotEmpty) {
+          await storage.saveSecureHeldSalesSnapshot(
+            tenantId: tenantId,
+            branchId: branchId,
+            snapshot: heldSales,
+          );
+        }
+      });
+    } catch (_) {
+      // Preferences and SQLite cannot share a transaction. Restore the prior
+      // identity if any preference write failed; the database transaction
+      // rolls back independently.
+      try {
+        await storage.saveLocalWorkspace(previousWorkspace);
+        await storage.saveUser(previousUser);
+        await storage.saveTenantId(previousTenantId);
+        await storage.saveTenantSlug(previousTenantSlug);
+        await storage.saveBranchId(previousBranchId);
+        if (previousTargetHeldSales == null) {
+          await storage.clearSecureHeldSalesSnapshot(
+            tenantId: tenantId,
+            branchId: branchId,
+          );
+        } else {
+          await storage.saveSecureHeldSalesSnapshot(
+            tenantId: tenantId,
+            branchId: branchId,
+            snapshot: previousTargetHeldSales,
+          );
+        }
+      } catch (_) {
+        debugPrint('[DB] Portable profile rollback failed.');
+      }
+      debugPrint('[DB] Portable restore failed.');
+      rethrow;
+    } finally {
+      if (foreignKeysDisabled) {
+        await customStatement('PRAGMA foreign_keys = ON');
+      }
+      if (attached) {
+        await customStatement('DETACH DATABASE portable');
+      }
+    }
+    return preview;
+  }
+
+  Future<Map<String, dynamic>> _readPortablePreview() async {
+    final metadataRows = await customSelect(
+      'SELECT payload FROM portable.$_portableMetadataTable LIMIT 2',
+    ).get();
+    if (metadataRows.length != 1) {
+      throw const FormatException('This is not a Counterbase transfer backup.');
+    }
+    final decoded = jsonDecode(metadataRows.single.read<String>('payload'));
+    if (decoded is! Map<String, dynamic> ||
+        decoded['format'] != _portableFormat ||
+        !const {1, 2}.contains(decoded['formatVersion']) ||
+        decoded['schemaVersion'] != schemaVersion) {
+      throw const FormatException(
+        'This backup is for a different Counterbase database version.',
+      );
+    }
+    final tenantId = decoded['tenantId']?.toString() ?? '';
+    final tenantSlug = decoded['tenantSlug']?.toString() ?? '';
+    final branchId = decoded['branchId']?.toString() ?? '';
+    final tenant = decoded['tenant'];
+    final branch = decoded['branch'];
+    final user = decoded['user'];
+    final workspace = decoded['workspace'];
+    if (tenantId.isEmpty ||
+        tenantSlug.isEmpty ||
+        branchId.isEmpty ||
+        tenant is! Map ||
+        branch is! Map ||
+        user is! Map ||
+        workspace is! Map ||
+        workspace['tenant'] is! Map ||
+        workspace['branch'] is! Map ||
+        workspace['user'] is! Map ||
+        tenant['id']?.toString() != tenantId ||
+        branch['id']?.toString() != branchId ||
+        user['authMode'] != 'local' ||
+        user['tenantId']?.toString() != tenantId ||
+        user['tenantSlug']?.toString() != tenantSlug ||
+        user['branchId']?.toString() != branchId ||
+        (workspace['tenant'] as Map)['id']?.toString() != tenantId ||
+        (workspace['branch'] as Map)['id']?.toString() != branchId ||
+        (workspace['user'] as Map)['id']?.toString() !=
+            user['id']?.toString()) {
+      throw const FormatException(
+        'This backup is missing a complete local shop profile.',
+      );
+    }
+    await _validatePortableDatabase(schema: 'portable');
+    final foreignKeyErrors = await customSelect(
+      'PRAGMA portable.foreign_key_check',
+    ).get();
+    if (foreignKeyErrors.isNotEmpty) {
+      throw const FormatException(
+        'This backup contains damaged or incomplete related records.',
+      );
+    }
+    final tables = await _portableTableNames('portable');
+    final formatVersion = decoded['formatVersion'] as int;
+    var imageCount = 0;
+    if (formatVersion >= 2) {
+      if (await _portableTableNamesIncludingAssets('portable') == false) {
+        throw const FormatException(
+          'This backup is missing its local image manifest.',
+        );
+      }
+      final imageRows = await customSelect('''
+        SELECT COUNT(*) AS total,
+          COALESCE(SUM(length(contents)), 0) AS bytes,
+          COALESCE(MAX(length(contents)), 0) AS largest
+        FROM portable.$_portableAssetsTable WHERE contents IS NOT NULL
+      ''').get();
+      final imageStats = imageRows.single;
+      imageCount = imageStats.read<int>('total');
+      if (imageStats.read<int>('bytes') > _maxPortableAssetBytes ||
+          imageStats.read<int>('largest') > _maxPortableAssetFileBytes) {
+        throw const FormatException(
+          'This backup contains photos that exceed the supported transfer size.',
+        );
+      }
+    }
+    final counts = <String, int>{};
+    for (final table in const ['products', 'customers', 'sales', 'branches']) {
+      if (!tables.contains(table)) {
+        counts[table] = 0;
+        continue;
+      }
+      final rows = await customSelect(
+        'SELECT COUNT(*) AS total FROM portable.${_portableIdentifier(table)}',
+      ).get();
+      counts[table] = rows.single.read<int>('total');
+    }
+    final createdAt = DateTime.tryParse(decoded['createdAt']?.toString() ?? '');
+    if (createdAt == null) {
+      throw const FormatException('This backup has an invalid creation date.');
+    }
+    return {
+      'payload': decoded,
+      'tenantName': tenant['name']?.toString() ?? 'Your shop',
+      'ownerName': user['name']?.toString() ?? '',
+      'createdAt': createdAt,
+      'counts': counts,
+      'imageCount': imageCount,
+      'totalCount': counts.values.fold<int>(0, (sum, value) => sum + value),
+    };
+  }
+
+  Future<void> _validatePortableDatabase({String schema = 'portable'}) async {
+    final rows = await customSelect('PRAGMA $schema.integrity_check').get();
+    if (rows.length != 1 || rows.single.data.values.first != 'ok') {
+      throw const FormatException(
+        'The encrypted workspace backup did not pass its integrity check.',
+      );
+    }
+  }
+
+  Future<List<String>> _portableTableNames(String schema) async {
+    final rows = await customSelect('''
+      SELECT name FROM $schema.sqlite_master
+      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+        AND name != '$_portableMetadataTable'
+        AND name != '$_portableAssetsTable'
+      ORDER BY name
+    ''').get();
+    return rows.map((row) => row.read<String>('name')).toList();
+  }
+
+  Future<bool> _portableTableNamesIncludingAssets(String schema) async {
+    final rows = await customSelect('''
+      SELECT 1 FROM $schema.sqlite_master
+      WHERE type = 'table' AND name = '$_portableAssetsTable'
+      LIMIT 1
+    ''').get();
+    return rows.isNotEmpty;
+  }
+
+  Future<List<String>> _portableColumnNames(String schema, String table) async {
+    final rows = await customSelect(
+      'PRAGMA $schema.table_info(${_portableIdentifier(table)})',
+    ).get();
+    return rows.map((row) => row.read<String>('name')).toList();
+  }
+
+  Future<void> _restorePortableSequences() async {
+    final hasSequence = await customSelect('''
+      SELECT 1 FROM portable.sqlite_master
+      WHERE type = 'table' AND name = 'sqlite_sequence'
+      LIMIT 1
+    ''').getSingleOrNull();
+    if (hasSequence == null) return;
+    await customStatement('DELETE FROM main.sqlite_sequence');
+    await customStatement('''
+      INSERT INTO main.sqlite_sequence(name, seq)
+      SELECT name, seq FROM portable.sqlite_sequence
+    ''');
+  }
+
+  /// A few long-standing local tables are created lazily when their feature
+  /// is first used rather than by Drift migrations. Create the current schema
+  /// before comparing a transfer backup so restoring into a fresh local shop
+  /// still preserves receipts, closes, collections, supplier history, private
+  /// AI notes, and prior archive-import metadata.
+  Future<void> _ensurePortableRestoreSchema() async {
+    await _createSupplierFinanceTables();
+    await _ensureLocalAiMemoriesTable();
+    await _ensureLocalStockReceiptsTable();
+    await _ensureLocalDailyClosesTable();
+    await _ensureLocalCashCollectionsTable();
+    await _ensureLocalCashRefundsTable();
+    await createBranchesTable();
+    await createCustomersTable();
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS local_import_archives (
+        archive_id TEXT PRIMARY KEY NOT NULL,
+        tenant_id TEXT NOT NULL,
+        tenant_name TEXT NOT NULL,
+        imported_at TEXT NOT NULL,
+        payload_json TEXT NOT NULL
+      )
+    ''');
+  }
+
+  String _portableAttachSql(String path, String passphrase) =>
+      'ATTACH DATABASE ${_portableSqlString(path)} AS portable KEY ${_portableSqlString(passphrase)}';
+
+  String _portableSqlString(String value) => "'${value.replaceAll("'", "''")}'";
+
+  Map<String, dynamic> _remapPortableAssetPaths(
+    Map<String, dynamic> value,
+    Map<String, String?> remap,
+  ) =>
+      _remapPortableAssetValue(value, remap) as Map<String, dynamic>;
+
+  Object? _remapPortableAssetValue(
+    Object? value,
+    Map<String, String?> remap,
+  ) {
+    if (value is String && remap.containsKey(value)) return remap[value];
+    if (value is Map) {
+      return <String, dynamic>{
+        for (final entry in value.entries)
+          entry.key.toString(): _remapPortableAssetValue(entry.value, remap),
+      };
+    }
+    if (value is Iterable) {
+      return value
+          .map((item) => _remapPortableAssetValue(item, remap))
+          .toList(growable: false);
+    }
+    return value;
+  }
+
+  String _portableIdentifier(String value) =>
+      '"${value.replaceAll('"', '""')}"';
+
+  void _validatePortablePassphrase(String passphrase) {
+    if (passphrase.length < 12 ||
+        passphrase.length > 1024 ||
+        passphrase.contains('\u0000')) {
+      throw const FormatException(
+        'Use a backup password between 12 and 1024 characters.',
+      );
+    }
   }
 }

@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 
 import '../database/app_database.dart';
 import '../network/api_client.dart';
+import '../network/local_first_network_guard.dart';
 import '../services/storage_service.dart';
 import 'connectivity_service.dart';
 
@@ -32,7 +33,7 @@ class BackgroundSyncService {
   static const String _immediateSyncTag = 'immediate-sync';
   static const String _defaultApiBaseUrl = String.fromEnvironment(
     'API_URL',
-    defaultValue: 'https://api.archeaxon.com/api/v1',
+    defaultValue: 'http://127.0.0.1:3000/api/v1',
   );
 
   // Run every 15 minutes
@@ -100,6 +101,11 @@ class BackgroundSyncService {
     final expectedTenantId = storageService.getTenantId();
 
     try {
+      if (storageService.hasLocalWorkspace() ||
+          !LocalFirstNetworkGuard.isLocalNetworkUrl(_defaultApiBaseUrl)) {
+        debugPrint('[BackgroundSync] Cloud POS sync is retired; skipping');
+        return false;
+      }
       if (expectedTenantId == null || expectedTenantId.isEmpty) {
         debugPrint('[BackgroundSync] No active workspace, skipping sync');
         return false;

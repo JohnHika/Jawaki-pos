@@ -3,11 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
-import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
+import '../../../../core/providers/local_workspace_capabilities.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
-import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/business_layout_preview.dart';
 import '../../../../core/widgets/business_layout_profile_picker.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -46,6 +45,28 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
   bool _initialized = false;
   bool _saving = false;
 
+  List<String> _supportedPriorityPaths(Iterable<String> paths) {
+    if (!getIt<AuthService>().isLocalWorkspace) return paths.toList();
+    return paths
+        .where(LocalWorkspaceCapabilities.supportsPath)
+        .toList(growable: true);
+  }
+
+  bool _supportsPosAction(String id) {
+    final action = businessLayoutPosAction(id);
+    if (action == null) return false;
+    if (!getIt<AuthService>().isLocalWorkspace) return true;
+    final path = action.path;
+    return path == null || LocalWorkspaceCapabilities.supportsPath(path);
+  }
+
+  List<String> _supportedPosQuickActions(Iterable<String> actions) {
+    final supported = actions.where(_supportsPosAction).toList(growable: true);
+    if (supported.isEmpty) return <String>['cart'];
+    if (!supported.contains('cart')) supported.add('cart');
+    return supported;
+  }
+
   @override
   void dispose() {
     _profileSearchController.dispose();
@@ -62,8 +83,10 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
       final config = businessLayoutFromUser(user);
       _profileId = config.profileId;
       _additionalProfileIds = [...config.additionalProfileIds];
-      _startPath = config.startPath;
-      _priorityPaths = [...config.priorityPaths];
+      _priorityPaths = _supportedPriorityPaths(config.priorityPaths);
+      _startPath = _priorityPaths.contains(config.startPath)
+          ? config.startPath
+          : _priorityPaths.firstOrNull;
       _hiddenPaths = [...config.hiddenPaths];
       _actionLabels = {...config.actionLabels};
       _terminologyOverrides = {...config.terminologyOverrides};
@@ -76,7 +99,8 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
       _showPosCategories = config.effectiveShowPosCategories;
       _showPosFavorites = config.effectiveShowPosFavorites;
       _showPosCustomer = config.effectiveShowPosCustomer;
-      _posQuickActions = [...config.effectivePosQuickActions];
+      _posQuickActions =
+          _supportedPosQuickActions(config.effectivePosQuickActions);
       _posProductPages = [...config.posProductPages];
       _dashboardMetrics = [...config.effectiveDashboardMetrics];
       _dashboardSections = [...config.effectiveDashboardSections];
@@ -115,8 +139,11 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final secondary =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final availableActions = businessLayoutActions
         .where((action) =>
+            (!isLocalWorkspace ||
+                LocalWorkspaceCapabilities.supportsPath(action.path)) &&
             selectedLayout.isActionVisible(action.path) &&
             !_priorityPaths.contains(action.path))
         .toList();
@@ -144,7 +171,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Choose a shop profile, shape checkout, rename and show the work areas this shop uses, set its opening screen, and arrange the team’s shortcuts. The layout is shared across the shop and can change as the business grows.',
+                    'Choose a shop profile, shape checkout, rename and show the work areas you use, set the opening screen, and arrange shortcuts. This layout is saved on this device; other installations keep their own layout.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: secondary,
                           height: 1.45,
@@ -220,9 +247,11 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                                           _additionalProfileIds,
                                         );
                                         _priorityPaths =
-                                            businessLayoutDefaultPriorityPaths(
-                                          _profileId,
-                                          _additionalProfileIds,
+                                            _supportedPriorityPaths(
+                                          businessLayoutDefaultPriorityPaths(
+                                            _profileId,
+                                            _additionalProfileIds,
+                                          ),
                                         );
                                         _startPath = _priorityPaths.isEmpty
                                             ? null
@@ -241,12 +270,13 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                                             preset.defaultShowPosFavorites;
                                         _showPosCustomer =
                                             preset.defaultShowPosCustomer;
-                                        _posQuickActions = [
-                                          ...businessLayoutDefaultPosQuickActions(
+                                        _posQuickActions =
+                                            _supportedPosQuickActions(
+                                          businessLayoutDefaultPosQuickActions(
                                             _profileId,
                                             _additionalProfileIds,
                                           ),
-                                        ];
+                                        );
                                         _dashboardMetrics = [
                                           ...businessLayoutDefaultDashboardMetrics(
                                             _profileId,
@@ -386,10 +416,11 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                             ),
                   ),
                   const SizedBox(height: 22),
-                  const _SectionHeading(
+                  _SectionHeading(
                     title: 'Product details',
-                    subtitle:
-                        'Choose the extra details each product form should collect for this trade. These details sync with the shop and stay available offline.',
+                    subtitle: isLocalWorkspace
+                        ? 'Choose the extra details each product form should collect for this trade. These layout choices are saved on this device.'
+                        : 'Choose the extra details each product form should collect for this trade. These details sync with the shop and stay available offline.',
                   ),
                   const SizedBox(height: 10),
                   Container(
@@ -723,6 +754,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                         }),
                         ...businessLayoutPosActions
                             .where((action) =>
+                                _supportsPosAction(action.id) &&
                                 !_posQuickActions.contains(action.id))
                             .map((action) => CheckboxListTile.adaptive(
                                   key: ValueKey('pos-action-add-${action.id}'),
@@ -779,7 +811,9 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Build named till pages from products you sell often, such as Textbooks, Stationery, or Fast movers. Pages sync with this shop and use the same stock and price checks as the full catalog.',
+                          isLocalWorkspace
+                              ? 'Build named till pages from products you sell often, such as Textbooks, Stationery, or Fast movers. They use the same stock and price checks as your full catalog and stay on this device.'
+                              : 'Build named till pages from products you sell often, such as Textbooks, Stationery, or Fast movers. Pages sync with this shop and use the same stock and price checks as the full catalog.',
                           style: Theme.of(context)
                               .textTheme
                               .bodySmall
@@ -997,7 +1031,13 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                     final cardWidth =
                         (constraints.maxWidth - spacing * (columns - 1)) /
                             columns;
-                    final visibleCount = businessLayoutActions
+                    final availableActions = businessLayoutActions
+                        .where((action) =>
+                            !getIt<AuthService>().isLocalWorkspace ||
+                            LocalWorkspaceCapabilities.supportsPath(
+                                action.path))
+                        .toList();
+                    final visibleCount = availableActions
                         .where((action) =>
                             selectedLayout.isActionVisible(action.path))
                         .length;
@@ -1005,7 +1045,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '$visibleCount of ${businessLayoutActions.length} work areas shown',
+                          '$visibleCount of ${availableActions.length} work areas shown',
                           style:
                               Theme.of(context).textTheme.labelLarge?.copyWith(
                                     color: DesignColors.accent,
@@ -1016,7 +1056,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                         Wrap(
                           spacing: spacing,
                           runSpacing: spacing,
-                          children: businessLayoutActions.map((action) {
+                          children: availableActions.map((action) {
                             final visible =
                                 selectedLayout.isActionVisible(action.path);
                             final canHide =
@@ -1308,10 +1348,11 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                                     _profileId,
                                     _additionalProfileIds,
                                   );
-                                  _priorityPaths =
-                                      businessLayoutDefaultPriorityPaths(
-                                    _profileId,
-                                    _additionalProfileIds,
+                                  _priorityPaths = _supportedPriorityPaths(
+                                    businessLayoutDefaultPriorityPaths(
+                                      _profileId,
+                                      _additionalProfileIds,
+                                    ),
                                   );
                                   _actionLabels.clear();
                                   _startPath = _priorityPaths.isEmpty
@@ -1332,12 +1373,12 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                                       selectedPreset.defaultShowPosFavorites;
                                   _showPosCustomer =
                                       selectedPreset.defaultShowPosCustomer;
-                                  _posQuickActions = [
-                                    ...businessLayoutDefaultPosQuickActions(
+                                  _posQuickActions = _supportedPosQuickActions(
+                                    businessLayoutDefaultPosQuickActions(
                                       _profileId,
                                       _additionalProfileIds,
                                     ),
-                                  ];
+                                  );
                                   _posProductPages.clear();
                                   _dashboardMetrics = [
                                     ...businessLayoutDefaultDashboardMetrics(
@@ -1677,6 +1718,13 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
   }
 
   Future<void> _addActions(List<BusinessLayoutAction> actions) async {
+    final selectableActions = actions
+        .where((action) =>
+            !_priorityPaths.contains(action.path) &&
+            !_hiddenPaths.contains(action.path))
+        .toList(growable: false);
+    if (selectableActions.isEmpty) return;
+
     final selected = <String>{};
     final selectedPreset = businessLayoutPreset(_profileId);
     final selectedLayout = BusinessLayoutConfig(
@@ -1713,7 +1761,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
               Flexible(
                 child: ListView(
                   shrinkWrap: true,
-                  children: actions
+                  children: selectableActions
                       .map((action) => CheckboxListTile(
                             value: selected.contains(action.path),
                             activeColor: DesignColors.accent,
@@ -1751,8 +1799,14 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
       ),
     );
     if (result == null || !mounted) return;
+    final additions = result
+        .where((path) =>
+            !_priorityPaths.contains(path) && !_hiddenPaths.contains(path))
+        .toSet()
+        .toList(growable: false);
+    if (additions.isEmpty) return;
     setState(() {
-      _priorityPaths.addAll(result);
+      _priorityPaths.addAll(additions);
       _startPath ??= _priorityPaths.isEmpty ? null : _priorityPaths.first;
     });
   }
@@ -1914,6 +1968,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
         previousRecommendations: previousPriorityRecommendations,
         nextRecommendations: nextPriorityRecommendations,
       );
+      _priorityPaths = _supportedPriorityPaths(_priorityPaths);
 
       _dashboardMetrics = businessLayoutReconcileRecommendations(
         current: _dashboardMetrics,
@@ -1937,15 +1992,17 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
           normalized,
         ),
       );
-      _posQuickActions = businessLayoutReconcileRecommendations(
-        current: _posQuickActions,
-        previousRecommendations: businessLayoutDefaultPosQuickActions(
-          _profileId,
-          previousProfileIds,
-        ),
-        nextRecommendations: businessLayoutDefaultPosQuickActions(
-          _profileId,
-          normalized,
+      _posQuickActions = _supportedPosQuickActions(
+        businessLayoutReconcileRecommendations(
+          current: _posQuickActions,
+          previousRecommendations: businessLayoutDefaultPosQuickActions(
+            _profileId,
+            previousProfileIds,
+          ),
+          nextRecommendations: businessLayoutDefaultPosQuickActions(
+            _profileId,
+            normalized,
+          ),
         ),
       );
       _showPosFavorites = _posQuickActions.contains('favorites');
@@ -1989,9 +2046,12 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
           .toList(growable: false);
     } catch (_) {
       if (mounted) {
+        final localWorkspace = getIt<AuthService>().isLocalWorkspace;
         showGlassSnackBar(
           context,
-          'Could not load the saved product catalog. Refresh it and try again.',
+          localWorkspace
+              ? 'Could not read the product catalog on this device. Your layout was not changed.'
+              : 'Could not load the saved product catalog. Refresh the shop catalog and try again.',
           icon: Icons.error_outline_rounded,
           color: DesignColors.error,
         );
@@ -2002,7 +2062,9 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
     if (products.isEmpty) {
       showGlassSnackBar(
         context,
-        'Sync this shop’s catalog on the POS first, then create a quick page.',
+        getIt<AuthService>().isLocalWorkspace
+            ? 'Add at least one product on this device before creating a product page.'
+            : 'Sync this shop’s catalog on the POS first, then create a product page.',
         icon: Icons.inventory_2_outlined,
         color: DesignColors.warning,
       );
@@ -2072,43 +2134,31 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
         productFieldKeys: [..._productFieldKeys],
         customProductFields: [..._customProductFields],
       );
-      final updated = await getIt<ApiClient>().updateCurrentTenant(
-        settings: {'businessLayout': layout.toJson()},
-      );
-      try {
-        await getIt<AuthService>().updateTenantSession({
-          'id': updated['id'],
-          'name': updated['name'],
-          'settings': updated['settings'],
-        });
-      } catch (_) {
-        // The workspace update has already succeeded. Refresh the in-memory
-        // user snapshot even if this device could not persist its local cache.
-        ref.read(authControllerProvider.notifier).refreshFromService();
-        if (mounted) {
-          showGlassSnackBar(
-            context,
-            'Layout saved to this shop. This device could not cache the change; it will refresh from the workspace later.',
-            icon: Icons.cloud_done_rounded,
-            color: DesignColors.warning,
-          );
-        }
-        return;
-      }
+      final authService = getIt<AuthService>();
+      final tenant = authService.currentUser?['tenant'];
+      final currentSettings = tenant is Map && tenant['settings'] is Map
+          ? Map<String, dynamic>.from(tenant['settings'] as Map)
+          : <String, dynamic>{};
+      await authService.updateTenantSession({
+        'settings': {
+          ...currentSettings,
+          'businessLayout': layout.toJson(),
+        },
+      });
       ref.read(authControllerProvider.notifier).refreshFromService();
       if (mounted) {
         showGlassSnackBar(
           context,
-          'Layout actions saved for this shop',
+          'Layout saved on this device',
           icon: Icons.check_circle_rounded,
           color: DesignColors.success,
         );
       }
-    } catch (error) {
+    } catch (_) {
       if (mounted) {
         showGlassSnackBar(
           context,
-          'Could not save the layout. ${apiErrorMessage(error)}',
+          'Could not save the layout on this device. Please try again.',
           icon: Icons.error_outline_rounded,
           color: DesignColors.error,
         );

@@ -21,8 +21,99 @@ const _eodRequestTimeout = Duration(seconds: 8);
 /// the screen can show either "open — review & close" or "closed at …".
 final _eodProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
-  final branchId = getIt<AuthService>().branchId;
+  final authService = getIt<AuthService>();
+  final branchId = authService.branchId;
   if (branchId == null) return {'noBranch': true};
+
+  // A local workspace has no POS API and must not spend several timeouts
+  // waiting for cloud sales, till cash, and close-status endpoints before
+  // showing records that are already on this device.
+  if (authService.isLocalWorkspace) {
+    final db = getIt<AppDatabase>();
+    final today = DateTime.now();
+    Map<String, dynamic>? summary;
+    Object? localSummaryError;
+    try {
+      summary = await db.getDailySalesSummary(branchId, today);
+    } catch (error) {
+      localSummaryError = error;
+    }
+
+    Map<String, dynamic>? close;
+    var closeNeedsReconciliation = false;
+    var localCloseStatusKnown = false;
+    Object? localCloseError;
+    if (summary != null) {
+      try {
+        final businessDate = summary['date']?.toString() ?? '';
+        close = await db.getLatestLocalDailyClose(
+          branchId: branchId,
+          businessDate: businessDate,
+        );
+        final closedAt =
+            DateTime.tryParse(close?['closedAt']?.toString() ?? '');
+        if (closedAt != null) {
+          final start = DateTime(today.year, today.month, today.day);
+          final end = start.add(const Duration(days: 1));
+          closeNeedsReconciliation = await db.hasSalesActivityAfterClose(
+                branchId: branchId,
+                from: start,
+                to: end,
+                closedAt: closedAt,
+              ) ||
+              await db.hasLocalCashPayoutsAfterClose(
+                branchId: branchId,
+                from: start,
+                to: end,
+                closedAt: closedAt,
+              ) ||
+              _cashCloseAmountChanged(
+                summary['cashSales'],
+                close?['cashSales'],
+              ) ||
+              _cashCloseAmountChanged(
+                summary['cashCollections'],
+                close?['cashCollections'],
+              ) ||
+              _cashCloseAmountChanged(
+                summary['cashPayouts'],
+                close?['cashPayouts'],
+              ) ||
+              _cashCloseAmountChanged(
+                summary['cashRefunds'],
+                close?['cashRefunds'],
+              ) ||
+              _cashCloseAmountChanged(
+                summary['voidedCashReceived'],
+                close?['voidedCashReceived'],
+              );
+        }
+        localCloseStatusKnown = true;
+      } catch (error) {
+        localCloseError = error;
+        // Never treat a saved close as current when its reconciliation checks
+        // could not complete.
+        closeNeedsReconciliation = close != null;
+      }
+    }
+    return {
+      'summary': summary ?? const <String, dynamic>{},
+      'summaryFromDevice': summary != null,
+      'summaryUnavailable': summary == null,
+      'summaryError': localSummaryError ?? localCloseError,
+      'localSummaryError': localSummaryError,
+      'closeError': localCloseError,
+      'localCloseStatusKnown': localCloseStatusKnown,
+      'localOnly': true,
+      'cash': {
+        if (close != null) 'expectedPhysicalCash': close['expectedCash'],
+        'mode': 'LOCAL_RECORDED',
+      },
+      'close': close,
+      'closeNeedsReconciliation': closeNeedsReconciliation,
+    };
+  }
+
   final api = getIt<ApiClient>();
   final apiHost = Uri.tryParse(api.baseUrl)?.host;
   final isLocalServer =
@@ -73,6 +164,9 @@ final _eodProvider =
   };
 });
 
+bool _cashCloseAmountChanged(Object? current, Object? closed) =>
+    (asDouble(current) - asDouble(closed)).abs() > 0.005;
+
 Future<Map<String, dynamic>> _captureEodRequest<T>(Future<T> request) async {
   try {
     return {'value': await request};
@@ -94,7 +188,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
   @override
   Widget build(BuildContext context) {
     final permissions = ref.watch(permissionsProvider);
-    final eodAsync = ref.watch(_eodProvider);
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
 
     if (!permissions.canCloseEndOfDay) {
       return const Scaffold(
@@ -107,6 +201,10 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
         ),
       );
     }
+
+    // Do not load sales totals or cash-close details for a role that cannot
+    // access the End of Day screen.
+    final eodAsync = ref.watch(_eodProvider);
 
     return Scaffold(
       appBar: BrandedAppBar(
@@ -138,17 +236,22 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
             summaryError: data['summaryError'],
             summaryFromDevice: data['summaryFromDevice'] == true,
             summaryUnavailable: data['summaryUnavailable'] == true,
+            closeNeedsReconciliation: data['closeNeedsReconciliation'] == true,
             localSummaryError: data['localSummaryError'],
             cashError: data['cashError'],
             closeError: data['closeError'],
+            localCloseStatusKnown: data['localCloseStatusKnown'] == true,
             localServer: data['localServer'] == true,
+            localOnly: data['localOnly'] == true,
           );
         },
         loading: () => const _EodSkeletonList(),
         error: (e, _) => EmptyState(
           icon: Icons.error_outline_rounded,
           title: "Couldn't load today's figures",
-          subtitle: apiErrorMessage(e),
+          subtitle: isLocalWorkspace
+              ? 'Couldn’t read the sales records stored on this device. Check the selected shop and branch, then retry.'
+              : apiErrorMessage(e),
           iconColor: DesignColors.error,
           actionLabel: 'Retry',
           onAction: () => ref.invalidate(_eodProvider),
@@ -162,19 +265,33 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
       {Object? summaryError,
       bool summaryFromDevice = false,
       bool summaryUnavailable = false,
+      bool closeNeedsReconciliation = false,
       Object? localSummaryError,
       Object? cashError,
       Object? closeError,
-      bool localServer = false}) {
+      bool localCloseStatusKnown = true,
+      bool localServer = false,
+      bool localOnly = false}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final closed = close != null;
+    final closed = close != null &&
+        !closeNeedsReconciliation &&
+        (!localOnly || localCloseStatusKnown);
 
     final totalSales = asDouble(summary['totalSales']);
     final txns = asInt(summary['totalTransactions']);
     final cashSales = asDouble(summary['cashSales']);
+    final cashCollections = asDouble(summary['cashCollections']);
+    final cashPayouts = asDouble(summary['cashPayouts']);
+    final cashRefunds = asDouble(summary['cashRefunds']);
+    final voidedCashReceived = asDouble(summary['voidedCashReceived']);
     final mpesaSales = asDouble(summary['mpesaSales']);
     final cardSales = asDouble(summary['cardSales']);
     final creditSales = asDouble(summary['creditSales']);
+    final otherSales = asDouble(summary['otherSales']);
+    final otherPaymentMethods = (summary['otherPaymentMethods'] as List? ?? [])
+        .whereType<Map>()
+        .map((method) => Map<String, dynamic>.from(method))
+        .toList(growable: false);
     final cashMode = cash['mode']?.toString();
     final physicalCash = cash['expectedPhysicalCash'] ??
         ((cashMode == 'CASH_ONLY' || cashMode == 'RUNNING_BALANCE')
@@ -183,13 +300,15 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     final expectedCash = cashError == null && physicalCash is num
         ? asDouble(physicalCash)
         : null;
-    final closeStatusKnown = closeError == null && summaryError == null;
+    final closeStatusKnown =
+        !localOnly && closeError == null && summaryError == null;
     final cashStatusKnown = cashError == null && expectedCash != null;
     final businessDate = summary['date']?.toString();
-    final canClose = closeStatusKnown &&
-        cashStatusKnown &&
-        businessDate != null &&
+    final validBusinessDate = businessDate != null &&
         RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(businessDate);
+    final canClose = localOnly
+        ? validBusinessDate && !summaryUnavailable && localCloseStatusKnown
+        : closeStatusKnown && cashStatusKnown && validBusinessDate;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.lg,
@@ -214,12 +333,20 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                 const SizedBox(width: DesignSpacing.sm + 2),
                 Expanded(
                   child: Text(
-                    closed
-                        ? 'Day closed${close['closedByName'] != null ? ' by ${close['closedByName']}' : ''}'
-                            '${_closedAtSuffix(close)}'
-                        : closeStatusKnown
-                            ? 'Today is still open'
-                            : 'Close status unavailable',
+                    localOnly
+                        ? !localCloseStatusKnown
+                            ? 'Close status unavailable'
+                            : closeNeedsReconciliation
+                                ? 'New activity since till close'
+                                : closed
+                                    ? 'Day closed${_closedAtSuffix(close)}'
+                                    : 'On-device sales summary'
+                        : closed
+                            ? 'Day closed${close['closedByName'] != null ? ' by ${close['closedByName']}' : ''}'
+                                '${_closedAtSuffix(close)}'
+                            : closeStatusKnown
+                                ? 'Today is still open'
+                                : 'Close status unavailable',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -229,7 +356,98 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
         ),
         const SizedBox(height: DesignSpacing.lg),
 
-        if (summaryError != null ||
+        if (localOnly) ...[
+          if (summaryError != null || closeError != null) ...[
+            StaggeredItem(
+              itemKey: 'eod-local-load-warning',
+              child: Container(
+                padding: const EdgeInsets.all(DesignSpacing.md),
+                decoration: BoxDecoration(
+                  color: DesignColors.warning.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.info_outline_rounded,
+                        color: DesignColors.warning),
+                    const SizedBox(width: DesignSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        summaryUnavailable
+                            ? 'Sales saved on this device could not be read. Check the selected shop and branch, then refresh. ${apiErrorMessage(localSummaryError ?? summaryError!)}'
+                            : 'Sales are available, but the saved till-close status could not be verified. Refresh before closing so an existing close is not overwritten. ${apiErrorMessage(closeError ?? summaryError!)}',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: DesignSpacing.lg),
+          ],
+          StaggeredItem(
+            itemKey: 'eod-local-only-note',
+            child: Container(
+              padding: const EdgeInsets.all(DesignSpacing.md),
+              decoration: BoxDecoration(
+                color: DesignColors.warning.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.info_outline_rounded,
+                      color: DesignColors.warning),
+                  const SizedBox(width: DesignSpacing.sm),
+                  Expanded(
+                    child: Text(closeNeedsReconciliation
+                        ? 'A sale changed or a debt collection was recorded after the last close. Reconcile the till and close the day again.'
+                        : 'Figures load from this device. At close, enter the opening float and net cash added or removed. This stores one net adjustment, not each till movement. Include cash movements made outside Counterbase and explain them in the notes.'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: DesignSpacing.lg),
+          if (otherPaymentMethods.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.all(DesignSpacing.md),
+              decoration: BoxDecoration(
+                color: DesignColors.warning.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.info_outline_rounded,
+                          color: DesignColors.warning),
+                      const SizedBox(width: DesignSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          'Some sales use an older payment label or have incomplete split details. They stay in total sales, appear below, and are excluded from cash totals. Check whether any belong in the till and record that adjustment in the close notes.',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: DesignSpacing.sm),
+                  ...otherPaymentMethods.map((method) => Padding(
+                        padding: const EdgeInsets.only(left: 32),
+                        child: Text(
+                          '${method['method']}: ${_currencyFmt.format(asDouble(method['amount']))}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      )),
+                ],
+              ),
+            ),
+            const SizedBox(height: DesignSpacing.lg),
+          ],
+        ] else if (summaryError != null ||
             cashError != null ||
             closeError != null) ...[
           StaggeredItem(
@@ -286,11 +504,43 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
             _summaryRow('Transactions',
                 summaryUnavailable ? 'Unavailable' : '$txns', isDark),
             _summaryRow(
-                'Cash',
+                'Cash sales',
                 summaryUnavailable
                     ? 'Unavailable'
                     : _currencyFmt.format(cashSales),
                 isDark),
+            if (localOnly)
+              _summaryRow(
+                'Cash debt collections',
+                summaryUnavailable
+                    ? 'Unavailable'
+                    : _currencyFmt.format(cashCollections),
+                isDark,
+              ),
+            if (localOnly && (summaryUnavailable || voidedCashReceived > 0))
+              _summaryRow(
+                'Cash received on voided sales',
+                summaryUnavailable
+                    ? 'Unavailable'
+                    : _currencyFmt.format(voidedCashReceived),
+                isDark,
+              ),
+            if (localOnly && (summaryUnavailable || cashRefunds > 0))
+              _summaryRow(
+                'Cash refunds from till',
+                summaryUnavailable
+                    ? 'Unavailable'
+                    : '-${_currencyFmt.format(cashRefunds)}',
+                isDark,
+              ),
+            if (localOnly)
+              _summaryRow(
+                'Supplier payments from till',
+                summaryUnavailable
+                    ? 'Unavailable'
+                    : '-${_currencyFmt.format(cashPayouts)}',
+                isDark,
+              ),
             _summaryRow(
                 'M-Pesa',
                 summaryUnavailable
@@ -309,31 +559,80 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                     ? 'Unavailable'
                     : _currencyFmt.format(creditSales),
                 isDark),
+            if (otherSales > 0)
+              _summaryRow('Other payment methods',
+                  _currencyFmt.format(otherSales), isDark),
             if (expectedCash != null)
-              _summaryRow('Expected cash in till',
-                  _currencyFmt.format(expectedCash), isDark),
+              _summaryRow(
+                localOnly && closeNeedsReconciliation
+                    ? 'Expected at last close'
+                    : 'Expected cash in till',
+                _currencyFmt.format(expectedCash),
+                isDark,
+              ),
           ]),
         ),
 
-        if (closed) ...[
+        if (close != null) ...[
           const SizedBox(height: DesignSpacing.lg),
-          const SettingsGroupLabel('Close details'),
+          SettingsGroupLabel(localOnly ? 'Latest till close' : 'Close details'),
           StaggeredItem(
             itemKey: 'eod-close-details',
             index: 2,
             child: GroupedCard(dividerIndent: 14, children: [
+              if (localOnly)
+                _summaryRow(
+                    'Opening float',
+                    _currencyFmt.format(asDouble(close['openingFloat'])),
+                    isDark),
+              if (localOnly)
+                _summaryRow('Recorded cash sales',
+                    _currencyFmt.format(asDouble(close['cashSales'])), isDark),
+              if (localOnly)
+                _summaryRow(
+                    'Cash debt collections',
+                    _currencyFmt.format(asDouble(close['cashCollections'])),
+                    isDark),
+              if (localOnly && asDouble(close['voidedCashReceived']) > 0)
+                _summaryRow(
+                    'Cash received on voided sales',
+                    _currencyFmt.format(asDouble(close['voidedCashReceived'])),
+                    isDark),
+              if (localOnly && asDouble(close['cashRefunds']) > 0)
+                _summaryRow(
+                    'Cash refunds from till',
+                    '-${_currencyFmt.format(asDouble(close['cashRefunds']))}',
+                    isDark),
+              if (localOnly)
+                _summaryRow(
+                    'Supplier payments from till',
+                    '-${_currencyFmt.format(asDouble(close['cashPayouts']))}',
+                    isDark),
+              if (localOnly)
+                _summaryRow(
+                    'Net cash movement',
+                    _currencyFmt.format(asDouble(close['netCashMovement'])),
+                    isDark),
+              if (localOnly)
+                _summaryRow(
+                    'Expected cash',
+                    _currencyFmt.format(asDouble(close['expectedCash'])),
+                    isDark),
               _summaryRow('Counted cash',
                   _currencyFmt.format(asDouble(close['countedCash'])), isDark),
               _summaryRow(
                 'Discrepancy',
-                _currencyFmt.format(asDouble(close['cashDiscrepancy'])),
+                _currencyFmt.format(
+                    asDouble(close['cashDiscrepancy'] ?? close['discrepancy'])),
                 isDark,
               ),
             ]),
           ),
           const SizedBox(height: DesignSpacing.xl),
           Text(
-            'The day is already closed. Re-close only if you re-counted the till.',
+            localOnly && closeNeedsReconciliation
+                ? 'This close is out of date. Reconcile the new activity to keep the till record accurate.'
+                : 'The day is already closed. Re-close only if you re-counted the till.',
             style: TextStyle(
               color: isDark
                   ? DesignColors.darkTextSecondary
@@ -349,23 +648,43 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
           itemKey: 'eod-close-cta',
           index: closed ? 3 : 2,
           child: GradientButton(
-            label: _isClosing
-                ? 'Closing…'
-                : summaryError != null
-                    ? 'Reconnect to verify sales'
-                    : closeError != null
-                        ? 'Connect to check close status'
-                        : !cashStatusKnown
-                            ? 'Reconnect to verify till cash'
-                            : closed
+            label: localOnly
+                ? _isClosing
+                    ? 'Saving close…'
+                    : !localCloseStatusKnown
+                        ? 'Refresh to verify close'
+                        : closeNeedsReconciliation
+                            ? 'Reconcile and re-close'
+                            : close != null
                                 ? 'Re-close day'
-                                : 'Close end of day',
+                                : 'Close end of day'
+                : _isClosing
+                    ? 'Closing…'
+                    : summaryError != null
+                        ? 'Reconnect to verify sales'
+                        : closeError != null
+                            ? 'Connect to check close status'
+                            : !cashStatusKnown
+                                ? 'Reconnect to verify till cash'
+                                : closed
+                                    ? 'Re-close day'
+                                    : 'Close end of day',
             icon: Icons.check_circle_outline_rounded,
             onPressed: canClose && !_isClosing
-                ? () => _showCloseSheet(
-                      expectedCash,
-                      businessDate: businessDate,
-                    )
+                ? () => localOnly
+                    ? _showLocalCloseSheet(
+                        cashSales,
+                        cashCollections: cashCollections,
+                        cashPayouts: cashPayouts,
+                        cashRefunds: cashRefunds,
+                        voidedCashReceived: voidedCashReceived,
+                        businessDate: businessDate,
+                        existingClose: close,
+                      )
+                    : _showCloseSheet(
+                        expectedCash,
+                        businessDate: businessDate,
+                      )
                 : null,
             height: 52,
             borderRadius: DesignSpacing.radiusMd,
@@ -409,6 +728,314 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _showLocalCloseSheet(
+    double cashSales, {
+    required double cashCollections,
+    required double cashPayouts,
+    required double cashRefunds,
+    required double voidedCashReceived,
+    required String businessDate,
+    Map<String, dynamic>? existingClose,
+  }) async {
+    if (_isClosing || !mounted) return;
+    final auth = getIt<AuthService>();
+    final branchId = auth.branchId;
+    if (branchId == null) return;
+
+    final openingController = TextEditingController(
+      text: existingClose == null
+          ? ''
+          : asDouble(existingClose['openingFloat']).toStringAsFixed(2),
+    );
+    final movementController = TextEditingController(
+      text: existingClose == null
+          ? '0'
+          : asDouble(existingClose['netCashMovement']).toStringAsFixed(2),
+    );
+    final countController = TextEditingController(
+      text: existingClose == null
+          ? ''
+          : asDouble(existingClose['countedCash']).toStringAsFixed(2),
+    );
+    final notesController = TextEditingController(
+      text: existingClose?['notes']?.toString() ?? '',
+    );
+
+    bool? confirmed;
+    double? openingFloat;
+    double? netCashMovement;
+    double? countedCash;
+    String? closeNotes;
+    try {
+      confirmed = await showModalBottomSheet<bool>(
+        useRootNavigator: true,
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final opening = _parseCashCount(openingController.text);
+            final movement = _parseSignedCash(movementController.text);
+            final counted = _parseCashCount(countController.text);
+            final expectedCents = opening == null || movement == null
+                ? null
+                : (opening * 100).round() +
+                    (cashSales * 100).round() +
+                    (cashCollections * 100).round() -
+                    (cashPayouts * 100).round() +
+                    (voidedCashReceived * 100).round() -
+                    (cashRefunds * 100).round() +
+                    (movement * 100).round();
+            final expected = expectedCents == null ? null : expectedCents / 100;
+            final discrepancy = expectedCents != null && counted != null
+                ? ((counted * 100).round() - expectedCents) / 100
+                : null;
+            final movementNeedsNote =
+                movement != null && (movement * 100).round() != 0;
+            final discrepancyNeedsNote =
+                discrepancy != null && discrepancy.abs() >= 0.01;
+            final noteRequired = movementNeedsNote || discrepancyNeedsNote;
+            final statusColor = discrepancy == null || discrepancy.abs() < 0.01
+                ? DesignColors.success
+                : discrepancy < 0
+                    ? DesignColors.error
+                    : DesignColors.warning;
+            final isDark = Theme.of(ctx).brightness == Brightness.dark;
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                DesignSpacing.xl,
+                DesignSpacing.xs,
+                DesignSpacing.xl,
+                DesignSpacing.xl + MediaQuery.of(ctx).viewInsets.bottom,
+              ),
+              child: SafeArea(
+                top: false,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Close end of day',
+                          style: Theme.of(ctx)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w800)),
+                      const SizedBox(height: DesignSpacing.xs),
+                      Text(
+                        'Business day $businessDate. Expected cash is opening float + cash sales + debt collections + cash received on voided sales − supplier payments − recorded cash refunds + other net cash movement.',
+                        style: TextStyle(
+                          color: isDark
+                              ? DesignColors.darkTextSecondary
+                              : DesignColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: DesignSpacing.md),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(DesignSpacing.md),
+                        decoration: BoxDecoration(
+                          color: DesignColors.info.withValues(alpha: 0.08),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusMd),
+                        ),
+                        child: Text(
+                          'Cash sales: ${_currencyFmt.format(cashSales)}. Debt collections: ${_currencyFmt.format(cashCollections)}. Cash received on voided sales: ${_currencyFmt.format(voidedCashReceived)}. Supplier payments: ${_currencyFmt.format(cashPayouts)}. Recorded cash refunds: ${_currencyFmt.format(cashRefunds)}. Use net movement for other cash added or removed and explain it in the notes.',
+                        ),
+                      ),
+                      const SizedBox(height: DesignSpacing.md),
+                      TextField(
+                        controller: openingController,
+                        autofocus: true,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: [_cashAmountFormatter],
+                        decoration: const InputDecoration(
+                          labelText: 'Opening float (KES)',
+                          prefixIcon: Icon(Icons.savings_outlined),
+                        ),
+                        onChanged: (_) => setSheetState(() {}),
+                      ),
+                      const SizedBox(height: DesignSpacing.sm),
+                      TextField(
+                        controller: movementController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true, signed: true),
+                        inputFormatters: [_signedCashAmountFormatter],
+                        decoration: const InputDecoration(
+                          labelText: 'Net cash movement (KES)',
+                          helperText:
+                              'Positive adds cash; negative removes cash.',
+                          prefixIcon: Icon(Icons.swap_vert_rounded),
+                        ),
+                        onChanged: (_) => setSheetState(() {}),
+                      ),
+                      const SizedBox(height: DesignSpacing.sm),
+                      TextField(
+                        controller: countController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: [_cashAmountFormatter],
+                        decoration: const InputDecoration(
+                          labelText: 'Counted cash in till (KES)',
+                          prefixIcon: Icon(Icons.payments_outlined),
+                        ),
+                        onChanged: (_) => setSheetState(() {}),
+                      ),
+                      if (expected != null) ...[
+                        const SizedBox(height: DesignSpacing.md),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(DesignSpacing.md),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.1),
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusMd),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Expected cash  ${_currencyFmt.format(expected)}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700),
+                              ),
+                              if (discrepancy != null) ...[
+                                const SizedBox(height: DesignSpacing.xs),
+                                Text(
+                                  discrepancy.abs() < 0.01
+                                      ? 'Cash count matches'
+                                      : discrepancy < 0
+                                          ? 'Short by ${_currencyFmt.format(discrepancy.abs())}'
+                                          : 'Over by ${_currencyFmt.format(discrepancy)}',
+                                  style: TextStyle(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: DesignSpacing.sm),
+                      TextField(
+                        controller: notesController,
+                        decoration: InputDecoration(
+                          labelText: noteRequired
+                              ? 'Explain cash movement or difference'
+                              : 'Close notes (optional)',
+                          hintText: movementNeedsNote
+                              ? 'Explain why cash was added or removed'
+                              : 'Explain the cash difference',
+                          prefixIcon: const Icon(Icons.notes_rounded),
+                        ),
+                        maxLines: 2,
+                        maxLength: 240,
+                        onChanged: (_) => setSheetState(() {}),
+                      ),
+                      if (noteRequired &&
+                          notesController.text.trim().isEmpty) ...[
+                        const SizedBox(height: DesignSpacing.xs),
+                        const Text(
+                          'Add a note explaining the cash movement or difference before saving.',
+                          style: TextStyle(
+                            color: DesignColors.error,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: DesignSpacing.md),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(64, DesignSpacing.huge),
+                          ),
+                          onPressed: opening == null ||
+                                  movement == null ||
+                                  counted == null ||
+                                  expected == null ||
+                                  expected < 0 ||
+                                  (noteRequired &&
+                                      notesController.text.trim().isEmpty)
+                              ? null
+                              : () => Navigator.pop(sheetContext, true),
+                          icon: const Icon(Icons.lock_rounded),
+                          label: const Text('Save till close'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      );
+      if (confirmed == true) {
+        openingFloat = _parseCashCount(openingController.text);
+        netCashMovement = _parseSignedCash(movementController.text);
+        countedCash = _parseCashCount(countController.text);
+        final notes = notesController.text.trim();
+        closeNotes = notes.isEmpty ? null : notes;
+      }
+    } finally {
+      openingController.dispose();
+      movementController.dispose();
+      countController.dispose();
+      notesController.dispose();
+    }
+
+    if (confirmed != true ||
+        !mounted ||
+        openingFloat == null ||
+        netCashMovement == null ||
+        countedCash == null) {
+      return;
+    }
+
+    setState(() => _isClosing = true);
+    try {
+      await getIt<AppDatabase>().saveLocalDailyClose(
+        branchId: branchId,
+        businessDate: businessDate,
+        openingFloat: openingFloat,
+        cashSales: cashSales,
+        cashCollections: cashCollections,
+        cashPayouts: cashPayouts,
+        cashRefunds: cashRefunds,
+        voidedCashReceived: voidedCashReceived,
+        netCashMovement: netCashMovement,
+        countedCash: countedCash,
+        closedBy: auth.currentUser?['name']?.toString() ?? 'Owner',
+        notes: closeNotes,
+      );
+      if (mounted) {
+        ref.invalidate(_eodProvider);
+        showGlassSnackBar(
+          context,
+          'Till close saved on this device',
+          icon: Icons.check_circle_rounded,
+          color: DesignColors.success,
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        if (error is StateError) ref.invalidate(_eodProvider);
+        showGlassSnackBar(
+          context,
+          error is StateError
+              ? error.message.toString()
+              : 'Could not save the till close. Your sales were not changed; try again.',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isClosing = false);
+    }
   }
 
   Future<void> _showCloseSheet(
@@ -606,9 +1233,31 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
   }
 }
 
+final _cashAmountFormatter = TextInputFormatter.withFunction(
+  (oldValue, newValue) => newValue.text.isEmpty ||
+          RegExp(r'^(?:\d{0,12}(?:\.\d{0,2})?|\.\d{0,2})$')
+              .hasMatch(newValue.text)
+      ? newValue
+      : oldValue,
+);
+
+final _signedCashAmountFormatter = TextInputFormatter.withFunction(
+  (oldValue, newValue) => newValue.text.isEmpty ||
+          RegExp(r'^-?(?:\d{0,12}(?:\.\d{0,2})?|\.\d{0,2})$')
+              .hasMatch(newValue.text)
+      ? newValue
+      : oldValue,
+);
+
 double? _parseCashCount(String value) {
   final amount = double.tryParse(value.trim());
   if (amount == null || !amount.isFinite || amount < 0) return null;
+  return amount;
+}
+
+double? _parseSignedCash(String value) {
+  final amount = double.tryParse(value.trim());
+  if (amount == null || !amount.isFinite) return null;
   return amount;
 }
 

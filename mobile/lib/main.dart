@@ -8,18 +8,12 @@ import 'core/di/injection.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_provider.dart';
-import 'core/services/background_sync_service.dart';
 import 'core/services/connectivity_service.dart';
-import 'core/services/local_server_service.dart';
 import 'core/services/lifecycle_lock_controller.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/storage_service.dart';
-import 'core/services/update_check_service.dart';
 import 'core/services/notification_service.dart';
-import 'core/services/print_queue_service.dart';
 import 'core/services/feature_announcement_service.dart';
-import 'core/widgets/forced_update_gate.dart';
-import 'core/widgets/optional_update_prompt_host.dart';
 import 'core/widgets/feature_announcement_host.dart';
 import 'core/widgets/tap_tracker.dart';
 import 'core/services/app_icon_service.dart';
@@ -56,12 +50,6 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
-    debugPrint('[main] Screen orientation locked to portrait');
-
     debugPrint('[main] Initializing dependency injection...');
     await configureDependencies().timeout(const Duration(seconds: 30));
     debugPrint('[main] Dependency injection initialized successfully');
@@ -70,33 +58,6 @@ void main() async {
     await getIt<ConnectivityService>().initialize();
     debugPrint('[main] Connectivity service initialized');
 
-    getIt<LocalServerService>().enableAutoStart(
-      connectivity: getIt<ConnectivityService>(),
-      storage: getIt<StorageService>(),
-    );
-    debugPrint('[main] Local server auto-start armed');
-
-    // Non-blocking and best-effort: if this device isn't logged in yet, or
-    // the check fails offline, printing simply stays local-only until the
-    // user opens the app and it's confirmed — never worth delaying launch.
-    unawaited(() async {
-      try {
-        if (await getIt<PrintQueueService>().isDesignatedPrinter()) {
-          getIt<PrintQueueService>().startDraining();
-          debugPrint(
-              '[main] This device is the designated printer — draining queue');
-        }
-      } catch (e) {
-        debugPrint('[main] Print queue check failed (non-critical): $e');
-      }
-    }());
-
-    // A build that was just installed starts signed out. Settle that before
-    // the first frame so the dashboard never flashes up and then vanishes.
-    await getIt<UpdateCheckService>().prepareLaunch(
-      endSession: () => getIt<AuthService>().logout(allDevices: true),
-    );
-
     debugPrint('[main] All initializations complete, launching app...');
 
     runApp(
@@ -104,9 +65,8 @@ void main() async {
         child: POSApp(),
       ),
     );
-    // Workmanager and Firebase plugin setup are useful after launch, but
-    // neither is needed to render the first screen. Start them after the
-    // first frame so a slow platform channel cannot hold the user on splash.
+    // Initialize local notifications after the first frame. The downloadable
+    // edition does not register push tokens or background sync jobs.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_initializeDeferredServices());
     });
@@ -128,22 +88,7 @@ void main() async {
 }
 
 Future<void> _initializeDeferredServices() async {
-  await Future.wait([
-    _initializeBackgroundSync(),
-    _initializeNotifications(),
-  ]);
-}
-
-Future<void> _initializeBackgroundSync() async {
-  debugPrint('[main] Initializing background sync after first frame...');
-  try {
-    await BackgroundSyncService.initialize()
-        .timeout(const Duration(seconds: 15));
-    debugPrint('[main] Background sync initialized successfully');
-  } catch (e, stackTrace) {
-    debugPrint('[main] Background sync init failed (non-critical): $e');
-    debugPrint('[main] Stack trace: $stackTrace');
-  }
+  await _initializeNotifications();
 }
 
 Future<void> _initializeNotifications() async {
@@ -151,38 +96,10 @@ Future<void> _initializeNotifications() async {
   try {
     final notificationService = getIt<NotificationService>();
     await notificationService.initialize().timeout(const Duration(seconds: 15));
-    // Re-register the token on every cold start if the user already
-    // granted permission previously — FCM tokens can rotate, and this
-    // keeps the backend's copy fresh without asking again.
-    if (await notificationService.hasPermission()) {
-      await notificationService
-          .registerToken()
-          .timeout(const Duration(seconds: 10));
-    }
     debugPrint('[main] Notifications initialized successfully');
   } catch (e, stackTrace) {
     debugPrint('[main] Notification init failed (non-critical): $e');
     debugPrint('[main] Stack trace: $stackTrace');
-  }
-}
-
-/// Shown for a moment right after sign-in while the app finds out whether a
-/// newer build is waiting, so the dashboard is not shown and then covered.
-class _LoginSettlingSplash extends StatelessWidget {
-  const _LoginSettlingSplash();
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Theme.of(context).scaffoldBackgroundColor,
-      child: const Center(
-        child: SizedBox(
-          width: 28,
-          height: 28,
-          child: CircularProgressIndicator(strokeWidth: 3),
-        ),
-      ),
-    );
   }
 }
 
@@ -194,8 +111,6 @@ class POSApp extends ConsumerStatefulWidget {
 }
 
 class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
-  bool _checkedForUpdates = false;
-
   late final LifecycleLockController _lifecycleController;
   StreamSubscription<Map<String, dynamic>>? _notificationOpens;
 
@@ -279,11 +194,6 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
     }
 
     if (state == AppLifecycleState.resumed) {
-      // POS devices can stay open for days. Recheck the public release
-      // manifest when the app returns to the foreground so a build published
-      // during a long shift appears without requiring a manual Settings visit.
-      unawaited(getIt<UpdateCheckService>().checkForUpdates(force: false));
-
       // Let the lifecycle lock settle first. Refreshing tenant configuration
       // while a session is being locked would waste a request and could delay
       // the unlock route.
@@ -293,21 +203,6 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
         if (authService.isAuthenticated) {
           unawaited(authService.refreshTenantSettings());
         }
-      });
-    }
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Auto-check for updates once after the first frame so the app can
-    // enforce backend-managed remote updates immediately when required.
-    if (!_checkedForUpdates) {
-      _checkedForUpdates = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        getIt<UpdateCheckService>().checkForUpdates(
-          force: false, // don't force; uses cache interval
-        );
       });
     }
   }
@@ -330,7 +225,6 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
         themeMode: themeMode,
         routerConfig: router,
         builder: (context, child) {
-          final updateService = getIt<UpdateCheckService>();
           final featureService = getIt<FeatureAnnouncementService>();
           // Status and navigation bars melt into the app and their icons stay
           // readable in both themes, like a native app rather than a web view.
@@ -345,32 +239,12 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
               systemNavigationBarIconBrightness: icons,
               systemNavigationBarContrastEnforced: false,
             ),
-            child: AnimatedBuilder(
-              animation: updateService,
-              builder: (context, _) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.noScaling),
-                child: FeatureAnnouncementHost(
-                  service: featureService,
-                  child: OptionalUpdatePromptHost(
-                    updateService: updateService,
-                    child: Stack(
-                      children: [
-                        child!,
-                        if (updateService.isSettlingAfterLogin &&
-                            !updateService.isForceUpdateRequired &&
-                            !updateService.isPostLoginUpdateRequired)
-                          const Positioned.fill(child: _LoginSettlingSplash()),
-                        if (updateService.isForceUpdateRequired ||
-                            updateService.isPostLoginUpdateRequired)
-                          Positioned.fill(
-                            child:
-                                ForcedUpdateGate(updateService: updateService),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
+            child: MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: TextScaler.noScaling),
+              child: FeatureAnnouncementHost(
+                service: featureService,
+                child: child!,
               ),
             ),
           );

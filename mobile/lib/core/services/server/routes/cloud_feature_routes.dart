@@ -27,8 +27,8 @@ class CloudFeatureRoutes {
 
   Future<shelf.Response> _statementsUnavailable(shelf.Request request) async =>
       _response(
-        'Statements need the online workspace',
-        'Connect to the online Counterbase workspace to send statements and view customer replies. Your local sales and debts remain saved on this device.',
+        'Hosted statements are unavailable in this standalone install',
+        'This device-only edition cannot create shareable statement links or receive customer replies. Local sales and debts remain saved on this device.',
       );
 
   Future<shelf.Response> _statementsUnavailableWithId(
@@ -37,8 +37,8 @@ class CloudFeatureRoutes {
 
   Future<shelf.Response> _mpesaUnavailable(shelf.Request request) async =>
       _response(
-        'M-Pesa message matching is unavailable',
-        'Pasted M-Pesa messages cannot verify a payment. Connect to your workspace and use Finance to send a Paystack M-Pesa request. Your local sales and debts remain saved on this device.',
+        'M-Pesa matching is unavailable in this standalone install',
+        'This device-only edition cannot start or verify M-Pesa payments. Pasted messages are not proof of payment. Local sales and debts remain saved on this device.',
       );
 
   shelf.Response _response(String error, String message) => shelf.Response(

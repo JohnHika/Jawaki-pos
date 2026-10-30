@@ -9,6 +9,7 @@ import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/services/auth_service.dart';
 import '../providers/reports_provider.dart';
 import '../../../../core/utils/format.dart';
 import '../../../billing/domain/billing_entitlement.dart';
@@ -62,7 +63,7 @@ class ReportsScreen extends ConsumerWidget {
                 child: EmptyState(
                   icon: Icons.error_outline_rounded,
                   title: 'Could not load summary',
-                  subtitle: loadErrorSubtitle(e),
+                  subtitle: _reportErrorSubtitle(e),
                   actionLabel: isPermissionDenied(e) ? null : 'Retry',
                   onAction: isPermissionDenied(e)
                       ? null
@@ -438,7 +439,7 @@ class ReportsScreen extends ConsumerWidget {
                   error: (e, _) => EmptyState(
                     icon: Icons.error_outline_rounded,
                     title: 'Couldn\'t load sales',
-                    subtitle: 'Check your connection and try again.',
+                    subtitle: _reportErrorSubtitle(e),
                     iconColor: DesignColors.error,
                     actionLabel: 'Retry',
                     onAction: () => ref.invalidate(salesListProvider),
@@ -562,7 +563,7 @@ class ReportsScreen extends ConsumerWidget {
                   error: (e, _) => EmptyState(
                     icon: Icons.error_outline_rounded,
                     title: 'Couldn\'t load payment methods',
-                    subtitle: 'Check your connection and try again.',
+                    subtitle: _reportErrorSubtitle(e),
                     iconColor: DesignColors.error,
                     actionLabel: 'Retry',
                     onAction: () => ref.invalidate(paymentMethodProvider),
@@ -638,7 +639,7 @@ class ReportsScreen extends ConsumerWidget {
                   error: (e, _) => EmptyState(
                     icon: Icons.error_outline_rounded,
                     title: 'Couldn\'t load cashier performance',
-                    subtitle: 'Check your connection and try again.',
+                    subtitle: _reportErrorSubtitle(e),
                     iconColor: DesignColors.error,
                     actionLabel: 'Retry',
                     onAction: () => ref.invalidate(cashierPerformanceProvider),
@@ -762,7 +763,7 @@ class ReportsScreen extends ConsumerWidget {
                   error: (e, _) => EmptyState(
                     icon: Icons.error_outline_rounded,
                     title: 'Couldn\'t load category sales',
-                    subtitle: 'Check your connection and try again.',
+                    subtitle: _reportErrorSubtitle(e),
                     iconColor: DesignColors.error,
                     actionLabel: 'Retry',
                     onAction: () => ref.invalidate(categorySalesProvider),
@@ -840,7 +841,7 @@ class ReportsScreen extends ConsumerWidget {
                   error: (e, _) => EmptyState(
                     icon: Icons.error_outline_rounded,
                     title: 'Couldn\'t load top products',
-                    subtitle: 'Check your connection and try again.',
+                    subtitle: _reportErrorSubtitle(e),
                     iconColor: DesignColors.error,
                     actionLabel: 'Retry',
                     onAction: () => ref.invalidate(topProductsProvider),
@@ -933,7 +934,7 @@ class ReportsScreen extends ConsumerWidget {
                   error: (e, _) => EmptyState(
                     icon: Icons.error_outline_rounded,
                     title: 'Couldn\'t load inventory report',
-                    subtitle: 'Check your connection and try again.',
+                    subtitle: _reportErrorSubtitle(e),
                     iconColor: DesignColors.error,
                     actionLabel: 'Retry',
                     onAction: () => ref.invalidate(inventoryReportProvider),
@@ -1251,6 +1252,11 @@ class _GlassCardTile extends StatelessWidget {
     );
   }
 }
+
+String _reportErrorSubtitle(Object error) => getIt<AuthService>()
+        .isLocalWorkspace
+    ? 'Couldn’t read saved report data on this device. Refresh and try again.'
+    : loadErrorSubtitle(error);
 
 // ===== Report Tile =====
 class _ReportTile extends StatelessWidget {

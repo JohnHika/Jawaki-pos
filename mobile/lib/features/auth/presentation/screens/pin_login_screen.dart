@@ -7,8 +7,10 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
+import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/core/widgets/workspace_image.dart';
 import 'package:axon_pos/core/widgets/motion.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 
@@ -53,6 +55,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   static const int _maxPinLength = 6;
   int? _configuredPinLength;
   bool? _hasLocalPin;
+  bool _pinProfileLoading = true;
   late bool _isLockedSession;
 
   int get _visiblePinLength {
@@ -77,6 +80,14 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
       ? _pin.length == _configuredPinLength
       : _pin.length >= _minPinLength;
 
+  bool get _hasActiveLocalTeam {
+    final storage = getIt<StorageService>();
+    return storage.hasLocalWorkspace() &&
+        storage
+            .getLocalStaffAccounts()
+            .any((account) => account['isActive'] != false);
+  }
+
   late AnimationController _pulseController;
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
@@ -89,7 +100,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   String _appVersion = '';
 
   void _onNumberPressed(String number) {
-    if (_pin.length >= _inputLimit) return;
+    if (_pinProfileLoading || _pin.length >= _inputLimit) return;
 
     setState(() {
       _pin += number;
@@ -98,6 +109,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   }
 
   void _submitPin() {
+    if (_pinProfileLoading) return;
     if (_pin.length < _minPinLength ||
         (_hasLocalPin == true &&
             _configuredPinLength != null &&
@@ -138,23 +150,25 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     // intentionally preserves this hash for future quick unlocks.
     final isLockedSession = ref.read(authControllerProvider).isLocked;
     final hasLocalPin = isLockedSession && await controller.hasLocalPinSet();
+    final hasLocalWorkspace = getIt<StorageService>().hasLocalWorkspace();
+    final localAuthentication = hasLocalPin || hasLocalWorkspace;
     final updates = getIt<UpdateCheckService>();
-    if (!hasLocalPin) updates.beginPostLoginCheck();
+    if (!localAuthentication) updates.beginPostLoginCheck();
     final result = hasLocalPin
         ? await controller.unlockWithPin(_pin)
         : await controller.loginWithPin(_pin);
-    if (!result) updates.cancelPostLoginCheck();
+    if (!result && !localAuthentication) updates.cancelPostLoginCheck();
 
     if (result && mounted) {
       // Only the network-authenticated path is a genuine fresh login —
       // unlockWithPin just re-enters an already-authenticated session
       // entirely offline, so it must not trigger a network-dependent
       // mandatory update check.
-      if (!hasLocalPin) {
+      if (!localAuthentication) {
         await getIt<UpdateCheckService>().checkAfterLogin();
         if (!mounted) return;
       }
-      context.go('/');
+      _openConfiguredStartScreen();
     } else {
       if (mounted) {
         setState(() {
@@ -173,7 +187,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
         await ref.read(authControllerProvider.notifier).loginWithBiometrics();
 
     if (result && mounted) {
-      context.go('/');
+      _openConfiguredStartScreen();
       return;
     }
 
@@ -181,10 +195,18 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     setState(() {
       _showError = true;
       _errorMessage = ref.read(authControllerProvider).error ??
-          'Biometric unlock is unavailable. Use PIN or email login.';
+          (getIt<StorageService>().hasLocalWorkspace()
+              ? 'Biometric unlock is unavailable. Enter your device PIN instead.'
+              : 'Biometric sign-in is unavailable. Enter your PIN or choose another sign-in method.');
       _pin = '';
     });
     _shakeController.forward(from: 0);
+  }
+
+  void _openConfiguredStartScreen() {
+    // Let the router apply the shop's saved start path, role permissions, and
+    // first-login staff tour instead of sending every successful unlock to POS.
+    context.go('/login');
   }
 
   /// Leaves quick-unlock for the full email login form. When this screen
@@ -233,8 +255,9 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     try {
       final storage = getIt<StorageService>();
       final isLockedSession = ref.read(authControllerProvider).isLocked;
-      final hasLocalPin = isLockedSession && await storage.hasLocalPinSet();
-      final length = hasLocalPin
+      final hasLocalPin = (isLockedSession || storage.hasLocalWorkspace()) &&
+          await storage.hasLocalPinSet();
+      final length = hasLocalPin && !_hasActiveLocalTeam
           ? await storage.getConfiguredPinLength()
           : null;
       if (mounted) {
@@ -242,6 +265,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
           _isLockedSession = isLockedSession;
           _configuredPinLength = length;
           _hasLocalPin = hasLocalPin;
+          _pinProfileLoading = false;
           if (hasLocalPin && length != null && _pin.length > length) {
             _pin = '';
             _showError = true;
@@ -253,6 +277,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     } catch (_) {
       // Unknown-length entry remains usable and expands as the user types.
       // Storage must never prevent PIN login.
+      if (mounted) setState(() => _pinProfileLoading = false);
     }
   }
 
@@ -280,7 +305,9 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   _WorkspaceIdentity _loadWorkspaceIdentity() {
     final storage = getIt<StorageService>();
     final user = storage.getUser();
-    final tenant = user?['tenant'];
+    final localWorkspace = storage.getLocalWorkspace();
+    final localTenant = localWorkspace?['tenant'];
+    final tenant = user?['tenant'] ?? localTenant;
     final tenantMap =
         tenant is Map<String, dynamic> ? tenant : <String, dynamic>{};
     final rememberedSlug = storage.getRememberedTenantSlug();
@@ -301,6 +328,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     final branchName = _firstNonEmpty([
       user?['branchName'],
       _primaryBranchName(user?['branches']),
+      (localWorkspace?['branch'] as Map?)?['name'],
     ]);
     final logoUrl = _firstNonEmptyOrNull([
       tenantMap['logoUrl'],
@@ -373,7 +401,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   Future<void> _loadAppVersion() async {
     final info = await PackageInfo.fromPlatform();
     if (mounted) {
-      setState(() => _appVersion = 'POS Workspace v${info.version}');
+      setState(() => _appVersion = 'Counterbase v${info.version}');
     }
   }
 
@@ -422,17 +450,19 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                     // Header bar (compact)
                     Row(
                       children: [
-                        Semantics(
-                          label: 'Use email instead',
-                          button: true,
-                          child: AppBackButton(
-                            background: context.themed(DesignColors.darkBg),
-                            color: _fg,
-                            isDark:
-                                Theme.of(context).brightness == Brightness.dark,
-                            onPressed: _useEmailInstead,
+                        if (!getIt<StorageService>().hasLocalWorkspace()) ...[
+                          Semantics(
+                            label: 'Use email instead',
+                            button: true,
+                            child: AppBackButton(
+                              background: context.themed(DesignColors.darkBg),
+                              color: _fg,
+                              isDark: Theme.of(context).brightness ==
+                                  Brightness.dark,
+                              onPressed: _useEmailInstead,
+                            ),
                           ),
-                        ),
+                        ],
                         const Spacer(),
                       ],
                     ),
@@ -573,9 +603,13 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
           alignment: Alignment.center,
           delay: const Duration(milliseconds: 320),
           child: Text(
-            _hasLocalPin == true && _configuredPinLength != null
-                ? 'Enter your $_configuredPinLength-digit device PIN'
-                : 'Enter your 4–6 digit PIN',
+            _pinProfileLoading
+                ? 'Preparing your secure keypad…'
+                : _hasActiveLocalTeam
+                    ? 'Enter your own 4–6 digit team PIN'
+                    : _hasLocalPin == true && _configuredPinLength != null
+                        ? 'Enter your $_configuredPinLength-digit device PIN'
+                        : 'Enter your 4–6 digit PIN',
             style: TextStyle(
               fontSize: 13,
               color: _fg.withValues(alpha: 0.68),
@@ -590,13 +624,16 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   Widget _buildWorkspaceMark(double size) {
     final logoUrl = _workspaceIdentity.logoUrl;
     if (logoUrl != null && logoUrl.isNotEmpty) {
-      return Image.network(
-        logoUrl,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        semanticLabel: '${_workspaceIdentity.companyName} logo',
-        errorBuilder: (_, __, ___) => _buildInitialsMark(),
+      return Semantics(
+        image: true,
+        label: '${_workspaceIdentity.companyName} logo',
+        child: WorkspaceImage(
+          source: logoUrl,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          placeholder: _buildInitialsMark(),
+        ),
       );
     }
     return _buildInitialsMark();
@@ -659,9 +696,11 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
         ((availableWidth - (slotGap * (slotCount - 1))) / slotCount)
             .clamp(30.0, isSmallScreen ? 48.0 : 54.0)
             .toDouble();
-    final isReady = _isPinReady;
+    final isReady = !_pinProfileLoading && _isPinReady;
     final String statusText;
-    if (_hasLocalPin == true && _configuredPinLength != null) {
+    if (_pinProfileLoading) {
+      statusText = 'Preparing your secure keypad…';
+    } else if (_hasLocalPin == true && _configuredPinLength != null) {
       statusText = isReady
           ? 'Ready to unlock'
           : '${_pin.length} of $_configuredPinLength digits';
@@ -855,8 +894,9 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   }
 
   Widget _buildNumberPad(bool isSmallScreen) {
-    final isReady = _isPinReady;
-    final isLoading = ref.watch(authControllerProvider).isLoading;
+    final isReady = !_pinProfileLoading && _isPinReady;
+    final isLoading =
+        ref.watch(authControllerProvider).isLoading || _pinProfileLoading;
     final actionLabel = _isLockedSession ? 'Unlock workspace' : 'Sign in';
     final keyWidth = isSmallScreen ? 76.0 : 86.0;
     final keyHeight = isSmallScreen ? 52.0 : 60.0;
@@ -991,10 +1031,12 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   }
 
   Widget _buildNumberButton(String digit, double width, double height) {
-    final isLoading = ref.watch(authControllerProvider).isLoading;
+    final isLoading =
+        ref.watch(authControllerProvider).isLoading || _pinProfileLoading;
     return Semantics(
       label: 'PIN digit $digit',
       button: true,
+      enabled: !isLoading,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -1027,14 +1069,16 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   Widget _buildActionButton({
     required IconData icon,
     required String tooltip,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
     required double width,
     required double height,
   }) {
-    final isLoading = ref.watch(authControllerProvider).isLoading;
+    final isLoading =
+        ref.watch(authControllerProvider).isLoading || _pinProfileLoading;
     return Semantics(
       label: tooltip,
       button: true,
+      enabled: !isLoading,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -1113,24 +1157,36 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
           ),
           const SizedBox(height: DesignSpacing.md),
         ],
-        // Back to email login — TextButton so the target is 48px and
-        // the tap gets standard Material feedback (was a bare text tap).
-        TextButton(
-          style: TextButton.styleFrom(
-            minimumSize: const Size(64, 48),
-          ),
-          onPressed: _useEmailInstead,
-          child: Text(
-            'Use email instead',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: DesignColors.accent.withValues(alpha: 0.8),
-              decoration: TextDecoration.underline,
-              decorationColor: DesignColors.accent.withValues(alpha: 0.3),
+        if (!getIt<StorageService>().hasLocalWorkspace())
+          TextButton(
+            style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
+            onPressed: _useEmailInstead,
+            child: Text(
+              'Use email instead',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: DesignColors.accent.withValues(alpha: 0.8),
+                decoration: TextDecoration.underline,
+                decorationColor: DesignColors.accent.withValues(alpha: 0.3),
+              ),
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: DesignSpacing.sm),
+            child: Text(
+              getIt<AuthService>().hasActiveLocalStaff
+                  ? 'Shared register · each staff member signs in with their own PIN'
+                  : _biometricAvailable
+                      ? 'Local workspace · use your PIN or biometric unlock'
+                      : 'Local workspace · PIN access',
+              style: TextStyle(
+                fontSize: 12,
+                color: _fg.withValues(alpha: 0.55),
+              ),
             ),
           ),
-        ),
         const SizedBox(height: DesignSpacing.sm),
 
         // Version

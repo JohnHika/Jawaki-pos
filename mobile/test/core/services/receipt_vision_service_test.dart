@@ -1,15 +1,8 @@
-import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/receipt_vision_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class _NoNetworkApiClient implements ApiClient {
-  @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      throw UnimplementedError('parse() must not touch the network');
-}
-
 void main() {
-  final service = ReceiptVisionService(apiClient: _NoNetworkApiClient());
+  final service = ReceiptVisionService();
 
   test('reads supplier, items, document type and payment method', () {
     final scan = service.parse({

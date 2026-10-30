@@ -8,6 +8,7 @@ import '../../features/auth/presentation/screens/pin_login_screen.dart';
 import '../../features/auth/presentation/screens/company_choice_screen.dart';
 import '../../features/auth/presentation/screens/company_setup_screen.dart';
 import '../../features/auth/presentation/screens/owner_welcome_screen.dart';
+import '../../features/auth/presentation/screens/local_workspace_transition_screen.dart';
 import '../../features/auth/presentation/screens/company_activation_screen.dart';
 import '../../features/subscription/presentation/screens/plan_selection_screen.dart';
 import '../../features/team/presentation/screens/invite_staff_screen.dart';
@@ -16,6 +17,9 @@ import '../../features/team/presentation/screens/accept_invite_screen.dart';
 import '../../features/team/presentation/screens/set_password_after_invite_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/home/presentation/screens/staff_tour_screen.dart';
+import '../../features/home/presentation/screens/local_feature_unavailable_screen.dart';
+import '../../features/settings/presentation/screens/local_archive_history_screen.dart';
+import '../../features/settings/presentation/screens/desktop_approvals_screen.dart';
 import '../../features/billing/presentation/screens/subscription_billing_screen.dart';
 import '../../features/notifications/presentation/screens/notifications_screen.dart';
 import '../../features/partners/presentation/screens/partner_chat_screen.dart';
@@ -55,6 +59,7 @@ import '../../features/settings/presentation/screens/business_layout_screen.dart
 import '../../features/settings/presentation/screens/user_guide_screen.dart';
 import '../../features/settings/presentation/screens/operating_hours_screen.dart';
 import '../../features/settings/presentation/screens/bug_report_screen.dart';
+import '../../features/settings/presentation/screens/axon_gateway_settings_screen.dart';
 import '../../features/legal/presentation/screens/legal_document_screen.dart';
 import '../../features/ai/presentation/screens/ai_memory_screen.dart';
 import '../../features/payments/presentation/screens/payments_hub_screen.dart';
@@ -69,6 +74,7 @@ import '../../features/inventory/presentation/screens/restock_suggestions_screen
 import '../../features/ai/presentation/screens/ai_chat_screen.dart';
 import '../../features/ai-billing/presentation/screens/ai_upgrade_screen.dart';
 import '../../features/users/presentation/screens/user_management_screen.dart';
+import '../../features/users/presentation/screens/local_staff_screen.dart';
 import '../../features/users/presentation/screens/role_editor_screen.dart';
 import '../../features/users/presentation/screens/user_permission_override_screen.dart';
 import '../services/auth_service.dart';
@@ -76,6 +82,7 @@ import '../services/storage_service.dart';
 import '../di/injection.dart';
 import '../auth/app_roles.dart';
 import '../providers/business_layout_provider.dart';
+import '../providers/local_workspace_capabilities.dart';
 import '../theme/design_system.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -88,7 +95,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   // Provider is first evaluated.
   final String initialLocation;
   if (authService.isAuthenticated) {
-    if (authService.requiresTenantActivation) {
+    if (authService.requiresLocalWorkspaceAdoption) {
+      // A saved cloud session must be adopted locally before entering screens
+      // that used to depend on the now-retired POS API.
+      initialLocation = '/workspace/localize';
+    } else if (authService.requiresTenantActivation) {
       initialLocation = '/activation';
     } else {
       // Open the first work surface available to this account. Staff tour is
@@ -96,8 +107,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final permissions = RolePermissions(
         authService.currentUser?['permissions'] as List<dynamic>?,
       );
-      final startPath = businessLayoutFromUser(authService.currentUser)
-          .homePathFor(permissions);
+      final businessLayout = businessLayoutFromUser(authService.currentUser);
+      final startPath = authService.isLocalWorkspace
+          ? LocalWorkspaceCapabilities.homePathFor(permissions, businessLayout)
+          : businessLayout.homePathFor(permissions);
       initialLocation = permissions.canSeeDashboard
           ? startPath
           : (storageService.hasSeenStaffTour() ? startPath : '/staff-tour');
@@ -108,11 +121,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     // the fast PIN/biometric unlock instead of making them retype a
     // password they already gave us this session.
     initialLocation = '/pin-login';
-  } else if (storageService.getTenantSlug()?.isNotEmpty == true) {
-    // Company is already set up; user just needs to log in.
+  } else if (storageService.hasLocalWorkspace()) {
+    // Local-first installs reopen the device-owned workspace with its owner
+    // PIN. They never fall through to the retired server login screen.
+    initialLocation = '/pin-login';
+  } else if (authService.isUsingConfiguredLocalServer) {
+    // A user who explicitly configured a private-LAN server can still sign
+    // back in to that server. A remembered tenant slug alone is not enough:
+    // the retired hosted POS has no login route in the downloadable edition.
     initialLocation = '/login';
   } else {
-    // Fresh install — show the company-choice/setup screen.
+    // Standalone installs always return to local setup, even if an older
+    // cloud-only install left a tenant slug or remembered email behind.
     initialLocation = '/company-choice';
   }
 
@@ -134,8 +154,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isSetupRoute =
           path == '/company-choice' || path == '/company-setup';
       final isActivationRoute = path == '/activation';
-      final isInviteRoute =
-          path == '/accept-invite' || path == '/set-password-after-invite';
       final isLegalRoute = path == '/legal' || path.startsWith('/legal/');
 
       // Login routes
@@ -150,17 +168,31 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // If user is not logged in (and not merely locked)
       if (!isLoggedIn) {
-        // Allow setup, login, and staff-invite acceptance routes even when
-        // signed out — an invitee has no session yet by definition.
+        if (storageService.hasLocalWorkspace()) {
+          return path == '/pin-login' || isLegalRoute ? null : '/pin-login';
+        }
+        // Setup and legal routes are available while signed out. The only
+        // login route retained by this edition is for an explicitly
+        // configured private-LAN server; hosted login and invitations need
+        // the retired online POS service.
         // Plan selection always requires an active session by the time it
         // is reached (activation itself needs one), so it is intentionally
         // not allowed here — an unauthenticated visit falls through to the
         // company-choice redirect below like any other protected route.
-        if (isSetupRoute || isLoginRoute || isInviteRoute || isLegalRoute) {
+        if (isSetupRoute ||
+            isLegalRoute ||
+            (authService.isUsingConfiguredLocalServer && path == '/login')) {
           return null;
         }
         // Redirect all others to company-choice
         return '/company-choice';
+      }
+
+      // The cloud POS is retired. Keep an unlocked legacy session on the
+      // local-adoption screen instead of exposing pages whose data refreshes
+      // can only hit the retired API.
+      if (authService.requiresLocalWorkspaceAdoption && !isLegalRoute) {
+        return path == '/workspace/localize' ? null : '/workspace/localize';
       }
 
       if (authService.requiresTenantActivation &&
@@ -170,7 +202,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (!authService.requiresTenantActivation && isActivationRoute) {
-        return _preferredHomePath(authService.currentUser);
+        return _preferredHomePath(
+          authService.currentUser,
+          isLocalWorkspace: authService.isLocalWorkspace,
+        );
       }
 
       // If logged in and on setup/login page, go to main app — unless this
@@ -183,8 +218,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         final permissions = RolePermissions(
           authService.currentUser?['permissions'] as List<dynamic>?,
         );
-        final homePath = businessLayoutFromUser(authService.currentUser)
-            .homePathFor(permissions);
+        final businessLayout = businessLayoutFromUser(authService.currentUser);
+        final homePath = authService.isLocalWorkspace
+            ? LocalWorkspaceCapabilities.homePathFor(
+                permissions, businessLayout)
+            : businessLayout.homePathFor(permissions);
         return permissions.canSeeDashboard
             ? homePath
             : (storageService.hasSeenStaffTour() ? homePath : '/staff-tour');
@@ -192,6 +230,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // Role-based route guards
       if (isLoggedIn) {
+        // This downloadable edition is device-local. Redirect stale links and
+        // hidden cloud-only work areas to the owner's permitted local home
+        // instead of letting them wait on the retired POS API.
+        if (authService.isLocalWorkspace &&
+            !LocalWorkspaceCapabilities.supportsPath(path)) {
+          final feature =
+              LocalWorkspaceCapabilities.unavailableFeatureFor(path);
+          return '/workspace/unavailable'
+              '?feature=${Uri.encodeQueryComponent(feature)}'
+              '&from=${Uri.encodeQueryComponent(path)}';
+        }
+
+        if (path == '/workspace/unavailable' && !authService.isLocalWorkspace) {
+          return _preferredHomePath(
+            authService.currentUser,
+          );
+        }
+
         final perms = RolePermissions(
           authService.currentUser?['permissions'] as List<dynamic>?,
         );
@@ -280,6 +336,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             !perms.canSeeDashboard) {
           return '/';
         }
+        if (path == '/dashboard/profit-adjustment' && !perms.canRecordRestock) {
+          return '/dashboard';
+        }
         // Finance endpoints use finance.view. Reporting permissions do not
         // grant access to receivables or supplier ledgers.
         if (path == '/finance' && !perms.canViewFinance) {
@@ -339,6 +398,29 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         // gap flagged in the settings audit.
         if (path == '/settings/operating-hours' && !perms.canUpdateBranches) {
           return '/settings';
+        }
+        // Layout actions change the shared checkout, terminology, dashboard,
+        // and work-area configuration. The screen disables saving for other
+        // roles, but direct links should land them in Settings rather than
+        // opening an editor they cannot use.
+        if (path == '/settings/business-layout' &&
+            !perms.has('branches.tenant.update')) {
+          return '/settings';
+        }
+        if (path == '/settings/ai-gateway' &&
+            (!authService.isLocalWorkspace ||
+                !authService.isLocalWorkspaceOwner)) {
+          return '/settings';
+        }
+        if (path.startsWith('/settings/archive-history') &&
+            authService.isLocalWorkspace &&
+            !authService.isLocalWorkspaceOwner) {
+          return '/settings';
+        }
+        if ((path == '/ai' || path.startsWith('/ai/')) &&
+            !perms.has('ai.chat')) {
+          return businessLayoutFromUser(authService.currentUser)
+              .homePathFor(perms);
         }
         if ((path == '/invite-staff' || path == '/users/invitations') &&
             !perms.canInviteStaff) {
@@ -406,6 +488,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/company-setup',
         name: 'company-setup',
         builder: (context, state) => const CompanySetupScreen(),
+      ),
+      GoRoute(
+        path: '/workspace/localize',
+        name: 'workspace-localize',
+        builder: (context, state) => const LocalWorkspaceTransitionScreen(),
       ),
       GoRoute(
         path: '/owner-welcome',
@@ -509,6 +596,32 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/staff-tour',
             name: 'staff-tour',
             builder: (context, state) => const StaffTourScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/unavailable',
+            name: 'local-feature-unavailable',
+            builder: (context, state) {
+              final auth = getIt<AuthService>();
+              final user = auth.currentUser;
+              final permissions = RolePermissions(
+                user?['permissions'] as List<dynamic>?,
+              );
+              final homePath = LocalWorkspaceCapabilities.homePathFor(
+                permissions,
+                businessLayoutFromUser(user),
+              );
+              return LocalFeatureUnavailableScreen(
+                featureName:
+                    state.uri.queryParameters['feature'] ?? 'This feature',
+                sourcePath: state.uri.queryParameters['from'] ?? '',
+                homePath: homePath,
+                alternative: LocalWorkspaceCapabilities.alternativeFor(
+                  state.uri.queryParameters['from'] ?? '',
+                  permissions,
+                  isWorkspaceOwner: auth.isLocalWorkspaceOwner,
+                ),
+              );
+            },
           ),
 
           // POS / Sales Screen
@@ -683,6 +796,29 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'business-layout',
             builder: (context, state) => const BusinessLayoutScreen(),
           ),
+          GoRoute(
+            path: '/settings/ai-gateway',
+            name: 'axon-ai-gateway-settings',
+            builder: (context, state) => const AxonGatewaySettingsScreen(),
+          ),
+          GoRoute(
+            path: '/settings/archive-history',
+            name: 'local-archive-history',
+            builder: (context, state) => const LocalArchiveHistoryScreen(),
+          ),
+          // Desktop sign-in approvals (QR / approval-mode pairing).
+          GoRoute(
+            path: '/settings/desktop-approvals',
+            name: 'desktop-approvals',
+            builder: (context, state) => const DesktopApprovalsScreen(),
+          ),
+          GoRoute(
+            path: '/settings/archive-history/:archiveId',
+            name: 'local-archive-history-detail',
+            builder: (context, state) => LocalArchiveHistoryDetailScreen(
+              archiveId: state.pathParameters['archiveId']!,
+            ),
+          ),
 
           // Legacy route: redirects into the consolidated Plan & Billing
           // screen. Kept (rather than deleted) so old deep links/bookmarks
@@ -732,7 +868,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/users',
             name: 'users',
-            builder: (context, state) => const UserManagementScreen(),
+            builder: (context, state) => authService.isLocalWorkspace
+                ? const LocalStaffScreen()
+                : const UserManagementScreen(),
             routes: [
               GoRoute(
                 path: 'invitations',
@@ -929,9 +1067,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   );
 });
 
-String _preferredHomePath(Map<String, dynamic>? user) {
+String _preferredHomePath(
+  Map<String, dynamic>? user, {
+  bool isLocalWorkspace = false,
+}) {
   final permissions = RolePermissions(user?['permissions'] as List<dynamic>?);
-  return businessLayoutFromUser(user).homePathFor(permissions);
+  final layout = businessLayoutFromUser(user);
+  return isLocalWorkspace
+      ? LocalWorkspaceCapabilities.homePathFor(permissions, layout)
+      : layout.homePathFor(permissions);
 }
 
 // Helper class to convert Stream to Listenable for GoRouter

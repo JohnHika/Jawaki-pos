@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/injection.dart';
+import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
@@ -20,19 +21,24 @@ final financeHubProvider =
         tenantId.isEmpty ||
         branchId == null ||
         branchId.isEmpty) {
-      return FinanceHubController.unavailable();
+      return FinanceHubController.unavailable(
+          localWorkspace: auth.isLocalWorkspace);
     }
+    final source = auth.isLocalWorkspace
+        ? _LocalFinanceHubDataSource(getIt<AppDatabase>())
+        : _LiveFinanceHubDataSource(
+            repository: FinanceRepository(
+              apiClient: getIt<ApiClient>(),
+              storage: getIt<StorageService>(),
+              tenantId: tenantId,
+            ),
+            apiClient: getIt<ApiClient>(),
+          );
     return FinanceHubController(
-      source: _LiveFinanceHubDataSource(
-        repository: FinanceRepository(
-          apiClient: getIt<ApiClient>(),
-          storage: getIt<StorageService>(),
-          tenantId: tenantId,
-        ),
-        apiClient: getIt<ApiClient>(),
-      ),
+      source: source,
       tenantId: tenantId,
       branchId: branchId,
+      localWorkspace: auth.isLocalWorkspace,
     );
   },
 );
@@ -143,6 +149,7 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
     required FinanceHubDataSource source,
     required String tenantId,
     required String branchId,
+    this.localWorkspace = false,
   })  : _source = source,
         _branchId = branchId,
         super(FinanceHubState(
@@ -152,7 +159,7 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
     unawaited(refresh());
   }
 
-  FinanceHubController.unavailable()
+  FinanceHubController.unavailable({this.localWorkspace = false})
       : _source = null,
         _branchId = '',
         super(const FinanceHubState(
@@ -162,6 +169,7 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
 
   final FinanceHubDataSource? _source;
   final String _branchId;
+  final bool localWorkspace;
 
   Future<void> refresh() async {
     final source = _source;
@@ -176,8 +184,12 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
       state = state.copyWith(
         isRefreshing: false,
         errorMessage: state.hasSnapshot
-            ? 'Couldn’t refresh — showing saved figures'
-            : 'Couldn’t load Finance. Reconnect and try again.',
+            ? localWorkspace
+                ? 'Couldn’t refresh saved figures'
+                : 'Couldn’t refresh — showing saved figures'
+            : localWorkspace
+                ? 'Couldn’t load saved Finance. Try again.'
+                : 'Couldn’t load Finance. Reconnect and try again.',
       );
     }
   }
@@ -203,7 +215,8 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
       throw const FinanceFormException('Description is required');
     }
     if (request.amount <= 0) {
-      throw const FinanceFormException('Amount must be greater than zero');
+      throw const FinanceFormException(
+          'Enter a valid amount greater than zero');
     }
     await _requireSource().createPeerReceivable(request);
     await refresh();
@@ -232,8 +245,9 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
     if (request.allocations.length > 50) {
       throw const FinanceFormException('Collect at most 50 credits at a time');
     }
-    if (request.allocations.any((a) => a.amount <= 0)) {
-      throw const FinanceFormException('Amount must be greater than zero');
+    if (request.allocations.any((a) => !a.amount.isFinite || a.amount <= 0)) {
+      throw const FinanceFormException(
+          'Enter a valid amount greater than zero');
     }
     await _requireSource().recordRetailBulkCollection(request);
     await refresh();
@@ -250,8 +264,9 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
     if (request.allocations.length > 50) {
       throw const FinanceFormException('Collect at most 50 debts at a time');
     }
-    if (request.allocations.any((a) => a.amount <= 0)) {
-      throw const FinanceFormException('Amount must be greater than zero');
+    if (request.allocations.any((a) => !a.amount.isFinite || a.amount <= 0)) {
+      throw const FinanceFormException(
+          'Enter a valid amount greater than zero');
     }
     await _requireSource().recordPeerBulkCollection(request);
     await refresh();
@@ -271,6 +286,7 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
       'amount': amount,
       'fundingSource': fundingSource,
       'requestId': requestId,
+      if (localWorkspace) 'branchId': _branchId,
       if (_optional(notes) != null) 'notes': _optional(notes),
     });
     await refresh();
@@ -295,8 +311,9 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
     if (request.branchId.trim().isEmpty || _branchId.isEmpty) {
       throw const FinanceFormException('Branch is required');
     }
-    if (request.amount <= 0) {
-      throw const FinanceFormException('Amount must be greater than zero');
+    if (!request.amount.isFinite || request.amount <= 0) {
+      throw const FinanceFormException(
+          'Enter a valid amount greater than zero');
     }
   }
 }
@@ -420,3 +437,172 @@ class _LiveFinanceHubDataSource implements FinanceHubDataSource {
   Future<Map<String, dynamic>> getMerchantPaymentStatus(String reference) =>
       _apiClient.getMerchantMpesaStatus(reference);
 }
+
+/// Finance records for the downloadable standalone workspace stay on-device.
+/// Peer-shop ledgers and Paystack collections require shared online services,
+/// so the local screen only exposes supplier and customer ledgers.
+class _LocalFinanceHubDataSource implements FinanceHubDataSource {
+  _LocalFinanceHubDataSource(this._database);
+
+  final AppDatabase _database;
+
+  @override
+  FinanceSnapshot? loadCachedSnapshot(String tenantId, String branchId) => null;
+
+  @override
+  Future<FinanceSnapshot> refresh(String branchId) async {
+    final results = await Future.wait<List<Map<String, dynamic>>>([
+      _database.getLocalFinanceSupplierInvoices(),
+      _database.getLocalFinanceCustomerReceivables(),
+    ]);
+    final payables = results[0].map((row) {
+      final payments = (row['payments'] as List<dynamic>? ?? const [])
+          .map((value) => FinancePayablePayment.fromJson(
+              Map<String, dynamic>.from(value as Map)))
+          .toList(growable: false);
+      return FinancePayable(
+        id: row['id'] as String,
+        supplierId: row['supplierId'] as String,
+        supplierName: tidySupplierName(row['supplierName'] as String),
+        supplierPhone: row['supplierPhone'] as String?,
+        invoiceNumber: row['invoiceNumber'] as String?,
+        totalAmount: (row['totalAmount'] as num).toDouble(),
+        paidAmount: (row['paidAmount'] as num).toDouble(),
+        outstandingAmount: (row['outstandingAmount'] as num).toDouble(),
+        dueDate: _localDate(row['dueDate']),
+        status: row['status'] as String,
+        createdAt: _localDate(row['createdAt']),
+        payments: payments,
+      );
+    }).toList(growable: false);
+    final receivables = results[1].map((row) {
+      final id = 'local-customer:${row['id']}';
+      final payments =
+          (row['payments'] as List<dynamic>? ?? const []).map((value) {
+        final payment = Map<String, dynamic>.from(value as Map);
+        return ReceivablePayment(
+          id: payment['id'] as String,
+          receivableId: id,
+          amount: (payment['amount'] as num).toDouble(),
+          method: payment['method'] as String,
+          reference: payment['reference'] as String?,
+          notes: null,
+          paidAt: _localDate(payment['paidAt']),
+          createdAt: _localDate(payment['createdAt']),
+        );
+      }).toList(growable: false);
+      final balance = (row['balance'] as num).toDouble();
+      return RetailReceivable(
+        id: id,
+        saleId: row['id'] as String,
+        receiptNumber: null,
+        customerId: row['id'] as String,
+        customerName: row['name'] as String,
+        originalAmount: (row['originalAmount'] as num).toDouble(),
+        outstandingAmount: balance,
+        dueDate: _localDate(row['dueDate']),
+        status: 'open',
+        createdAt: _localDate(row['createdAt']),
+        payments: payments,
+      );
+    }).toList(growable: false);
+    return FinanceSnapshot(
+      branchId: branchId,
+      supplierPayablesOutstanding: payables.fold<double>(
+        0,
+        (sum, payable) => sum + payable.outstandingAmount,
+      ),
+      retailReceivablesOutstanding: receivables.fold<double>(
+        0,
+        (sum, receivable) => sum + receivable.outstandingAmount,
+      ),
+      peerReceivablesOutstanding: 0,
+      payables: payables,
+      retailReceivables: receivables,
+      savedAt: DateTime.now().toUtc(),
+    );
+  }
+
+  @override
+  Future<void> createPeerDebtor({required String name, String? contact}) =>
+      Future<void>.error(
+          UnsupportedError('Shop-to-shop Finance is unavailable offline.'));
+
+  @override
+  Future<void> createPeerReceivable(PeerReceivableRequest request) =>
+      Future<void>.error(
+          UnsupportedError('Shop-to-shop Finance is unavailable offline.'));
+
+  @override
+  Future<void> recordRetailCollection(
+      ReceivableCollectionRequest request) async {
+    if (request.method.trim().toUpperCase() != 'CASH') {
+      throw const FinanceFormException(
+          'Only cash collections can be recorded in the standalone app.');
+    }
+    await _database.recordLocalCustomerCollections(
+      branchId: request.branchId,
+      allocations: [
+        {'receivableId': request.receivableId, 'amount': request.amount},
+      ],
+      requestId: request.offlineId ?? '',
+      reference: request.reference,
+    );
+  }
+
+  @override
+  Future<void> recordRetailBulkCollection(BulkCollectionRequest request) async {
+    if (request.method.trim().toUpperCase() != 'CASH') {
+      throw const FinanceFormException(
+          'Only cash collections can be recorded in the standalone app.');
+    }
+    await _database.recordLocalCustomerCollections(
+      branchId: request.branchId,
+      allocations: request.allocations
+          .map((allocation) => <String, dynamic>{
+                'receivableId': allocation.receivableId,
+                'amount': allocation.amount,
+              })
+          .toList(growable: false),
+      requestId: request.offlineId ?? '',
+      reference: request.reference,
+    );
+  }
+
+  @override
+  Future<void> recordPeerCollection(ReceivableCollectionRequest request) =>
+      Future<void>.error(
+          UnsupportedError('Shop-to-shop Finance is unavailable offline.'));
+
+  @override
+  Future<void> recordPeerBulkCollection(BulkCollectionRequest request) =>
+      Future<void>.error(
+          UnsupportedError('Shop-to-shop Finance is unavailable offline.'));
+
+  @override
+  Future<Map<String, dynamic>> startMerchantReceivablePayment(
+          Map<String, dynamic> data) =>
+      Future<Map<String, dynamic>>.error(
+          UnsupportedError('Online payments are unavailable offline.'));
+
+  @override
+  Future<Map<String, dynamic>> getMerchantPaymentStatus(String reference) =>
+      Future<Map<String, dynamic>>.error(
+          UnsupportedError('Online payments are unavailable offline.'));
+
+  @override
+  Future<void> recordSupplierPayment(
+      String invoiceId, Map<String, dynamic> data) async {
+    await _database.recordLocalSupplierInvoicePayment(
+      invoiceId: invoiceId,
+      branchId: data['branchId']?.toString() ?? '',
+      amount: (data['amount'] as num).toDouble(),
+      fundingSource: data['fundingSource']?.toString() ?? 'CASH_TILL',
+      requestId: data['requestId']?.toString() ?? '',
+      notes: data['notes']?.toString(),
+    );
+  }
+}
+
+DateTime? _localDate(Object? value) =>
+    value is String ? DateTime.tryParse(value)?.toUtc() : null;

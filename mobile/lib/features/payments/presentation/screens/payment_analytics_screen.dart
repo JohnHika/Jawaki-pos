@@ -14,6 +14,13 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../reports/domain/analytics_mapping.dart';
 
+typedef _PaymentAnalyticsSnapshot = ({
+  Map<String, dynamic> summary,
+  List<Map<String, dynamic>> paymentMethods,
+  List<Map<String, dynamic>> trends,
+  List<Map<String, dynamic>> peakHours,
+});
+
 class PaymentAnalyticsScreen extends ConsumerStatefulWidget {
   const PaymentAnalyticsScreen({super.key});
 
@@ -32,6 +39,7 @@ class _PaymentAnalyticsScreenState
   bool _usingLocalData = false;
   String? _loadError;
   int _selectedPeriod = 0;
+  int _loadGeneration = 0;
 
   final List<String> _periods = ['Today', 'This Week', 'This Month'];
 
@@ -42,6 +50,9 @@ class _PaymentAnalyticsScreenState
   }
 
   Future<void> _loadPaymentData() async {
+    final generation = ++_loadGeneration;
+    final selectedPeriod = _selectedPeriod;
+    final localOnly = getIt<AuthService>().isLocalWorkspace;
     setState(() {
       _isLoading = true;
       _loadError = null;
@@ -50,7 +61,7 @@ class _PaymentAnalyticsScreenState
     final now = DateTime.now();
     final DateTime from;
     final DateTime to;
-    switch (_selectedPeriod) {
+    switch (selectedPeriod) {
       case 0:
         from = DateTime(now.year, now.month, now.day);
         to = from;
@@ -63,42 +74,86 @@ class _PaymentAnalyticsScreenState
         to = DateTime(now.year, now.month, now.day);
     }
 
+    if (localOnly) {
+      try {
+        final snapshot = await _loadFromLocal(now, selectedPeriod);
+        if (!mounted || generation != _loadGeneration) return;
+        _applySnapshot(snapshot, usingLocalData: true);
+      } catch (error) {
+        if (!mounted || generation != _loadGeneration) return;
+        if (!kReleaseMode) {
+          debugPrint('Local payment analytics load failed: $error');
+        }
+        setState(() {
+          _isLoading = false;
+          _usingLocalData = true;
+          _loadError =
+              "Couldn't load on-device payment analytics. Refresh and try again.";
+        });
+      }
+      return;
+    }
+
     try {
       // Prefer the server (covers every device); use this device's own records
       // if offline or the request fails.
-      await _loadFromServer(from, to);
-      _usingLocalData = false;
-    } catch (e) {
-      if (!kReleaseMode) debugPrint('Payment analytics server load failed, using local: $e');
+      final snapshot = await _loadFromServer(from, to, selectedPeriod);
+      if (!mounted || generation != _loadGeneration) return;
+      _applySnapshot(snapshot, usingLocalData: false);
+    } catch (error) {
+      if (!kReleaseMode) {
+        debugPrint('Payment analytics server load failed, using local: $error');
+      }
       try {
-        await _loadFromLocal(now);
-        _usingLocalData = true;
-      } catch (e2) {
-        if (!kReleaseMode) debugPrint('Payment analytics load error: $e2');
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-            _usingLocalData = false;
-            _loadError =
-                "Couldn't load payment analytics. Check your connection and try again.";
-          });
+        final snapshot = await _loadFromLocal(now, selectedPeriod);
+        if (!mounted || generation != _loadGeneration) return;
+        _applySnapshot(snapshot, usingLocalData: true);
+      } catch (localError) {
+        if (!mounted || generation != _loadGeneration) return;
+        if (!kReleaseMode) {
+          debugPrint('Payment analytics load error: $localError');
         }
+        setState(() {
+          _isLoading = false;
+          _usingLocalData = false;
+          _loadError =
+              "Couldn't load payment analytics. Check your connection and try again.";
+        });
         return;
       }
     }
-    if (mounted) setState(() => _isLoading = false);
   }
 
-  Future<void> _loadFromServer(DateTime from, DateTime to) async {
+  void _applySnapshot(
+    _PaymentAnalyticsSnapshot snapshot, {
+    required bool usingLocalData,
+  }) {
+    setState(() {
+      _paymentSummary = snapshot.summary;
+      _paymentMethodBreakdown = snapshot.paymentMethods;
+      _transactionTrends = snapshot.trends;
+      _peakHours = snapshot.peakHours;
+      _usingLocalData = usingLocalData;
+      _isLoading = false;
+    });
+  }
+
+  Future<_PaymentAnalyticsSnapshot> _loadFromServer(
+    DateTime from,
+    DateTime to,
+    int selectedPeriod,
+  ) async {
     final api = getIt<ApiClient>();
     final branchId = getIt<AuthService>().branchId;
     final fromIso = DateFormat('yyyy-MM-dd').format(from);
     final toIso = DateFormat('yyyy-MM-dd').format(to);
-    final isToday = _selectedPeriod == 0;
+    final isToday = selectedPeriod == 0;
 
     final results = await Future.wait<Object?>([
-      api.getSalesSummaryReport(startDate: fromIso, endDate: toIso, branchId: branchId),
-      api.getPaymentMethodReport(startDate: fromIso, endDate: toIso, branchId: branchId),
+      api.getSalesSummaryReport(
+          startDate: fromIso, endDate: toIso, branchId: branchId),
+      api.getPaymentMethodReport(
+          startDate: fromIso, endDate: toIso, branchId: branchId),
       api.getSalesTrendReport(
           startDate: fromIso,
           endDate: toIso,
@@ -106,55 +161,62 @@ class _PaymentAnalyticsScreenState
           groupBy: isToday ? 'HOUR' : 'DAY'),
       // Peak hours always need hourly resolution, even for week/month views.
       api.getSalesTrendReport(
-          startDate: fromIso, endDate: toIso, branchId: branchId, groupBy: 'HOUR'),
+          startDate: fromIso,
+          endDate: toIso,
+          branchId: branchId,
+          groupBy: 'HOUR'),
     ]);
 
-    _paymentMethodBreakdown = paymentsFromServer(results[1]);
-    _paymentSummary = paymentSummaryFromServer(results[0], _paymentMethodBreakdown);
-    _transactionTrends =
-        isToday ? hourlyFromServer(results[2], from) : dailyFromServer(results[2]);
-    _peakHours = peakHoursFromHourly(hourlyFromServer(results[3], from));
+    final paymentMethods = paymentsFromServer(results[1]);
+    return (
+      summary: paymentSummaryFromServer(results[0], paymentMethods),
+      paymentMethods: paymentMethods,
+      trends: isToday
+          ? hourlyFromServer(results[2], from)
+          : dailyFromServer(results[2]),
+      peakHours: peakHoursFromHourly(hourlyFromServer(results[3], from)),
+    );
   }
 
-  Future<void> _loadFromLocal(DateTime now) async {
+  Future<_PaymentAnalyticsSnapshot> _loadFromLocal(
+    DateTime now,
+    int selectedPeriod,
+  ) async {
     final database = getIt<AppDatabase>();
-    switch (_selectedPeriod) {
-      case 0: // Today
-        final startOfDay = DateTime(now.year, now.month, now.day);
-        final endOfDay = startOfDay.add(const Duration(days: 1));
-
-        _paymentSummary =
-            await database.getPaymentSummary(startOfDay, endOfDay);
-        _paymentMethodBreakdown =
-            await database.getSalesByPaymentMethod(startOfDay, endOfDay);
-        _transactionTrends =
-            await database.getHourlySales(startOfDay, endOfDay);
-        _peakHours = await database.getPeakHours(startOfDay, endOfDay);
-
-      case 1: // This Week
-        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-        final endOfWeek = startOfWeek.add(const Duration(days: 7));
-
-        _paymentSummary =
-            await database.getPaymentSummary(startOfWeek, endOfWeek);
-        _paymentMethodBreakdown =
-            await database.getSalesByPaymentMethod(startOfWeek, endOfWeek);
-        _transactionTrends =
-            await database.getDailySales(startOfWeek, endOfWeek);
-        _peakHours = await database.getPeakHours(startOfWeek, endOfWeek);
-
-      case 2: // This Month
-        final startOfMonth = DateTime(now.year, now.month, 1);
-        final endOfMonth = DateTime(now.year, now.month + 1, 1);
-
-        _paymentSummary =
-            await database.getPaymentSummary(startOfMonth, endOfMonth);
-        _paymentMethodBreakdown =
-            await database.getSalesByPaymentMethod(startOfMonth, endOfMonth);
-        _transactionTrends =
-            await database.getDailySales(startOfMonth, endOfMonth);
-        _peakHours = await database.getPeakHours(startOfMonth, endOfMonth);
+    final DateTime start;
+    final DateTime end;
+    switch (selectedPeriod) {
+      case 0:
+        start = DateTime(now.year, now.month, now.day);
+        end = start
+            .add(const Duration(days: 1))
+            .subtract(const Duration(microseconds: 1));
+      case 1:
+        final monday = now.subtract(Duration(days: now.weekday - 1));
+        start = DateTime(monday.year, monday.month, monday.day);
+        end = start
+            .add(const Duration(days: 7))
+            .subtract(const Duration(microseconds: 1));
+      default:
+        start = DateTime(now.year, now.month, 1);
+        end = DateTime(now.year, now.month + 1, 1)
+            .subtract(const Duration(microseconds: 1));
     }
+
+    final results = await Future.wait<Object?>([
+      database.getPaymentSummary(start, end),
+      database.getSalesByPaymentMethod(start, end),
+      selectedPeriod == 0
+          ? database.getHourlySales(start, end)
+          : database.getDailySales(start, end),
+      database.getPeakHours(start, end),
+    ]);
+    return (
+      summary: Map<String, dynamic>.from(results[0] as Map),
+      paymentMethods: (results[1] as List).cast<Map<String, dynamic>>(),
+      trends: (results[2] as List).cast<Map<String, dynamic>>(),
+      peakHours: (results[3] as List).cast<Map<String, dynamic>>(),
+    );
   }
 
   @override
@@ -164,7 +226,8 @@ class _PaymentAnalyticsScreenState
       appBar: BrandedAppBar(
         title: 'Payment Analytics',
         actions: [
-          IconButton(tooltip: 'Refresh', 
+          IconButton(
+            tooltip: 'Refresh',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: _loadPaymentData,
           ),
@@ -188,78 +251,79 @@ class _PaymentAnalyticsScreenState
                   ),
                 )
               : RefreshIndicator(
-              onRefresh: _loadPaymentData,
-              child: PageContainer(
-                withScroll: true,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Period Selector
-                    _buildPeriodSelector(isDark),
-                    if (_usingLocalData) ...[
-                      const SizedBox(height: DesignSpacing.md),
-                      InlineRetryNotice(
-                        message:
-                            'Offline: showing sales saved on this device.',
-                        onRetry: _loadPaymentData,
-                      ),
-                    ],
-                    const SizedBox(height: DesignSpacing.xxl),
-
-                    // Payment Summary Cards
-                    _buildPaymentSummaryCards(),
-                    const SizedBox(height: DesignSpacing.xxl),
-
-                    if (_hasNoTransactions)
-                      // No point repeating the same "no data" empty state
-                      // four times in a row (breakdown, trend chart, peak
-                      // hours all have nothing to show) — one clear message
-                      // covers the whole period instead of a long scroll of
-                      // near-identical placeholder cards.
-                      const StaggeredItem(
-                        itemKey: 'pay-analytics-empty',
-                        child: Padding(
-                          padding: EdgeInsets.only(top: DesignSpacing.md),
-                          child: EmptyState(
-                            icon: Icons.query_stats_rounded,
-                            title: 'No transactions in this period',
-                            subtitle:
-                                'Payment breakdowns, trends, and peak hours will appear here once sales come in.',
+                  onRefresh: _loadPaymentData,
+                  child: PageContainer(
+                    withScroll: true,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Period Selector
+                        _buildPeriodSelector(isDark),
+                        if (_usingLocalData) ...[
+                          const SizedBox(height: DesignSpacing.md),
+                          InlineRetryNotice(
+                            message: getIt<AuthService>().isLocalWorkspace
+                                ? 'Local only: showing transactions recorded on this device.'
+                                : 'Offline: showing sales saved on this device.',
+                            onRetry: _loadPaymentData,
                           ),
-                        ),
-                      )
-                    else ...[
-                      // First-mount entrance: each section fades/rises in
-                      // once, staggered (see StaggeredItem); stable keys keep
-                      // pull-to-refresh and period switches from replaying.
+                        ],
+                        const SizedBox(height: DesignSpacing.xxl),
 
-                      // Payment Method Breakdown
-                      StaggeredItem(
-                        itemKey: 'pay-analytics-breakdown',
-                        child: _buildPaymentMethodBreakdown(isDark),
-                      ),
-                      const SizedBox(height: DesignSpacing.xxl),
+                        // Payment Summary Cards
+                        _buildPaymentSummaryCards(),
+                        const SizedBox(height: DesignSpacing.xxl),
 
-                      // Transaction Trend Chart
-                      StaggeredItem(
-                        itemKey: 'pay-analytics-trend',
-                        index: 1,
-                        child: _buildTransactionTrendChart(isDark),
-                      ),
-                      const SizedBox(height: DesignSpacing.xxl),
+                        if (_hasNoTransactions)
+                          // No point repeating the same "no data" empty state
+                          // four times in a row (breakdown, trend chart, peak
+                          // hours all have nothing to show) — one clear message
+                          // covers the whole period instead of a long scroll of
+                          // near-identical placeholder cards.
+                          const StaggeredItem(
+                            itemKey: 'pay-analytics-empty',
+                            child: Padding(
+                              padding: EdgeInsets.only(top: DesignSpacing.md),
+                              child: EmptyState(
+                                icon: Icons.query_stats_rounded,
+                                title: 'No transactions in this period',
+                                subtitle:
+                                    'Payment breakdowns, trends, and peak hours will appear here once sales come in.',
+                              ),
+                            ),
+                          )
+                        else ...[
+                          // First-mount entrance: each section fades/rises in
+                          // once, staggered (see StaggeredItem); stable keys keep
+                          // pull-to-refresh and period switches from replaying.
 
-                      // Peak Hours Analysis
-                      StaggeredItem(
-                        itemKey: 'pay-analytics-peak',
-                        index: 2,
-                        child: _buildPeakHoursAnalysis(isDark),
-                      ),
-                      const SizedBox(height: DesignSpacing.lg),
-                    ],
-                  ],
+                          // Payment Method Breakdown
+                          StaggeredItem(
+                            itemKey: 'pay-analytics-breakdown',
+                            child: _buildPaymentMethodBreakdown(isDark),
+                          ),
+                          const SizedBox(height: DesignSpacing.xxl),
+
+                          // Transaction Trend Chart
+                          StaggeredItem(
+                            itemKey: 'pay-analytics-trend',
+                            index: 1,
+                            child: _buildTransactionTrendChart(isDark),
+                          ),
+                          const SizedBox(height: DesignSpacing.xxl),
+
+                          // Peak Hours Analysis
+                          StaggeredItem(
+                            itemKey: 'pay-analytics-peak',
+                            index: 2,
+                            child: _buildPeakHoursAnalysis(isDark),
+                          ),
+                          const SizedBox(height: DesignSpacing.lg),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ),
     );
   }
 
@@ -276,7 +340,8 @@ class _PaymentAnalyticsScreenState
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.xs),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.sm, vertical: DesignSpacing.sm - 2),
+        padding: const EdgeInsets.symmetric(
+            horizontal: DesignSpacing.sm, vertical: DesignSpacing.sm - 2),
         decoration: BoxDecoration(
           color: surface,
           borderRadius: BorderRadius.circular(DesignSpacing.radiusXl - 2),
@@ -302,8 +367,8 @@ class _PaymentAnalyticsScreenState
                   borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   child: AnimatedContainer(
                     duration: DesignAnimation.fast,
-                    constraints: const BoxConstraints(
-                        minHeight: DesignSpacing.xl + 24),
+                    constraints:
+                        const BoxConstraints(minHeight: DesignSpacing.xl + 24),
                     alignment: Alignment.center,
                     padding:
                         const EdgeInsets.symmetric(vertical: DesignSpacing.md),
@@ -318,11 +383,12 @@ class _PaymentAnalyticsScreenState
                       period,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight:
-                          isSelected ? FontWeight.w700 : FontWeight.w500,
-                          color:
-                          isSelected ? DesignColors.accent : secondaryColor,
-                      ),
+                            fontWeight:
+                                isSelected ? FontWeight.w700 : FontWeight.w500,
+                            color: isSelected
+                                ? DesignColors.accent
+                                : secondaryColor,
+                          ),
                     ),
                   ),
                 ),
@@ -416,9 +482,9 @@ class _PaymentAnalyticsScreenState
               Text(
                 'Payment Method Breakdown',
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: titleColor,
-                ),
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
+                    ),
               ),
             ],
           ),
@@ -432,13 +498,11 @@ class _PaymentAnalyticsScreenState
             ..._paymentMethodBreakdown.map((payment) {
               final method = payment['paymentMethod'] ?? 'Unknown';
               final count = payment['count'] ?? 0;
-              final total =
-                  (payment['totalAmount'] as num?)?.toDouble() ?? 0;
+              final total = (payment['totalAmount'] as num?)?.toDouble() ?? 0;
               final color = _getPaymentMethodColor(method);
               final grandTotal = _paymentMethodBreakdown.fold<double>(
                 0,
-                (sum, p) =>
-                    sum + ((p['totalAmount'] as num?)?.toDouble() ?? 0),
+                (sum, p) => sum + ((p['totalAmount'] as num?)?.toDouble() ?? 0),
               );
               final share = grandTotal > 0 ? total / grandTotal : 0.0;
 
@@ -463,9 +527,12 @@ class _PaymentAnalyticsScreenState
                             _formatPaymentMethod(method),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: titleColor,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: titleColor,
+                                ),
                           ),
                         ),
                         const SizedBox(width: DesignSpacing.md),
@@ -475,10 +542,11 @@ class _PaymentAnalyticsScreenState
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.end,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: titleColor,
-                            ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: titleColor,
+                                    ),
                           ),
                         ),
                       ],
@@ -488,7 +556,8 @@ class _PaymentAnalyticsScreenState
                       children: [
                         Expanded(
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusSm),
                             child: LinearProgressIndicator(
                               value: share,
                               valueColor: AlwaysStoppedAnimation<Color>(color),
@@ -500,10 +569,11 @@ class _PaymentAnalyticsScreenState
                         const SizedBox(width: DesignSpacing.md),
                         Text(
                           formatMoney(total),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: color,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: color,
+                                  ),
                         ),
                       ],
                     ),
@@ -543,9 +613,9 @@ class _PaymentAnalyticsScreenState
               Text(
                 'Transaction Trends',
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: titleColor,
-                ),
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
+                    ),
               ),
             ],
           ),
@@ -609,17 +679,22 @@ class _PaymentAnalyticsScreenState
                         if (index % step != 0) return const SizedBox.shrink();
                         if (index >= 0 && index < _transactionTrends.length) {
                           final date = DateTime.parse(
-                              _transactionTrends[index]['date'] ?? '').toLocal();
+                                  _transactionTrends[index]['date'] ?? '')
+                              .toLocal();
                           final time = _selectedPeriod == 0
                               ? '${date.hour}:00'
                               : '${date.day}/${date.month}';
                           return Padding(
-                            padding: const EdgeInsets.only(top: DesignSpacing.sm),
+                            padding:
+                                const EdgeInsets.only(top: DesignSpacing.sm),
                             child: Text(
                               time,
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                  color: tertiaryColor,
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color: tertiaryColor,
+                                  ),
                             ),
                           );
                         }
@@ -635,16 +710,21 @@ class _PaymentAnalyticsScreenState
                       reservedSize: 44,
                       getTitlesWidget: (value, meta) {
                         // Skip the topmost (padding) tick and any non-round tick.
-                        if (value == meta.max || value == meta.min && value != 0) {
+                        if (value == meta.max ||
+                            value == meta.min && value != 0) {
                           return const SizedBox.shrink();
                         }
                         return Padding(
-                          padding: const EdgeInsets.only(right: DesignSpacing.sm),
+                          padding:
+                              const EdgeInsets.only(right: DesignSpacing.sm),
                           child: Text(
                             _compactMoney(value),
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: tertiaryColor,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color: tertiaryColor,
+                                ),
                           ),
                         );
                       },
@@ -661,13 +741,14 @@ class _PaymentAnalyticsScreenState
                   show: true,
                   drawVerticalLine: false,
                   horizontalInterval: (_transactionTrends.isNotEmpty
-                          ? _transactionTrends
-                              .map((e) =>
-                                  (e['totalAmount'] as num?)?.toDouble() ?? 0)
-                              .reduce((a, b) => a > b ? a : b)
-                          : 1000)
-                      .toDouble() /
-                  5,
+                              ? _transactionTrends
+                                  .map((e) =>
+                                      (e['totalAmount'] as num?)?.toDouble() ??
+                                      0)
+                                  .reduce((a, b) => a > b ? a : b)
+                              : 1000)
+                          .toDouble() /
+                      5,
                   getDrawingHorizontalLine: (value) {
                     return FlLine(color: border, strokeWidth: 1);
                   },
@@ -708,9 +789,9 @@ class _PaymentAnalyticsScreenState
               Text(
                 'Peak Hours Analysis',
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: titleColor,
-                ),
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
+                    ),
               ),
             ],
           ),
@@ -723,10 +804,8 @@ class _PaymentAnalyticsScreenState
           else
             ..._peakHours.map((hour) {
               final hourNum = hour['hour'] ?? 0;
-              final count =
-                  (hour['transactionCount'] as num?)?.toInt() ?? 0;
-              final total =
-                  (hour['totalAmount'] as num?)?.toDouble() ?? 0;
+              final count = (hour['transactionCount'] as num?)?.toInt() ?? 0;
+              final total = (hour['totalAmount'] as num?)?.toDouble() ?? 0;
               final color = _getPeakHourColor(hourNum);
               final totalTraffic = _peakHours.fold<int>(
                 0,
@@ -745,7 +824,8 @@ class _PaymentAnalyticsScreenState
                       height: 48,
                       decoration: BoxDecoration(
                         color: color.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
                         border: Border.all(
                           color: color.withValues(alpha: 0.3),
                           width: 1,
@@ -754,10 +834,11 @@ class _PaymentAnalyticsScreenState
                       child: Center(
                         child: Text(
                           '$hourNum:00',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: color,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: color,
+                                  ),
                         ),
                       ),
                     ),
@@ -776,18 +857,22 @@ class _PaymentAnalyticsScreenState
                               const SizedBox(width: DesignSpacing.xs),
                               Text(
                                 _formatHourLabel(hourNum),
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: titleColor,
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: titleColor,
+                                    ),
                               ),
                             ],
                           ),
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
                             countLabel(count, 'transaction'),
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: secondaryColor,
-                            ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: secondaryColor,
+                                    ),
                           ),
                         ],
                       ),
@@ -801,18 +886,24 @@ class _PaymentAnalyticsScreenState
                             fit: BoxFit.scaleDown,
                             child: Text(
                               formatMoney(total),
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: color,
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: color,
+                                  ),
                             ),
                           ),
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '${trafficShare.toStringAsFixed(1)}% of traffic',
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: secondaryColor,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color: secondaryColor,
+                                ),
                           ),
                         ],
                       ),
@@ -850,7 +941,6 @@ class _PaymentAnalyticsScreenState
     if (hour >= 17 && hour <= 19) return DesignColors.brand;
     return DesignColors.info;
   }
-
 
   /// 1,500 -> "1.5k", 800 -> "800", 2,000,000 -> "2M" (axis ticks stay short).
   String _compactMoney(double v) {

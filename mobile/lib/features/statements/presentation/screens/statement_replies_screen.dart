@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
@@ -19,13 +20,39 @@ class StatementRepliesScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final layout = ref.watch(businessLayoutProvider);
+    if (getIt<AuthService>().isLocalWorkspace) {
+      return Scaffold(
+        appBar: BrandedAppBar(
+          title: layout.actionLabel('/statements/replies', 'Debt Replies'),
+          showBackButton: GoRouter.of(context).canPop(),
+        ),
+        body: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(DesignSpacing.lg),
+          children: [
+            const SizedBox(height: DesignSpacing.xxl),
+            EmptyState(
+              icon: Icons.cloud_off_rounded,
+              title: 'Replies need a hosted statement link',
+              subtitle:
+                  'This standalone workspace keeps records on this device. '
+                  'It cannot receive replies from a customer’s online statement '
+                  'link. You can still share a local statement from a customer profile.',
+              iconColor: DesignColors.warning,
+              actionLabel: 'Open customers',
+              onAction: () => context.push('/customers'),
+            ),
+          ],
+        ),
+      );
+    }
+
     final claims = ref.watch(statementClaimsProvider);
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: ref
-            .watch(businessLayoutProvider)
-            .actionLabel('/statements/replies', 'Debt Replies'),
+        title: layout.actionLabel('/statements/replies', 'Debt Replies'),
         showBackButton: GoRouter.of(context).canPop(),
       ),
       body: RefreshIndicator(

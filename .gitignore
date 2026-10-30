@@ -5,3 +5,28 @@ transcribe.py
 audio_input*
 .jest-localstorage
 .vercel
+
+# Emulator / audit screenshots and runtime captures
+emu_*.png
+emulator_*.png
+counterbase_audit_*.png
+counterbase_release*.png
+preview_emulator_*.png
+live_callback.html
+
+# Runtime artifacts
+*.hprof
+github_release.json
+update_live.json
+tap-tracker.bat
+ocr_*.py
+phase_d_*.py
+mobile/nul
+
+# Agent worktrees / scratch sessions
+.claude/worktrees/
+.hermes/
+pos-archive-*/
+%TEMP_DIR%/
+# Desktop build artifacts
+desktop/artifacts/

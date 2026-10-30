@@ -8,6 +8,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/utils/stock_quantity_display.dart';
+import '../../../../core/widgets/workspace_image.dart';
 import '../widgets/add_edit_product_sheet.dart';
 import '../../../../core/utils/format.dart';
 
@@ -198,17 +199,13 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                   border: Border(bottom: BorderSide(color: border)),
                 ),
                 child: Center(
-                  child:
-                      product.imageUrl != null && product.imageUrl!.isNotEmpty
-                          ? Image.network(
-                              product.imageUrl!,
-                              fit: BoxFit.contain,
-                              width: double.infinity,
-                              height: 200,
-                              errorBuilder: (_, __, ___) =>
-                                  _buildProductPlaceholder(tertiaryColor),
-                            )
-                          : _buildProductPlaceholder(tertiaryColor),
+                  child: WorkspaceImage(
+                    source: product.imageUrl,
+                    fit: BoxFit.contain,
+                    width: double.infinity,
+                    height: 200,
+                    placeholder: _buildProductPlaceholder(tertiaryColor),
+                  ),
                 ),
               ),
 

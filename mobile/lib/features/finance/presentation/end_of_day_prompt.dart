@@ -33,6 +33,11 @@ class EndOfDayPrompt {
     BuildContext context,
     RolePermissions permissions,
   ) async {
+    // Local workspaces do not store configured business hours yet. Avoid
+    // probing the retired API/local-server branch endpoint; the owner can
+    // open the device-backed End of Day screen directly when needed.
+    if (getIt<AuthService>().isLocalWorkspace) return;
+
     // 1. Permission gate — only users who can close should be asked.
     if (!permissions.canCloseEndOfDay) return;
 

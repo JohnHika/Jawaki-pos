@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/auth/app_roles.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/receipt_vision_service.dart';
 import '../../../../core/services/supplier_receipt_ocr_service.dart';
@@ -74,6 +75,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final controller = ref.read(financeHubProvider.notifier);
     final permissions = ref.watch(permissionsProvider);
     final businessLayout = ref.watch(businessLayoutProvider);
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final snapshot = hub.snapshot;
 
     return Scaffold(
@@ -110,23 +112,29 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           SafeArea(
             top: false,
             child: snapshot == null
-                ? _NoSnapshotState(state: hub, onRetry: controller.refresh)
+                ? _NoSnapshotState(
+                    state: hub,
+                    onRetry: controller.refresh,
+                    localWorkspace: isLocalWorkspace,
+                  )
                 : Column(
                     children: <Widget>[
                       _FinanceStatusBar(
                         state: hub,
                         onRetry: controller.refresh,
+                        localWorkspace: isLocalWorkspace,
                       ),
                       _FinanceTabs(
                           index: _tab,
+                          isLocalWorkspace: isLocalWorkspace,
                           onChanged: (index) => setState(() => _tab = index)),
                       Expanded(
                           child: SlideSwitcher(
                               from: SlideFrom.right,
                               child: KeyedSubtree(
                                   key: ValueKey<int>(_tab),
-                                  child: _tabBody(
-                                      snapshot, controller, permissions)))),
+                                  child: _tabBody(snapshot, controller,
+                                      permissions, isLocalWorkspace)))),
                     ],
                   ),
           ),
@@ -140,9 +148,10 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
   }
 
   Widget _tabBody(FinanceSnapshot snapshot, FinanceHubController controller,
-          RolePermissions permissions) =>
-      switch (_tab) {
-        0 => _OverviewTab(snapshot: snapshot),
+      RolePermissions permissions, bool isLocalWorkspace) {
+    if (isLocalWorkspace) {
+      return switch (_tab) {
+        0 => _OverviewTab(snapshot: snapshot, localWorkspace: true),
         1 => _SupplierTab(
             payables: snapshot.payables,
             canCreateInvoices: permissions.canRecordRestock,
@@ -155,7 +164,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               canRecordPayment: permissions.canRecordSupplierPayment,
             ),
           ),
-        2 => _RetailTab(
+        _ => _RetailTab(
             receivables: snapshot.retailReceivables,
             canManageReceivables: permissions.canManageReceivables,
             onCollectForCustomer: () =>
@@ -184,40 +193,85 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               ),
             ),
           ),
-        _ => _PeerTab(
-            snapshot: snapshot,
-            canManageReceivables: permissions.canManageReceivables,
-            onOpenShop: (shop) => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                    builder: (_) => ShopLedgerScreen(shopId: shop.id))),
-            onAddShop: () => _showPeerShopSheet(controller),
-            onAddReceivable: () =>
-                _showPeerReceivableSheet(snapshot, controller),
-            onCollect: (item) => _showReceivableActions(
-              title: 'Collect from ${item.debtor.name}',
+      };
+    }
+    return switch (_tab) {
+      0 => _OverviewTab(snapshot: snapshot),
+      1 => _SupplierTab(
+          payables: snapshot.payables,
+          canCreateInvoices: permissions.canRecordRestock,
+          onScan: permissions.canRecordRestock ? _pickAndScanReceipt : null,
+          onManual:
+              permissions.canRecordRestock ? _showManualInvoiceDialog : null,
+          onOpenPayable: (item) => _showSupplierDetailsSheet(
+            item,
+            controller,
+            canRecordPayment: permissions.canRecordSupplierPayment,
+          ),
+        ),
+      2 => _RetailTab(
+          receivables: snapshot.retailReceivables,
+          canManageReceivables: permissions.canManageReceivables,
+          onCollectForCustomer: () =>
+              _showBulkCollectionSheet(snapshot, controller),
+          onCollect: (item) => _showReceivableActions(
+            title: 'Collect from ${item.customerName ?? 'customer'}',
+            amount: item.outstandingAmount,
+            receivableId: item.id,
+            receivableType: 'retail',
+            branchId: snapshot.branchId,
+            controller: controller,
+            onRecordReceived: () => _showCollectionSheet(
+              title: 'Record payment from ${item.customerName ?? 'customer'}',
               amount: item.outstandingAmount,
-              receivableId: item.id,
-              receivableType: 'peer',
-              branchId: snapshot.branchId,
-              controller: controller,
-              onRecordReceived: () => _showCollectionSheet(
-                title: 'Record payment from ${item.debtor.name}',
-                amount: item.outstandingAmount,
-                onSave: (amount, method, reference, offlineId) =>
-                    controller.recordPeerCollection(
-                  ReceivableCollectionRequest(
-                    receivableId: item.id,
-                    branchId: snapshot.branchId,
-                    amount: amount,
-                    method: method,
-                    reference: reference,
-                    offlineId: offlineId,
-                  ),
+              onSave: (amount, method, reference, offlineId) =>
+                  controller.recordRetailCollection(
+                ReceivableCollectionRequest(
+                  receivableId: item.id,
+                  branchId: snapshot.branchId,
+                  amount: amount,
+                  method: method,
+                  reference: reference,
+                  offlineId: offlineId,
                 ),
               ),
             ),
           ),
-      };
+        ),
+      _ => _PeerTab(
+          snapshot: snapshot,
+          canManageReceivables: permissions.canManageReceivables,
+          onOpenShop: (shop) => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                  builder: (_) => ShopLedgerScreen(shopId: shop.id))),
+          onAddShop: () => _showPeerShopSheet(controller),
+          onAddReceivable: () => _showPeerReceivableSheet(snapshot, controller),
+          onCollect: (item) => _showReceivableActions(
+            title: 'Collect from ${item.debtor.name}',
+            amount: item.outstandingAmount,
+            receivableId: item.id,
+            receivableType: 'peer',
+            branchId: snapshot.branchId,
+            controller: controller,
+            onRecordReceived: () => _showCollectionSheet(
+              title: 'Record payment from ${item.debtor.name}',
+              amount: item.outstandingAmount,
+              onSave: (amount, method, reference, offlineId) =>
+                  controller.recordPeerCollection(
+                ReceivableCollectionRequest(
+                  receivableId: item.id,
+                  branchId: snapshot.branchId,
+                  amount: amount,
+                  method: method,
+                  reference: reference,
+                  offlineId: offlineId,
+                ),
+              ),
+            ),
+          ),
+        ),
+    };
+  }
 
   Widget _appBarAction(
           {required String tooltip,
@@ -318,7 +372,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           if (mounted) {
             showGlassSnackBar(
               context,
-              'Axon AI is unavailable right now, so this was read on your phone. Please check the details.',
+              'Axon Gateway is not configured yet, so this was read on your phone. Please check the details.',
               icon: Icons.info_outline_rounded,
               color: DesignColors.warning,
             );
@@ -464,7 +518,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                     ? 'Description is required'
                     : null;
                 amountError = parsedAmount <= 0
-                    ? 'Amount must be greater than zero'
+                    ? 'Enter a valid amount greater than zero'
                     : null;
               });
               if (shopError != null ||
@@ -497,13 +551,14 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             double amount, String method, String? reference, String offlineId)
         onSave,
   }) async {
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final amountController =
         TextEditingController(text: amount.toStringAsFixed(0));
     final reference = TextEditingController();
     final offlineId = const Uuid().v4();
     String? error;
     bool saving = false;
-    await showModalBottomSheet<void>(
+    final recorded = await showModalBottomSheet<bool>(
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,
@@ -512,9 +567,11 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         builder: (sheetContext, setSheetState) => _SheetFrame(
           title: title,
           children: <Widget>[
-            const Text(
-              'Record cash already received. For M-Pesa, send a Paystack '
-              'request from this debt; its balance updates after verification.',
+            Text(
+              isLocalWorkspace
+                  ? 'Record cash already received. This collection is saved on this device.'
+                  : 'Record cash already received. For M-Pesa, send a Paystack '
+                      'request from this debt; its balance updates after verification.',
             ),
             const SizedBox(height: DesignSpacing.md),
             TextField(
@@ -539,9 +596,14 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                     : () async {
                         final parsed =
                             double.tryParse(amountController.text) ?? 0;
-                        if (parsed <= 0) {
-                          setSheetState(
-                              () => error = 'Amount must be greater than zero');
+                        if (!parsed.isFinite || parsed <= 0) {
+                          setSheetState(() =>
+                              error = 'Enter a valid amount greater than zero');
+                          return;
+                        }
+                        if (parsed > amount + 0.005) {
+                          setSheetState(() => error =
+                              'Amount can’t exceed the outstanding balance of ${formatMoney(amount)}.');
                           return;
                         }
                         setSheetState(() {
@@ -557,13 +619,19 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                                 : reference.text.trim(),
                             offlineId,
                           );
-                          if (sheetContext.mounted) Navigator.pop(sheetContext);
+                          if (sheetContext.mounted) {
+                            Navigator.pop(sheetContext, true);
+                          }
                         } catch (e) {
                           if (sheetContext.mounted) {
                             setSheetState(() {
                               error = e is FinanceFormException
                                   ? e.message
-                                  : 'Couldn’t record this collection. Check your connection and try again.';
+                                  : e is StateError
+                                      ? e.message
+                                      : isLocalWorkspace
+                                          ? 'Couldn’t save this collection on this device. No balance change was applied. Try again.'
+                                          : 'Couldn’t record this collection. Check your connection and try again.';
                             });
                           }
                         } finally {
@@ -581,6 +649,16 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     );
     amountController.dispose();
     reference.dispose();
+    if (recorded == true && mounted) {
+      showGlassSnackBar(
+        context,
+        isLocalWorkspace
+            ? 'Cash collection saved on this device. Customer balance updated.'
+            : 'Customer collection recorded. Balance updated.',
+        icon: Icons.check_circle_rounded,
+        color: DesignColors.success,
+      );
+    }
   }
 
   Future<void> _showReceivableActions({
@@ -626,16 +704,17 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => Navigator.pop(sheetContext, 0),
           ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.phone_android_rounded,
-                color: DesignColors.brand),
-            title: const Text('Request M-Pesa payment'),
-            subtitle:
-                const Text('Send a verified Paystack prompt to the payer'),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => Navigator.pop(sheetContext, 1),
-          ),
+          if (!getIt<AuthService>().isLocalWorkspace)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.phone_android_rounded,
+                  color: DesignColors.brand),
+              title: const Text('Request M-Pesa payment'),
+              subtitle:
+                  const Text('Send a verified Paystack prompt to the payer'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.pop(sheetContext, 1),
+            ),
         ],
       ),
     );
@@ -669,7 +748,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final phoneController = TextEditingController();
     String? error;
     bool saving = false;
-    await showModalBottomSheet<bool>(
+    await showModalBottomSheet<void>(
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,
@@ -1088,6 +1167,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     FinanceSnapshot snapshot,
     FinanceHubController controller,
   ) async {
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final groups = <String, List<RetailReceivable>>{};
     for (final item in snapshot.retailReceivables) {
       if (item.outstandingAmount <= 0) continue;
@@ -1108,7 +1188,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     String? error;
     bool saving = false;
 
-    await showModalBottomSheet<void>(
+    final recorded = await showModalBottomSheet<bool>(
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,
@@ -1147,9 +1227,11 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                         }),
               ),
               const SizedBox(height: DesignSpacing.md),
-              const Text(
-                'Record cash already received. For M-Pesa, request payment '
-                'on each debt so Paystack can verify and settle it.',
+              Text(
+                isLocalWorkspace
+                    ? 'Record cash already received. The collection is stored on this device.'
+                    : 'Record cash already received. For M-Pesa, request payment '
+                        'on each debt so Paystack can verify and settle it.',
               ),
               const SizedBox(height: DesignSpacing.md),
               TextField(
@@ -1179,9 +1261,9 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               _sheetButton(saving ? 'Recording…' : 'Record collection',
                   () async {
                 if (saving) return;
-                if (amount <= 0) {
+                if (!amount.isFinite || amount <= 0) {
                   setSheetState(
-                      () => error = 'Amount must be greater than zero');
+                      () => error = 'Enter a valid amount greater than zero');
                   return;
                 }
                 if (plan.unallocated > 0) {
@@ -1202,14 +1284,20 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                       offlineId: offlineId,
                     ),
                   );
-                  if (sheetContext.mounted) Navigator.pop(sheetContext);
+                  if (sheetContext.mounted) {
+                    Navigator.pop(sheetContext, true);
+                  }
                 } catch (e) {
                   if (!sheetContext.mounted) return;
                   setSheetState(() {
                     saving = false;
                     error = e is FinanceFormException
                         ? e.message
-                        : 'Couldn’t record the collection. Check your connection and try again.';
+                        : e is StateError
+                            ? e.message
+                            : isLocalWorkspace
+                                ? 'Couldn’t save this collection on this device. No balance change was applied. Try again.'
+                                : 'Couldn’t record the collection. Check your connection and try again.';
                   });
                 }
               }),
@@ -1218,6 +1306,18 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         },
       ),
     );
+    amountController.dispose();
+    reference.dispose();
+    if (recorded == true && mounted) {
+      showGlassSnackBar(
+        context,
+        isLocalWorkspace
+            ? 'Cash collection saved on this device. Customer balance updated.'
+            : 'Customer collection recorded. Balance updated.',
+        icon: Icons.check_circle_rounded,
+        color: DesignColors.success,
+      );
+    }
   }
 
   Widget _sheetButton(String label, Future<void> Function() action) => SizedBox(
@@ -1228,9 +1328,14 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
 }
 
 class _NoSnapshotState extends StatelessWidget {
-  const _NoSnapshotState({required this.state, required this.onRetry});
+  const _NoSnapshotState({
+    required this.state,
+    required this.onRetry,
+    this.localWorkspace = false,
+  });
   final FinanceHubState state;
   final VoidCallback onRetry;
+  final bool localWorkspace;
 
   @override
   Widget build(BuildContext context) {
@@ -1241,7 +1346,7 @@ class _NoSnapshotState extends StatelessWidget {
         child: Padding(
       padding: DesignSpacing.paddingScreen,
       child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
-        const Icon(Icons.cloud_off_rounded,
+        Icon(localWorkspace ? Icons.storage_rounded : Icons.cloud_off_rounded,
             color: DesignColors.error, size: 40),
         const SizedBox(height: DesignSpacing.md),
         Text(state.errorMessage ?? 'Couldn’t load Finance.',
@@ -1257,9 +1362,14 @@ class _NoSnapshotState extends StatelessWidget {
 }
 
 class _FinanceStatusBar extends StatelessWidget {
-  const _FinanceStatusBar({required this.state, required this.onRetry});
+  const _FinanceStatusBar({
+    required this.state,
+    required this.onRetry,
+    this.localWorkspace = false,
+  });
   final FinanceHubState state;
   final VoidCallback onRetry;
+  final bool localWorkspace;
 
   @override
   Widget build(BuildContext context) {
@@ -1273,11 +1383,13 @@ class _FinanceStatusBar extends StatelessWidget {
               size: 16, color: DesignColors.textSecondary),
           const SizedBox(width: DesignSpacing.xs),
           Text(
-              state.isRefreshing
-                  ? 'Refreshing'
-                  : savedAt == null
-                      ? 'Saved figures'
-                      : 'Saved ${DateFormat('d MMM, HH:mm').format(savedAt.toLocal())}',
+              localWorkspace
+                  ? 'On this device'
+                  : state.isRefreshing
+                      ? 'Refreshing'
+                      : savedAt == null
+                          ? 'Saved figures'
+                          : 'Saved ${DateFormat('d MMM, HH:mm').format(savedAt.toLocal())}',
               style: Theme.of(context).textTheme.labelSmall),
         ]),
       ),
@@ -1305,46 +1417,60 @@ class _FinanceStatusBar extends StatelessWidget {
 }
 
 class _FinanceTabs extends StatelessWidget {
-  const _FinanceTabs({required this.index, required this.onChanged});
+  const _FinanceTabs({
+    required this.index,
+    required this.onChanged,
+    required this.isLocalWorkspace,
+  });
   final int index;
   final ValueChanged<int> onChanged;
-  static const List<String> labels = <String>[
+  final bool isLocalWorkspace;
+  static const List<String> _onlineLabels = <String>[
     'Overview',
     'Suppliers',
     'Customers',
     'Shops'
   ];
+  static const List<String> _localLabels = <String>[
+    'Overview',
+    'Suppliers',
+    'Customers',
+  ];
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.md,
-            DesignSpacing.lg, DesignSpacing.sm),
-        // Wrap (not a sideways scroller) so every tab is visible at once, even
-        // on a narrow phone or with large text.
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Wrap(
-            spacing: 6,
-            runSpacing: DesignSpacing.sm,
-            children: List<Widget>.generate(
-              labels.length,
-              (i) => ChoiceChip(
-                label: Text(labels[i]),
-                selected: index == i,
-                showCheckmark: false,
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                labelPadding: const EdgeInsets.symmetric(horizontal: 6),
-                onSelected: (_) => onChanged(i),
-              ),
+  Widget build(BuildContext context) {
+    final labels = isLocalWorkspace ? _localLabels : _onlineLabels;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.md,
+          DesignSpacing.lg, DesignSpacing.sm),
+      // Wrap (not a sideways scroller) so every tab is visible at once, even
+      // on a narrow phone or with large text.
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Wrap(
+          spacing: 6,
+          runSpacing: DesignSpacing.sm,
+          children: List<Widget>.generate(
+            labels.length,
+            (i) => ChoiceChip(
+              label: Text(labels[i]),
+              selected: index == i,
+              showCheckmark: false,
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+              onSelected: (_) => onChanged(i),
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 }
 
 class _OverviewTab extends StatelessWidget {
-  const _OverviewTab({required this.snapshot});
+  const _OverviewTab({required this.snapshot, this.localWorkspace = false});
   final FinanceSnapshot snapshot;
+  final bool localWorkspace;
 
   @override
   Widget build(BuildContext context) {
@@ -1396,28 +1522,29 @@ class _OverviewTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: DesignSpacing.sm),
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Expanded(
-                child: _MetricCard(
-                  label: 'Other shops owe us',
-                  value: snapshot.peerReceivablesOutstanding,
-                  color: DesignColors.brand,
+        if (!localWorkspace)
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Expanded(
+                  child: _MetricCard(
+                    label: 'Other shops owe us',
+                    value: snapshot.peerReceivablesOutstanding,
+                    color: DesignColors.brand,
+                  ),
                 ),
-              ),
-              const SizedBox(width: DesignSpacing.sm),
-              Expanded(
-                child: _MetricCard(
-                  label: 'Total owed to us',
-                  value: net,
-                  color: DesignColors.success,
+                const SizedBox(width: DesignSpacing.sm),
+                Expanded(
+                  child: _MetricCard(
+                    label: 'Total owed to us',
+                    value: net,
+                    color: DesignColors.success,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         const SizedBox(height: DesignSpacing.sm),
         _CountCard(overdue: overdue),
         const SizedBox(height: DesignSpacing.lg),
