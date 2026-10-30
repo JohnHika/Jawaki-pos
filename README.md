@@ -1,119 +1,79 @@
 # Counterbase
 
-Counterbase is a point of sale and shop management system by Arche Axon. It supports multiple branches with seamless online/offline operation.
+Counterbase is Arche Axon’s downloadable point-of-sale and shop-management
+application. The current product is local-first: sales, customers, products,
+stock, and finance records are stored on the device, and checkout continues
+without an internet connection.
 
-## Features
+## Applications
 
-- **Offline-First Design**: Sales continue without internet connectivity
-- **Multi-Branch Support**: Tenant → Branches → Devices → Users hierarchy
-- **Multiple Payment Methods**: M-Pesa (Daraja), PesaPal, TouristTap (NFC)
-- **Smart Product Selection**: Categories, search, favorites, and recent items
-- **Real-time Sync**: Automatic background sync when online
-- **Role-Based Access**: Cashier, Supervisor, Manager, Admin roles
-- **Inventory Management**: Branch-level stock tracking with inter-branch transfers
+- **Mobile:** Flutter app for Android and iOS. Local business data is encrypted
+  with SQLCipher; its database key and owner credentials are held in the
+  platform secure store.
+- **Desktop:** Flutter app for Windows, macOS, and Linux. It uses a local
+  SQLCipher database and the platform credential store.
 
-## Architecture
+Neither app requires the retired Counterbase online POS API or its database.
+Data does not sync automatically between devices. Mobile backups (`.cbmobile`)
+and desktop backups (`.cbportable`) are encrypted and currently work within
+their own app family. Keep separate copies of the backup password and protect
+the backup file like shop data.
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           MOBILE POS APP (Flutter)                       │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐  │
-│  │ Products │ │  Sales   │ │ Payments │ │ Inventory│ │  Sync Engine │  │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └──────┬───────┘  │
-│       │            │            │            │              │           │
-│  ┌────┴────────────┴────────────┴────────────┴──────────────┴───────┐  │
-│  │                    LOCAL SQLite DATABASE                          │  │
-│  │              (Products, Prices, Customers, Receipts)              │  │
-│  └───────────────────────────────┬───────────────────────────────────┘  │
-└──────────────────────────────────┼──────────────────────────────────────┘
-                                   │ Event Queue (Offline Transactions)
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           API GATEWAY (NestJS)                           │
-│         Authentication │ Rate Limiting │ Request Validation             │
-└─────────────────────────────────┬───────────────────────────────────────┘
-                                  │
-        ┌─────────┬───────────────┼───────────────┬─────────────┐
-        ▼         ▼               ▼               ▼             ▼
-┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐
-│   Auth    │ │  Branch   │ │  Catalog  │ │   Sales   │ │ Inventory │
-│  Service  │ │  Service  │ │  Service  │ │  Service  │ │  Service  │
-└─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘
-      │             │             │             │             │
-      └─────────────┴─────────────┴──────┬──────┴─────────────┘
-                                         ▼
-                              ┌─────────────────────┐
-                              │     PostgreSQL      │
-                              │     + Redis Cache   │
-                              └─────────────────────┘
-```
+## What works locally
 
-## Technology Stack
+- Product catalog, customers, checkout, receipts, and stock management
+- Cash and customer-credit sales, local collections, supplier records, and
+  device-based finance reports
+- On-device staff profiles with individual PINs and role permissions
+- Encrypted backup and restore, plus migration from a prepared `.cbarchive`
+- Optional AI chat and image analysis through the Axon AI Gateway only
 
-| Component | Technology |
-|-----------|------------|
-| Mobile App | Flutter (Dart) |
-| Backend | NestJS (TypeScript) |
-| Database | PostgreSQL |
-| Cache & Queue | Redis |
-| Mobile DB | SQLite (Drift) |
-| Auth | JWT + Refresh Tokens |
+Online payment-provider checkout, merchant payouts, cross-device staff
+invitations, shared shop connections, cloud notifications, and automatic
+cross-device synchronization are not part of this standalone edition.
 
-## Project Structure
+## Axon AI Gateway
 
-```
-pos-system/
-├── backend/                 # NestJS Backend API
-│   ├── src/
-│   │   ├── auth/           # Authentication & authorization
-│   │   ├── branches/       # Branch & device management
-│   │   ├── catalog/        # Products & pricing
-│   │   ├── sales/          # Sales & receipts
-│   │   ├── inventory/      # Stock management
-│   │   ├── payments/       # Payment integrations
-│   │   ├── sync/           # Offline sync handling
-│   │   ├── reporting/      # Analytics & reports
-│   │   └── common/         # Shared utilities
-│   └── prisma/             # Database schema
-├── mobile/                  # Flutter Mobile App
-│   ├── lib/
-│   │   ├── core/           # Core utilities
-│   │   ├── data/           # Data layer (SQLite, API)
-│   │   ├── domain/         # Business logic
-│   │   └── presentation/   # UI screens
-│   └── assets/             # Images, fonts
-└── docs/                    # Documentation
-```
+The apps connect only to `https://gateway.archeaxon.com` for the POS chat and
+vision routes. AI is disabled until the owner enters an issued Gateway key in
+the app’s settings. The key is stored in the operating system credential store
+and is not embedded in the application. AI requests that need shop context use
+limited, read-only local summaries; customer personal data and business-write
+actions are not exposed to the assistant.
 
-## Getting Started
+## Run locally
 
-### Backend Setup
+### Mobile
 
-```bash
-cd backend
-npm install
-cp .env.example .env
-# Configure your database and API keys
-npx prisma migrate dev
-npm run start:dev
-```
-
-### Mobile App Setup
-
-```bash
+```powershell
 cd mobile
 flutter pub get
 flutter run
 ```
 
-## Environment Variables
+### Desktop
 
-See `.env.example` files in each project for required configuration.
+```powershell
+cd desktop
+flutter pub get
+flutter run -d windows
+```
 
-## API Documentation
+Desktop CI packages Windows, macOS, and Linux builds. Builds are not published
+as customer releases unless the release workflow is explicitly approved and
+run. Mobile release `1.0.172` remains unchanged while the standalone edition is
+reviewed.
 
-API documentation is available at `/api/docs` when running the backend server.
+## Project layout
 
-## License
+```text
+mobile/       Flutter Android/iOS app
+desktop/      Flutter Windows/macOS/Linux app
+docs/         Product, migration, and release documentation
+scripts/      Local archive preparation and development utilities
+backend/      Retired online POS backend source; not used by standalone apps
+```
 
-MIT License
+See [the downloadable-app roadmap](docs/DOWNLOADABLE_APPS_ROADMAP.md) for
+current limitations and release gates. Historical backend deployment notes
+are not instructions for the standalone product.

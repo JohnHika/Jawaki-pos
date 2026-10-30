@@ -1,5 +1,11 @@
 # Paystack billing setup
 
+> **Retired — historical reference only.** As of 2026-10-28, the Counterbase
+> online POS API, its Neon database, and `api.archeaxon.com` are decommissioned.
+> Do not use these Vercel variables, callbacks, or webhook URLs for the
+> downloadable local-first apps. The standalone edition does not process plan
+> subscriptions or merchant payments through this retired backend.
+
 Counterbase uses Paystack for the one-time KES 35,000 activation checkout and for
 monthly subscription invoices. Checkout links are created by the backend;
 Counterbase verifies the transaction with Paystack before activating a workspace or

@@ -24,6 +24,11 @@ on:
         description: Optional minimum supported Android build number
         required: false
         type: string
+      publish_release:
+        description: Publish a production Android update after release verification
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -116,6 +121,7 @@ jobs:
         env:
           R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
           BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
+          RELEASE_REQUESTED: ${{ inputs.publish_release }}
         run: |
           mkdir -p dist/update-manifest
           min_version_code=2015
@@ -136,7 +142,9 @@ jobs:
           }
 
           publish_release=false
-          if (( BUILD_NUMBER > min_version_code )); then
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" &&
+                "$RELEASE_REQUESTED" == "true" ]] &&
+                (( BUILD_NUMBER > min_version_code )); then
             publish_release=true
           fi
 
@@ -145,14 +153,22 @@ jobs:
           echo "Current published Android build floor: $min_version_code"
           echo "Candidate Android build: $BUILD_NUMBER"
 
-      - name: Skip unchanged Android release
+      - name: Skip Android production release
         if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release != 'true'
         shell: bash
+        env:
+          BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
+          MIN_VERSION_CODE: ${{ steps.release_floor.outputs.min_version_code }}
+          RELEASE_REQUESTED: ${{ inputs.publish_release }}
         run: |
           {
             echo "## Android update not published"
             echo
-            echo "Candidate build \`${{ steps.version.outputs.build_number }}\` is not greater than the currently published build \`${{ steps.release_floor.outputs.min_version_code }}\`."
+            if [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" || "$RELEASE_REQUESTED" != "true" ]]; then
+              echo "A production release requires a manual workflow run with publish_release enabled."
+            elif (( BUILD_NUMBER <= MIN_VERSION_CODE )); then
+              echo "Candidate build $BUILD_NUMBER is not greater than the current build floor $MIN_VERSION_CODE."
+            fi
             echo "No APK, manifest, tag, or GitHub Release was created."
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -247,7 +263,10 @@ jobs:
           # build.gradle.kts alone does not stop Flutter's own engine/AOT
           # binaries from including every arch; --target-platform is the
           # flag that actually restricts what Flutter itself builds.
-          flutter build apk --release --target-platform android-arm64 --dart-define=API_URL=https://api.archeaxon.com/api/v1
+          # Downloadable workspaces keep their data on-device. Leave API_URL
+          # unset so Dart uses the local device endpoint instead of embedding
+          # the retired online POS host in the APK.
+          flutter build apk --release --target-platform android-arm64
 
       - name: Verify Android release lineage
         if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
@@ -292,7 +311,6 @@ jobs:
           RELEASE_NAME: ${{ steps.version.outputs.release_name }}
           BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
           RELEASE_PATH: ${{ steps.version.outputs.release_path }}
-          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GIT_TAG_VERSION: ${{ steps.version.outputs.git_tag_version }}
@@ -396,8 +414,6 @@ jobs:
 
           full_version = os.environ['FULL_VERSION']
           release_path = os.environ['RELEASE_PATH'].strip('/')
-          base_url = os.environ['R2_PUBLIC_BASE_URL'].rstrip('/')
-          r2_apk_url = f'{base_url}/{release_path}/app-release.apk'
           github_apk_url = (
               f"{os.environ['GITHUB_SERVER_URL'].rstrip('/')}/"
               f"{os.environ['GITHUB_REPOSITORY']}/releases/download/"
@@ -441,13 +457,11 @@ jobs:
               'minSupportedVersion': min_supported_version,
               'minSupportedBuildNumber': min_supported_build_number,
               'forceUpdate': force_update,
-              # Older installed clients only read apkUrl. Point them at GitHub
-              # because the R2 hostname failed DNS on some customer networks.
-              # New clients also receive the R2 mirror as an explicit fallback.
+              # Keep metadata and the install file on GitHub. The public R2
+              # hostname has failed DNS on customer devices.
               'apkUrl': github_apk_url,
               'updateSources': [
                   {'name': 'GitHub Releases', 'url': github_apk_url, 'priority': 'primary'},
-                  {'name': 'Cloudflare R2', 'url': r2_apk_url, 'priority': 'secondary'},
               ],
               'releaseNotes': release_notes,
               'publishedAt': datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z'),
@@ -569,15 +583,12 @@ jobs:
 
             **Release:** ${{ steps.version.outputs.release_name }}
             **Internal build:** ${{ steps.version.outputs.build_number }}
-            **Source:** GitHub Releases with Cloudflare R2 mirror
+            **Source:** GitHub Releases
 
             ### Download
-            - [Cloudflare R2](${{ env.R2_PUBLIC_BASE_URL }}/${{ steps.version.outputs.release_path }}/app-release.apk)
             - [GitHub Release](${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.git_tag_version }})
 
-            ### Update Sources
-            1. **GitHub Releases**: Direct APK URL used by legacy app updaters
-            2. **Cloudflare R2**: Manifest and APK mirror used by current clients
+            In-app update checks and downloads both use this GitHub release.
 
             ${{ steps.manifest.outputs.release_notes || 'Automated Android build from GitHub Actions.' }}
           files: |
@@ -622,8 +633,6 @@ jobs:
         if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
         shell: bash
         env:
-          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
-          RELEASE_PATH: ${{ steps.version.outputs.release_path }}
           FULL_VERSION: ${{ steps.version.outputs.full_version }}
           SEMANTIC_VERSION: ${{ steps.version.outputs.semantic_version }}
           RELEASE_NAME: ${{ steps.version.outputs.release_name }}
@@ -631,15 +640,10 @@ jobs:
           GIT_TAG_VERSION: ${{ steps.version.outputs.git_tag_version }}
         run: |
           {
-            echo "## Android update published (Dual Source)"
+            echo "## Android update published"
             echo
             echo "- Release: \`$RELEASE_NAME\`"
             echo "- Internal build: \`$BUILD_NUMBER\`"
-            echo "- APK: $R2_PUBLIC_BASE_URL/$RELEASE_PATH/app-release.apk"
-            echo "- Manifest: $R2_PUBLIC_BASE_URL/android/latest.json"
+            echo "- APK and manifest: ${{ github.server_url }}/${{ github.repository }}/releases/latest"
             echo "- GitHub Release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v$GIT_TAG_VERSION"
-            echo
-            echo "### Update Sources"
-            echo "1. **GitHub Releases** - direct APK URL for legacy app updaters"
-            echo "2. **Cloudflare R2** - manifest and APK mirror for current clients"
           } >> "$GITHUB_STEP_SUMMARY"
