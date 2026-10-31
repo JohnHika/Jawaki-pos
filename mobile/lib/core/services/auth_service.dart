@@ -91,6 +91,14 @@ class AuthService implements LifecycleLockAuth {
   Map<String, dynamic>? get currentUser => _currentUser;
   String? get accessToken => _accessToken;
 
+  /// Test seam: install an in-memory session without going through the
+  /// network login path. Mirrors what _initializeAuth restores from storage.
+  void setSessionForTesting(Map<String, dynamic> user, String? token) {
+    _currentUser = user;
+    _accessToken = token;
+    _updateStatus(AuthStatus.authenticated);
+  }
+
   /// Returns the in-memory access token if available, otherwise attempts to
   /// reload it from secure storage. This is the safe getter for the auth
   /// interceptor to use — it handles the edge case where the token was
@@ -158,7 +166,14 @@ class AuthService implements LifecycleLockAuth {
   }
 
   bool get requiresLocalWorkspaceAdoption =>
-      !isLocalWorkspace && !isUsingConfiguredLocalServer;
+      // A saved device workspace always wins: it can be reopened with its
+      // PIN, so a stale cloud session (e.g. restored from a release that
+      // still talked to the retired hosted POS) must never trap the user in
+      // the migration screen. Treat that combination as "sign in locally",
+      // not "adopt again".
+      !isLocalWorkspace &&
+      !isUsingConfiguredLocalServer &&
+      !hasLocalWorkspace;
 
   String? get userId => _currentUser?['id'];
   String? get branchId => _storage.getBranchId();
@@ -823,8 +838,26 @@ class AuthService implements LifecycleLockAuth {
     if (!isAuthenticated || _currentUser == null || isLocalWorkspace) {
       throw StateError('Sign in to the workspace before continuing.');
     }
-    if (_storage.hasLocalWorkspace()) {
-      throw StateError('A local workspace already exists on this device.');
+    // A previous adoption attempt can fail after the session was cleared but
+    // before the workspace profile was written. That state must not strand
+    // the migration: when the saved workspace belongs to the same shop as
+    // the current session, continue on top of it instead of rejecting.
+    final existingWorkspace = _storage.hasLocalWorkspace()
+        ? _storage.getLocalWorkspace()
+        : null;
+    if (existingWorkspace != null) {
+      final workspaceTenantId =
+          existingWorkspace['tenant']?['id']?.toString().trim() ?? '';
+      final sessionTenant = _currentUser!['tenant'];
+      final sessionTenantId = (sessionTenant is Map
+                  ? sessionTenant['id']
+                  : _currentUser!['tenantId'])
+              ?.toString()
+              .trim() ??
+          '';
+      if (workspaceTenantId != sessionTenantId || sessionTenantId.isEmpty) {
+        throw StateError('A local workspace already exists on this device.');
+      }
     }
     if (!RegExp(r'^\d{6}$').hasMatch(ownerPin)) {
       throw ArgumentError.value(ownerPin, 'ownerPin', 'Use a six-digit PIN.');
@@ -849,19 +882,28 @@ class AuthService implements LifecycleLockAuth {
     final tenant = rawTenant is Map
         ? Map<String, dynamic>.from(rawTenant)
         : <String, dynamic>{};
-    final tenantId =
-        (tenant['id'] ?? sourceUser['tenantId'] ?? _storage.getTenantId())
-            ?.toString()
-            .trim();
-    final tenantName = (tenant['name'] ??
-            sourceUser['tenantName'] ??
-            sourceUser['companyName'])
-        ?.toString()
-        .trim();
-    if (tenantId == null ||
-        tenantId.isEmpty ||
-        tenantName == null ||
-        tenantName.isEmpty) {
+    // A session restored from an older release can be missing pieces of the
+    // business identity (the cached user JSON predates fields the newer
+    // releases rely on). Recover what is saved on the device before failing,
+    // so the one-time migration cannot dead-end on data the app already has.
+    final tenantId = ((tenant['id'] ?? sourceUser['tenantId'])?.toString()
+                .trim()
+                .isNotEmpty ==
+            true)
+        ? (tenant['id'] ?? sourceUser['tenantId']).toString().trim()
+        : (_storage.getTenantId()?.trim() ?? '');
+    final tenantName = ((tenant['name'] ?? sourceUser['tenantName'] ??
+                    sourceUser['companyName'])
+                ?.toString()
+                .trim()
+                .isNotEmpty ==
+            true)
+        ? (tenant['name'] ?? sourceUser['tenantName'] ?? sourceUser['companyName'])
+            .toString()
+            .trim()
+        : (_storage.getLocalWorkspace()?['tenant']?['name']?.toString().trim() ??
+            '');
+    if (tenantId.isEmpty || tenantName.isEmpty) {
       throw StateError(
         'This workspace is missing its saved business identity. Export its data before setting up a new local workspace.',
       );
@@ -888,9 +930,11 @@ class AuthService implements LifecycleLockAuth {
       );
     }
     final branchId = savedBranchId?.isNotEmpty == true
-        ? savedBranchId
-        : branch?['id']?.toString().trim();
-    if (branchId == null || branchId.isEmpty) {
+        ? savedBranchId!
+        : branch?['id']?.toString().trim() ??
+            _storage.getLocalWorkspace()?['branch']?['id']?.toString().trim() ??
+            '';
+    if (branchId.isEmpty) {
       throw StateError(
         'This workspace has no active branch saved on the device. Reopen it while connected and try again.',
       );
@@ -1961,17 +2005,22 @@ class AuthService implements LifecycleLockAuth {
         _accessToken = await _storage.getAccessToken();
         _currentUser = _storage.getUser();
         var restoredLocalWorkspaceProfile = false;
-        final hasRestorableSession = _currentUser != null &&
-            (_currentUser!['authMode'] == 'local' ||
-                _accessToken?.isNotEmpty == true);
+        final sessionIsLocal = _currentUser?['authMode'] == 'local';
 
         // A full local-workspace logout clears the cached session user but
         // intentionally keeps the device-owned workspace profile and PIN.
         // Restore that profile after successful device biometric proof, just
         // as loginWithPin does, instead of showing a biometric button that
-        // can never complete sign-in. A stale cloud user with an empty token
-        // must not prevent recovery of the saved local workspace either.
-        if (!hasRestorableSession && _storage.hasLocalWorkspace()) {
+        // can never complete sign-in.
+        //
+        // A saved device workspace also beats a stale non-local session: an
+        // upgrade from a hosted-POS release can leave both on the device, and
+        // the router bounces any unlocked stale session back to the PIN
+        // screen anyway. Restoring the local profile lets biometric unlock go
+        // straight into the workspace.
+        final shouldRestoreLocalProfile =
+            _storage.hasLocalWorkspace() && !sessionIsLocal;
+        if (shouldRestoreLocalProfile) {
           _currentUser = null;
           _accessToken = null;
           final rawUser = _storage.getLocalWorkspace()?['user'];

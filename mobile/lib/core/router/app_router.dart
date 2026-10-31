@@ -95,7 +95,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   // Provider is first evaluated.
   final String initialLocation;
   if (authService.isAuthenticated) {
-    if (authService.requiresLocalWorkspaceAdoption) {
+    if (storageService.hasLocalWorkspace()) {
+      // A saved device workspace beats any stale cloud session: reopening it
+      // with its PIN replaces the session with the local profile. This is
+      // what a device upgraded from a hosted-POS release lands on instead of
+      // an impossible "adopt again" screen.
+      initialLocation = '/pin-login';
+    } else if (authService.requiresLocalWorkspaceAdoption) {
       // A saved cloud session must be adopted locally before entering screens
       // that used to depend on the now-retired POS API.
       initialLocation = '/workspace/localize';
@@ -186,6 +192,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         }
         // Redirect all others to company-choice
         return '/company-choice';
+      }
+
+      // A legacy cloud session alongside a saved device workspace means the
+      // workspace can simply be reopened with its PIN — adopting again is
+      // impossible and pointless. Park the stale session on the local
+      // sign-in screen; a successful owner-PIN sign-in replaces the session
+      // with the local profile.
+      final pendingLocalSignIn =
+          authService.isAuthenticated &&
+              !authService.isLocalWorkspace &&
+              storageService.hasLocalWorkspace();
+      if (pendingLocalSignIn && path != '/pin-login' && !isLegalRoute) {
+        return '/pin-login';
       }
 
       // The cloud POS is retired. Keep an unlocked legacy session on the

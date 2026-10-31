@@ -40,7 +40,7 @@ class _LocalWorkspaceTransitionScreenState
   Future<void> _continueLocally() async {
     if (_busy) return;
     if (_pinController.text.length != 6) {
-      setState(() => _error = 'Create a six-digit local PIN.');
+      setState(() => _error = 'Choose a six-digit PIN.');
       return;
     }
     if (_pinController.text != _confirmPinController.text) {
@@ -48,7 +48,8 @@ class _LocalWorkspaceTransitionScreenState
       return;
     }
     if (!_acceptedLocalDataNotice) {
-      setState(() => _error = 'Review and accept the local data notice.');
+      setState(
+          () => _error = 'Tick the box to confirm you have read the note.');
       return;
     }
 
@@ -77,7 +78,7 @@ class _LocalWorkspaceTransitionScreenState
           StateError value => value.message.toString(),
           ArgumentError value => value.message.toString(),
           _ =>
-            'Could not move this workspace to local mode. Your saved records were not changed. Try again.',
+            'Something went wrong. Nothing was changed — please try again.',
         };
       });
     } finally {
@@ -100,7 +101,7 @@ class _LocalWorkspaceTransitionScreenState
         user['role']?.toString().toLowerCase() == 'admin';
 
     return Scaffold(
-      appBar: const BrandedAppBar(title: 'Keep working offline'),
+      appBar: const BrandedAppBar(title: 'One last step'),
       body: SafeArea(
         top: false,
         child: Center(
@@ -140,14 +141,14 @@ class _LocalWorkspaceTransitionScreenState
                               BorderRadius.circular(DesignSpacing.radiusLg),
                         ),
                         child: const Icon(
-                          Icons.offline_bolt_rounded,
+                          Icons.storefront_rounded,
                           color: DesignColors.accent,
                           size: 28,
                         ),
                       ),
                       const SizedBox(height: DesignSpacing.lg),
                       Text(
-                        'The online POS has closed',
+                        'Counterbase now runs right here on your phone',
                         style: Theme.of(context)
                             .textTheme
                             .headlineSmall
@@ -155,7 +156,7 @@ class _LocalWorkspaceTransitionScreenState
                       ),
                       const SizedBox(height: DesignSpacing.sm),
                       Text(
-                        'Move this installation to a local workspace to keep using Counterbase. Your device data stays here, and the app will stop using the online POS service.',
+                        'Choose a PIN for $businessName. From now on this phone opens your shop on its own — everything stays on this device and no account sign-in is needed.',
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                               color: DesignColors.textSecondary,
                               height: 1.45,
@@ -171,51 +172,54 @@ class _LocalWorkspaceTransitionScreenState
                 ),
                 const SizedBox(height: DesignSpacing.lg),
                 const _TransitionFact(
-                  icon: Icons.storage_rounded,
-                  title: 'Keep the data already on this device',
+                  icon: Icons.inventory_2_rounded,
+                  title: 'Everything you have is still here',
                   detail:
-                      'Cached products, customers, and device-recorded sales keep their current shop and branch IDs.',
+                      'Your products, customers, and the sales recorded on this device are untouched and stay exactly where they are.',
                 ),
                 const SizedBox(height: DesignSpacing.sm),
                 const _TransitionFact(
-                  icon: Icons.devices_other_rounded,
-                  title: 'This device works independently',
+                  icon: Icons.wifi_off_rounded,
+                  title: 'Works fully offline',
                   detail:
-                      'New records will not sync to other devices. Data that never reached this device must be restored from your local archive.',
+                      'Sales, stock, and records keep working with no internet. This device keeps its own records and no longer shares them with other devices.',
                 ),
                 if (canAdopt) ...[
                   const SizedBox(height: DesignSpacing.xl),
                   _PinField(
                     controller: _pinController,
-                    label: 'New six-digit local PIN',
+                    label: 'New six-digit PIN',
                   ),
                   const SizedBox(height: DesignSpacing.md),
                   _PinField(
                     controller: _confirmPinController,
-                    label: 'Confirm local PIN',
+                    label: 'Confirm your PIN',
                   ),
                   const SizedBox(height: DesignSpacing.md),
                   Container(
                     decoration: BoxDecoration(
-                      color: DesignColors.warning.withValues(alpha: 0.09),
+                      color: context.themed(DesignColors.surface),
                       borderRadius:
                           BorderRadius.circular(DesignSpacing.radiusLg),
                       border: Border.all(
-                        color: DesignColors.warning.withValues(alpha: 0.22),
+                        color: context.themed(DesignColors.surfaceBorder),
                       ),
                     ),
-                    child: CheckboxListTile(
-                      value: _acceptedLocalDataNotice,
-                      onChanged: _busy
-                          ? null
-                          : (value) => setState(() {
-                                _acceptedLocalDataNotice = value ?? false;
-                                _error = null;
-                              }),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      title: const Text(
-                        'I understand this device will keep the only working local copy. It will not sync, and online-only records need the archived data to restore.',
-                        style: TextStyle(fontSize: 13, height: 1.35),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: CheckboxListTile(
+                        value: _acceptedLocalDataNotice,
+                        onChanged: _busy
+                            ? null
+                            : (value) => setState(() {
+                                  _acceptedLocalDataNotice = value ?? false;
+                                  _error = null;
+                                }),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        title: const Text(
+                          'I understand my records now live on this phone. They stay safe here, and I can back them up anytime from Settings → Backup.',
+                          style: TextStyle(fontSize: 13, height: 1.35),
+                        ),
                       ),
                     ),
                   ),
@@ -240,7 +244,7 @@ class _LocalWorkspaceTransitionScreenState
                           )
                         : const Icon(Icons.lock_open_rounded),
                     label: Text(
-                      _busy ? 'Preparing this device…' : 'Continue offline',
+                      _busy ? 'Setting up your shop…' : 'Start using my shop',
                     ),
                     style: FilledButton.styleFrom(
                       minimumSize: const Size.fromHeight(54),
@@ -250,9 +254,9 @@ class _LocalWorkspaceTransitionScreenState
                   const SizedBox(height: DesignSpacing.xl),
                   const _TransitionFact(
                     icon: Icons.admin_panel_settings_outlined,
-                    title: 'A workspace administrator must do this step',
+                    title: 'The shop owner does this step',
                     detail:
-                        'This account does not have administrator access. Ask the shop administrator to open this installation and create the local PIN.',
+                        'This device needs the shop owner to choose the opening PIN. Please ask them to open Counterbase here once and set it.',
                   ),
                 ],
               ],
