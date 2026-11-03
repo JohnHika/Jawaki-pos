@@ -556,7 +556,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       itemKey: 'login-title',
                       index: 1,
                       child: Text(
-                        _companyName ?? 'Arxon Axon',
+                        _companyName ?? 'Counterbase',
                         style: theme.textTheme.headlineLarge?.copyWith(
                           color: isDark
                               ? Colors.white
