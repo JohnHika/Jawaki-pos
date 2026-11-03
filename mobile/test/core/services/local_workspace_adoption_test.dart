@@ -178,10 +178,14 @@ void main() {
 
   group('stale cloud session + no saved workspace (fresh 1.0.173 upgrade)',
       () {
-    test('requires adoption', () async {
+    test('signs in without forcing adoption', () async {
       await seedCloudSession();
       expect(auth.isLocalWorkspace, isFalse);
-      expect(auth.requiresLocalWorkspaceAdoption, isTrue);
+      // The cloud edition is live again: a stale cloud session from a
+      // 1.0.173 install signs in through /login as usual instead of being
+      // herded into the local-only adoption flow. Adopting locally stays
+      // available below as an explicit fallback, never a requirement.
+      expect(auth.requiresLocalWorkspaceAdoption, isFalse);
     });
 
     test('adopt writes a local workspace and keeps the shop identity',

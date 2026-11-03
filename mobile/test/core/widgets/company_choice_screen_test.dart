@@ -5,9 +5,9 @@ import 'package:go_router/go_router.dart';
 import 'package:axon_pos/features/auth/presentation/screens/company_choice_screen.dart';
 
 void main() {
-  // a8bef26 made the first-launch screen local-first: it offers workspace
-  // creation only, with no cloud "Join an existing business" route.
-  testWidgets('entry screen presents a motion launchpad and clear next steps',
+  // The first-launch screen offers cloud sign-in first and device-only
+  // setup second, plus a highlighted terms link.
+  testWidgets('entry screen presents sign-in and device-only setup',
       (tester) async {
     final router = GoRouter(
       initialLocation: '/',
@@ -32,21 +32,19 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.pump(const Duration(milliseconds: 450));
+    await tester.pump();
 
-    expect(find.textContaining('Your business,'), findsOneWidget);
-    expect(find.text('Create your workspace'), findsOneWidget);
-    expect(find.byKey(const ValueKey('entry-motion-field')), findsOneWidget);
-    // The local-first edition has no second (join) card.
-    expect(find.text('Join an existing business'), findsNothing);
+    expect(find.text('Welcome to Counterbase'), findsOneWidget);
+    expect(find.text('Sign in'), findsOneWidget);
+    expect(find.text('Set up on this device only'), findsOneWidget);
 
-    await tester.tap(find.text('Create your workspace'));
+    await tester.tap(find.text('Sign in'));
     await tester.pumpAndSettle();
 
-    expect(find.text('company setup destination'), findsOneWidget);
+    expect(find.text('login destination'), findsOneWidget);
   });
 
-  testWidgets('local-only note explains records stay on the device',
+  testWidgets('device-only setup opens the workspace setup flow',
       (tester) async {
     final router = GoRouter(
       initialLocation: '/',
@@ -65,11 +63,39 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.pump(const Duration(milliseconds: 450));
+    await tester.pump();
 
-    expect(
-      find.textContaining('stored locally on this device'),
-      findsOneWidget,
+    await tester.tap(find.text('Set up on this device only'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('company setup destination'), findsOneWidget);
+  });
+
+  testWidgets('terms and conditions link is present and highlighted',
+      (tester) async {
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) => const CompanyChoiceScreen(),
+        ),
+        GoRoute(
+          path: '/legal/terms',
+          builder: (context, state) => const Scaffold(
+            body: Text('legal destination'),
+          ),
+        ),
+      ],
     );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pump();
+
+    final link = tester.widget<Text>(
+      find.text('Terms & conditions'),
+    );
+    expect(link.style?.color, isNotNull);
+    expect(link.style?.decoration, TextDecoration.underline);
   });
 }

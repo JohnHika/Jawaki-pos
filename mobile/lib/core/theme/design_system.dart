@@ -306,18 +306,11 @@ class _ShimmerWidgetState extends State<ShimmerWidget>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Reduced-motion gate: the shimmer is an infinite loop, so it must
-    // STOP entirely when the OS "remove animations" setting is on — the
-    // placeholder remains as a static highlight (opacity-level motion
-    // only, no sweeping gradient). didChangeDependencies re-evaluates
-    // when MediaQuery changes, so toggling the setting live also works.
-    if (reducedMotion(context)) {
-      if (_controller.isAnimating) {
-        _controller.stop();
-        _controller.reset();
-      }
-    } else if (!_controller.isAnimating) {
-      _controller.repeat();
+    // Flat placeholder: the shimmer loop is decorative and was removed.
+    // The controller is never started; the widget renders a static color.
+    if (_controller.isAnimating) {
+      _controller.stop();
+      _controller.reset();
     }
   }
 
@@ -337,25 +330,17 @@ class _ShimmerWidgetState extends State<ShimmerWidget>
         (isDark
             ? DesignColors.darkSurfaceElevated
             : DesignColors.surfaceSubtle);
-    final highlight = widget.highlightColor ??
-        (isDark
-            ? DesignColors.darkBorder
-            : const Color(0xFFFFFBF5));
-
     return AnimatedBuilder(
       animation: _animation,
       builder: (context, child) {
+        // Flat placeholder: the animated shimmer sweep gradient was removed
+        // as decorative noise. The container holds the base color only.
         return Container(
           width: widget.width,
           height: widget.height,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(widget.borderRadius),
-            gradient: LinearGradient(
-              colors: [base, highlight, base],
-              stops: const [0.0, 0.5, 1.0],
-              begin: Alignment(-1.0 + _animation.value, 0.0),
-              end: Alignment(1.0 + _animation.value, 0.0),
-            ),
+            color: base,
           ),
         );
       },
@@ -2415,27 +2400,10 @@ class GlassBottomSheet {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  GRADIENT DEFINITIONS
+//  GRADIENT DEFINITIONS (removed)
+//  Flat, solid backgrounds only: the decorative brand/surface
+//  gradients were removed from the design system.
 // ═══════════════════════════════════════════════════════════════
-class DesignGradients {
-  static const LinearGradient brand = LinearGradient(
-    colors: [DesignColors.brandDark, DesignColors.brand, DesignColors.accent],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-
-  static const LinearGradient surface = LinearGradient(
-    colors: [Color(0xFFFAF9F4), Color(0xFFEAF6EF)],
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-  );
-
-  static const LinearGradient darkSurface = LinearGradient(
-    colors: [DesignColors.darkBg, DesignColors.darkSurface],
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-  );
-}
 
 // ═══════════════════════════════════════════════════════════════
 //  AXON LOGO MARK

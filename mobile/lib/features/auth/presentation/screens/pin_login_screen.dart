@@ -769,18 +769,10 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                         width: slotWidth,
                         height: isSmallScreen ? 46 : 52,
                         decoration: BoxDecoration(
-                          gradient: isFilled
-                              ? const LinearGradient(
-                                  colors: [
-                                    DesignColors.brand,
-                                    DesignColors.accent,
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                )
-                              : null,
+                          // Filled-slot brand→accent gradient removed: flat
+                          // accent fill reads cleaner against the PIN pad.
                           color: isFilled
-                              ? null
+                              ? DesignColors.accent
                               : isActive
                                   ? _fg.withValues(alpha: 0.12)
                                   : _fg.withValues(alpha: 0.045),
@@ -941,14 +933,11 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
             width: (keyWidth * 3) + (DesignSpacing.sm * 2),
             height: 52,
             decoration: BoxDecoration(
-              gradient: isReady
-                  ? const LinearGradient(
-                      colors: [DesignColors.brand, DesignColors.accent],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    )
-                  : null,
-              color: isReady ? null : _fg.withValues(alpha: 0.08),
+              // Confirm-button brand→accent gradient removed: flat accent
+              // fill matches the rest of the flat, solid design system.
+              color: isReady
+                  ? DesignColors.accent
+                  : _fg.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: isReady

@@ -1,253 +1,34 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
-import 'package:axon_pos/core/widgets/motion.dart';
 
-/// First-launch screen for the local-first downloadable edition.
-class CompanyChoiceScreen extends StatefulWidget {
+/// First-launch screen: sign in to the business account, or create a
+/// device-local workspace. Kept deliberately plain — a standard mobile
+/// onboarding with one primary action and one secondary.
+class CompanyChoiceScreen extends StatelessWidget {
   const CompanyChoiceScreen({super.key});
 
   @override
-  State<CompanyChoiceScreen> createState() => _CompanyChoiceScreenState();
-}
-
-class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
-    with TickerProviderStateMixin {
-  late final AnimationController _entryController;
-  late final AnimationController _orbitController;
-  late final Animation<double> _entryAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _entryController = AnimationController(
-      duration: DesignAnimation.slow,
-      vsync: this,
-    );
-    _entryAnimation = CurvedAnimation(
-      parent: _entryController,
-      curve: DesignAnimation.smooth,
-    );
-    // The orbit field is a decorative infinite loop — it must stop when
-    // the OS "remove animations" setting is on (reducedMotion gate below).
-    _orbitController = AnimationController(
-      duration: DesignAnimation.slowest * 14,
-      vsync: this,
-    );
-    _entryController.forward();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (reducedMotion(context)) {
-      if (_orbitController.isAnimating) {
-        _orbitController.stop();
-        _orbitController.reset();
-      }
-    } else if (!_orbitController.isAnimating) {
-      _orbitController.repeat();
-    }
-  }
-
-  @override
-  void dispose() {
-    _entryController.dispose();
-    _orbitController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final isCompact = size.height < 760;
-
-    return Theme(
-      data: Theme.of(context).copyWith(
-        splashFactory: InkRipple.splashFactory,
-      ),
-      child: Scaffold(
-        backgroundColor: context.themed(DesignColors.darkBg),
-        body: SafeArea(
-          child: Stack(
+    return Scaffold(
+      backgroundColor: context.themed(DesignColors.darkBg),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: AnimatedBuilder(
-                    animation: _orbitController,
-                    builder: (context, child) => CustomPaint(
-                      key: const ValueKey('entry-motion-field'),
-                      painter: _MotionFieldPainter(
-                        progress: _orbitController.value,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  24,
-                  isCompact ? 18 : 28,
-                  24,
-                  isCompact ? 24 : 34,
-                ),
-                child: FadeTransition(
-                  opacity: _entryAnimation,
-                  child: SlideTransition(
-                    position: Tween<Offset>(
-                      begin: const Offset(0, 0.035),
-                      end: Offset.zero,
-                    ).animate(_entryAnimation),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildTopBar(),
-                        SizedBox(height: isCompact ? 26 : 38),
-                        _buildHero(isCompact),
-                        SizedBox(height: isCompact ? 24 : 32),
-                        _buildActionCard(
-                          index: '01',
-                          icon: Icons.add_business_rounded,
-                          title: 'Create your workspace',
-                          subtitle:
-                              'Set up your business and make your first sale.',
-                          detail: 'Owner setup · about 2 minutes',
-                          isPrimary: true,
-                          onTap: () => context.go('/company-setup'),
-                        ),
-                        const SizedBox(height: 24),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: context
-                                .themed(DesignColors.darkSurface)
-                                .withValues(alpha: 0.88),
-                            borderRadius:
-                                BorderRadius.circular(DesignSpacing.radiusXl),
-                            border: Border.all(
-                              color: context.themed(DesignColors.darkBorder),
-                            ),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.offline_bolt_rounded,
-                                  color: DesignColors.accent),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  'Your shop records are stored locally on this device. Internet access is not needed for day-to-day work.',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(
-                                        color: context.themed(
-                                            DesignColors.darkTextSecondary),
-                                        height: 1.45,
-                                      ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: DesignSpacing.sm),
-                        Center(
-                          child: Text(
-                            'A calm start for busy counters.',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelMedium
-                                ?.copyWith(
-                                  color: context
-                                      .themed(DesignColors.darkTextTertiary),
-                                  letterSpacing: 0.2,
-                                ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTopBar() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(
-                color: DesignColors.accent,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 9),
-            Text(
-              'COUNTERBASE / START',
-              style: DesignType.numeric(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: context.themed(DesignColors.darkTextSecondary),
-                letterSpacing: 1.2,
-              ),
-            ),
-          ],
-        ),
-        Text(
-          'LOCAL OWNER SETUP',
-          style: DesignType.numeric(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            color: context.themed(DesignColors.darkTextTertiary),
-            letterSpacing: 1,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildHero(bool isCompact) {
-    return Center(
-      child: Column(
-        children: [
-          Semantics(
-            child: GestureDetector(
-              child: AnimatedBuilder(
-                animation: _orbitController,
-                builder: (context, child) {
-                  final angle =
-                      math.sin(_orbitController.value * math.pi * 2) * 0.025;
-                  return Transform.rotate(angle: angle, child: child);
-                },
-                // The same orange icon as the launcher, so the first screen
-                // matches the app a person just tapped.
+              const SizedBox(height: 24),
+              Center(
                 child: Container(
-                  width: isCompact ? 104 : 124,
-                  height: isCompact ? 104 : 124,
+                  width: 96,
+                  height: 96,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(isCompact ? 28 : 33),
-                    boxShadow: [
-                      BoxShadow(
-                        color: DesignColors.brand.withValues(alpha: 0.30),
-                        blurRadius: 34,
-                        spreadRadius: 2,
-                      ),
-                    ],
+                    borderRadius: BorderRadius.circular(24),
+                    color: DesignColors.accent,
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(isCompact ? 28 : 33),
+                    borderRadius: BorderRadius.circular(24),
                     child: Image.asset(
                       'assets/images/axon_app_icon_512.png',
                       fit: BoxFit.cover,
@@ -256,143 +37,84 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                   ),
                 ),
               ),
-            ),
-          ),
-          SizedBox(
-              height: isCompact ? DesignSpacing.xl : DesignSpacing.xxl + 6),
-          Text(
-            'Your business,\nin motion.',
-            textAlign: TextAlign.center,
-            style: (isCompact
-                    ? Theme.of(context).textTheme.headlineMedium
-                    : Theme.of(context).textTheme.headlineLarge)
-                ?.copyWith(
-              color: context.themed(DesignColors.darkTextPrimary),
-              height: 1.04,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -1.5,
-            ),
-          ),
-          const SizedBox(height: DesignSpacing.lg - 1),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 320),
-            child: Text(
-              'Set up your counter, products and daily sales in one simple workspace.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: context.themed(DesignColors.darkTextSecondary),
-                    height: 1.5,
+              const SizedBox(height: 28),
+              Text(
+                'Welcome to Counterbase',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: context.themed(DesignColors.darkTextPrimary),
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
+                    ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Run your counter, stock and daily sales.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: context.themed(DesignColors.darkTextSecondary),
+                      height: 1.45,
+                    ),
+              ),
+              const SizedBox(height: 40),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: DesignColors.accent,
+                  foregroundColor: DesignColors.textInverse,
+                  minimumSize: const Size.fromHeight(54),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
                   ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionCard({
-    required String index,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required String detail,
-    required bool isPrimary,
-    required VoidCallback onTap,
-  }) {
-    final borderColor = isPrimary
-        ? DesignColors.accent.withValues(alpha: 0.72)
-        : context.themed(DesignColors.darkBorder);
-    final surfaceColor = isPrimary
-        ? context.themed(DesignColors.accentSubtle).withValues(alpha: 0.86)
-        : context.themed(DesignColors.darkSurface).withValues(alpha: 0.94);
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(18, 18, 16, 18),
-          decoration: BoxDecoration(
-            color: surfaceColor,
-            borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
-            border: Border.all(color: borderColor, width: isPrimary ? 1.4 : 1),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  color: isPrimary
-                      ? DesignColors.accent
-                      : context.themed(DesignColors.darkSurfaceElevated),
-                  borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
                 ),
-                child: Icon(
-                  icon,
-                  size: 25,
-                  color: isPrimary
-                      ? DesignColors.textInverse
-                      : context.themed(DesignColors.darkTextPrimary),
+                icon: const Icon(Icons.login_rounded),
+                label: const Text(
+                  'Sign in',
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
+                onPressed: () => context.go('/login'),
               ),
-              const SizedBox(width: 15),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      index,
-                      style: DesignType.numeric(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: isPrimary
-                            ? context.readable(DesignColors.accentLight)
-                            : context.themed(DesignColors.darkTextTertiary),
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: context.themed(DesignColors.darkTextPrimary),
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.2,
-                          ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      subtitle,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                context.themed(DesignColors.darkTextSecondary),
-                            height: 1.35,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      detail,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: isPrimary
-                                ? context.readable(DesignColors.accentLight)
-                                : context.themed(DesignColors.darkTextTertiary),
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.2,
-                          ),
-                    ),
-                  ],
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: context.themed(DesignColors.darkTextPrimary),
+                  minimumSize: const Size.fromHeight(54),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  side: BorderSide(
+                    color: context.themed(DesignColors.darkBorder),
+                  ),
                 ),
+                icon: const Icon(Icons.storefront_rounded),
+                label: const Text(
+                  'Set up on this device only',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                onPressed: () => context.go('/company-setup'),
               ),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.arrow_outward_rounded,
-                size: 21,
-                color: isPrimary
-                    ? context.readable(DesignColors.accentLight)
-                    : context.themed(DesignColors.darkTextTertiary),
+              const SizedBox(height: 16),
+              Text(
+                'Device-only setup keeps records on this phone. '
+                'Sign in to reach your business across devices.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: context.themed(DesignColors.darkTextTertiary),
+                      height: 1.45,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              Center(
+                child: TextButton(
+                  onPressed: () => context.go('/legal/terms'),
+                  child: const Text(
+                    'Terms & conditions',
+                    style: TextStyle(
+                      color: DesignColors.info,
+                      decoration: TextDecoration.underline,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -400,55 +122,4 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
       ),
     );
   }
-}
-
-class _MotionFieldPainter extends CustomPainter {
-  const _MotionFieldPainter({required this.progress});
-
-  final double progress;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width * 0.5, size.height * 0.245);
-    final pulse = 1 + math.sin(progress * math.pi * 2) * 0.06;
-
-    final orbitPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = DesignColors.brand.withValues(alpha: 0.12);
-    for (var i = 0; i < 4; i++) {
-      canvas.drawCircle(center, (86 + (i * 36)) * pulse, orbitPaint);
-    }
-
-    final nodes = <Offset>[];
-    for (var i = 0; i < 7; i++) {
-      final angle = (math.pi * 2 * i / 7) + progress * math.pi * 2;
-      final radius = 116 + (i.isEven ? 18 : -8);
-      nodes.add(
-          center + Offset(math.cos(angle) * radius, math.sin(angle) * radius));
-    }
-
-    final linkPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
-      ..color = DesignColors.brand.withValues(alpha: 0.22);
-    for (final node in nodes) {
-      canvas.drawLine(center, node, linkPaint);
-    }
-
-    final nodePaint = Paint()
-      ..color = DesignColors.accent.withValues(alpha: 0.66);
-    for (var i = 0; i < nodes.length; i++) {
-      canvas.drawCircle(nodes[i], i.isEven ? 3.5 : 2.5, nodePaint);
-    }
-    canvas.drawCircle(
-      center,
-      4.5 + math.sin(progress * math.pi * 2) * 1.5,
-      Paint()..color = DesignColors.accent,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _MotionFieldPainter oldDelegate) =>
-      oldDelegate.progress != progress;
 }

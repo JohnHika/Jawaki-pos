@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/legal/policy_catalog.dart';
+import '../../../../core/widgets/legal_link.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 
@@ -606,21 +607,20 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                                         _acceptedPaymentTerms =
                                                             value ?? false,
                                                   ),
-                                          title: const Text(
-                                            'I agree to the merchant payment and settlement terms.',
+                                          title: const TermsConsentText(
+                                            before: 'I agree to the merchant payment and settlement ',
+                                            linkText: 'terms',
+                                            after: '.',
+                                            route: '/legal/merchant-payments',
                                           ),
                                           controlAffinity:
                                               ListTileControlAffinity.leading,
                                         ),
-                                        Align(
+                                        const Align(
                                           alignment: Alignment.centerLeft,
-                                          child: TextButton(
-                                            onPressed: _saving
-                                                ? null
-                                                : () => context.push(
-                                                    '/legal/merchant-payments'),
-                                            child: const Text(
-                                                'Read merchant payment terms'),
+                                          child: LegalLinkText(
+                                            text: 'Read merchant payment terms',
+                                            route: '/legal/merchant-payments',
                                           ),
                                         ),
                                         const Text(
@@ -796,11 +796,7 @@ class _BankSettlementCard extends StatelessWidget {
                   width: double.infinity,
                   padding: EdgeInsets.all(cardPadding),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFF182536), Color(0xFF34485F)],
-                    ),
+                    color: const Color(0xFF182536),
                     borderRadius: BorderRadius.circular(24),
                     border:
                         Border.all(color: Colors.white.withValues(alpha: 0.12)),

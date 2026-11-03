@@ -439,14 +439,8 @@ class _CompanyActivationScreenState
         child: Container(
           padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                DesignColors.brand.withValues(alpha: 0.24),
-                context.themed(DesignColors.darkSurfaceElevated),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            // Decorative brand-tint gradient removed: flat surface color.
+            color: context.themed(DesignColors.darkSurfaceElevated),
             borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
             border:
                 Border.all(color: DesignColors.brand.withValues(alpha: 0.55)),
@@ -609,34 +603,6 @@ class _CompanyActivationScreenState
     );
   }
 
-  Widget _buildAmbientField() {
-    return Positioned(
-      left: -MediaQuery.sizeOf(context).width * 0.3,
-      right: -MediaQuery.sizeOf(context).width * 0.3,
-      bottom: -MediaQuery.sizeOf(context).height * 0.12,
-      height: MediaQuery.sizeOf(context).width * 1.1,
-      child: IgnorePointer(
-        child: TweenAnimationBuilder<double>(
-          duration: DesignAnimation.slower,
-          tween: Tween(begin: 0.86, end: 1.0),
-          curve: DesignAnimation.smooth,
-          builder: (context, scale, child) =>
-              Transform.scale(scale: scale, child: child),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  DesignColors.brand.withValues(alpha: 0.12),
-                  DesignColors.accent.withValues(alpha: 0.035),
-                  Colors.transparent,
-                ],
-                stops: const [0.0, 0.38, 1.0],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  // Decorative ambient radial gradient glow removed: flat background only.
+  Widget _buildAmbientField() => const SizedBox.shrink();
 }

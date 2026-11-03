@@ -427,14 +427,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                             padding: const EdgeInsets.all(DesignSpacing.xl),
                             borderRadius: DesignSpacing.radiusLg,
                             blur: 12,
-                            gradient: const LinearGradient(
-                              colors: [
-                                DesignColors.brand,
-                                DesignColors.brandDark
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
+                            tint: DesignColors.brand,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [

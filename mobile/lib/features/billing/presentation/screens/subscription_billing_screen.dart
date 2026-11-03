@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/legal/policy_catalog.dart';
+import '../../../../core/widgets/legal_link.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
@@ -310,16 +311,18 @@ class _SubscriptionBillingScreenState
                         : (value) => setSheetState(
                               () => acceptedBillingTerms = value ?? false,
                             ),
-                    title: const Text(
-                      'I agree to the subscription, billing and refund terms for the plan shown above.',
+                    title: const TermsConsentText(
+                      before: 'I agree to the subscription, billing and refund ',
+                      linkText: 'terms',
+                      after: ' for the plan shown above.',
+                      route: '/legal/billing',
                     ),
                   ),
-                  Align(
+                  const Align(
                     alignment: Alignment.centerLeft,
-                    child: TextButton(
-                      onPressed: () =>
-                          GoRouter.of(sheetContext).push('/legal/billing'),
-                      child: const Text('Read subscription and billing terms'),
+                    child: LegalLinkText(
+                      text: 'Read subscription and billing terms',
+                      route: '/legal/billing',
                     ),
                   ),
                   const SizedBox(height: DesignSpacing.sm),
@@ -536,16 +539,9 @@ class _SubscriptionBillingScreenState
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark
-              ? [
-                  DesignColors.brand.withValues(alpha: 0.14),
-                  context.themed(DesignColors.darkSurfaceElevated),
-                ]
-              : const [Color(0xFFFFE6D2), Colors.white],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: isDark
+            ? context.themed(DesignColors.darkSurfaceElevated)
+            : const Color(0xFFFFE6D2),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(
           color: isDark
@@ -1884,16 +1880,19 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
                       : (value) => setState(
                             () => _acceptedAutoRenewal = value ?? false,
                           ),
-                  title: const Text(
-                    'I authorize monthly M-Pesa STK prompts for the invoice amount to this phone. Each prompt still requires approval on the phone.',
+                  title: const TermsConsentText(
+                    before:
+                        'I authorize monthly M-Pesa STK prompts for the invoice amount to this phone. Each prompt still requires approval on the phone. See ',
+                    linkText: 'auto-renewal terms',
+                    after: '.',
+                    route: '/legal/auto-renewal',
                   ),
                 ),
-                Align(
+                const Align(
                   alignment: Alignment.centerLeft,
-                  child: TextButton(
-                    onPressed: () =>
-                        GoRouter.of(context).push('/legal/auto-renewal'),
-                    child: const Text('Read Auto-Renew Authorization'),
+                  child: LegalLinkText(
+                    text: 'Read Auto-Renew Authorization',
+                    route: '/legal/auto-renewal',
                   ),
                 ),
                 const SizedBox(height: DesignSpacing.sm),

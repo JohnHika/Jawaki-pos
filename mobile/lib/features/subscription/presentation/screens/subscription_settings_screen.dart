@@ -363,14 +363,8 @@ class _SubscriptionSettingsScreenState
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            DesignColors.brand.withValues(alpha: 0.20),
-            context.themed(DesignColors.darkSurfaceElevated),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        // Decorative brand tint gradient removed: flat elevated surface.
+        color: context.themed(DesignColors.darkSurfaceElevated),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(
           color: DesignColors.brand.withValues(alpha: 0.45),

@@ -8,6 +8,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/legal/policy_catalog.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/load_error.dart';
+import '../../../../core/widgets/legal_link.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../domain/subscription_plans.dart';
 
@@ -160,15 +161,18 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                         : (value) => setState(
                               () => _acceptedBillingTerms = value ?? false,
                             ),
-                    title: const Text(
-                      'I agree to the subscription, billing and refund terms for the plan shown above.',
+                    title: const TermsConsentText(
+                      before: 'I agree to the subscription, billing and refund ',
+                      linkText: 'terms',
+                      after: ' for the plan shown above.',
+                      route: '/legal/billing',
                     ),
                   ),
-                  Align(
+                  const Align(
                     alignment: Alignment.centerLeft,
-                    child: TextButton(
-                      onPressed: () => context.push('/legal/billing'),
-                      child: const Text('Read subscription and billing terms'),
+                    child: LegalLinkText(
+                      text: 'Read subscription and billing terms',
+                      route: '/legal/billing',
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -275,18 +279,10 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
             duration: DesignAnimation.fast,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          gradient: isSelected
-              ? LinearGradient(
-                  colors: [
-                    DesignColors.brand.withValues(alpha: 0.24),
-                    context.themed(DesignColors.darkSurfaceElevated),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-              : null,
+          // Selected-state brand tint gradient removed: flat surface with
+          // the brand border already signals selection.
           color: isSelected
-              ? null
+              ? context.themed(DesignColors.darkSurfaceElevated)
               : context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
@@ -683,37 +679,8 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
     );
   }
 
-  Widget _buildAmbientField() {
-    return Positioned(
-      left: -MediaQuery.sizeOf(context).width * 0.3,
-      right: -MediaQuery.sizeOf(context).width * 0.3,
-      bottom: -MediaQuery.sizeOf(context).height * 0.12,
-      height: MediaQuery.sizeOf(context).width * 1.1,
-      child: IgnorePointer(
-        child: TweenAnimationBuilder<double>(
-          // Ambient hero drift: automatic (not user-triggered), so a timing
-          // curve token; 1200ms is intentionally beyond normal350 because
-          // this is environmental motion, not interaction feedback.
-          duration: DesignAnimation.slower,
-          tween: Tween(begin: 0.86, end: 1.0),
-          curve: DesignAnimation.smooth,
-          builder: (context, scale, child) =>
-              Transform.scale(scale: scale, child: child),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  DesignColors.brand.withValues(alpha: 0.12),
-                  DesignColors.accent.withValues(alpha: 0.035),
-                  Colors.transparent,
-                ],
-                stops: const [0.0, 0.38, 1.0],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  // Decorative ambient radial gradient glow removed: flat background only.
+  Widget _buildAmbientField() => const SizedBox.shrink();
 }
+
+

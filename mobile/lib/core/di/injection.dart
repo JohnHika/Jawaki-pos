@@ -6,7 +6,6 @@ import '../database/app_database.dart';
 import '../services/app_icon_service.dart';
 import '../network/api_client.dart';
 import '../network/auth_interceptor.dart';
-import '../network/local_first_network_guard.dart';
 import '../network/network_retry_interceptor.dart';
 import '../services/connectivity_service.dart';
 import '../services/auth_service.dart';
@@ -29,7 +28,10 @@ export '../../features/billing/domain/entitlement_service.dart'
     show EntitlementService;
 
 final getIt = GetIt.instance;
-const _defaultApiUrl = 'http://127.0.0.1:3000/api/v1';
+
+/// Public counterbase API. Google/email sign-in and cloud sync talk to this
+/// deployment; a private-LAN server can still override it from storage.
+const _defaultApiUrl = 'https://counterbase-pos-api.vercel.app/api/v1';
 
 /// Configure all dependencies for the app
 /// This must be called after WidgetsFlutterBinding.ensureInitialized()
@@ -85,21 +87,15 @@ Future<void> configureDependencies() async {
     getIt.registerSingleton<ApiClient>(apiClient);
     debugPrint('[DI] ApiClient registered');
 
-    // Only accept a device or private-LAN endpoint. Old installs may still
-    // have the retired public API URL saved in preferences; clear it rather
-    // than letting that stale setting survive into the downloadable edition.
+    // Prefer a saved private-LAN endpoint; otherwise fall back to the public
+    // cloud API so Google/email sign-in works on a normal install.
     final savedUrl = storageService.getServerBaseUrl();
     if (savedUrl != null && savedUrl.isNotEmpty) {
-      if (LocalFirstNetworkGuard.isLocalNetworkUrl(savedUrl)) {
-        apiClient.setBaseUrl(savedUrl);
-        debugPrint('[DI] Local API endpoint from storage: $savedUrl');
-      } else {
-        await storageService.clearServerBaseUrl();
-        apiClient.setBaseUrl(_defaultApiUrl);
-        debugPrint('[DI] Removed retired public API URL from storage');
-      }
+      apiClient.setBaseUrl(savedUrl);
+      debugPrint('[DI] API endpoint from storage: $savedUrl');
     } else {
-      debugPrint('[DI] Using local-only API base URL');
+      apiClient.setBaseUrl(_defaultApiUrl);
+      debugPrint('[DI] Using cloud API base URL');
     }
 
     // ============================================
@@ -137,9 +133,9 @@ Future<void> configureDependencies() async {
       storage: getIt<StorageService>(),
       canUseSync: () {
         final auth = getIt<AuthService>();
-        return auth.isAuthenticated &&
-            !auth.isLocalWorkspace &&
-            auth.isUsingConfiguredLocalServer;
+        // Sync against the cloud API or a configured private-LAN server —
+        // only device-only local workspaces are excluded.
+        return auth.isAuthenticated && !auth.isLocalWorkspace;
       },
       workspaceModeChanges: getIt<AuthService>().authStatusStream.map<void>(
             (_) {},
@@ -285,8 +281,6 @@ Dio _createDio() {
       logPrint: (obj) => debugPrint('[Dio] $obj'),
     ));
   }
-
-  dio.interceptors.add(const LocalFirstNetworkGuard());
 
   return dio;
 }

@@ -118,11 +118,7 @@ class _LocalWorkspaceTransitionScreenState
                 Container(
                   padding: const EdgeInsets.all(DesignSpacing.xl),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF242B37), Color(0xFF171B22)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    color: const Color(0xFF242B37),
                     borderRadius:
                         BorderRadius.circular(DesignSpacing.radiusXxl),
                     border: Border.all(

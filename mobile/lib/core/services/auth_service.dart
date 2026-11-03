@@ -165,15 +165,19 @@ class AuthService implements LifecycleLockAuth {
         LocalFirstNetworkGuard.isLocalNetworkUrl(serverUrl);
   }
 
+  /// The hosted API is bundled with this build (default base URL), so cloud
+  /// sign-in and sync are always available unless the user overrides the
+  /// endpoint with a private-LAN server.
+  static const bool _cloudApiAvailable = true;
+
   bool get requiresLocalWorkspaceAdoption =>
-      // A saved device workspace always wins: it can be reopened with its
-      // PIN, so a stale cloud session (e.g. restored from a release that
-      // still talked to the retired hosted POS) must never trap the user in
-      // the migration screen. Treat that combination as "sign in locally",
-      // not "adopt again".
+      // Only relevant when the app cannot reach a server: a device-only
+      // install with a stale cloud session must adopt locally. With the
+      // hosted API available again, cloud sessions sign in normally.
       !isLocalWorkspace &&
       !isUsingConfiguredLocalServer &&
-      !hasLocalWorkspace;
+      !hasLocalWorkspace &&
+      !_cloudApiAvailable;
 
   String? get userId => _currentUser?['id'];
   String? get branchId => _storage.getBranchId();
@@ -296,7 +300,7 @@ class AuthService implements LifecycleLockAuth {
       // last login/refresh — stale if the backend was redeployed with a
       // newer permission set since then. This brings it current without
       // blocking startup on the network call.
-      if (isUsingConfiguredLocalServer) unawaited(refreshPermissions());
+      if (!isLocalWorkspace) unawaited(refreshPermissions());
       return;
     }
 
@@ -1401,8 +1405,7 @@ class AuthService implements LifecycleLockAuth {
   Future<void> refreshPermissions() async {
     if (_currentUser == null ||
         !isAuthenticated ||
-        isLocalWorkspace ||
-        !isUsingConfiguredLocalServer) {
+        isLocalWorkspace) {
       return;
     }
 
@@ -1427,8 +1430,7 @@ class AuthService implements LifecycleLockAuth {
   Future<void> refreshTenantSettings() async {
     if (_currentUser == null ||
         !isAuthenticated ||
-        isLocalWorkspace ||
-        !isUsingConfiguredLocalServer) {
+        isLocalWorkspace) {
       return;
     }
     final now = DateTime.now();

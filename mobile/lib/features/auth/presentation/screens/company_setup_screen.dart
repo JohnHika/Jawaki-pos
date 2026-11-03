@@ -10,8 +10,6 @@ import 'package:axon_pos/core/providers/local_workspace_capabilities.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
-import 'package:axon_pos/core/widgets/business_layout_preview.dart';
-import 'package:axon_pos/core/widgets/business_layout_profile_picker.dart';
 import 'package:axon_pos/core/widgets/motion.dart';
 
 /// Creates the first workspace locally on this device. The owner's PIN is
@@ -41,7 +39,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   bool _isLoading = false;
   bool _acceptedLocalDataNotice = false;
   String _businessLayoutId = 'general_retail';
-  List<String> _additionalBusinessLayoutIds = [];
+  final List<String> _additionalBusinessLayoutIds = [];
   List<String> _posQuickActions =
       businessLayoutDefaultPosQuickActions('general_retail', const []);
   String? _errorMessage;
@@ -137,29 +135,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     return hidden.toList(growable: false);
   }
 
-  Future<void> _chooseAdditionalBusinessProfiles() async {
-    final selected = await showBusinessLayoutProfilePicker(
-      context,
-      primaryProfileId: _businessLayoutId,
-      selectedProfileIds: _additionalBusinessLayoutIds,
-    );
-    if (selected == null || !mounted) return;
-    final previousProfileIds = [..._additionalBusinessLayoutIds];
-    setState(() {
-      _additionalBusinessLayoutIds = selected;
-      _posQuickActions = businessLayoutReconcileRecommendations(
-        current: _posQuickActions,
-        previousRecommendations: businessLayoutDefaultPosQuickActions(
-          _businessLayoutId,
-          previousProfileIds,
-        ),
-        nextRecommendations: businessLayoutDefaultPosQuickActions(
-          _businessLayoutId,
-          selected,
-        ),
-      );
-    });
-  }
+  // ignore: unused_element
 
   Future<void> _choosePrimaryBusinessProfile() async {
     final searchController = TextEditingController();
@@ -355,7 +331,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
 
     // The workspace is durable now. A failure in the success dialog or a
     // first-run preference must never send the owner back to setup with a
-    // false “creation failed” message; continue into the shop instead.
+    // false "creation failed" message; continue into the shop instead.
     try {
       await _finishCreation();
     } catch (_) {
@@ -416,7 +392,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
 
   void _nextStep() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    if (_currentStep < 3) {
+    if (_currentStep < 1) {
       _changeStep(_currentStep + 1);
     }
   }
@@ -454,9 +430,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   @override
   Widget build(BuildContext context) {
     const labels = [
-      'Workspace identity',
-      'Owner profile',
-      'First counter',
+      'Your business',
       'Device security',
     ];
     return Theme(
@@ -473,6 +447,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                 _Header(
                   step: _currentStep,
                   label: labels[_currentStep],
+                  totalSteps: labels.length,
                   onBack: _goBack,
                 ),
                 Expanded(
@@ -648,237 +623,11 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            Container(
-              decoration: BoxDecoration(
-                color: context.themed(DesignColors.darkSurface),
-                borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-                border:
-                    Border.all(color: context.themed(DesignColors.darkBorder)),
-              ),
-              child: Theme(
-                data: Theme.of(context)
-                    .copyWith(dividerColor: Colors.transparent),
-                // ExpansionTile's internal ListTile paints ink on the nearest
-                // Material; the surrounding DecoratedBox would hide it.
-                child: Material(
-                  color: Colors.transparent,
-                  child: ExpansionTile(
-                    key: const PageStorageKey('setup-layout-advanced-options'),
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-                    childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    leading: Icon(Icons.tune_rounded,
-                        color: context.themed(DesignColors.brand)),
-                    title: Text(
-                      'Fine-tune your workspace',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: context.themed(DesignColors.darkTextPrimary),
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                    subtitle: Text(
-                      'Optional · extra profiles, preview and POS shortcuts',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: context
-                                .themed(DesignColors.darkTextTertiary),
-                          ),
-                    ),
-                  children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Does the shop sell other kinds of products too?',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color:
-                                  context.themed(DesignColors.darkTextPrimary),
-                              fontWeight: FontWeight.w700,
-                            ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Add up to three profiles. The main profile controls the wording; the others add relevant product details and work areas.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                context.themed(DesignColors.darkTextTertiary),
-                            height: 1.35,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (_additionalBusinessLayoutIds.isNotEmpty)
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: businessLayoutAdditionalPresets(
-                          _businessLayoutId,
-                          _additionalBusinessLayoutIds,
-                        ).map((profile) {
-                          return InputChip(
-                            avatar: Icon(profile.icon, size: 18),
-                            label: Text(profile.name),
-                            onDeleted: () => setState(() {
-                              _additionalBusinessLayoutIds.remove(profile.id);
-                            }),
-                          );
-                        }).toList(growable: false),
-                      ),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: OutlinedButton.icon(
-                        onPressed: _chooseAdditionalBusinessProfiles,
-                        icon: const Icon(Icons.add_rounded),
-                        label: Text(_additionalBusinessLayoutIds.isEmpty
-                            ? 'Add another shop profile'
-                            : 'Edit additional profiles'),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Builder(builder: (context) {
-                      final preset = businessLayoutPreset(_businessLayoutId);
-                      final priorityPaths = businessLayoutDefaultPriorityPaths(
-                        _businessLayoutId,
-                        _additionalBusinessLayoutIds,
-                      );
-                      return BusinessLayoutPreview(
-                        layout: BusinessLayoutConfig(
-                          preset: preset,
-                          additionalProfileIds: _additionalBusinessLayoutIds,
-                          priorityPaths: priorityPaths,
-                          hiddenPaths: _businessLayoutHiddenPaths(),
-                          startPath: priorityPaths.firstOrNull,
-                          posQuickActions: _posQuickActions,
-                          showPosFavorites:
-                              _posQuickActions.contains('favorites'),
-                          showPosCustomer:
-                              _posQuickActions.contains('customer'),
-                          dashboardMetrics:
-                              businessLayoutDefaultDashboardMetrics(
-                            _businessLayoutId,
-                            _additionalBusinessLayoutIds,
-                          ),
-                          dashboardSections:
-                              businessLayoutDefaultDashboardSections(
-                            _businessLayoutId,
-                            _additionalBusinessLayoutIds,
-                          ),
-                          productFieldKeys:
-                              businessLayoutDefaultProductFieldKeys(
-                            _businessLayoutId,
-                            _additionalBusinessLayoutIds,
-                          ),
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 14),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: context.themed(DesignColors.darkSurfaceElevated),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                            color: context.themed(DesignColors.darkBorder)),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
-                            child: Text(
-                              'POS toolbar shortcuts',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleSmall
-                                  ?.copyWith(
-                                    color: context
-                                        .themed(DesignColors.darkTextPrimary),
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                            ),
-                          ),
-                          Text(
-                            'Choose what the cashier sees at this counter. You can reorder and adjust shortcuts later in Layout actions.',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                  color: context
-                                      .themed(DesignColors.darkTextTertiary),
-                                  height: 1.35,
-                                ),
-                          ),
-                          const SizedBox(height: 4),
-                          ...businessLayoutPosActions.map((action) {
-                            final enabled =
-                                _posQuickActions.contains(action.id);
-                            return Material(
-                              color: Colors.transparent,
-                              child: SwitchListTile.adaptive(
-                                contentPadding:
-                                    const EdgeInsets.symmetric(horizontal: 4),
-                                title: Text(
-                                  action.label,
-                                  style: TextStyle(
-                                    color: context
-                                        .themed(DesignColors.darkTextPrimary),
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  action.id == 'cart'
-                                      ? 'Always available to finish checkout.'
-                                      : action.description,
-                                  style: TextStyle(
-                                    color: context
-                                        .themed(DesignColors.darkTextTertiary),
-                                  ),
-                                ),
-                                secondary: Icon(action.icon,
-                                    color: context.themed(DesignColors.brand)),
-                                value: enabled,
-                                activeTrackColor: DesignColors.brand,
-                                onChanged: action.id == 'cart'
-                                    ? null
-                                    : (value) => setState(() {
-                                          if (value) {
-                                            if (!_posQuickActions
-                                                .contains(action.id)) {
-                                              _posQuickActions.add(action.id);
-                                            }
-                                          } else {
-                                            _posQuickActions.remove(action.id);
-                                          }
-                                        }),
-                              ),
-                            );
-                          }),
-                        ],
-                      ),
-                    ),
-                  ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      case 1:
-        return _StepContent(
-          title: 'About the owner',
-          subtitle: 'Save the owner details for this device-local workspace.',
-          children: [
-            const _SetupEditorialCard(
-              index: '02 / OWNER',
-              icon: Icons.admin_panel_settings_outlined,
-              title: 'Your shop stays under your control.',
-              detail:
-                  'This owner profile is stored on this device. The email is optional and is not used to sign in.',
-            ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 20),
             LayoutBuilder(builder: (context, constraints) {
               final first = _field(
                 _firstNameController,
-                label: 'First name',
+                label: 'Your first name',
                 hint: 'Ada',
                 icon: Icons.person_outline_rounded,
                 validator: _requiredName,
@@ -903,102 +652,14 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                 Expanded(child: last),
               ]);
             }),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             _field(
               _emailController,
-              label: 'Owner email',
+              label: 'Owner email · optional',
               hint: 'name@business.com',
               icon: Icons.email_outlined,
               keyboardType: TextInputType.emailAddress,
               validator: _emailValidator,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Optional. This stays in the local owner profile and is not used to sign in.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: context.themed(DesignColors.darkTextTertiary),
-                    height: 1.45,
-                  ),
-            ),
-          ],
-        );
-      case 2:
-        return _StepContent(
-          title: 'Open your first counter',
-          subtitle: 'Name the place where your first sale will happen.',
-          children: [
-            const _SetupEditorialCard(
-              index: '03 / FIRST LOCATION',
-              icon: Icons.point_of_sale_outlined,
-              title: 'Ready for the first customer.',
-              detail:
-                  'Sales and inventory recorded on this device will belong to this location.',
-            ),
-            const SizedBox(height: 28),
-            LayoutBuilder(builder: (context, constraints) {
-              final wide = constraints.maxWidth >= 580;
-              final name = _field(
-                _branchNameController,
-                label: 'Location name',
-                hint: 'Main location',
-                icon: Icons.store_rounded,
-                validator: (value) => value == null || value.trim().length < 2
-                    ? 'Enter at least 2 characters'
-                    : null,
-              );
-              final code = _field(
-                _branchCodeController,
-                label: 'Location code · optional',
-                hint: 'MAIN',
-                icon: Icons.tag_rounded,
-                inputFormatters: [
-                  UpperCaseTextFormatter(),
-                  FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
-                  LengthLimitingTextInputFormatter(20),
-                ],
-                validator: (value) {
-                  final code = value?.trim() ?? '';
-                  if (code.isEmpty || code.length >= 2) return null;
-                  return 'Use at least 2 characters';
-                },
-              );
-              if (!wide) {
-                return Column(children: [
-                  name,
-                  const SizedBox(height: DesignSpacing.md),
-                  code,
-                ]);
-              }
-              return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: name),
-                    const SizedBox(width: DesignSpacing.md),
-                    Expanded(child: code),
-                  ]);
-            }),
-            const SizedBox(height: 10),
-            Text(
-              'This code helps identify the location in your shop records.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: context.themed(DesignColors.darkTextTertiary),
-                  ),
-            ),
-            const SizedBox(height: 20),
-            _OptionalLocationDetails(
-              address: _field(
-                _branchAddressController,
-                label: 'Address',
-                hint: 'Street, town or area',
-                icon: Icons.location_on_outlined,
-              ),
-              phone: _field(
-                _branchPhoneController,
-                label: 'Phone',
-                hint: '+254 700 000 000',
-                icon: Icons.phone_outlined,
-                keyboardType: TextInputType.phone,
-              ),
             ),
           ],
         );
@@ -1117,10 +778,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   }
 
   Widget _buildFooter() {
-    if (_currentStep == 3) {
+    if (_currentStep == 1) {
       return TextButton(
         onPressed: _isLoading ? null : _goBack,
-        child: const Text('Back to branch details'),
+        child: const Text('Back to business details'),
       );
     }
     return Row(children: [
@@ -1244,9 +905,13 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
 
 class _Header extends StatelessWidget {
   const _Header(
-      {required this.step, required this.label, required this.onBack});
+      {required this.step,
+      required this.label,
+      required this.totalSteps,
+      required this.onBack});
   final int step;
   final String label;
+  final int totalSteps;
   final VoidCallback onBack;
 
   @override
@@ -1267,7 +932,7 @@ class _Header extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                       letterSpacing: 2)),
             ),
-            Text('${step + 1} / 4',
+            Text('${step + 1} / $totalSteps',
                 style: Theme.of(context)
                     .textTheme
                     .labelLarge
@@ -1276,14 +941,16 @@ class _Header extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
               children: List.generate(
-                  4,
+                  totalSteps,
                   (index) => Expanded(
                         child: AnimatedContainer(
                           duration: DesignAnimation.normal,
                           curve: DesignAnimation.defaultCurve,
                           height: DesignSpacing.xs - 1,
                           margin: EdgeInsets.only(
-                              right: index == 3 ? 0 : DesignSpacing.sm - 2),
+                              right: index == totalSteps - 1
+                                  ? 0
+                                  : DesignSpacing.sm - 2),
                           decoration: BoxDecoration(
                             color: index <= step
                                 ? DesignColors.accent
@@ -1296,7 +963,7 @@ class _Header extends StatelessWidget {
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerLeft,
-            child: Text('Step ${step + 1} of 4 · $label',
+            child: Text('Step ${step + 1} of $totalSteps · $label',
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     color: context.themed(DesignColors.darkTextTertiary))),
           ),
@@ -1377,41 +1044,6 @@ class _SetupEditorialCard extends StatelessWidget {
                   color: context.themed(DesignColors.darkTextSecondary),
                   height: 1.5)),
         ]),
-      );
-}
-
-class _OptionalLocationDetails extends StatelessWidget {
-  const _OptionalLocationDetails({required this.address, required this.phone});
-  final Widget address;
-  final Widget phone;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        decoration: BoxDecoration(
-          color: context.themed(DesignColors.darkSurface),
-          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-          border: Border.all(color: context.themed(DesignColors.darkBorder)),
-        ),
-        // The ExpansionTile's internal ListTile paints its ink on the nearest
-        // Material; without this the DecoratedBox background hides it and
-        // widget tests assert on the visibility.
-        child: Material(
-          color: Colors.transparent,
-          child: ExpansionTile(
-            title: const Text('Add location details'),
-            subtitle: const Text('Optional · useful on receipts'),
-            leading: const Icon(Icons.add_location_alt_outlined,
-                color: DesignColors.accent),
-            shape: const Border(),
-            collapsedShape: const Border(),
-            childrenPadding: const EdgeInsets.fromLTRB(16, 8, 16, 18),
-            children: [
-              address,
-              const SizedBox(height: 16),
-              phone,
-            ],
-          ),
-        ),
       );
 }
 

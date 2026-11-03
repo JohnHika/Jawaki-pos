@@ -1337,53 +1337,12 @@ class ShimmerSweep extends StatefulWidget {
   State<ShimmerSweep> createState() => _ShimmerSweepState();
 }
 
-class _ShimmerSweepState extends State<ShimmerSweep>
-    with TickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1100));
-  _DelayedStart? _delayStart;
-  bool _started = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_started || reducedMotion(context)) return;
-    _started = true;
-    _delayStart = _DelayedStart(this, widget.delay, () {
-      if (mounted) _c.forward();
-    });
-  }
-
-  @override
-  void dispose() {
-    _delayStart?.dispose();
-    _c.dispose();
-    super.dispose();
-  }
-
+class _ShimmerSweepState extends State<ShimmerSweep> {
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      child: widget.child,
-      builder: (context, child) {
-        if (_c.value == 0 || _c.value == 1) return child!;
-        final x = -1.0 + 3.0 * _c.value;
-        return ShaderMask(
-          blendMode: BlendMode.srcATop,
-          shaderCallback: (rect) => LinearGradient(
-            begin: Alignment(x - 0.6, -0.3),
-            end: Alignment(x + 0.2, 0.3),
-            colors: [
-              Colors.white.withValues(alpha: 0),
-              Colors.white.withValues(alpha: 0.55),
-              Colors.white.withValues(alpha: 0),
-            ],
-          ).createShader(rect),
-          child: child,
-        );
-      },
-    );
+    // Flat rendering: the light sweep ShaderMask gradient was removed as
+    // decorative noise. The child renders unchanged.
+    return widget.child;
   }
 }
 

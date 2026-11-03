@@ -170,11 +170,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: 'Receipts',
           path: '/receipts'));
     }
-    items.add(_NavItem(
-        icon: Icons.settings_outlined,
-        activeIcon: Icons.settings_rounded,
-        label: 'Settings',
-        path: '/settings'));
+    // Settings is always pinned into the bottom bar by the build step in
+    // build(); do not add it to the overflow list.
     // Finance has its own backend permission, separate from reporting.
     if (perms.canViewFinance) {
       items.add(_NavItem(
@@ -378,14 +375,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   Container(
                       padding: const EdgeInsets.all(DesignSpacing.sm),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [
-                            DesignColors.accent,
-                            DesignColors.accentLight
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
+                        // Accent→accentLight badge gradient removed: flat
+                        // accent keeps the badge readable without the wash.
+                        color: DesignColors.accent,
                         borderRadius:
                             BorderRadius.circular(DesignSpacing.radiusLg - 6),
                       ),
@@ -474,17 +466,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final connectivity = getIt<ConnectivityService>();
     final perms = ref.watch(permissionsProvider);
     final businessLayout = ref.watch(businessLayoutProvider);
-    final allNavItems = _buildNavItems(perms, businessLayout);
-    final hasMore = allNavItems.length > _maxVisiblePrimaryItems;
-    final visibleNavItems = hasMore
-        ? allNavItems.take(_maxVisiblePrimaryItems).toList()
-        : allNavItems;
+    var allNavItems = _buildNavItems(perms, businessLayout);
+    // Settings is the item users hunt for most; keep it pinned in the bar
+    // instead of letting it fall into the More sheet. _buildNavItems never
+    // emits a '/settings' item, so the pinned copy is appended once below.
+    final settingsItem = _NavItem(
+        icon: Icons.settings_outlined,
+        activeIcon: Icons.settings_rounded,
+        label: 'Settings',
+        path: '/settings');
+    final pinnedItems = [...allNavItems, settingsItem];
+    final hasMore = pinnedItems.length > _maxVisiblePrimaryItems + 1;
+    final visibleNavItems = pinnedItems.length <= _maxVisiblePrimaryItems + 1
+        ? pinnedItems
+        : [
+            ...pinnedItems.take(_maxVisiblePrimaryItems),
+            settingsItem,
+          ];
     final moreItems = hasMore
-        ? allNavItems.skip(_maxVisiblePrimaryItems).toList()
+        ? pinnedItems
+            .skip(_maxVisiblePrimaryItems)
+            .where((item) => item.path != '/settings')
+            .toList()
         : <_NavItem>[];
     _latestMoreItems = moreItems;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final currentIndex = _resolveCurrentIndex(allNavItems);
+    final currentIndex = _resolveCurrentIndex(pinnedItems);
     final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final homePath = isLocalWorkspace
         ? LocalWorkspaceCapabilities.homePathFor(perms, businessLayout)

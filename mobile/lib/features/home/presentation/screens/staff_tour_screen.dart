@@ -75,9 +75,6 @@ class _StaffTourScreenState extends ConsumerState<StaffTourScreen> {
         description:
             'Change your PIN, adjust notifications, and find help here.',
         beforeShow: openSheet,
-        onLeave: () {
-          HomeNavKeys.moreSheetOpenRequest.value = false;
-        },
       ),
     ];
 

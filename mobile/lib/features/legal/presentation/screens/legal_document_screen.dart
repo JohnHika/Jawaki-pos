@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/legal/policy_catalog.dart';
+import '../../../../core/widgets/legal_link.dart';
 
 class LegalDocumentScreen extends StatelessWidget {
   const LegalDocumentScreen({super.key, this.documentSlug});
@@ -79,6 +80,9 @@ class _UnavailablePolicy extends StatelessWidget {
                 onPressed: () => context.push('/legal'),
                 icon: const Icon(Icons.article_outlined),
                 label: const Text('View applicable policies'),
+                style: TextButton.styleFrom(
+                  foregroundColor: legalLinkColor(context),
+                ),
               ),
             ],
           ),
@@ -119,6 +123,9 @@ class _PolicyBody extends StatelessWidget {
             onPressed: () => context.push('/legal'),
             icon: const Icon(Icons.article_outlined),
             label: const Text('View all policies'),
+            style: TextButton.styleFrom(
+              foregroundColor: legalLinkColor(context),
+            ),
           ),
         ],
       );

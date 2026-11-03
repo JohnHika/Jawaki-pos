@@ -211,10 +211,9 @@ Future<void> _exerciseNavigation(
   expect(harness.router.routeInformationProvider.value.uri.path, '/products');
   _expectFinitePage(tester, harness, 'Products');
 
-  await tester.tap(find.byKey(HomeNavKeys.more));
-  await tester.pumpAndSettle();
-  expect(tester.takeException(), isNull);
-  await tester.tap(find.byKey(HomeNavKeys.moreSheetSettings));
+  // Settings is pinned in the bottom bar (no longer behind the More sheet),
+  // so the exercise taps it directly and skips the sheet hop.
+  await tester.tap(find.text('Settings').hitTestable());
   await tester.pumpAndSettle();
   expect(harness.router.routeInformationProvider.value.uri.path, '/settings');
   _expectFinitePage(tester, harness, 'Settings');

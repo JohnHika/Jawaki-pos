@@ -97,14 +97,7 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
         padding: const EdgeInsets.only(bottom: 12),
         child: Container(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                DesignColors.brand.withValues(alpha: 0.10),
-                DesignColors.accent.withValues(alpha: 0.06),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            color: DesignColors.brand.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: DesignColors.accent.withValues(alpha: 0.25),

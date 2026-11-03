@@ -118,11 +118,7 @@ class _MyCodeCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.lg),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFFFE6D2), Colors.white],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: const Color(0xFFFFE6D2),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(color: DesignColors.accent.withValues(alpha: 0.28)),
       ),

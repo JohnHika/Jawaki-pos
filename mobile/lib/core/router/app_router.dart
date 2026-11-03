@@ -133,13 +133,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     initialLocation = '/pin-login';
   } else if (authService.isUsingConfiguredLocalServer) {
     // A user who explicitly configured a private-LAN server can still sign
-    // back in to that server. A remembered tenant slug alone is not enough:
-    // the retired hosted POS has no login route in the downloadable edition.
+    // back in to that server.
     initialLocation = '/login';
   } else {
-    // Standalone installs always return to local setup, even if an older
-    // cloud-only install left a tenant slug or remembered email behind.
-    initialLocation = '/company-choice';
+    // Cloud edition: return users sign in with Google or email. Local-only
+    // setup stays reachable from the login screen for device-only shops.
+    initialLocation = '/login';
   }
 
   return GoRouter(
@@ -177,21 +176,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         if (storageService.hasLocalWorkspace()) {
           return path == '/pin-login' || isLegalRoute ? null : '/pin-login';
         }
-        // Setup and legal routes are available while signed out. The only
-        // login route retained by this edition is for an explicitly
-        // configured private-LAN server; hosted login and invitations need
-        // the retired online POS service.
-        // Plan selection always requires an active session by the time it
-        // is reached (activation itself needs one), so it is intentionally
-        // not allowed here — an unauthenticated visit falls through to the
-        // company-choice redirect below like any other protected route.
+        // Setup and legal routes stay available while signed out. /login is
+        // the cloud sign-in screen (Google or email) and is the primary
+        // unauthenticated destination of the hosted edition. Plan selection
+        // always requires an active session by the time it is reached
+        // (activation itself needs one), so it is intentionally not allowed
+        // here — an unauthenticated visit falls through to the login
+        // redirect below like any other protected route.
         if (isSetupRoute ||
             isLegalRoute ||
-            (authService.isUsingConfiguredLocalServer && path == '/login')) {
+            path == '/login') {
           return null;
         }
-        // Redirect all others to company-choice
-        return '/company-choice';
+        // Redirect all others to cloud sign-in
+        return '/login';
       }
 
       // A legacy cloud session alongside a saved device workspace means the
