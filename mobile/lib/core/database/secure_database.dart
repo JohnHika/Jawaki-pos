@@ -1,18 +1,25 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math' as math;
-import 'package:flutter/foundation.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sqlite3/open.dart';
+import 'package:sqlite3/sqlite3.dart';
 import 'package:sqlcipher_flutter_libs/sqlcipher_flutter_libs.dart';
 
-Future<void> _configureSqlCipherForDatabaseIsolate() async {
+import 'plaintext_database_migration.dart';
+
+void _loadSqlCipherLibrary() {
   if (Platform.isAndroid) {
     open.overrideFor(OperatingSystem.android, openCipherOnAndroid);
   }
+}
+
+Future<void> _configureSqlCipherForDatabaseIsolate() async {
+  _loadSqlCipherLibrary();
 }
 
 /// Secure database connection with SQLCipher encryption
@@ -30,25 +37,6 @@ class SecureDatabaseConnection {
   static const _dbKeyName = 'pos_database_key';
   static const _dbKeyBackupName = 'pos_database_key_backup';
   static const _dbKeyPendingName = 'pos_database_key_pending';
-  static const List<int> _sqliteFileHeader = [
-    0x53,
-    0x51,
-    0x4c,
-    0x69,
-    0x74,
-    0x65,
-    0x20,
-    0x66,
-    0x6f,
-    0x72,
-    0x6d,
-    0x61,
-    0x74,
-    0x20,
-    0x33,
-    0x00,
-  ];
-
   /// Generate a cryptographically secure 256-bit key (64 hex chars)
   static String _generateKey() {
     final random = math.Random.secure();
@@ -90,15 +78,28 @@ class SecureDatabaseConnection {
     return LazyDatabase(() async {
       final dbFolder = await getApplicationDocumentsDirectory();
       final file = File(p.join(dbFolder.path, 'pos_database_encrypted.sqlite'));
-      final existingPlaintextDatabase = await _hasPlaintextSqliteHeader(file);
 
       // Get encryption key
       final key = await _getOrCreateKey();
 
+      // Builds from before SQLCipher was really linked left a plain SQLite
+      // file under this name (PRAGMA key was silently ignored). PRAGMA rekey
+      // cannot encrypt such a file in place, so export it into a new
+      // encrypted file first. The original is kept until the new one opens.
+      final migrated = await PlaintextDatabaseMigration(
+        file: file,
+        key: key,
+        export: _exportPlaintextToEncrypted,
+        verify: _verifyEncryptedDatabase,
+      ).migrateIfNeeded();
+
+      // Keep this callback synchronous. drift does not await it, so an error
+      // thrown from an async closure escapes as an unhandled exception and
+      // the database never finishes opening instead of failing visibly.
       return NativeDatabase.createInBackground(
         file,
         isolateSetup: _configureSqlCipherForDatabaseIsolate,
-        setup: (rawDb) async {
+        setup: (rawDb) {
           final cipherVersion = rawDb.select('PRAGMA cipher_version;');
           if (cipherVersion.isEmpty) {
             throw StateError(
@@ -106,16 +107,9 @@ class SecureDatabaseConnection {
             );
           }
 
-          if (existingPlaintextDatabase) {
-            // Earlier builds used regular SQLite, which silently ignored
-            // PRAGMA key and left the database readable as plaintext. Rekey
-            // that existing file in place before Drift runs any migrations.
-            rawDb.execute("PRAGMA rekey = '$key';");
-          } else {
-            // New databases and already encrypted databases need the key
-            // before their first schema read.
-            rawDb.execute("PRAGMA key = '$key';");
-          }
+          // New databases and already encrypted databases need the key
+          // before their first schema read.
+          rawDb.execute("PRAGMA key = '$key';");
 
           try {
             rawDb.select('SELECT count(*) FROM sqlite_master');
@@ -124,24 +118,81 @@ class SecureDatabaseConnection {
             // an encrypted database look empty and risks overwriting data.
             throw StateError('Unable to open encrypted local database: $error');
           }
+
+          if (migrated) {
+            // The encrypted copy opened and read back, so the plaintext
+            // backup is no longer needed and should not stay on the device.
+            PlaintextDatabaseMigration.discardPlaintextBackup(file);
+          }
         },
       );
     });
   }
 
-  static Future<bool> _hasPlaintextSqliteHeader(File file) async {
-    if (!await file.exists() ||
-        await file.length() < _sqliteFileHeader.length) {
-      return false;
-    }
+  /// Copies a plain SQLite file into a new SQLCipher file with
+  /// `sqlcipher_export`, then checks that every table's row count matches.
+  /// Runs in a short-lived isolate so it loads the SQLCipher library the same
+  /// way the database isolate does.
+  static Future<void> _exportPlaintextToEncrypted(
+    File plain,
+    File target,
+    String key,
+  ) {
+    final plainPath = plain.path;
+    final targetPath = target.path;
+    return Isolate.run(() {
+      _loadSqlCipherLibrary();
+      final db = sqlite3.open(plainPath);
+      try {
+        if (db.select('PRAGMA cipher_version;').isEmpty) {
+          throw StateError('SQLCipher is unavailable.');
+        }
+        final userVersion =
+            db.select('PRAGMA user_version;').first.columnAt(0) as int;
+        final quotedTarget = targetPath.replaceAll("'", "''");
+        db.execute("ATTACH DATABASE '$quotedTarget' AS encrypted KEY '$key';");
+        db.select("SELECT sqlcipher_export('encrypted');");
+        // sqlcipher_export does not copy user_version, which drift uses as
+        // the schema version. Without this it would re-run every migration.
+        db.execute('PRAGMA encrypted.user_version = $userVersion;');
 
-    final handle = await file.open(mode: FileMode.read);
-    try {
-      final header = await handle.read(_sqliteFileHeader.length);
-      return listEquals(header, _sqliteFileHeader);
-    } finally {
-      await handle.close();
-    }
+        final tables = db.select(
+          "SELECT name FROM main.sqlite_master WHERE type = 'table' "
+          "AND substr(name, 1, 7) != 'sqlite_' ORDER BY name",
+        );
+        for (final row in tables) {
+          final name = (row['name'] as String).replaceAll('"', '""');
+          final before =
+              db.select('SELECT count(*) AS c FROM main."$name"').first['c'];
+          final after = db
+              .select('SELECT count(*) AS c FROM encrypted."$name"')
+              .first['c'];
+          if (before != after) {
+            throw StateError(
+              'Row count differs in table "$name" ($before vs $after).',
+            );
+          }
+        }
+        db.execute('DETACH DATABASE encrypted;');
+      } finally {
+        db.dispose();
+      }
+    });
+  }
+
+  /// Opens the new encrypted file with its key and reads the schema.
+  static Future<void> _verifyEncryptedDatabase(File target, String key) {
+    final targetPath = target.path;
+    return Isolate.run(() {
+      _loadSqlCipherLibrary();
+      final db = sqlite3.open(targetPath);
+      try {
+        db.execute("PRAGMA key = '$key';");
+        db.select('SELECT count(*) FROM sqlite_master');
+      } finally {
+        db.dispose();
+      }
+    });
   }
 
   /// Change the database encryption key atomically.
