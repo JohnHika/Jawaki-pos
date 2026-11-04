@@ -33,7 +33,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   bool _obscurePassword = true;
   bool _rememberMe = false;
   bool _biometricAvailable = false;
-  bool _deviceAuthenticationAvailable = false;
   bool _showPasswordFallback = false;
   String _primaryLoginMethod = 'email';
 
@@ -173,7 +172,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     );
     if (mounted) {
       setState(() {
-        _deviceAuthenticationAvailable = deviceAvailable;
         _biometricAvailable = ready && enabled;
         if (_primaryLoginMethod == 'biometric' && !ready) {
           // Biometrics only reopen a remembered session; a full sign-in still
@@ -696,17 +694,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       selected: _primaryLoginMethod == 'pin',
                     ),
                   ),
-                  if (_deviceAuthenticationAvailable) ...[
+                  // Biometrics only reopen a remembered session. Without one the
+                  // tile could only explain why it does nothing, so it stays
+                  // hidden until there is something to unlock.
+                  if (_biometricAvailable) ...[
                     const SizedBox(width: 12),
                     Expanded(
                       child: AuthEntrance(
                         child: _buildAltLoginButton(
                           icon: Icons.fingerprint_rounded,
-                          label: _biometricAvailable
-                              ? 'Biometric'
-                              : getIt<StorageService>().isBiometricEnabled()
-                                  ? 'Biometric unlock'
-                                  : 'Set up biometric',
+                          label: 'Biometric',
                           onTap: authState.isLoading
                               ? () {}
                               : () => _handleBiometricLogin(),
