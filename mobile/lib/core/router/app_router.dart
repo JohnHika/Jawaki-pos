@@ -231,6 +231,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // screen unguided. The tour itself sets hasSeenStaffTour(true) when
       // it finishes/is skipped, so this only ever fires once per device.
       // Plan selection is deliberately excluded (see isSetupRoute above).
+      if (isLoggedIn && path == '/company-setup' && SetupSession.holdReady) {
+        return null;
+      }
       if (isLoggedIn && (isSetupRoute || isLoginRoute)) {
         final permissions = RolePermissions(
           authService.currentUser?['permissions'] as List<dynamic>?,
@@ -504,7 +507,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/company-setup',
         name: 'company-setup',
-        builder: (context, state) => const CompanySetupScreen(),
+        builder: (context, state) => CompanySetupScreen(
+          join: state.uri.queryParameters['join'] == '1',
+        ),
       ),
       GoRoute(
         path: '/workspace/localize',

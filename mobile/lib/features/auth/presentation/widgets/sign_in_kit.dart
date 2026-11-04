@@ -69,7 +69,8 @@ String roleLabel(String? role) {
   return text[0].toUpperCase() + text.substring(1).toLowerCase();
 }
 
-/// Round business mark: the logo when there is one, otherwise initials.
+/// Round business mark: the business logo when there is one, otherwise the
+/// Counterbase by Arche Axon mark.
 class BusinessMark extends StatelessWidget {
   const BusinessMark({
     super.key,
@@ -86,20 +87,11 @@ class BusinessMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // No logo set: show the Counterbase mark with the Arche Axon hexagon.
     final initials = Container(
-      color: DesignColors.accentSubtle,
+      color: Colors.white,
       alignment: Alignment.center,
-      child: name.trim().isEmpty
-          ? Icon(Icons.storefront_rounded,
-              color: DesignColors.accent, size: size * 0.5)
-          : Text(
-        initialsFor(name),
-        style: DesignType.display.copyWith(
-          color: DesignColors.accent,
-          fontSize: size * 0.38,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
+      child: AxonLogoTitle(logoSize: size * 0.78),
     );
     final url = logoUrl;
     return Semantics(
@@ -219,7 +211,8 @@ class SignInButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
           onTap: enabled ? onPressed : null,
           child: Container(
-            height: 54,
+            constraints: const BoxConstraints(minHeight: 54),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             alignment: Alignment.center,
             child: loading
                 ? const SizedBox(
@@ -232,6 +225,7 @@ class SignInButton extends StatelessWidget {
                   )
                 : Text(
                     label,
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
@@ -261,8 +255,8 @@ class SignInOutlineButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = SignInPalette.of(context);
-    return SizedBox(
-      height: 52,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 52),
       child: OutlinedButton(
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
@@ -276,9 +270,13 @@ class SignInOutlineButton extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (leading != null) ...[leading!, const SizedBox(width: 10)],
-            Text(
-              label,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style:
+                    const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
             ),
           ],
         ),

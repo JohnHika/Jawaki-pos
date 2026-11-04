@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Counterbase cube inside the Arche Axon hexagon: the cube's outline is the
+     hexagon, the hub sits on the near corner and a node sits on every corner.
+     Barcode = stock, tick = a completed sale. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="axon" gradientUnits="userSpaceOnUse" x1="29" y1="18" x2="171" y2="182">
+      <stop offset="0" stop-color="#006DFD"/>
+      <stop offset="1" stop-color="#5A2CFB"/>
+    </linearGradient>
+  </defs>
+
+  <!-- cube faces: top, left, right -->
+  <polygon points="100,100 29,59 100,18 171,59" fill="#FFA166"/>
+  <polygon points="100,100 29,59 29,141 100,182" fill="#FF7A33"/>
+  <polygon points="100,100 171,59 171,141 100,182" fill="#E0611E"/>
+  <g stroke="#FFFFFF" stroke-opacity="0.45" stroke-width="2" stroke-linecap="round" fill="none">
+    <line x1="100" y1="100" x2="29" y2="59"/>
+    <line x1="100" y1="100" x2="171" y2="59"/>
+    <line x1="100" y1="100" x2="100" y2="182"/>
+  </g>
+
+  <!-- barcode on the left face -->
+  <g transform="matrix(71 41 0 82 29 59)" fill="#FFFFFF" fill-opacity="0.95">
+    <rect x="0.2" y="0.3" width="0.05" height="0.42"/>
+    <rect x="0.3" y="0.3" width="0.025" height="0.42"/>
+    <rect x="0.37" y="0.3" width="0.07" height="0.42"/>
+    <rect x="0.5" y="0.3" width="0.025" height="0.42"/>
+    <rect x="0.58" y="0.3" width="0.05" height="0.42"/>
+    <rect x="0.69" y="0.3" width="0.025" height="0.42"/>
+    <rect x="0.77" y="0.3" width="0.04" height="0.42"/>
+  </g>
+
+  <!-- tick on the right face -->
+  <g transform="matrix(71 -41 0 82 100 100)">
+    <path d="M0.26 0.52 L0.43 0.70 L0.78 0.30" fill="none" stroke="#FFFFFF" stroke-width="0.085" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Arche Axon nodes on the six corners: solid, with a white outline that shows on the orange cube -->
+  <g fill="url(#axon)" stroke="#FFFFFF" stroke-width="3">
+    <circle cx="100" cy="18" r="9.5"/>
+    <circle cx="171" cy="59" r="9.5"/>
+    <circle cx="171" cy="141" r="9.5"/>
+    <circle cx="100" cy="182" r="9.5"/>
+    <circle cx="29" cy="141" r="9.5"/>
+    <circle cx="29" cy="59" r="9.5"/>
+  </g>
+  <!-- the hub -->
+  <circle cx="100" cy="100" r="15" fill="url(#axon)" stroke="#FFFFFF" stroke-width="3.5"/>
+  <circle cx="100" cy="100" r="4.5" fill="#FFFFFF"/>
+</svg>

@@ -2406,9 +2406,10 @@ class GlassBottomSheet {
 // ═══════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════
-//  AXON LOGO MARK
-//  Renders the Arche Axon hex/node brand mark from
-//  assets/images/axon_logo_mark(.svg|_light.svg).
+//  COUNTERBASE BY ARCHE AXON LOGO MARK
+//  The Counterbase cube inside the Arche Axon hexagon, from
+//  assets/images/counterbase_axon_mark.svg. Used wherever a business has
+//  not set its own logo.
 // ═══════════════════════════════════════════════════════════════
 class AxonLogoTitle extends StatelessWidget {
   final double logoSize;
@@ -2420,36 +2421,54 @@ class AxonLogoTitle extends StatelessWidget {
     this.showText = false,
   });
 
+  /// Counterbase cube inside the Arche Axon hexagon. One mark works on both
+  /// light and dark surfaces. It is the stand-in whenever a business has not
+  /// set its own logo.
+  static const String markAsset = 'assets/images/counterbase_axon_mark.svg';
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final asset = isDark
-        ? 'assets/images/axon_logo_mark.svg'
-        : 'assets/images/axon_logo_mark_light.svg';
+    final mark = SvgPicture.asset(
+      markAsset,
+      width: logoSize,
+      height: logoSize,
+      semanticsLabel: 'Counterbase by Arche Axon logo',
+    );
+    if (!showText) return mark;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        SvgPicture.asset(
-          asset,
-          width: logoSize,
-          height: logoSize,
-          semanticsLabel: 'Counterbase logo',
-        ),
-        if (showText) ...[
-          const SizedBox(width: 10),
-          Text(
-            'Counterbase',
-            style: TextStyle(
-              color: isDark
-                  ? DesignColors.darkTextPrimary
-                  : DesignColors.textPrimary,
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.2,
+        mark,
+        const SizedBox(width: 10),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Counterbase',
+              style: DesignType.display.copyWith(
+                color: isDark
+                    ? DesignColors.darkTextPrimary
+                    : DesignColors.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
+              ),
             ),
-          ),
-        ],
+            Text(
+              'by Arche Axon',
+              style: TextStyle(
+                color: isDark
+                    ? DesignColors.darkTextSecondary
+                    : DesignColors.textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
