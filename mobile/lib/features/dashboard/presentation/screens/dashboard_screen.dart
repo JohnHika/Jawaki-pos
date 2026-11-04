@@ -382,6 +382,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             averageTicket: _amountForDashboard(summary['avgTicket']),
             itemsSold: _amountForDashboard(summary['itemsSold']),
             split: split,
+            dateLabel: DateFormat('EEE d MMM').format(DateTime.now()),
           ),
           const SizedBox(height: DesignSpacing.md),
           HomeStartSaleButton(onPressed: () => context.go('/')),
@@ -443,7 +444,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
     return Scaffold(
       appBar: BrandedAppBar(
-        title: businessLayout.actionLabel('/dashboard', 'Dashboard'),
+        title: identity.companyName.isNotEmpty ? identity.companyName : 'Home',
         showBackButton: false,
         showLogo: false,
         leading: Padding(
@@ -508,43 +509,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Greeting header: one quiet line, so today's money comes first.
-              Padding(
-                padding: const EdgeInsets.only(
-                  left: DesignSpacing.xs,
-                  right: DesignSpacing.xs,
-                  bottom: DesignSpacing.sm,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      identity.userFirstName.isNotEmpty
-                          ? 'Good ${_getGreeting()}, ${identity.userFirstName}'
-                          : 'Good ${_getGreeting()}',
-                      style: DesignType.display.copyWith(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? DesignColors.darkTextPrimary
-                            : DesignColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: DesignSpacing.xs),
-                    Text(
-                      '${identity.companyName} · ${DateFormat('EEE d MMM').format(DateTime.now())}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? DesignColors.darkTextSecondary
-                                    : DesignColors.textSecondary,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.md),
-
               if (showDailyFigures) ...[
                 summaryAsync.when(
                   data: takingsBlock,
@@ -656,21 +620,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                 ),
                                 child: Row(
                                   children: [
-                                    Container(
-                                      width: 38,
-                                      height: 38,
-                                      alignment: Alignment.center,
-                                      decoration: BoxDecoration(
-                                        color: DesignColors.accent
-                                            .withValues(alpha: 0.10),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.receipt_long_rounded,
-                                        size: 18,
-                                        color: DesignColors.accent,
-                                      ),
-                                    ),
+                                    Builder(builder: (context) {
+                                      final look = _saleLook(sale.paymentMethod);
+                                      return Container(
+                                        width: 38,
+                                        height: 38,
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          color: look.color
+                                              .withValues(alpha: 0.16),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: Icon(look.icon,
+                                            size: 18, color: look.color),
+                                      );
+                                    }),
                                     const SizedBox(width: DesignSpacing.md),
                                     Expanded(
                                       child: Column(
@@ -697,7 +662,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                           const SizedBox(
                                               height: DesignSpacing.xs - 1),
                                           Text(
-                                            '${sale.paymentMethod.toUpperCase()}  ·  ${_timeFmt.format(sale.createdAt)}',
+                                            '${_timeFmt.format(sale.createdAt)}  ·  ${paymentMethodLabel(sale.paymentMethod)}',
                                             style: Theme.of(context)
                                                 .textTheme
                                                 .labelSmall
@@ -769,11 +734,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
   }
 
-  String _getGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Morning';
-    if (hour < 17) return 'Afternoon';
-    return 'Evening';
+  /// Icon and colour for a sale's money group, matching the Sold today card.
+  ({IconData icon, Color color}) _saleLook(String method) {
+    switch (method.toUpperCase()) {
+      case 'CASH':
+        return (icon: Icons.payments_outlined, color: kCashColor);
+      case 'MPESA_RECORDED':
+        return (icon: Icons.smartphone_rounded, color: kRecordedColor);
+      case 'BANK_RECORDED':
+        return (icon: Icons.account_balance_rounded, color: kRecordedColor);
+      case 'CREDIT':
+        return (icon: Icons.person_outline_rounded, color: kCreditColor);
+      default:
+        return (icon: Icons.receipt_long_rounded, color: kOtherColor);
+    }
   }
 
   List<String> _fallbackBriefSnippets(Map<String, dynamic> summary) {

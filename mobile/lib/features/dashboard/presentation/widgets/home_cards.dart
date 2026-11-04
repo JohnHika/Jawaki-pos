@@ -28,6 +28,7 @@ class HomeTakingsCard extends StatelessWidget {
     required this.averageTicket,
     required this.itemsSold,
     required this.split,
+    this.dateLabel,
   });
 
   final double revenue;
@@ -35,6 +36,7 @@ class HomeTakingsCard extends StatelessWidget {
   final double averageTicket;
   final double itemsSold;
   final TakingsSplit split;
+  final String? dateLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -70,14 +72,34 @@ class HomeTakingsCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'SOLD TODAY',
-              style: _mono.copyWith(
-                color: mutedOnInk,
-                fontSize: 11,
-                letterSpacing: 1.2,
-                fontWeight: FontWeight.w600,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'SOLD TODAY',
+                    style: _mono.copyWith(
+                      color: mutedOnInk,
+                      fontSize: 11,
+                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (dateLabel != null)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2B251E),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(dateLabel!,
+                        style: const TextStyle(
+                            color: mutedOnInk,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700)),
+                  ),
+              ],
             ),
             const SizedBox(height: 8),
             Row(

@@ -455,9 +455,9 @@ const businessLayoutUnits = <String>[
 /// Access still comes from the user's permission set at runtime.
 const businessLayoutActions = <BusinessLayoutAction>[
   BusinessLayoutAction(
-      path: '/', label: 'POS', icon: Icons.point_of_sale_rounded),
+      path: '/', label: 'Sell', icon: Icons.point_of_sale_rounded),
   BusinessLayoutAction(
-      path: '/dashboard', label: 'Dashboard', icon: Icons.dashboard_rounded),
+      path: '/dashboard', label: 'Home', icon: Icons.dashboard_rounded),
   BusinessLayoutAction(
       path: '/products', label: 'Products', icon: Icons.inventory_2_rounded),
   BusinessLayoutAction(

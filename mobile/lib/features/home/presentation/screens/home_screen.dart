@@ -106,14 +106,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       items.add(_NavItem(
           icon: Icons.dashboard_outlined,
           activeIcon: Icons.dashboard_rounded,
-          label: 'Dashboard',
+          label: 'Home',
           path: '/dashboard'));
     }
     if (perms.canSeePOS) {
       items.add(_NavItem(
           icon: Icons.point_of_sale_outlined,
           activeIcon: Icons.point_of_sale_rounded,
-          label: 'POS',
+          label: 'Sell',
           path: '/'));
     }
     // AI is a primary work surface for accounts whose role permits it.
@@ -727,7 +727,7 @@ class _NavItemWidget extends ConsumerWidget {
                               : (isDark
                                   ? DesignColors.darkSurfaceElevated
                                   : Colors.white),
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(27),
                           border: isSelected
                               ? null
                               : Border.all(
@@ -757,16 +757,6 @@ class _NavItemWidget extends ConsumerWidget {
                             size: 28,
                           ),
                         ),
-                      )),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 42),
-                  child: Text(item.label,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.2,
-                        color: isSelected ? DesignColors.accent : inactiveColor,
                       )),
                 ),
               ],

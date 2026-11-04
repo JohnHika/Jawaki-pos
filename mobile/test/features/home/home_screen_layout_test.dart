@@ -50,7 +50,8 @@ void main() {
       (tester) async {
     await _pumpHome(tester, entitlement: _active);
 
-    expect(find.text('AI').hitTestable(), findsOneWidget);
+    // The centre tile shows the merged mark with no word under it.
+    expect(find.bySemanticsLabel('AI assistant'), findsOneWidget);
     expect(find.byType(AxonAiIcon), findsOneWidget);
     expect(find.text('Customers'), findsNothing);
 

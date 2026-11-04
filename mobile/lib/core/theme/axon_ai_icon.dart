@@ -28,9 +28,9 @@ class AxonAiIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final asset = isDark
-        ? 'assets/images/axon_logo_mark.svg'
-        : 'assets/images/axon_logo_mark_light.svg';
+    // One merged mark (Counterbase cube with the Arche Axon network) works on
+    // both light and dark surfaces.
+    const asset = 'assets/images/counterbase_axon_mark.svg';
     final logoUrl = tenantLogoUrl?.trim();
     final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
 
