@@ -32,6 +32,7 @@ Future<RecordedPaymentDetails?> showRecordPaymentSheet(
   return showModalBottomSheet<RecordedPaymentDetails>(
     context: context,
     isScrollControlled: true,
+    useRootNavigator: true,
     useSafeArea: true,
     backgroundColor: SignInPalette.of(context).page,
     shape: const RoundedRectangleBorder(

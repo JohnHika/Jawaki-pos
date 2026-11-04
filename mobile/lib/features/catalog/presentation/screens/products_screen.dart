@@ -110,15 +110,22 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     super.initState();
     final scope = ref.read(_catalogScopeProvider);
     final previousScope = ref.read(_lastCatalogScopeProvider);
-    if (previousScope != null && previousScope != scope) {
-      ref.read(_selectedCategoryFilterProvider.notifier).state = null;
-      ref.read(_searchQueryProvider.notifier).state = '';
-      ref.read(_showArchivedProductsProvider.notifier).state = false;
-    }
-    ref.read(_lastCatalogScopeProvider.notifier).state = scope;
+    final scopeChanged = previousScope != null && previousScope != scope;
+    // Providers cannot be changed while the widget tree is building, so the
+    // reset for a different shop or branch runs right after this frame starts.
+    Future.microtask(() {
+      if (!mounted) return;
+      if (scopeChanged) {
+        ref.read(_selectedCategoryFilterProvider.notifier).state = null;
+        ref.read(_searchQueryProvider.notifier).state = '';
+        ref.read(_showArchivedProductsProvider.notifier).state = false;
+      }
+      ref.read(_lastCatalogScopeProvider.notifier).state = scope;
+    });
     _searchController = TextEditingController(
-      text: ref.read(_searchQueryProvider),
+      text: scopeChanged ? '' : ref.read(_searchQueryProvider),
     );
+
   }
 
   @override

@@ -141,6 +141,7 @@ class HomeTakingsCard extends StatelessWidget {
                 child: SizedBox(
                   height: 8,
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       for (var i = 0; i < groups.length; i++) ...[
                         if (i > 0) const SizedBox(width: 2),

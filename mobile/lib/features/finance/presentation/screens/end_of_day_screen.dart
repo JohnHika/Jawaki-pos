@@ -409,7 +409,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                   Expanded(
                     child: Text(closeNeedsReconciliation
                         ? 'A sale changed or a debt collection was recorded after the last close. Reconcile the till and close the day again.'
-                        : 'Figures load from this device. At close, enter the opening float and net cash added or removed. This stores one net adjustment, not each till movement. Include cash movements made outside Counterbase and explain them in the notes.'),
+                        : 'Figures come from this phone. When you close, enter your opening float and any cash you added or took out, and explain it in the notes.'),
                   ),
                 ],
               ),

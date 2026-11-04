@@ -131,6 +131,7 @@ class ProductGrid extends ConsumerWidget {
               subtitle:
                   'Add $catalogName in Products and they will be ready to sell here.',
               actionLabel: 'Open Products',
+              actionIcon: Icons.inventory_2_outlined,
               iconColor: DesignColors.accent,
               onAction: () => context.push('/products'),
             );
@@ -225,7 +226,7 @@ class ProductGrid extends ConsumerWidget {
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount:
                   productGridColumns(MediaQuery.sizeOf(context).width),
-              childAspectRatio: (hasPhotos ? 0.78 : 0.95) / growth,
+              childAspectRatio: (hasPhotos ? 0.62 : 0.72) / growth,
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
             ),
@@ -752,11 +753,11 @@ class _ProductCard extends ConsumerWidget {
                       ),
                     ),
                   ],
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: Column(
+                      Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -816,16 +817,18 @@ class _ProductCard extends ConsumerWidget {
                             ),
                           ],
                         ),
-                      ),
                       if (!isOutOfStock) ...[
-                        const SizedBox(width: 6),
-                        _QuickAddControl(
+                        const SizedBox(height: 6),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: _QuickAddControl(
                           productName: productName,
                           quantityLabel: quantityLabel,
                           inCart: quantityInCart > 0,
                           onAdd: () => _quickAdd(context, ref),
                           onMore: () => _step(context, ref, 1),
                           onLess: () => _step(context, ref, -1),
+                          ),
                         ),
                       ],
                     ],

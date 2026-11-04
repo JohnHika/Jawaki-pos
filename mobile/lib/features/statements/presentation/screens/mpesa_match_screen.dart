@@ -283,6 +283,7 @@ class _RecordedMatchViewState extends State<_RecordedMatchView> {
             child: SizedBox(
               height: 8,
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (counts.matched > 0)
                     Expanded(

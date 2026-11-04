@@ -491,7 +491,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         : <_NavItem>[];
     _latestMoreItems = moreItems;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final currentIndex = _resolveCurrentIndex(pinnedItems);
+    // Selection is worked out against what the bar actually shows, so Settings
+    // lights its own tab. More lights only for a page that lives inside it.
+    final currentIndex = _resolveCurrentIndex(visibleNavItems);
+    final moreSelected =
+        hasMore && currentIndex < 0 && _resolveCurrentIndex(moreItems) >= 0;
     final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final homePath = isLocalWorkspace
         ? LocalWorkspaceCapabilities.homePathFor(perms, businessLayout)
@@ -638,7 +642,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               activeIcon: Icons.apps_rounded,
                               label: 'More',
                               path: ''),
-                          isSelected: currentIndex >= _maxVisiblePrimaryItems,
+                          isSelected: moreSelected,
                           isPrimary: false,
                           onTap: () {
                             HapticService().selection();

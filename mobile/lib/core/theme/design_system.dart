@@ -602,8 +602,18 @@ class _GradientButtonState extends State<GradientButton> {
   Widget build(BuildContext context) {
     final reduced = reducedMotion(context);
     final fill = widget.gradient?.first ?? DesignColors.accent;
+    // Whichever of the dark ink or white reads better on the fill. On the
+    // orange accent that is the ink, as on every other orange button.
+    double contrast(Color a, Color b) {
+      final l1 = a.computeLuminance(), l2 = b.computeLuminance();
+      final hi = l1 > l2 ? l1 : l2, lo = l1 > l2 ? l2 : l1;
+      return (hi + 0.05) / (lo + 0.05);
+    }
+
     final textColor = widget.textColor ??
-        (fill.computeLuminance() > 0.5 ? Colors.black : Colors.white);
+        (contrast(fill, DesignColors.textPrimary) >= contrast(fill, Colors.white)
+            ? DesignColors.textPrimary
+            : Colors.white);
 
     // Press-scale: the whole surface compresses to 0.96 on press-in and
     // springs back on release/cancel. 120ms keeps it feeling physical
