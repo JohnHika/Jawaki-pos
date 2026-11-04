@@ -9,9 +9,9 @@ import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
-import 'package:axon_pos/core/widgets/motion.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/password_reset_sheet.dart';
+import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -20,8 +20,7 @@ class LoginScreen extends ConsumerStatefulWidget {
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends ConsumerState<LoginScreen>
-    with TickerProviderStateMixin {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _tenantSlugController = TextEditingController();
   final _emailController = TextEditingController();
@@ -33,8 +32,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   bool _obscurePassword = true;
   bool _rememberMe = false;
   bool _biometricAvailable = false;
-  bool _showPasswordFallback = false;
-  String _primaryLoginMethod = 'email';
+  bool _editingCode = false;
 
   // Dynamic company branding
   String? _companyName;
@@ -43,33 +41,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   bool _isFetchingCompany = false;
   Timer? _debounceTimer;
 
-  late AnimationController _pulseController;
-
   @override
   void initState() {
     super.initState();
     _loadRememberedLogin();
     _checkBiometric();
-
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: DesignAnimation.slowest,
-    );
-  }
-
-  // The brand pulse is an infinite loop: it must only run when the OS
-  // "remove animations" setting is off (see core/widgets/motion.dart).
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (reducedMotion(context)) {
-      if (_pulseController.isAnimating) {
-        _pulseController.stop();
-        _pulseController.reset();
-      }
-    } else if (!_pulseController.isAnimating) {
-      _pulseController.repeat(reverse: true);
-    }
   }
 
   void _loadRememberedLogin() {
@@ -80,8 +56,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     final savedTenant = storage.getTenantSlug();
 
     _rememberMe = rememberLogin;
-    _primaryLoginMethod = storage.getPrimaryLoginMethod();
-    _showPasswordFallback = _primaryLoginMethod == 'email';
     if ((rememberedTenant ?? savedTenant)?.isNotEmpty == true) {
       _tenantSlugController.text = rememberedTenant ?? savedTenant!;
       _onSlugChanged(_tenantSlugController.text);
@@ -99,7 +73,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     _passwordController.dispose();
     _emailFocus.dispose();
     _passwordFocus.dispose();
-    _pulseController.dispose();
     super.dispose();
   }
 
@@ -173,11 +146,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     if (mounted) {
       setState(() {
         _biometricAvailable = ready && enabled;
-        if (_primaryLoginMethod == 'biometric' && !ready) {
-          // Biometrics only reopen a remembered session; a full sign-in still
-          // needs a credential, so make that route the visible fallback.
-          _showPasswordFallback = true;
-        }
       });
     }
   }
@@ -485,126 +453,108 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
-    final size = MediaQuery.of(context).size;
-    final isSmallScreen = size.height < 700;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final theme = Theme.of(context);
+    final palette = SignInPalette.of(context);
+    final slug = _normalizeCompanyCode(_tenantSlugController.text);
+    final businessName = businessNameFrom(name: _companyName, code: slug);
+    final hasBusiness = _companyName != null && _companyLookupError == null;
+    final showCodeField = _editingCode || !hasBusiness;
+    final topInset = MediaQuery.of(context).padding.top;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final sheetColor = palette.isDark ? palette.card : palette.page;
 
-    return Scaffold(
-      backgroundColor: context.themed(DesignColors.darkBg),
-      body: SafeArea(
-        minimum: const EdgeInsets.only(
-            top: DesignSpacing.sm, bottom: DesignSpacing.lg),
-        // The back button has its own row above the scrolling content, so
-        // the form never slides underneath it.
-        child: Column(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: sheetColor,
+        systemNavigationBarIconBrightness:
+            palette.isDark ? Brightness.light : Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: DesignColors.darkBg,
+        body: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox(
-                width: 64,
-                height: 56,
-                child: AppBackButton(
-                  background: context.themed(DesignColors.darkBg),
-                  color: isDark ? Colors.white : DesignColors.textPrimary,
-                  isDark: isDark,
-                  onPressed: () => context.canPop()
-                      ? context.pop()
-                      : context.go('/company-choice'),
-                ),
+            // Business header: who this phone signs in to.
+            Padding(
+              padding: EdgeInsets.fromLTRB(8, topInset + 4, 20, 26),
+              child: Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Back',
+                    color: DesignColors.darkTextPrimary,
+                    onPressed: () => context.canPop()
+                        ? context.pop()
+                        : context.go('/company-choice'),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                  ),
+                  const SizedBox(width: 4),
+                  BusinessMark(
+                    name: businessName,
+                    logoUrl: _companyLogoUrl,
+                    size: 48,
+                    loading: _isFetchingCompany && _companyLogoUrl == null,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          businessName.isEmpty ? 'Counterbase' : businessName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: DesignType.display.copyWith(
+                            color: DesignColors.darkTextPrimary,
+                            fontSize: 19,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          slug.isEmpty
+                              ? 'Staff sign in'
+                              : hasBusiness && !_editingCode
+                                  ? slug
+                                  : 'Check the company code',
+                          style: const TextStyle(
+                            color: DesignColors.darkTextSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (hasBusiness && !_editingCode)
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        foregroundColor: DesignColors.accentLight,
+                        minimumSize: const Size(48, 48),
+                      ),
+                      onPressed: () => setState(() => _editingCode = true),
+                      child: const Text('Change'),
+                    ),
+                ],
               ),
             ),
             Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: EdgeInsets.symmetric(
-                  horizontal: DesignSpacing.xxl,
-                  vertical: isSmallScreen
-                      ? DesignSpacing.md
-                      : DesignSpacing.xxxl,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: sheetColor,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(26)),
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Quiet brand mark. No pulse, no glow — a plain icon
-                    // like any standard app sign-in header.
-                    StaggeredItem(
-                      itemKey: 'login-logo',
-                      child: AuthEntrance(
-                        child: Container(
-                          width: isSmallScreen ? 72 : 88,
-                          height: isSmallScreen ? 72 : 88,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white,
-                          ),
-                          child: ClipOval(
-                            child: _buildLogo(
-                              isSmallScreen ? 72 : 88,
-                            ),
-                          ),
-                        ),
+                child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(22, 26, 22, bottomInset + 16),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 420),
+                      child: Form(
+                        key: _formKey,
+                        child: _buildFormBody(palette, authState, showCodeField),
                       ),
                     ),
-                    SizedBox(height: isSmallScreen ? 16 : 24),
-
-                    // Title — dynamic based on fetched company
-                    StaggeredItem(
-                      itemKey: 'login-title',
-                      index: 1,
-                      child: Text(
-                        _companyName ?? 'Counterbase',
-                        style: theme.textTheme.headlineLarge?.copyWith(
-                          color: isDark
-                              ? Colors.white
-                              : DesignColors.textPrimary,
-                          letterSpacing: 0.5,
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                      ),
-                    ),
-                    const SizedBox(height: DesignSpacing.sm),
-                    StaggeredItem(
-                      itemKey: 'login-subtitle',
-                      index: 2,
-                      child: Text(
-                        _companyName == null
-                            ? 'CONNECT YOUR STAFF ACCOUNT'
-                            : 'READY FOR STAFF SIGN IN',
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.7)
-                              : DesignColors.textSecondary,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                        height: isSmallScreen
-                            ? DesignSpacing.xxl
-                            : DesignSpacing.xxxl),
-
-                    // Login card
-                    StaggeredItem(
-                      itemKey: 'login-card',
-                      index: 3,
-                      child: _buildLoginCard(
-                          isSmallScreen, authState, isDark),
-                    ),
-
-                    // Bottom branding
-                    SizedBox(
-                        height: isSmallScreen
-                            ? DesignSpacing.lg
-                            : DesignSpacing.xl),
-                    StaggeredItem(
-                      itemKey: 'login-footer',
-                      index: 4,
-                      child: _buildBottomLinks(),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -614,497 +564,271 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     );
   }
 
-  Widget _buildLoginCard(bool isSmallScreen, AuthState authState, bool isDark) {
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(maxWidth: 400),
-      decoration: BoxDecoration(
-        color: isDark ? DesignColors.darkSurface : Colors.white,
-        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-        border: Border.all(
-          color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
-          width: 1,
-        ),
-      ),
-      child: Form(
-        key: _formKey,
-        child: Padding(
-          padding: EdgeInsets.all(
-            isSmallScreen ? DesignSpacing.xl : DesignSpacing.xxl,
+  Widget _buildFormBody(
+    SignInPalette palette,
+    AuthState authState,
+    bool showCodeField,
+  ) {
+    final isDark = palette.isDark;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Sign in to your shop',
+          style: DesignType.display.copyWith(
+            color: palette.ink,
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Use the email and password for your staff account.',
+          style: TextStyle(color: palette.soft, fontSize: 14, height: 1.4),
+        ),
+        if (_biometricAvailable) ...[
+          const SizedBox(height: 14),
+          SignInOutlineButton(
+            label: 'Unlock with biometrics',
+            leading: Icon(Icons.fingerprint_rounded, color: palette.ink),
+            onPressed: authState.isLoading ? null : _handleBiometricLogin,
+          ),
+        ],
+        const SizedBox(height: 22),
+        if (showCodeField) ...[
+          _buildPremiumTextField(
+            controller: _tenantSlugController,
+            label: 'Company code',
+            hint: 'your-company-code',
+            helperText: 'Ask your business owner or manager for this code.',
+            prefixIcon: Icons.business_outlined,
+            keyboardType: TextInputType.text,
+            textInputAction: TextInputAction.next,
+            onFieldSubmitted: (_) => _emailFocus.requestFocus(),
+            textCapitalization: TextCapitalization.none,
+            autocorrect: false,
+            isDark: isDark,
+            onChanged: _onSlugChanged,
+            suffixIcon: _isFetchingCompany
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : null,
+            validator: (value) {
+              final code = _normalizeCompanyCode(value ?? '');
+              if (code.isEmpty) {
+                return 'Please enter your company code';
+              }
+              if (code.length < 2 || !_isValidCompanyCode(code)) {
+                return 'Use the lowercase code format, for example acme-stores';
+              }
+              return null;
+            },
+          ),
+          if (_companyLookupError != null) ...[
+            const SizedBox(height: DesignSpacing.sm),
+            Semantics(
+              liveRegion: true,
+              label: _companyLookupError!,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    Icons.admin_panel_settings_rounded,
-                    color: isDark
-                        ? DesignColors.darkTextPrimary
-                        : DesignColors.textPrimary,
-                    size: DesignSpacing.xxl,
-                  ),
-                  const SizedBox(width: DesignSpacing.md),
+                  const Icon(Icons.info_outline_rounded,
+                      color: DesignColors.warning, size: 17),
+                  const SizedBox(width: 7),
                   Expanded(
                     child: Text(
-                      'Staff sign in',
-                      style: (isSmallScreen
-                              ? Theme.of(context).textTheme.titleLarge
-                              : Theme.of(context).textTheme.headlineSmall)
-                          ?.copyWith(
-                        color: isDark
-                            ? DesignColors.darkTextPrimary
-                            : DesignColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: DesignSpacing.sm),
-              Text(
-                'Enter the company code from your administrator, then sign in with your staff account.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: isDark
-                          ? DesignColors.darkTextSecondary
-                          : DesignColors.textSecondary,
-                    ),
-              ),
-              const SizedBox(height: DesignSpacing.lg),
-
-              // Quick sign-in options — placed at the top of the card so users
-              // can see PIN / biometric without scrolling past the email form.
-              Text(
-                'Already set up on this device?',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: isDark
-                          ? DesignColors.darkTextSecondary
-                          : DesignColors.textSecondary,
-                    ),
-              ),
-              const SizedBox(height: DesignSpacing.sm + 2),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildAltLoginButton(
-                      icon: Icons.pin_outlined,
-                      label: 'PIN',
-                      onTap: () => context.push('/pin-login'),
-                      isDark: isDark,
-                      selected: _primaryLoginMethod == 'pin',
-                    ),
-                  ),
-                  // Biometrics only reopen a remembered session. Without one the
-                  // tile could only explain why it does nothing, so it stays
-                  // hidden until there is something to unlock.
-                  if (_biometricAvailable) ...[
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: AuthEntrance(
-                        child: _buildAltLoginButton(
-                          icon: Icons.fingerprint_rounded,
-                          label: 'Biometric',
-                          onTap: authState.isLoading
-                              ? () {}
-                              : () => _handleBiometricLogin(),
-                          isDark: isDark,
-                          selected: _primaryLoginMethod == 'biometric',
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: DesignSpacing.xl),
-
-              const SizedBox(height: DesignSpacing.md),
-
-              // Company identifier comes first: Google sign-in is always
-              // scoped to the business the staff member is joining.
-              _buildPremiumTextField(
-                controller: _tenantSlugController,
-                label: 'Company Code',
-                hint: 'your-company-code',
-                helperText: 'Ask your business owner or manager for this code.',
-                prefixIcon: Icons.business_outlined,
-                keyboardType: TextInputType.text,
-                textInputAction: _showPasswordFallback
-                    ? TextInputAction.next
-                    : TextInputAction.done,
-                onFieldSubmitted: (_) => _showPasswordFallback
-                    ? _emailFocus.requestFocus()
-                    : FocusScope.of(context).unfocus(),
-                textCapitalization: TextCapitalization.none,
-                autocorrect: false,
-                isDark: isDark,
-                onChanged: _onSlugChanged,
-                suffixIcon: _isFetchingCompany
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: Padding(
-                          padding: EdgeInsets.all(12),
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    : null,
-                validator: (value) {
-                  final code = _normalizeCompanyCode(value ?? '');
-                  if (code.isEmpty) {
-                    return 'Please enter your company code';
-                  }
-                  if (code.length < 2 || !_isValidCompanyCode(code)) {
-                    return 'Use the lowercase code format, for example acme-stores';
-                  }
-                  return null;
-                },
-              ),
-              if (_companyLookupError != null) ...[
-                const SizedBox(height: DesignSpacing.sm),
-                Semantics(
-                  liveRegion: true,
-                  label: _companyLookupError!,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(
-                        Icons.info_outline_rounded,
+                      _companyLookupError!,
+                      style: const TextStyle(
                         color: DesignColors.warning,
-                        size: 17,
+                        fontSize: 12.5,
+                        height: 1.35,
                       ),
-                      const SizedBox(width: 7),
-                      Expanded(
-                        child: Text(
-                          _companyLookupError!,
-                          style:
-                              Theme.of(context).textTheme.labelMedium?.copyWith(
-                                    color: DesignColors.warning,
-                                    height: 1.35,
-                                  ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: DesignSpacing.lg),
+        ],
+        _buildPremiumTextField(
+          controller: _emailController,
+          focusNode: _emailFocus,
+          label: 'Email',
+          hint: 'your-email@company.com',
+          prefixIcon: Icons.email_outlined,
+          keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+          onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
+          autocorrect: false,
+          isDark: isDark,
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Please enter your email';
+            }
+            if (!value.contains('@')) {
+              return 'Please enter a valid email';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: DesignSpacing.lg),
+        _buildPremiumTextField(
+          controller: _passwordController,
+          focusNode: _passwordFocus,
+          label: 'Password',
+          hint: 'Enter your password',
+          prefixIcon: Icons.lock_outlined,
+          obscureText: _obscurePassword,
+          textInputAction: TextInputAction.done,
+          onFieldSubmitted: (_) => _handleLogin(),
+          suffixIcon: IconButton(
+            tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+            icon: Icon(
+              _obscurePassword
+                  ? Icons.visibility_outlined
+                  : Icons.visibility_off_outlined,
+              color: palette.faint,
+              size: 20,
+            ),
+            onPressed: () =>
+                setState(() => _obscurePassword = !_obscurePassword),
+          ),
+          isDark: isDark,
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Please enter your password';
+            }
+            if (value.length < 8) {
+              return 'Password must be at least 8 characters';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: DesignSpacing.sm),
+        Row(
+          children: [
+            Semantics(
+              toggled: _rememberMe,
+              label: 'Stay signed in',
+              child: InkWell(
+                onTap: () => setState(() => _rememberMe = !_rememberMe),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DesignSpacing.xs,
+                    vertical: DesignSpacing.md,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _rememberMe ? DesignColors.accent : palette.card,
+                          border: Border.all(
+                            color:
+                                _rememberMe ? DesignColors.accent : palette.line,
+                            width: 1.5,
+                          ),
                         ),
+                        child: _rememberMe
+                            ? const Icon(Icons.check_rounded,
+                                size: 16, color: SignInPalette.onAccent)
+                            : null,
+                      ),
+                      const SizedBox(width: DesignSpacing.sm),
+                      Text(
+                        'Stay signed in',
+                        style: TextStyle(color: palette.soft, fontSize: 13),
                       ),
                     ],
                   ),
                 ),
-              ],
-              const SizedBox(height: DesignSpacing.lg + 2),
-
-              OutlinedButton.icon(
-                onPressed: authState.isLoading ? null : _handleGoogleLogin,
-                icon: const Icon(Icons.account_circle_outlined),
-                label: const Text('Continue with Google'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                  ),
-                  side: BorderSide(
-                    color: _primaryLoginMethod == 'google'
-                        ? DesignColors.accent
-                        : isDark
-                            ? DesignColors.darkBorder
-                            : DesignColors.surfaceBorder,
-                    width: _primaryLoginMethod == 'google' ? 1.8 : 1,
-                  ),
+              ),
+            ),
+            const Spacer(),
+            TextButton(
+              onPressed: authState.isLoading ? null : _openPasswordReset,
+              style: TextButton.styleFrom(
+                minimumSize: const Size(64, 48),
+                padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.sm),
+              ),
+              child: Text(
+                'Forgot password?',
+                style: TextStyle(
+                  color: palette.ink,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  decoration: TextDecoration.underline,
+                  decorationColor: palette.faint,
                 ),
               ),
-              const SizedBox(height: DesignSpacing.sm),
-              Text(
-                'Choose the Google account linked to this business.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: isDark
-                          ? DesignColors.darkTextSecondary
-                          : DesignColors.textSecondary,
-                    ),
-              ),
-              if (!_showPasswordFallback)
-                Align(
-                  alignment: Alignment.center,
-                  child: TextButton(
-                    onPressed: authState.isLoading
-                        ? null
-                        : () => setState(() => _showPasswordFallback = true),
-                    child: const Text('Use email and password instead'),
-                  ),
-                ),
-
-              if (_showPasswordFallback) ...[
-                const SizedBox(height: DesignSpacing.lg),
-
-                // Email field
-                _buildPremiumTextField(
-                  controller: _emailController,
-                  focusNode: _emailFocus,
-                  label: 'Email',
-                  hint: 'your-email@company.com',
-                  prefixIcon: Icons.email_outlined,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
-                  onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
-                  autocorrect: false,
-                  isDark: isDark,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your email';
-                    }
-                    if (!value.contains('@')) {
-                      return 'Please enter a valid email';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: DesignSpacing.lg),
-
-                // Password field
-                _buildPremiumTextField(
-                  controller: _passwordController,
-                  focusNode: _passwordFocus,
-                  label: 'Password',
-                  hint: 'Enter your password',
-                  prefixIcon: Icons.lock_outlined,
-                  obscureText: _obscurePassword,
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) => _handleLogin(),
-                  suffixIcon: IconButton(
-                    tooltip: 'Show or hide password',
-                    icon: Icon(
-                      _obscurePassword
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                      color: isDark
-                          ? DesignColors.darkTextTertiary
-                          : DesignColors.textTertiary,
-                      size: 20,
-                    ),
-                    onPressed: () =>
-                        setState(() => _obscurePassword = !_obscurePassword),
-                  ),
-                  isDark: isDark,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your password';
-                    }
-                    if (value.length < 8) {
-                      return 'Password must be at least 8 characters';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: DesignSpacing.md),
-
-                // Remember me + Forgot password
-                Row(
-                  children: [
-                    // Custom remember me toggle — Semantics(checked) so the
-                    // state is announced, on a 48px InkWell so the target
-                    // clears the 44px minimum and gets ripple feedback.
-                    Semantics(
-                      toggled: _rememberMe,
-                      label: 'Stay signed in',
-                      child: InkWell(
-                        onTap: () => setState(() => _rememberMe = !_rememberMe),
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusMd),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: DesignSpacing.xs,
-                            vertical: DesignSpacing.sm + 6,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 24,
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: _rememberMe
-                                      ? DesignColors.accent
-                                      : isDark
-                                          ? DesignColors.darkSurfaceElevated
-                                          : Colors.white,
-                                  border: Border.all(
-                                    color: _rememberMe
-                                        ? DesignColors.accent
-                                        : isDark
-                                            ? DesignColors.darkBorder
-                                            : DesignColors.surfaceBorder,
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: _rememberMe
-                                    ? const Icon(
-                                        Icons.check_rounded,
-                                        size: 16,
-                                        color: Colors.black,
-                                      )
-                                    : null,
-                              ),
-                              const SizedBox(width: DesignSpacing.sm),
-                              Text(
-                                'Stay signed in',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                      color: isDark
-                                          ? DesignColors.darkTextSecondary
-                                          : DesignColors.textSecondary,
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    // Forgot password link
-                    TextButton(
-                      onPressed:
-                          authState.isLoading ? null : _openPasswordReset,
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(64, 48),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: DesignSpacing.sm,
-                        ),
-                      ),
-                      child: Text(
-                        'Forgot password?',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: DesignColors.accent,
-                            ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: DesignSpacing.xl),
-
-                // Sign In button
-                GradientButton(
-                  label: 'Sign in to business',
-                  icon: Icons.arrow_forward_rounded,
-                  onPressed: authState.isLoading ? null : _handleLogin,
-                  isLoading: authState.isLoading,
-                  height: 48,
-                  borderRadius: DesignSpacing.radiusMd,
-                  gradient: const [
-                    DesignColors.accent,
-                    DesignColors.accentDark
-                  ],
-                ),
-
-                const SizedBox(height: DesignSpacing.lg),
-              ],
-
-              // Error message
-              if (authState.error != null)
-                Semantics(
-                  liveRegion: true,
-                  label: 'Sign-in error: ${authState.error}',
-                  child: Container(
-                    padding: const EdgeInsets.all(DesignSpacing.md),
-                    decoration: BoxDecoration(
-                      color: DesignColors.error.withValues(alpha: 0.1),
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusMd),
-                      border: Border.all(
-                        color: DesignColors.error.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.error_outline_rounded,
-                          color: DesignColors.error,
-                          size: 20,
-                        ),
-                        const SizedBox(width: DesignSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            authState.error!,
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: DesignColors.error,
-                                      fontWeight: FontWeight.w500,
-                                      height: 1.35,
-                                    ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              const SizedBox(height: DesignSpacing.md),
-
-              // Invitation code entry point
-              Align(
-                alignment: Alignment.center,
-                child: TextButton(
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(64, 48),
-                  ),
-                  onPressed: () => context.push('/accept-invite'),
-                  child: Text(
-                    'Have an invitation code?',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: DesignColors.accent,
-                          fontWeight: FontWeight.w600,
-                        ),
-                  ),
-                ),
-              ),
-
-                            // Sign up for a new business. /company-setup is
-                            // the local-first workspace-creation flow.
-                            Align(
-                              alignment: Alignment.center,
-                              child: TextButton(
-                                style: TextButton.styleFrom(
-                                  minimumSize: const Size(64, 48),
-                                ),
-                                onPressed: () => context.push('/company-setup'),
-                                child: Text(
-                                  'Create a new business account',
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                        color: DesignColors.accent,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                ),
-                              ),
-                            ),
-
-              const SizedBox(height: DesignSpacing.sm),
-            ],
-          ),
+            ),
+          ],
         ),
-      ),
+        if (authState.error != null) ...[
+          const SizedBox(height: DesignSpacing.sm),
+          SignInError(message: authState.error!),
+        ],
+        const SizedBox(height: DesignSpacing.lg),
+        SignInButton(
+          label: 'Sign in',
+          loading: authState.isLoading,
+          onPressed: authState.isLoading ? null : _handleLogin,
+        ),
+        const SizedBox(height: DesignSpacing.xs),
+        LegalConsent(palette: palette, action: 'signing in'),
+        const SizedBox(height: DesignSpacing.sm),
+        Row(
+          children: [
+            Expanded(child: Divider(color: palette.line)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text('or',
+                  style: TextStyle(color: palette.faint, fontSize: 12)),
+            ),
+            Expanded(child: Divider(color: palette.line)),
+          ],
+        ),
+        const SizedBox(height: DesignSpacing.lg),
+        SignInOutlineButton(
+          label: 'Continue with Google',
+          leading: Text(
+            'G',
+            style: DesignType.display.copyWith(
+              color: palette.ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          onPressed: authState.isLoading ? null : _handleGoogleLogin,
+        ),
+        const SizedBox(height: DesignSpacing.sm),
+        Wrap(
+          alignment: WrapAlignment.center,
+          children: [
+            SignInTextLink(
+              label: 'Have an invitation code?',
+              onPressed: () => context.push('/accept-invite'),
+            ),
+            SignInTextLink(
+              label: 'Create a new business account',
+              onPressed: () => context.push('/company-setup'),
+            ),
+          ],
+        ),
+      ],
     );
   }
-
-  /// Builds the logo area: company logo if available, spinner while fetching,
-  /// otherwise a generic store icon.
-  Widget _buildLogo(double size) {
-    if (_companyLogoUrl != null && _companyLogoUrl!.isNotEmpty) {
-      return Image.network(
-        _companyLogoUrl!,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _defaultLogoIcon(size),
-      );
-    }
-    if (_isFetchingCompany) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
-    }
-    return _defaultLogoIcon(size);
-  }
-
-  Widget _defaultLogoIcon(double size) => Icon(
-        Icons.store_rounded,
-        size: size * 0.55,
-        color: DesignColors.accent,
-      );
 
   Widget _buildPremiumTextField({
     required TextEditingController controller,
@@ -1225,98 +949,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             ),
           ),
           validator: validator,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAltLoginButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    bool isDark = false,
-    bool selected = false,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 48),
-          padding: const EdgeInsets.symmetric(
-            vertical: DesignSpacing.md,
-          ),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-            color: isDark
-                ? (selected
-                    ? DesignColors.accent.withValues(alpha: 0.16)
-                    : DesignColors.darkSurfaceElevated)
-                : (selected
-                    ? DesignColors.accent.withValues(alpha: 0.1)
-                    : DesignColors.surfaceSubtle),
-            border: Border.all(
-              color: selected
-                  ? DesignColors.accent
-                  : isDark
-                      ? DesignColors.darkBorder
-                      : DesignColors.surfaceBorder,
-              width: selected ? 1.8 : 1,
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                color: selected
-                    ? DesignColors.accent
-                    : isDark
-                        ? DesignColors.darkTextSecondary
-                        : DesignColors.textSecondary,
-                size: 22,
-              ),
-              const SizedBox(height: DesignSpacing.sm - 2),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: isDark
-                          ? DesignColors.darkTextSecondary
-                          : DesignColors.textSecondary,
-                    ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomLinks() {
-    return Column(
-      children: [
-        const Icon(
-          Icons.shield_outlined,
-          size: 20,
-          color: DesignColors.info,
-        ),
-        const SizedBox(height: DesignSpacing.sm),
-        Text(
-          'Secure business access',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: context.themed(DesignColors.darkTextSecondary),
-              ),
-        ),
-        const SizedBox(height: DesignSpacing.sm - 2),
-        Text(
-          'Point of Sale System',
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: context.themed(DesignColors.darkTextTertiary),
-              ),
         ),
       ],
     );
