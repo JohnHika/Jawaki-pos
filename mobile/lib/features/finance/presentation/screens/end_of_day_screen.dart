@@ -1,3 +1,4 @@
+import 'package:go_router/go_router.dart';
 import '../../../dashboard/presentation/widgets/home_cards.dart';
 import '../../../home/domain/shop_guidance.dart';
 import 'package:flutter/material.dart';
@@ -695,6 +696,24 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
           const SizedBox(height: DesignSpacing.sm),
         ],
 
+        if (recordedCount > 0) ...[
+          const SizedBox(height: DesignSpacing.lg),
+          SizedBox(
+            height: 48,
+            child: OutlinedButton.icon(
+              onPressed: () => context.push('/mpesa-match'),
+              icon: const Icon(Icons.fact_check_outlined, size: 20),
+              label: const Text('Match M-Pesa statement'),
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                ),
+                textStyle: const TextStyle(
+                    fontSize: 14.5, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: DesignSpacing.xl),
         StaggeredItem(
           itemKey: 'eod-close-cta',

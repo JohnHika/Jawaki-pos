@@ -2161,8 +2161,11 @@ class LabelDivider extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  CONFIRMATION DIALOG (Premium)
+//  CONFIRMATION SHEET
 // ═══════════════════════════════════════════════════════════════
+/// Asks a question from the bottom of the screen. The question names what
+/// happens; the safe choice is the quiet button. Keeps the old name so every
+/// caller gets the same look.
 Future<bool> showConfirmDialog(
   BuildContext context, {
   required String title,
@@ -2171,88 +2174,105 @@ Future<bool> showConfirmDialog(
   String cancelLabel = 'Cancel',
   Color? confirmColor,
 }) async {
-  final result = await showDialog<bool>(
+  final result = await showModalBottomSheet<bool>(
     context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
     builder: (ctx) {
       final isDark = Theme.of(ctx).brightness == Brightness.dark;
       final titleColor =
           isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
       final messageColor =
           isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-      return PopIn(
-        beginScale: 0.88,
-        duration: const Duration(milliseconds: 340),
-        child: AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-        ),
-        backgroundColor:
-            isDark ? DesignColors.darkSurfaceElevated : Colors.white,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            PopIn(
-              delay: const Duration(milliseconds: 140),
-              beginScale: 0.3,
-              child: Icon(
-                Icons.warning_amber_rounded,
-                color: confirmColor ?? DesignColors.error,
-                size: 36,
-              ),
+      final action = confirmColor ?? DesignColors.accent;
+      final onAction = action == DesignColors.accent
+          ? DesignColors.textPrimary
+          : Colors.white;
+      return SafeArea(
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          decoration: BoxDecoration(
+            color: isDark ? DesignColors.darkSurface : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color:
+                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
             ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: titleColor,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              style: TextStyle(fontSize: 14, color: messageColor, height: 1.4),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-        actionsPadding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-        actions: [
-          Row(
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? DesignColors.darkBorder
+                        : DesignColors.surfaceBorder,
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  child: Text(cancelLabel),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: DesignType.display.copyWith(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: titleColor,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                style: TextStyle(fontSize: 14, color: messageColor, height: 1.45),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                height: 52,
+                child: FilledButton(
                   onPressed: () => Navigator.pop(ctx, true),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: confirmColor ?? DesignColors.error,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: action,
+                    foregroundColor: onAction,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
+                    textStyle: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w800),
                   ),
                   child: Text(confirmLabel),
                 ),
               ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 46,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: titleColor,
+                    side: BorderSide(
+                      color: isDark
+                          ? DesignColors.darkBorder
+                          : DesignColors.surfaceBorder,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    textStyle: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                  child: Text(cancelLabel),
+                ),
+              ),
             ],
           ),
-        ],
-      ));
+        ),
+      );
     },
   );
 

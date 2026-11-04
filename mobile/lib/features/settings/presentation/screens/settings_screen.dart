@@ -122,7 +122,7 @@ class SettingsScreen extends ConsumerWidget {
     final sections = <SettingsSection>[
       SettingsSection(
         id: 'business',
-        title: 'My business',
+        title: 'Shop',
         entries: [
           if (canManageBusinessLayout)
             SettingsEntry(
@@ -199,25 +199,6 @@ class SettingsScreen extends ConsumerWidget {
               keywords: const ['open', 'close', 'time', 'days'],
               onTap: () => context.push('/settings/operating-hours'),
             ),
-          if ((isLocalWorkspace && isLocalWorkspaceOwner) ||
-              (!isLocalWorkspace && isBillingAdmin))
-            SettingsEntry(
-              id: 'tax',
-              icon: Icons.percent_rounded,
-              title: 'Tax & receipts',
-              subtitle: taxSubtitle,
-              keywords: const ['vat', 'tax rate', 'receipt'],
-              onTap: () => _showTaxRateDialog(context, ref),
-            ),
-          if (isLocalWorkspace && isLocalWorkspaceOwner)
-            SettingsEntry(
-              id: 'recorded-payments',
-              icon: Icons.fact_check_outlined,
-              title: 'Recorded payments',
-              subtitle: 'Rules for M-Pesa to your own till and bank transfers',
-              keywords: const ['mpesa', 'till', 'bank', 'manual', 'approval'],
-              onTap: () => context.push('/settings/recorded-payments'),
-            ),
         ],
       ),
       SettingsSection(
@@ -247,8 +228,27 @@ class SettingsScreen extends ConsumerWidget {
       ),
       SettingsSection(
         id: 'money',
-        title: 'Money & plan',
+        title: 'Money',
         entries: [
+          if ((isLocalWorkspace && isLocalWorkspaceOwner) ||
+              (!isLocalWorkspace && isBillingAdmin))
+            SettingsEntry(
+              id: 'tax',
+              icon: Icons.percent_rounded,
+              title: 'Tax & receipts',
+              subtitle: taxSubtitle,
+              keywords: const ['vat', 'tax rate', 'receipt'],
+              onTap: () => _showTaxRateDialog(context, ref),
+            ),
+          if (isLocalWorkspace && isLocalWorkspaceOwner)
+            SettingsEntry(
+              id: 'recorded-payments',
+              icon: Icons.fact_check_outlined,
+              title: 'Recorded payments',
+              subtitle: 'Rules for M-Pesa to your own till and bank transfers',
+              keywords: const ['mpesa', 'till', 'bank', 'manual', 'approval'],
+              onTap: () => context.push('/settings/recorded-payments'),
+            ),
           if (!isLocalWorkspace && perms.canManageMerchantPayout)
             SettingsEntry(
               id: 'merchant-payouts',
@@ -405,7 +405,7 @@ class SettingsScreen extends ConsumerWidget {
       ),
       SettingsSection(
         id: 'data',
-        title: 'Data',
+        title: 'Your data',
         entries: [
           if (perms.canExportData)
             SettingsEntry(
@@ -429,7 +429,7 @@ class SettingsScreen extends ConsumerWidget {
       ),
       SettingsSection(
         id: 'help',
-        title: 'Help & about',
+        title: 'Help',
         entries: [
           SettingsEntry(
             id: 'help',
@@ -451,8 +451,10 @@ class SettingsScreen extends ConsumerWidget {
           SettingsEntry(
             id: 'legal',
             icon: Icons.policy_outlined,
-            title: 'Legal & policies',
-            subtitle: 'Terms, privacy, billing, and payment policies',
+            title: isLocalWorkspace ? 'Terms & privacy' : 'Legal & policies',
+            subtitle: isLocalWorkspace
+                ? 'What stays on this phone and what Axon AI shares'
+                : 'Terms, privacy, billing, and payment policies',
             keywords: const [
               'terms',
               'privacy',

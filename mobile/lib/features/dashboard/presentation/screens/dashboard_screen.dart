@@ -388,7 +388,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           HomeStartSaleButton(onPressed: () => context.go('/')),
           if (split.recordedCount > 0) ...[
             const SizedBox(height: DesignSpacing.md),
-            HomeRecordedReminder(count: split.recordedCount),
+            HomeRecordedReminder(
+              count: split.recordedCount,
+              onTap: () => context.push('/mpesa-match'),
+            ),
           ],
         ],
       );

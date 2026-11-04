@@ -3542,6 +3542,28 @@ class AppDatabase extends _$AppDatabase {
     return rows.isNotEmpty;
   }
 
+  /// Completed sales of [date] that the shop recorded itself (M-Pesa to its
+  /// own till or a bank transfer), oldest first. Used to check them against a
+  /// statement at the end of the day.
+  Future<List<PendingSale>> getRecordedSalesForDay(
+    String branchId,
+    DateTime date,
+  ) {
+    final start = DateTime(date.year, date.month, date.day);
+    final end = start.add(const Duration(days: 1));
+    return (select(pendingSales)
+          ..where(
+            (s) =>
+                s.branchId.equals(branchId) &
+                s.createdAt.isBiggerOrEqualValue(start) &
+                s.createdAt.isSmallerThanValue(end) &
+                s.status.upper().equals('COMPLETED') &
+                s.paymentMethod.isIn(const ['MPESA_RECORDED', 'BANK_RECORDED']),
+          )
+          ..orderBy([(s) => OrderingTerm.asc(s.createdAt)]))
+        .get();
+  }
+
   /// Soft-voids a local sale: marks it VOIDED with a reason/who/when and
   /// returns its stock to the local cache — instead of the old hard DELETE,
   /// which left no trace. The backend performs the authoritative void +

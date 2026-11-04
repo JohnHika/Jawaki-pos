@@ -49,6 +49,7 @@ class StorageService implements LifecycleLockStorage {
   static const String keyRememberedTenantSlug = 'remembered_tenant_slug';
   static const String keyBiometricEnabled = 'setting_biometric_enabled';
   static const String keyRecordedPaymentRules = 'recorded_payment_rules_v1';
+  static const String keyRecordedPaymentChecks = 'recorded_payment_checks_v1';
   static const String keyRequireUnlockOnResume =
       'setting_require_unlock_on_resume';
   static const String keyAutoLockMinutes = 'setting_auto_lock_minutes';
@@ -884,6 +885,16 @@ class StorageService implements LifecycleLockStorage {
   Future<void> saveRecordedPaymentRulesJson(String json) async {
     _checkInitialized();
     await _prefs!.setString(keyRecordedPaymentRules, json);
+  }
+
+  /// Notes the owner saved when they checked a recorded payment by hand,
+  /// as JSON keyed by sale id.
+  String? getRecordedPaymentChecksJson() =>
+      _prefs?.getString(keyRecordedPaymentChecks);
+
+  Future<void> saveRecordedPaymentChecksJson(String json) async {
+    _checkInitialized();
+    await _prefs!.setString(keyRecordedPaymentChecks, json);
   }
 
   bool isBiometricEnabled() {
