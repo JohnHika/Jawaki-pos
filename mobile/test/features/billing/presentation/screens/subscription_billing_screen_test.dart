@@ -137,7 +137,7 @@ void main() {
 
       expect(find.text('CORE'), findsOneWidget);
       expect(find.text('Active'), findsOneWidget);
-      expect(find.text('KES 3,200'), findsOneWidget);
+      expect(find.text('KES 3,000'), findsOneWidget);
       expect(find.textContaining('Next payment'), findsOneWidget);
       // Shown once, in the progress bar (no duplicate text row).
       expect(find.textContaining('13 days remaining'), findsNothing);
@@ -199,7 +199,7 @@ void main() {
           .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
       await tester.pumpAndSettle();
 
-      expect(find.text('Pay subscription with Paystack'), findsOneWidget);
+      expect(find.text('Pay subscription securely'), findsOneWidget);
       expect(find.text('M-Pesa confirmation code'), findsNothing);
       expect(find.text('Paybill'), findsNothing);
       expect(find.text('Submit Payment Code'), findsNothing);
@@ -243,7 +243,7 @@ void main() {
         {
           'id': 'inv-1',
           'plan': 'CORE',
-          'amount': 3200,
+          'amount': 3000,
           'currency': 'KES',
           'status': 'PAID',
           'date': '2026-08-01T00:00:00Z',
@@ -252,7 +252,7 @@ void main() {
         {
           'id': 'inv-2',
           'plan': 'CORE',
-          'amount': 3200,
+          'amount': 3000,
           'currency': 'KES',
           'status': 'PENDING',
           'date': '2026-09-01T00:00:00Z',
@@ -265,7 +265,7 @@ void main() {
 
       // Entitlement card is at the top of the list and shows the plan
       // price before any scrolling.
-      expect(find.text('KES 3,200'), findsOneWidget);
+      expect(find.text('KES 3,000'), findsOneWidget);
 
       // Status chips and the M-Pesa reference render inside the invoice
       // list; scroll the invoice section into view — the added Plan and
@@ -289,11 +289,11 @@ void main() {
       expect(find.textContaining('QGH7XY92K1'), findsOneWidget);
       // Both invoice rows show the plan price (entitlement card is
       // scrolled out of view by this point).
-      expect(find.text('KES 3,200'), findsNWidgets(2));
+      expect(find.text('KES 3,000'), findsNWidgets(2));
     });
 
     // The live server serialises money (Prisma Decimal) as a string such as
-    // "3200.00". Casting that to a number threw while building the list, and a
+    // "3000.00". Casting that to a number threw while building the list, and a
     // release build paints a build error as a plain grey screen.
     testWidgets('invoice amounts sent as strings render instead of crashing',
         (tester) async {
@@ -301,7 +301,7 @@ void main() {
         {
           'id': 'inv-1',
           'plan': 'CORE',
-          'amount': '3200.00',
+          'amount': '3000.00',
           'currency': 'KES',
           'status': 'PAID',
           'createdAt': '2026-08-01T00:00:00.000Z',
@@ -310,7 +310,7 @@ void main() {
         {
           'id': 'inv-2',
           'plan': 'CORE',
-          'amount': '3200.00',
+          'amount': '3000.00',
           'currency': 'KES',
           'status': 'PENDING',
           'createdAt': '2026-09-01T00:00:00.000Z',
@@ -330,7 +330,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.text('PAID'), findsOneWidget);
-      expect(find.text('KES 3,200'), findsWidgets);
+      expect(find.text('KES 3,000'), findsWidgets);
     });
   });
 }

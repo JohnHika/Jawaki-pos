@@ -23,12 +23,11 @@ const int kPlanMonthDays = 30;
 /// Plan months included when the setup price is paid in full.
 const int kFreeMonthsWhenPaidInFull = 2;
 
-/// Monthly plan prices in KES. These come from the earlier terms and are still
-/// to be confirmed by the owner.
+/// Monthly plan prices in KES, set by the owner on 2026-11-04.
 const Map<String, int> kMonthlyPlanKes = {
-  'CORE': 3200,
-  'BUSINESS': 6500,
-  'ENTERPRISE': 10000,
+  'CORE': 3000,
+  'BUSINESS': 5000,
+  'ENTERPRISE': 9999,
 };
 
 /// How the setup price is paid.

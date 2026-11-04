@@ -139,7 +139,7 @@ class _InstallmentFormState extends State<_InstallmentForm> {
                     SizedBox(width: DesignSpacing.sm),
                     Expanded(
                       child: Text(
-                        'Record cash already received. Electronic payments must be verified through a Paystack request before they can reduce this balance.',
+                        'Record cash already received. Electronic payments must be verified through a verified request before they can reduce this balance.',
                       ),
                     ),
                   ],

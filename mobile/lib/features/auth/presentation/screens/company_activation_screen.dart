@@ -357,7 +357,7 @@ class _CompanyActivationScreenState
                   ],
                   const SizedBox(height: 20),
                   Text(
-                    'Secure checkout powered by Paystack. Counterbase will only unlock the workspace after the payment is verified by the server.',
+                    'Secure checkout powered by our payment partner. Counterbase will only unlock the workspace after the payment is verified by the server.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
                           color: context.themed(DesignColors.darkTextTertiary),

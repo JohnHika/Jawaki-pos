@@ -35,7 +35,7 @@ class _SpyApiClient extends ApiClient {
     'planMeta': {
       'planId': 'CORE',
       'name': 'Core',
-      'monthlyAmountKes': 3200,
+      'monthlyAmountKes': 3000,
       'trialDays': 7,
       'features': {
         'maxBranches': 3,
@@ -57,7 +57,7 @@ class _SpyApiClient extends ApiClient {
       {
         'planId': 'CORE',
         'name': 'Core',
-        'monthlyAmountKes': 3200,
+        'monthlyAmountKes': 3000,
         'trialDays': 7,
       },
       {
@@ -142,7 +142,7 @@ void main() {
       expect(find.text('Free Trial'), findsOneWidget);
 
       // Price
-      expect(find.text('KES 3,200'), findsOneWidget);
+      expect(find.text('KES 3,000'), findsOneWidget);
 
       // Trial end date
       expect(find.textContaining('Trial ends'), findsOneWidget);
@@ -200,7 +200,7 @@ void main() {
         'planMeta': {
           'planId': 'ENTERPRISE',
           'name': 'Enterprise',
-          'monthlyAmountKes': 10000,
+          'monthlyAmountKes': 9999,
           'trialDays': 7,
         },
         'availablePlans': [],
@@ -211,7 +211,7 @@ void main() {
 
       expect(find.text('ENTERPRISE'), findsOneWidget);
       expect(find.text('Active'), findsOneWidget);
-      expect(find.text('KES 10,000'), findsOneWidget);
+      expect(find.text('KES 9,999'), findsOneWidget);
       expect(find.textContaining('Next billing'), findsOneWidget);
       expect(find.text('Choose plan'), findsNothing);
       expect(
@@ -248,7 +248,7 @@ void main() {
       expect(find.text('Could not load subscription'), findsNothing);
       expect(find.text('Try again'), findsNothing);
       expect(find.text('CORE'), findsOneWidget);
-      expect(find.text('KES 3,200'), findsOneWidget);
+      expect(find.text('KES 3,000'), findsOneWidget);
     });
 
     testWidgets('shows empty invoice state', (tester) async {
@@ -269,7 +269,7 @@ void main() {
       spyApi.invoices = [
         {
           'id': 'inv-1',
-          'amount': 3200,
+          'amount': 3000,
           'currency': 'KES',
           'status': 'PAID',
           'date': '2026-08-01T00:00:00Z',
@@ -277,7 +277,7 @@ void main() {
         },
         {
           'id': 'inv-2',
-          'amount': 3200,
+          'amount': 3000,
           'currency': 'KES',
           'status': 'PENDING',
           'date': '2026-09-01T00:00:00Z',
@@ -329,15 +329,15 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: dialogFinder, matching: find.text('KES 3,200/mo')),
+        find.descendant(of: dialogFinder, matching: find.text('KES 3,000/mo')),
         findsOneWidget,
       );
       expect(
-        find.descendant(of: dialogFinder, matching: find.text('KES 6,500/mo')),
+        find.descendant(of: dialogFinder, matching: find.text('KES 5,000/mo')),
         findsOneWidget,
       );
       expect(
-        find.descendant(of: dialogFinder, matching: find.text('KES 10,000/mo')),
+        find.descendant(of: dialogFinder, matching: find.text('KES 9,999/mo')),
         findsOneWidget,
       );
     });
@@ -350,7 +350,7 @@ void main() {
         'planMeta': {
           'planId': 'CORE',
           'name': 'Core',
-          'monthlyAmountKes': 3200,
+          'monthlyAmountKes': 3000,
           'trialDays': 7,
         },
         'availablePlans': [],
@@ -395,7 +395,7 @@ void main() {
         'planMeta': {
           'planId': 'CORE',
           'name': 'Core',
-          'monthlyAmountKes': 3200,
+          'monthlyAmountKes': 3000,
           'trialDays': 7,
         },
         'availablePlans': [],

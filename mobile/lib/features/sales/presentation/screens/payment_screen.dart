@@ -140,19 +140,19 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         : status == 'NOT_CONFIGURED'
             ? 'Connect a payout account'
             : status == 'PENDING_VERIFICATION'
-                ? 'Paystack verification pending'
+                ? 'Verification pending'
                 : status == 'INACTIVE'
                     ? 'Payout account inactive'
                     : 'M-Pesa is unavailable';
     final message = _checkingPayoutStatus
-        ? 'Please wait while Counterbase checks your Paystack payout account.'
+        ? 'Please wait while Counterbase checks your payout account.'
         : status == 'NOT_CONFIGURED'
             ? 'Add your business bank account in Customer payments before accepting M-Pesa.'
             : status == 'PENDING_VERIFICATION'
-                ? 'Paystack must verify the business bank account before M-Pesa payments can be accepted.'
+                ? 'The payment partner must verify the business bank account before M-Pesa payments can be accepted.'
                 : status == 'INACTIVE'
-                    ? 'Paystack has marked this payout account inactive. Review it in Customer payments.'
-                    : 'Counterbase could not confirm your Paystack payout status. Check your connection and try again.';
+                    ? 'The payment partner has marked this payout account inactive. Review it in Customer payments.'
+                    : 'Counterbase could not confirm your payout status. Check your connection and try again.';
 
     await showModalBottomSheet<void>(
       context: context,
@@ -199,9 +199,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   Widget _buildPayoutStatusNotice() {
     final pending = _payoutStatus == 'PENDING_VERIFICATION';
     final title =
-        pending ? 'Paystack verification pending' : 'M-Pesa setup needed';
+        pending ? 'Verification pending' : 'M-Pesa setup needed';
     final detail = pending
-        ? 'Paystack must verify your business bank account before customers can pay by M-Pesa.'
+        ? 'The payment partner must verify your business bank account before customers can pay by M-Pesa.'
         : _payoutStatus == 'NOT_CONFIGURED'
             ? 'Connect your business bank account to accept customer M-Pesa payments.'
             : _payoutStatus == 'INACTIVE'
@@ -397,9 +397,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 icon: Icons.phone_android_rounded,
                 title: 'M-Pesa',
                 subtitle: _checkingPayoutStatus
-                    ? 'Checking Paystack payout account'
+                    ? 'Checking your payout account'
                     : _canAcceptMpesa
-                        ? 'Customer pays $shopName through Paystack'
+                        ? 'Customer pays $shopName through secure checkout'
                         : 'Requires a verified business payout account',
                 color: DesignColors.accent,
                 isSelected: _selectedMethod == PaymentMethod.mpesa,
@@ -529,7 +529,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Request sent for $shopName. Ask the customer to approve it, then tap “Check M-Pesa Payment” below. Other methods stay locked until it is resolved. The phone may show Counterbase; settlement goes to $shopName’s verified payout account on Paystack’s schedule.',
+                          'Request sent for $shopName. Ask the customer to approve it, then tap “Check M-Pesa Payment” below. Other methods stay locked until it is resolved. The phone may show Counterbase; settlement goes to $shopName’s verified payout account on the payment partner’s schedule.',
                         ),
                       ],
                     ),
@@ -756,7 +756,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                     ),
                     const SizedBox(height: DesignSpacing.sm),
                     Text(
-                      'The phone prompt may show Counterbase as the Paystack collection account. Confirm the shop and amount shown above before sending. Once Paystack confirms the payment, it is routed to $shopName’s verified payout account, less Paystack’s fee, on Paystack’s settlement schedule.',
+                      'The phone prompt may show Counterbase as the shared collection account. Confirm the shop and amount shown above before sending. Once the payment partner confirms the payment, it is routed to $shopName’s verified payout account, less the payment partner’s fee, on the payment partner’s settlement schedule.',
                       style: Theme.of(sheetContext)
                           .textTheme
                           .bodySmall

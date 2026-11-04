@@ -273,7 +273,7 @@ const kAvailablePlans = [
     id: 'core',
     name: 'CORE',
     tagline: 'Everything a single shop needs to sell, track stock and keep books',
-    priceKes: 3200,
+    priceKes: 3000,
     features: [
       PlanFeature(text: 'Sell as many items as you want — no per-sale charge', includedInCore: true),
       PlanFeature(text: 'Keep selling when the internet goes down (works offline)', includedInCore: true),
@@ -299,7 +299,7 @@ const kAvailablePlans = [
     id: 'business',
     name: 'BUSINESS',
     tagline: 'For shops growing to more than one branch — transfers, suppliers and deeper reports',
-    priceKes: 6500,
+    priceKes: 5000,
     isPopular: true,
     features: [
       PlanFeature(text: 'Everything in Core, plus:', includedInBusiness: true),
@@ -322,7 +322,7 @@ const kAvailablePlans = [
     id: 'enterprise',
     name: 'ENTERPRISE',
     tagline: 'Unlimited branches and staff, combined books and priority support',
-    priceKes: 10000,
+    priceKes: 9999,
     features: [
       PlanFeature(text: 'Everything in Business, plus:', includedInEnterprise: true),
       PlanFeature(text: 'Unlimited branches', includedInEnterprise: true),
@@ -345,13 +345,13 @@ double planPriceKes(String planId) {
     case 'trial':
       return 0;
     case 'core':
-      return 3200;
+      return 3000;
     case 'business':
-      return 6500;
+      return 5000;
     case 'enterprise':
-      return 10000;
+      return 9999;
     default:
-      return 3200;
+      return 3000;
   }
 }
 
@@ -398,7 +398,7 @@ const int kUnlimitedLimitThreshold = 1000;
 bool isUnlimitedLimit(int? value) =>
     value != null && value >= kUnlimitedLimitThreshold;
 
-/// "KES 3,200" / "KES 10,000" — thousands separators, no decimals for whole
+/// "KES 3,000" / "KES 9,999" — thousands separators, no decimals for whole
 /// shillings.
 String formatKes(num amount) {
   if (amount == amount.roundToDouble()) {

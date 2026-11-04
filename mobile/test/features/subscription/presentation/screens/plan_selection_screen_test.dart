@@ -126,17 +126,17 @@ void main() {
 
       // CORE is the first card — visible at the top.
       expect(find.text('CORE'), findsOneWidget);
-      expect(find.text('KES 3,200'), findsOneWidget);
+      expect(find.text('KES 3,000'), findsOneWidget);
 
       // Scroll the BUSINESS card into view.
       await _scrollTo(tester, find.text('BUSINESS'));
-      expect(find.text('KES 6,500'), findsOneWidget);
+      expect(find.text('KES 5,000'), findsOneWidget);
       // POPULAR badge now sits on BUSINESS.
       expect(find.text('POPULAR'), findsOneWidget);
 
       // Scroll the ENTERPRISE card into view.
       await _scrollTo(tester, find.text('ENTERPRISE'));
-      expect(find.text('KES 10,000'), findsOneWidget);
+      expect(find.text('KES 9,999'), findsOneWidget);
 
       // Setup fee notice (asserted while it is on-screen — further scrolling
       // culls it from the lazy list's built range).
@@ -446,11 +446,11 @@ void main() {
       // surface as FlutterErrors here.
       await _scrollTo(tester, find.text('BUSINESS'));
       expect(tester.takeException(), isNull);
-      expect(find.text('KES 6,500'), findsOneWidget);
+      expect(find.text('KES 5,000'), findsOneWidget);
 
       await _scrollTo(tester, find.text('ENTERPRISE'));
       expect(tester.takeException(), isNull);
-      expect(find.text('KES 10,000'), findsOneWidget);
+      expect(find.text('KES 9,999'), findsOneWidget);
 
       await _scrollTo(tester, find.text('Continue with this plan'));
       expect(tester.takeException(), isNull);

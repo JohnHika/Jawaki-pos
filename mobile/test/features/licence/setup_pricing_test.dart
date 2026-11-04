@@ -31,7 +31,7 @@ void main() {
       // Plan months 1 and 2 are free, month 3 is charged.
       expect(invoices[1].planKes, 0);
       expect(invoices[2].planKes, 0);
-      expect(invoices[3].planKes, 3200);
+      expect(invoices[3].planKes, 3000);
       expect(invoices.map((i) => i.dayOffset), [0, 7, 37, 67]);
     });
 
@@ -40,18 +40,18 @@ void main() {
           plan: 'CORE', option: SetupPayment.twoParts, invoiceCount: 4);
       expect(invoices[0].setupKes, 62500);
       expect(invoices[1].setupKes, 62500);
-      expect(invoices[1].planKes, 3200);
+      expect(invoices[1].planKes, 3000);
       expect(invoices[2].setupKes, 0);
-      expect(invoices[2].planKes, 3200);
+      expect(invoices[2].planKes, 3000);
     });
 
     test('four parts: a quarter each, with the plan month riding along', () {
       final invoices = buildSchedule(
           plan: 'CORE', option: SetupPayment.fourParts, invoiceCount: 5);
       expect(invoices.map((i) => i.setupKes), [31250, 31250, 31250, 31250, 0]);
-      expect(invoices.map((i) => i.planKes), [0, 3200, 3200, 3200, 3200]);
+      expect(invoices.map((i) => i.planKes), [0, 3000, 3000, 3000, 3000]);
       // First four invoices: the setup price plus three plan months.
-      expect(totalOf(invoices.take(4)), 134600);
+      expect(totalOf(invoices.take(4)), 134000);
     });
 
     test('parts always add up to the setup price exactly', () {
@@ -84,16 +84,17 @@ void main() {
 
   group('prices', () {
     test('yearly means pay for ten months', () {
-      expect(yearlyPriceFor(3200), 32000);
-      expect(yearlyPriceFor(6500), 65000);
-      expect(yearlyPriceFor(10000), 100000);
+      expect(yearlyPriceFor(3000), 30000);
+      expect(yearlyPriceFor(5000), 50000);
+      expect(yearlyPriceFor(9999), 99990);
     });
 
     test('first year with setup', () {
-      expect(firstYearKes('CORE'), 125000 + 38400);
-      expect(firstYearKes('CORE', yearly: true), 157000);
-      expect(firstYearKes('BUSINESS'), 203000);
-      expect(firstYearKes('ENTERPRISE', yearly: true), 225000);
+      expect(firstYearKes('CORE'), 161000);
+      expect(firstYearKes('CORE', yearly: true), 155000);
+      expect(firstYearKes('BUSINESS'), 185000);
+      expect(firstYearKes('ENTERPRISE', yearly: true), 224990);
+      expect(firstYearKes('ENTERPRISE'), 244988);
     });
   });
 

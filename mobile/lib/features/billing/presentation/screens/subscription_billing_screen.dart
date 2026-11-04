@@ -959,8 +959,8 @@ class _SubscriptionBillingScreenState
       children: [
         GradientButton(
           label: _paystackInvoiceBusyId == 'current'
-              ? 'Opening Paystack…'
-              : 'Pay subscription with Paystack',
+              ? 'Opening secure checkout…'
+              : 'Pay subscription securely',
           icon: Icons.lock_rounded,
           onPressed: _paystackInvoiceBusyId == 'current'
               ? null
@@ -979,7 +979,7 @@ class _SubscriptionBillingScreenState
             Expanded(
               child: Text(
                 payerEmail.isEmpty
-                    ? 'Paystack uses the signed-in shop account email for the subscription checkout.'
+                    ? 'The payment partner uses the signed-in shop account email for the subscription checkout.'
                     : 'Subscription payer email: $payerEmail. This is the signed-in shop account email.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: DesignColors.textSecondary,
@@ -1027,7 +1027,7 @@ class _SubscriptionBillingScreenState
         (provider == 'PAYSTACK' &&
             openInvoice?['authorizationUrl']?.toString().isNotEmpty != true)) {
       return _buildInvoicePreparationNotice(
-        'Paystack checkout is being prepared. Refresh in a moment before trying again.',
+        'Secure checkout is being prepared. Refresh in a moment before trying again.',
       );
     }
     final hasOpenInvoice = _invoices.any((rawInvoice) {
@@ -1150,7 +1150,7 @@ class _SubscriptionBillingScreenState
         if (!mounted) return;
         if (['FAILED', 'CANCELLED', 'CANCELED'].contains(paymentStatus)) {
           _showPaymentMessage(
-            'The M-Pesa request did not complete. The invoice is still due; you can continue with Paystack.',
+            'The M-Pesa request did not complete. The invoice is still due; you can continue with secure checkout.',
             isError: true,
           );
         } else if (paymentStatus == 'NEEDS_REVIEW') {
@@ -1182,16 +1182,16 @@ class _SubscriptionBillingScreenState
       }
       final url = checkout['authorizationUrl']?.toString();
       if (url == null || url.isEmpty) {
-        throw Exception('Paystack did not return a checkout link.');
+        throw Exception('The payment partner did not return a checkout link.');
       }
       final uri = Uri.tryParse(url);
       if (uri == null ||
           uri.scheme != 'https' ||
           uri.host != 'checkout.paystack.com') {
-        throw Exception('Paystack returned an invalid checkout link.');
+        throw Exception('The payment partner returned an invalid checkout link.');
       }
       if (!await launchUrl(uri, mode: LaunchMode.inAppBrowserView)) {
-        throw Exception('Could not open the Paystack checkout page.');
+        throw Exception('Could not open secure checkout page.');
       }
     } catch (error) {
       if (mounted) _showPaymentMessage(_friendlyError(error), isError: true);
@@ -1300,7 +1300,7 @@ class _SubscriptionBillingScreenState
                       ? (phone.isEmpty
                           ? 'Add a billing phone so we can charge it'
                           : 'On — $phone')
-                      : 'Off — pay each invoice through Paystack',
+                      : 'Off — pay each invoice through secure checkout',
                   style: theme.textTheme.bodySmall?.copyWith(
                       color: context.themed(DesignColors.darkTextSecondary)),
                 ),
@@ -1406,7 +1406,7 @@ class _SubscriptionBillingScreenState
                 if (reference != null && reference.isNotEmpty) ...[
                   const SizedBox(height: DesignSpacing.xs),
                   Text(
-                    '${provider == 'PAYSTACK' ? 'Paystack' : 'M-Pesa'} $reference',
+                    '${provider == 'PAYSTACK' ? 'Card' : 'M-Pesa'} $reference',
                     style: DesignType.numeric(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
@@ -1806,7 +1806,7 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
         context,
         _autoRenew
             ? 'Auto-renew on — we\u2019ll STK push ${_phoneController.text.trim()}'
-            : 'Auto-renew off — pay each invoice through Paystack',
+            : 'Auto-renew off — pay each invoice through secure checkout',
         icon: Icons.check_circle_rounded,
         color: DesignColors.success,
       );

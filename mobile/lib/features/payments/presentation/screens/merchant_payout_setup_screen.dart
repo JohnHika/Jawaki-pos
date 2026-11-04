@@ -209,8 +209,8 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(verified
-              ? 'Paystack verified your payout account.'
-              : 'Payout details saved. Paystack must verify this account before customer M-Pesa and debt payments are enabled. Cash sales remain available.'),
+              ? 'The payment partner verified your payout account.'
+              : 'Payout details saved. The payment partner must verify this account before customer M-Pesa and debt payments are enabled. Cash sales remain available.'),
         ),
       );
     } catch (error) {
@@ -280,7 +280,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                           .headlineSmall),
                                   const SizedBox(height: 8),
                                   const Text(
-                                    'Add a business bank account for Paystack to route customer M-Pesa and debt payments after verification. Cash sales remain available without payout setup. Your Counterbase plan is billed separately.',
+                                    'Add a business bank account for the payment partner to route customer M-Pesa and debt payments after verification. Cash sales remain available without payout setup. Your Counterbase plan is billed separately.',
                                   ),
                                 ],
                               )),
@@ -307,7 +307,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                         ),
                                         const SizedBox(height: 5),
                                         Text(
-                                          'Customer M-Pesa and debt payments go to the verified bank account shown here, then settle on Paystack’s schedule. This setup cannot send those sales directly to an M-Pesa wallet. Wallet payouts use a separate Paystack Transfers flow with separate fees, and Counterbase does not offer that flow here. Paystack must verify new or changed bank details first.',
+                                          'Customer M-Pesa and debt payments go to the verified bank account shown here, then settle on the payment partner’s schedule. This setup cannot send those sales directly to an M-Pesa wallet. Wallet payouts use a separate the payment partner Transfers flow with separate fees, and Counterbase does not offer that flow here. The payment partner must verify new or changed bank details first.',
                                           style: Theme.of(context)
                                               .textTheme
                                               .bodySmall,
@@ -343,7 +343,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                         ),
                                         const SizedBox(height: 5),
                                         Text(
-                                          'The prompt uses the shared Paystack business label for this integration, so it may not show each shop’s name. Counterbase receipts show the shop name. This setup cannot assign a different prompt label to each shop.',
+                                          'The prompt uses the shared business label for this integration, so it may not show each shop’s name. Counterbase receipts show the shop name. This setup cannot assign a different prompt label to each shop.',
                                           style: Theme.of(context)
                                               .textTheme
                                               .bodySmall,
@@ -410,7 +410,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                                 ready
                                                     ? 'Payout account verified'
                                                     : needsVerification
-                                                        ? 'Paystack verification pending'
+                                                        ? 'Verification pending'
                                                         : 'Payout account needed',
                                                 style: const TextStyle(
                                                     fontWeight:
@@ -442,13 +442,13 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                                           SizedBox(width: 6),
                                                           Expanded(
                                                             child: Text(
-                                                                'Paystack has verified this payout account'),
+                                                                'The payment partner has verified this payout account'),
                                                           ),
                                                         ],
                                                       ),
                                                       SizedBox(height: 8),
                                                       Text(
-                                                          'New customer payments will use this account after Paystack verifies it. Payments already started keep their original payout route.'),
+                                                          'New customer payments will use this account after the payment partner verifies it. Payments already started keep their original payout route.'),
                                                     ],
                                                   ),
                                                 )
@@ -457,7 +457,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                                       padding: EdgeInsets.only(
                                                           top: 8),
                                                       child: Text(
-                                                        'Waiting for the administrator of the Paystack integration to verify this shop subaccount. Customer M-Pesa and debt payments stay off until approval; cash sales are available now.',
+                                                        'Waiting for the Counterbase team to verify this shop subaccount. Customer M-Pesa and debt payments stay off until approval; cash sales are available now.',
                                                       ),
                                                     )
                                                   : const SizedBox(
@@ -563,8 +563,8 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                           Text(
                                             _api.baseUrl
                                                     .contains('preview.invalid')
-                                                ? 'This offline preview does not use sample banks. The connected app loads all supported Kenyan banks from Paystack.'
-                                                : 'No banks were returned. Refresh to try loading the Paystack bank list again.',
+                                                ? 'This offline preview does not use sample banks. The connected app loads all supported Kenyan banks from the payment partner.'
+                                                : 'No banks were returned. Refresh to try loading the bank list again.',
                                             style: const TextStyle(
                                                 color: DesignColors.warning),
                                           ),
@@ -954,7 +954,7 @@ class _BankSettlementCard extends StatelessWidget {
                                     Text(
                                       accountHolder?.trim().isNotEmpty == true
                                           ? accountHolder!.trim()
-                                          : 'Confirmed by Paystack after saving',
+                                          : 'Confirmed by our payment partner after saving',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(

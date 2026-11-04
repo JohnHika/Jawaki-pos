@@ -584,7 +584,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             Text(
               isLocalWorkspace
                   ? 'Record cash already received. This collection is saved on this device.'
-                  : 'Record cash already received. For M-Pesa, send a Paystack '
+                  : 'Record cash already received. For M-Pesa, send a verified '
                       'request from this debt; its balance updates after verification.',
             ),
             const SizedBox(height: DesignSpacing.md),
@@ -725,7 +725,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                   color: DesignColors.brand),
               title: const Text('Request M-Pesa payment'),
               subtitle:
-                  const Text('Send a verified Paystack prompt to the payer'),
+                  const Text('Send a verified payment prompt to the payer'),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () => Navigator.pop(sheetContext, 1),
             ),
@@ -775,7 +775,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               ),
               const SizedBox(height: DesignSpacing.sm),
               Text(
-                'This request is for $shopName. The Paystack M-Pesa prompt may show “PAYSTACK Account no. Counterbase.” That is Paystack’s prompt label, not the shop bank account number. The debt changes only after Paystack verifies the payment.',
+                'This request is for $shopName. The payment partner M-Pesa prompt may show “a shared business name.” That is the payment partner’s prompt label, not the shop bank account number. The debt changes only after the payment partner verifies the payment.',
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
@@ -930,10 +930,10 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(completed
-                    ? 'Paystack confirmed the payment and the outstanding balance has been updated.'
+                    ? 'The payment partner confirmed the payment and the outstanding balance has been updated.'
                     : failed
                         ? 'The payer did not complete this payment. The debt remains open.'
-                        : 'Ask the payer to approve the prompt on their phone. The debt will update after Paystack confirms it.'),
+                        : 'Ask the payer to approve the prompt on their phone. The debt will update after the payment partner confirms it.'),
                 const SizedBox(height: DesignSpacing.md),
                 SelectableText('Reference: $reference'),
                 if (error != null) ...[
@@ -1233,7 +1233,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                 isLocalWorkspace
                     ? 'Record cash already received. The collection is stored on this device.'
                     : 'Record cash already received. For M-Pesa, request payment '
-                        'on each debt so Paystack can verify and settle it.',
+                        'on each debt so the payment partner can verify and settle it.',
               ),
               const SizedBox(height: DesignSpacing.md),
               TextField(

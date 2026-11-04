@@ -207,7 +207,7 @@ class _ReplyCardState extends ConsumerState<_ReplyCard> {
               const SizedBox(height: DesignSpacing.md),
               const Text(
                 'This is the customer’s claim, not payment confirmation. Check '
-                'Paystack or a trusted M-Pesa statement before recording it. '
+                'The payment partner or a trusted M-Pesa statement before recording it. '
                 'A new payment request is only for money still owed.',
               ),
               const SizedBox(height: DesignSpacing.sm),

@@ -60,7 +60,7 @@ class PaymentRoutes {
       body: jsonEncode({
         'error': 'Merchant payments are unavailable in this edition',
         'message':
-            'This standalone workspace cannot start Paystack or customer M-Pesa payments. Cash and customer-credit sales can still be recorded on this device.',
+            'This standalone workspace cannot start the payment partner or customer M-Pesa payments. Cash and customer-credit sales can still be recorded on this device.',
         'provider': 'Paystack',
       }),
       headers: {'content-type': 'application/json'},

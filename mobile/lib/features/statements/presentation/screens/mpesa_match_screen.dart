@@ -527,7 +527,7 @@ class _CloudNotice extends StatelessWidget {
                         size: 42, color: DesignColors.accent),
                     const SizedBox(height: DesignSpacing.lg),
                     Text(
-                      'Verify debt payments with Paystack',
+                      'Verify debt payments with secure checkout',
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
                     const SizedBox(height: DesignSpacing.sm),
@@ -535,7 +535,7 @@ class _CloudNotice extends StatelessWidget {
                       'Pasted M-Pesa messages cannot confirm a debt payment. '
                       'Open Finance, choose the customer debt, and send an '
                       'M-Pesa request. Counterbase will update the balance '
-                      'only after Paystack confirms the payment.',
+                      'only after the payment partner confirms the payment.',
                     ),
                     const SizedBox(height: DesignSpacing.xl),
                     SizedBox(
