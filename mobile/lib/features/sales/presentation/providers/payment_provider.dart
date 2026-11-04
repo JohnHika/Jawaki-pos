@@ -18,6 +18,7 @@ import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/format.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import 'cart_provider.dart';
+import '../../domain/recorded_payment.dart';
 
 const _maxSafeCurrencyAmount = 90071992547409.9;
 const _uuid = Uuid();
@@ -518,6 +519,91 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
 
   void clearError() {
     if (state.error != null) state = state.copyWith(error: null);
+  }
+
+  /// Completes a sale paid to the shop's own till or bank account. The
+  /// payment is recorded, not verified: it is stored under its own method
+  /// name with who recorded it, who approved it and the evidence seen.
+  /// Refuses a code that was already used on another sale.
+  Future<String?> processRecordedPayment({
+    required double amount,
+    required List<CartItem> items,
+    required RecordedPaymentDetails details,
+    String? customerId,
+    double discountAmount = 0,
+  }) async {
+    if (!_authService.isLocalWorkspace) {
+      state = state.copyWith(
+        isProcessing: false,
+        error: 'Recorded payments are only available in a device-only shop.',
+      );
+      return null;
+    }
+    if (_blockPaymentStart()) return null;
+    final sessionGeneration = _sessionGeneration;
+    state = state.copyWith(isProcessing: true, error: null);
+
+    if (!amount.isFinite ||
+        amount <= 0 ||
+        amount > _maxSafeCurrencyAmount ||
+        !discountAmount.isFinite ||
+        discountAmount < 0 ||
+        items.isEmpty ||
+        !RecordedPaymentMethod.isRecorded(details.method) ||
+        details.code.trim().isEmpty) {
+      state = state.copyWith(
+        isProcessing: false,
+        error: 'Check the sale amount and the payment details.',
+      );
+      return null;
+    }
+    if ((details.amount * 100).round() != (amount * 100).round()) {
+      state = state.copyWith(
+        isProcessing: false,
+        error: 'The recorded amount must equal the amount due.',
+      );
+      return null;
+    }
+
+    try {
+      final used = await _database.hasPendingSaleReferenceLike(
+        recordedCodeSearchPattern(details.code),
+        methods: const [
+          RecordedPaymentMethod.mpesa,
+          RecordedPaymentMethod.bank,
+        ],
+      );
+      if (!_isCurrentSession(sessionGeneration)) return null;
+      if (used) {
+        state = state.copyWith(
+          isProcessing: false,
+          error:
+              'This code was already recorded on another sale. A code can be used once.',
+        );
+        return null;
+      }
+
+      final saleId = _uuid.v4();
+      final receiptNumber = 'RCP-${DateTime.now().millisecondsSinceEpoch}';
+      await _createLocalSale(
+        saleId: saleId,
+        receiptNumber: receiptNumber,
+        items: items,
+        paymentMethod: details.method,
+        total: amount,
+        discountAmount: discountAmount,
+        paymentReference: details.toReference(),
+        customerId: customerId,
+      );
+      if (!_isCurrentSession(sessionGeneration)) return null;
+
+      state = state.copyWith(isProcessing: false);
+      return saleId;
+    } catch (e) {
+      if (!_isCurrentSession(sessionGeneration)) return null;
+      state = state.copyWith(isProcessing: false, error: _paymentError(e));
+      return null;
+    }
   }
 
   Future<String?> processMpesaPayment({

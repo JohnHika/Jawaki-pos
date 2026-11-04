@@ -209,6 +209,15 @@ class SettingsScreen extends ConsumerWidget {
               keywords: const ['vat', 'tax rate', 'receipt'],
               onTap: () => _showTaxRateDialog(context, ref),
             ),
+          if (isLocalWorkspace && isLocalWorkspaceOwner)
+            SettingsEntry(
+              id: 'recorded-payments',
+              icon: Icons.fact_check_outlined,
+              title: 'Recorded payments',
+              subtitle: 'Rules for M-Pesa to your own till and bank transfers',
+              keywords: const ['mpesa', 'till', 'bank', 'manual', 'approval'],
+              onTap: () => context.push('/settings/recorded-payments'),
+            ),
         ],
       ),
       SettingsSection(

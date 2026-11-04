@@ -48,6 +48,7 @@ class StorageService implements LifecycleLockStorage {
   static const String keyRememberedEmail = 'remembered_email';
   static const String keyRememberedTenantSlug = 'remembered_tenant_slug';
   static const String keyBiometricEnabled = 'setting_biometric_enabled';
+  static const String keyRecordedPaymentRules = 'recorded_payment_rules_v1';
   static const String keyRequireUnlockOnResume =
       'setting_require_unlock_on_resume';
   static const String keyAutoLockMinutes = 'setting_auto_lock_minutes';
@@ -873,6 +874,16 @@ class StorageService implements LifecycleLockStorage {
       await _prefs!.remove(keyRememberedEmail);
       await _prefs!.remove(keyRememberedTenantSlug);
     }
+  }
+
+  /// The shop's rules for payments it records itself, as saved JSON. The
+  /// sales feature owns the shape; storage only keeps the text.
+  String? getRecordedPaymentRulesJson() =>
+      _prefs?.getString(keyRecordedPaymentRules);
+
+  Future<void> saveRecordedPaymentRulesJson(String json) async {
+    _checkInitialized();
+    await _prefs!.setString(keyRecordedPaymentRules, json);
   }
 
   bool isBiometricEnabled() {

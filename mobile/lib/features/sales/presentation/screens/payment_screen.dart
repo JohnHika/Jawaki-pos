@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,10 +20,15 @@ import '../providers/catalog_provider.dart';
 import '../../domain/cash_tender.dart';
 import '../providers/payment_provider.dart';
 import '../widgets/cash_tender_sheet.dart';
+import '../widgets/record_payment_sheet.dart';
+import '../../../../core/services/storage_service.dart';
+import '../../domain/recorded_payment.dart';
 
 enum PaymentMethod {
   cash,
   mpesa,
+  recordedMpesa,
+  recordedBank,
   debt,
   split,
 }
@@ -42,6 +48,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   bool _paystackPayoutVerified = false;
   bool _checkingPayoutStatus = true;
   bool _isPreparingPayment = false;
+  RecordedPaymentRules _recordedRules = const RecordedPaymentRules();
 
   bool get _canAcceptMpesa =>
       _payoutStatus == 'ACTIVE' && _paystackPayoutVerified;
@@ -51,7 +58,31 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   @override
   void initState() {
     super.initState();
+    _loadRecordedRules();
     _refreshPayoutStatus();
+  }
+
+  /// The signed-in person's name, saved with every recorded payment.
+  String _recorderName() {
+    final user = getIt<AuthService>().currentUser;
+    final name = (user?['name'] ??
+            '${user?['firstName'] ?? ''} ${user?['lastName'] ?? ''}')
+        .toString()
+        .trim();
+    return name.isEmpty ? 'Cashier' : name;
+  }
+
+  void _loadRecordedRules() {
+    final json = getIt<StorageService>().getRecordedPaymentRulesJson();
+    if (json == null || json.isEmpty) return;
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is Map<String, dynamic>) {
+        _recordedRules = RecordedPaymentRules.fromJson(decoded);
+      }
+    } catch (_) {
+      // A damaged setting falls back to the safe defaults.
+    }
   }
 
   @override
@@ -378,13 +409,41 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                     SizedBox(width: DesignSpacing.sm),
                     Expanded(
                       child: Text(
-                        'This device-only checkout works offline. Record cash, customer credit, or split payments here. M-Pesa prompts need an online payment service.',
+                        'This device-only checkout works offline. Record cash, customer credit, or split payments here. Payments sent to your own till or bank can be recorded too. They are not verified by Counterbase.',
                       ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: DesignSpacing.md - 2),
+              if (_recordedRules.enabled) ...[
+                _PaymentMethodTile(
+                  icon: Icons.phone_android_rounded,
+                  title: 'M-Pesa to our till (recorded)',
+                  subtitle: _recordedRules.tillNumber.isEmpty
+                      ? 'Customer pays your own till. Record it here.'
+                      : 'Customer pays ${_recordedRules.tillNumber}. Record it here.',
+                  color: DesignColors.warning,
+                  isSelected: _selectedMethod == PaymentMethod.recordedMpesa,
+                  onTap: canChangePaymentMethod
+                      ? () => setState(
+                          () => _selectedMethod = PaymentMethod.recordedMpesa)
+                      : null,
+                ),
+                const SizedBox(height: DesignSpacing.md - 2),
+                _PaymentMethodTile(
+                  icon: Icons.account_balance_rounded,
+                  title: 'Bank transfer (recorded)',
+                  subtitle: 'For larger payments. Record the bank reference.',
+                  color: DesignColors.warning,
+                  isSelected: _selectedMethod == PaymentMethod.recordedBank,
+                  onTap: canChangePaymentMethod
+                      ? () => setState(
+                          () => _selectedMethod = PaymentMethod.recordedBank)
+                      : null,
+                ),
+                const SizedBox(height: DesignSpacing.md - 2),
+              ],
             ] else ...[
               // M-Pesa
               _PaymentMethodTile(
@@ -620,6 +679,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return paymentState.currentTransactionId == null
             ? 'Send M-Pesa Request'
             : 'Check M-Pesa Payment';
+      case PaymentMethod.recordedMpesa:
+        return 'Record M-Pesa payment';
+      case PaymentMethod.recordedBank:
+        return 'Record bank transfer';
       case PaymentMethod.debt:
         return 'Record as Debt';
       case PaymentMethod.split:
@@ -1058,6 +1121,28 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           items: cart.items,
           customerId: cart.customerId,
           couponCode: _couponCodeFor(cart),
+        );
+        break;
+      case PaymentMethod.recordedMpesa:
+      case PaymentMethod.recordedBank:
+        final details = await showRecordPaymentSheet(
+          context,
+          method: _selectedMethod == PaymentMethod.recordedMpesa
+              ? RecordedPaymentMethod.mpesa
+              : RecordedPaymentMethod.bank,
+          total: cart.total,
+          rules: _recordedRules,
+          recorderId: getIt<AuthService>().userId ?? '',
+          recorderName: _recorderName(),
+          approverForPin: getIt<AuthService>().approverForPin,
+        );
+        if (details == null || !mounted) return;
+        result = await paymentNotifier.processRecordedPayment(
+          amount: cart.total,
+          items: cart.items,
+          details: details,
+          customerId: cart.customerId,
+          discountAmount: cart.discount,
         );
         break;
       case PaymentMethod.debt:

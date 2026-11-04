@@ -3521,6 +3521,27 @@ class AppDatabase extends _$AppDatabase {
     return matches.isEmpty ? null : matches.first;
   }
 
+  /// True when a sale already holds a payment reference matching [likePattern]
+  /// under one of [methods]. Used to refuse an M-Pesa code or bank reference
+  /// that was already recorded on another sale.
+  Future<bool> hasPendingSaleReferenceLike(
+    String likePattern, {
+    required List<String> methods,
+  }) async {
+    if (methods.isEmpty) return false;
+    final marks = List.filled(methods.length, '?').join(', ');
+    final rows = await customSelect(
+      'SELECT 1 FROM pending_sales WHERE payment_method IN ($marks) '
+      'AND payment_reference LIKE ? LIMIT 1',
+      variables: [
+        for (final method in methods) Variable<String>(method),
+        Variable<String>(likePattern),
+      ],
+      readsFrom: {pendingSales},
+    ).get();
+    return rows.isNotEmpty;
+  }
+
   /// Soft-voids a local sale: marks it VOIDED with a reason/who/when and
   /// returns its stock to the local cache — instead of the old hard DELETE,
   /// which left no trace. The backend performs the authoritative void +

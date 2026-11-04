@@ -7,6 +7,7 @@ import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/pin_login_screen.dart';
 import '../../features/auth/presentation/screens/company_choice_screen.dart';
 import '../../features/auth/presentation/screens/company_setup_screen.dart';
+import '../../features/settings/presentation/screens/recorded_payment_rules_screen.dart';
 import '../../features/auth/presentation/screens/owner_welcome_screen.dart';
 import '../../features/auth/presentation/screens/local_workspace_transition_screen.dart';
 import '../../features/auth/presentation/screens/company_activation_screen.dart';
@@ -863,6 +864,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/user-guide',
             name: 'user-guide',
             builder: (context, state) => const UserGuideScreen(),
+          ),
+
+          // Rules for payments the shop records itself
+          GoRoute(
+            path: '/settings/recorded-payments',
+            name: 'recorded-payments',
+            builder: (context, state) => const RecordedPaymentRulesScreen(),
           ),
 
           // Per-branch operating hours

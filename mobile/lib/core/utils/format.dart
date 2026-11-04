@@ -66,6 +66,10 @@ String paymentMethodLabel(String? code) {
       return 'Split';
     case 'MANUAL':
       return 'Manual';
+    case 'MPESA_RECORDED':
+      return 'M-Pesa (recorded)';
+    case 'BANK_RECORDED':
+      return 'Bank transfer (recorded)';
   }
   final words = raw.replaceAll('_', ' ').toLowerCase();
   return words[0].toUpperCase() + words.substring(1);

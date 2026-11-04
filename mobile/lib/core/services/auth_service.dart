@@ -456,6 +456,48 @@ class AuthService implements LifecycleLockAuth {
     return null;
   }
 
+  int _approverFailures = 0;
+  DateTime? _approverLockedUntil;
+
+  /// Checks a PIN belongs to someone allowed to approve a larger recorded
+  /// payment: the owner or a manager. Returns the approver's id, name and
+  /// whether they are the owner, or null for a wrong PIN or a role that may
+  /// not approve. Repeated wrong PINs lock approvals for a few minutes so a
+  /// cashier cannot guess a manager's PIN.
+  Future<({String id, String name, bool isOwner})?> approverForPin(
+    String pin,
+  ) async {
+    final lockedUntil = _approverLockedUntil;
+    if (lockedUntil != null && DateTime.now().isBefore(lockedUntil)) {
+      throw StateError(
+        'Too many wrong PINs. Wait a few minutes before trying again.',
+      );
+    }
+    final user = await _localWorkspaceUserForPin(pin);
+    final ownerId = _storage.getLocalWorkspace()?['user'] is Map
+        ? (_storage.getLocalWorkspace()!['user'] as Map)['id']?.toString()
+        : null;
+    final id = user?['id']?.toString() ?? '';
+    final isOwner = id.isNotEmpty && id == ownerId;
+    final isManager = user?['role']?.toString() == 'Manager';
+    if (user == null || id.isEmpty || !(isOwner || isManager)) {
+      _approverFailures++;
+      if (_approverFailures >= 5) {
+        _approverFailures = 0;
+        _approverLockedUntil =
+            DateTime.now().add(const Duration(minutes: 5));
+      }
+      return null;
+    }
+    _approverFailures = 0;
+    _approverLockedUntil = null;
+    final name = (user['name'] ??
+            '${user['firstName'] ?? ''} ${user['lastName'] ?? ''}')
+        .toString()
+        .trim();
+    return (id: id, name: name.isEmpty ? 'Manager' : name, isOwner: isOwner);
+  }
+
   Future<void> _activateLocalWorkspaceUser(
     Map<String, dynamic> localUser,
   ) async {

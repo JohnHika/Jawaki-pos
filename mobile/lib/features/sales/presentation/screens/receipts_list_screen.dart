@@ -117,6 +117,9 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
       case 'TOURISTTAP':
       case 'TOURIST TAP':
         return DesignColors.touristtap;
+      case 'MPESA_RECORDED':
+      case 'BANK_RECORDED':
+        return DesignColors.warning;
       default:
         return DesignColors.brand;
     }
@@ -136,6 +139,10 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
       case 'TOURISTTAP':
       case 'TOURIST TAP':
         return Icons.nfc_rounded;
+      case 'MPESA_RECORDED':
+        return Icons.phone_android_rounded;
+      case 'BANK_RECORDED':
+        return Icons.account_balance_rounded;
       default:
         return Icons.payment_rounded;
     }

@@ -1,3 +1,4 @@
+import '../../domain/recorded_payment.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -480,11 +481,28 @@ class ReceiptScreen extends ConsumerWidget {
         final amt = (t['amount'] as num?)?.toDouble() ?? 0;
         b.writeln(lr('  $m', money(amt)));
       }
+    } else if (RecordedPaymentMethod.isRecorded(method)) {
+      final recorded =
+          RecordedPaymentDetails.tryParse(receipt['paymentReference']?.toString());
+      b.writeln(lr('Paid by', RecordedPaymentMethod.label(method)));
+      if (recorded != null) {
+        b.writeln(lr('  Ref', recorded.code));
+        if (recorded.recordedByName.isNotEmpty) {
+          b.writeln(lr('  Recorded by', recorded.recordedByName));
+        }
+        if (recorded.approvedByName != null) {
+          b.writeln(lr('  Approved by', recorded.approvedByName!));
+        }
+      }
+      b.writeln('  Recorded by the shop.');
+      b.writeln('  Not verified by Counterbase.');
     } else {
       b.writeln(lr('Paid by', method));
     }
     final ref = (receipt['paymentReference'] ?? '').toString();
-    if (ref.isNotEmpty && method != 'SPLIT') {
+    if (ref.isNotEmpty &&
+        method != 'SPLIT' &&
+        !RecordedPaymentMethod.isRecorded(method)) {
       b.writeln(lr('  Ref', ref.length > 20 ? ref.substring(0, 20) : ref));
     }
 
@@ -635,6 +653,20 @@ class ReceiptScreen extends ConsumerWidget {
           'KES ${((t['amount'] as num?) ?? 0).toStringAsFixed(2)}',
         ]);
       }
+    } else if (RecordedPaymentMethod.isRecorded(method)) {
+      final recorded =
+          RecordedPaymentDetails.tryParse(receipt['paymentReference']?.toString());
+      summaryRows.add(['Payment', RecordedPaymentMethod.label(method)]);
+      if (recorded != null) {
+        summaryRows.add(['Reference', recorded.code]);
+        if (recorded.recordedByName.isNotEmpty) {
+          summaryRows.add(['Recorded by', recorded.recordedByName]);
+        }
+        if (recorded.approvedByName != null) {
+          summaryRows.add(['Approved by', recorded.approvedByName!]);
+        }
+      }
+      summaryRows.add(['Note', 'Recorded by the shop. Not verified by Counterbase.']);
     } else {
       summaryRows.add(['Payment', method]);
     }

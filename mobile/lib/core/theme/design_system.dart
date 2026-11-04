@@ -1555,6 +1555,9 @@ class PaymentChip extends StatelessWidget {
         return DesignColors.cash;
       case 'CREDIT':
         return DesignColors.credit;
+      case 'MPESARECORDED':
+      case 'BANKRECORDED':
+        return DesignColors.warning;
       default:
         return DesignColors.brand;
     }
@@ -1572,6 +1575,10 @@ class PaymentChip extends StatelessWidget {
         return Icons.money_rounded;
       case 'CREDIT':
         return Icons.credit_card_rounded;
+      case 'MPESARECORDED':
+        return Icons.phone_android_rounded;
+      case 'BANKRECORDED':
+        return Icons.account_balance_rounded;
       default:
         return Icons.payment_rounded;
     }
