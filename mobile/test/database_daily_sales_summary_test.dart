@@ -49,6 +49,27 @@ void main() {
         );
   }
 
+  test('recorded M-Pesa and bank payments have their own lines, not "other"',
+      () async {
+    await addSale(id: 'cash', total: 80, method: 'CASH');
+    await addSale(id: 'rec-mpesa', total: 4200, method: 'MPESA_RECORDED');
+    await addSale(id: 'rec-bank', total: 20000, method: 'BANK_RECORDED');
+
+    final summary = await database.getDailySalesSummary(
+      'branch-1',
+      DateTime(2026, 10, 26),
+    );
+
+    expect(summary['totalSales'], 24280.0);
+    expect(summary['cashSales'], 80.0);
+    expect(summary['recordedMpesaSales'], 4200.0);
+    expect(summary['recordedBankSales'], 20000.0);
+    expect(summary['recordedSales'], 24200.0);
+    expect(summary['recordedCount'], 2);
+    expect(summary['otherSales'], 0.0);
+    expect(summary['otherPaymentMethods'], isEmpty);
+  });
+
   test('offline End of Day attributes split cash and credit tenders', () async {
     await addSale(id: 'cash', total: 80, method: 'CASH');
     await addSale(id: 'credit', total: 45, method: 'CREDIT');

@@ -6,10 +6,10 @@ import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
 import 'package:axon_pos/features/home/domain/shop_guidance.dart';
 
-const Color kCashColor = Color(0xFF3FAE77);
-const Color kRecordedColor = Color(0xFFE0A21B);
-const Color kCreditColor = Color(0xFF7F8FB4);
-const Color kOtherColor = Color(0xFF5A8CFF);
+const Color kCashColor = MoneyColors.cash;
+const Color kRecordedColor = MoneyColors.recorded;
+const Color kCreditColor = MoneyColors.credit;
+const Color kOtherColor = MoneyColors.verified;
 
 TextStyle get _mono => DesignType.numeric();
 
@@ -26,7 +26,7 @@ class HomeTakingsCard extends StatelessWidget {
     required this.revenue,
     required this.transactions,
     required this.averageTicket,
-    required this.itemsSold,
+    this.itemsSold,
     required this.split,
     this.dateLabel,
   });
@@ -34,7 +34,7 @@ class HomeTakingsCard extends StatelessWidget {
   final double revenue;
   final int transactions;
   final double averageTicket;
-  final double itemsSold;
+  final double? itemsSold;
   final TakingsSplit split;
   final String? dateLabel;
 
@@ -131,7 +131,7 @@ class HomeTakingsCard extends StatelessWidget {
             Text(
               transactions == 0
                   ? 'No sales yet today'
-                  : '$transactions ${transactions == 1 ? 'sale' : 'sales'} · average KES ${_money(averageTicket)} · ${_itemsText(itemsSold)}',
+                  : '$transactions ${transactions == 1 ? 'sale' : 'sales'} · average KES ${_money(averageTicket)}${itemsSold == null ? '' : ' · ${_itemsText(itemsSold!)}'}',
               style: const TextStyle(color: mutedOnInk, fontSize: 13, height: 1.35),
             ),
             if (splitTotal > 0) ...[

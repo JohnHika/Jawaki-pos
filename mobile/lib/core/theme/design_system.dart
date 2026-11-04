@@ -20,6 +20,15 @@ import '../widgets/workspace_image.dart';
 // JetBrains Mono: every number in this app (prices, totals, metrics,
 // receipts) renders in monospace — tabular figures that align in a
 // column and read unambiguously at arm's length on a shop counter.
+/// One colour for each way money arrives. Used on Home, checkout, receipts and
+/// reports so an owner reads totals the same way everywhere.
+class MoneyColors {
+  static const Color cash = Color(0xFF3FAE77);
+  static const Color recorded = Color(0xFFE0A21B);
+  static const Color credit = Color(0xFF7F8FB4);
+  static const Color verified = Color(0xFF5A8CFF);
+}
+
 class DesignType {
   static TextTheme get textTheme => TextTheme(
         displayLarge: GoogleFonts.sora(fontWeight: FontWeight.w800),

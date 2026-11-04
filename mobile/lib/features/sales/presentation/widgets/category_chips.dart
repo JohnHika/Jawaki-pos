@@ -99,7 +99,6 @@ class _CategoryChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const chipColor = DesignColors.accent;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Padding(
@@ -113,28 +112,14 @@ class _CategoryChip extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: isSelected
-                  ? (isDark
-                      ? chipColor.withValues(alpha: 0.18)
-                      : DesignColors.peach)
-                  : (isDark ? DesignColors.glassDark : Colors.white),
+                  ? (isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary)
+                  : (isDark ? DesignColors.darkSurface : Colors.white),
               borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
               border: Border.all(
                 color: isSelected
-                    ? chipColor.withValues(alpha: 0.4)
-                    : (isDark
-                        ? DesignColors.glassDarkBorder
-                        : DesignColors.surfaceBorder),
-                width: isSelected ? 1.5 : 1,
+                    ? (isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary)
+                    : (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
               ),
-              boxShadow: isSelected
-                  ? [
-                      BoxShadow(
-                        color: chipColor.withValues(alpha: 0.22),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : null,
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -143,7 +128,7 @@ class _CategoryChip extends StatelessWidget {
                   Icon(icon,
                       size: 16,
                       color: isSelected
-                          ? chipColor
+                          ? (isDark ? DesignColors.textPrimary : Colors.white)
                           : (isDark
                               ? DesignColors.darkTextSecondary
                               : DesignColors.textSecondary)),
@@ -153,11 +138,11 @@ class _CategoryChip extends StatelessWidget {
                   label,
                   style: TextStyle(
                     color: isSelected
-                        ? chipColor
+                        ? (isDark ? DesignColors.textPrimary : Colors.white)
                         : (isDark
                             ? DesignColors.darkTextPrimary
                             : DesignColors.textPrimary),
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
                     fontSize: 13,
                   ),
                 ),

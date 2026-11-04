@@ -7,6 +7,7 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../coupons/presentation/widgets/coupon_row.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../providers/cart_provider.dart';
 import '../widgets/cart_item_tile.dart';
 import '../../../../core/utils/format.dart';
@@ -32,37 +33,15 @@ class CartScreen extends ConsumerWidget {
           isDark: isDark,
           onPressed: () => context.pop(),
         ),
-        title: Row(
-          children: [
-            Text(
-              'Cart',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: DesignSpacing.xl,
-                letterSpacing: -0.5,
-                color: isDark
-                    ? DesignColors.darkTextPrimary
-                    : DesignColors.textPrimary,
-              ),
-            ),
-            const SizedBox(width: DesignSpacing.sm),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: DesignSpacing.md - 2, vertical: DesignSpacing.xs),
-              decoration: BoxDecoration(
-                color: DesignColors.accent.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(DesignSpacing.sm),
-              ),
-              child: Text(
-                '${cart.itemCount}',
-                style: const TextStyle(
-                  color: DesignColors.accent,
-                  fontWeight: FontWeight.w700,
-                  fontSize: DesignType.chatBody - 1,
-                ),
-              ),
-            ),
-          ],
+        title: Text(
+          'Review sale',
+          style: DesignType.display.copyWith(
+            fontWeight: FontWeight.w700,
+            fontSize: 19,
+            color: isDark
+                ? DesignColors.darkTextPrimary
+                : DesignColors.textPrimary,
+          ),
         ),
         centerTitle: false,
         backgroundColor:
@@ -71,28 +50,14 @@ class CartScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         actions: [
           if (cart.items.isNotEmpty)
-            IconButton.filledTonal(
-              tooltip: 'Hold sale and return to POS',
-              onPressed: () => _holdSale(context, ref, cart),
-              style: IconButton.styleFrom(
-                foregroundColor: DesignColors.warning,
-                backgroundColor: DesignColors.warning.withValues(alpha: 0.12),
-              ),
-              icon: Badge(
-                isLabelVisible: heldSalesCount > 0,
-                label: Text('$heldSalesCount'),
-                child: const Icon(Icons.pause_circle_outline_rounded),
-              ),
-            ),
-          if (cart.items.isNotEmpty)
-            IconButton.filledTonal(
-              tooltip: 'Clear all items',
+            TextButton(
               onPressed: () => _showClearCartDialog(context, ref),
-              style: IconButton.styleFrom(
+              style: TextButton.styleFrom(
                 foregroundColor: DesignColors.error,
-                backgroundColor: DesignColors.error.withValues(alpha: 0.10),
+                minimumSize: const Size(56, 44),
               ),
-              icon: const Icon(Icons.delete_sweep_rounded),
+              child: const Text('Clear',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
             ),
           const SizedBox(width: DesignSpacing.xs),
         ],
@@ -102,50 +67,82 @@ class CartScreen extends ConsumerWidget {
           ? _buildEmptyCart(context)
           : Column(
               children: [
-                // Customer banner (if set)
-                if (cart.customerName != null)
-                  GlassCard(
-                    margin: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                // Customer row: opens the picker back on Sell.
+                if (ref.watch(businessLayoutProvider).effectiveShowPosCustomer)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
                         DesignSpacing.md, DesignSpacing.lg, 0),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: DesignSpacing.md + 2,
-                        vertical: DesignSpacing.md - 2),
-                    borderRadius: DesignSpacing.radiusMd,
-                    blur: 4,
-                    tint: DesignColors.accent.withValues(alpha: 0.06),
-                    borderColor: DesignColors.accent.withValues(alpha: 0.15),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(DesignSpacing.sm - 2),
+                    child: Material(
+                      color: isDark ? DesignColors.darkSurface : Colors.white,
+                      borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+                      child: InkWell(
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusLg),
+                        onTap: () {
+                          ref.read(customerPickerRequestProvider.notifier).state =
+                              true;
+                          context.pop();
+                        },
+                        child: Container(
+                          constraints: const BoxConstraints(minHeight: 56),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 8),
                           decoration: BoxDecoration(
-                            color: DesignColors.accent.withValues(alpha: 0.12),
                             borderRadius:
-                                BorderRadius.circular(DesignSpacing.sm),
+                                BorderRadius.circular(DesignSpacing.radiusLg),
+                            border: Border.all(
+                              color: isDark
+                                  ? DesignColors.darkBorder
+                                  : DesignColors.surfaceBorder,
+                            ),
                           ),
-                          child: const Icon(Icons.person_rounded,
-                              size: 16, color: DesignColors.accent),
-                        ),
-                        const SizedBox(width: DesignSpacing.md - 2),
-                        Text(
-                          cart.customerName!,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: DesignColors.accent,
-                            fontSize: DesignType.chatBody,
+                          child: Row(
+                            children: [
+                              Icon(Icons.person_outline_rounded,
+                                  size: 20,
+                                  color: isDark
+                                      ? DesignColors.darkTextSecondary
+                                      : DesignColors.textSecondary),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      ref
+                                          .watch(businessLayoutProvider)
+                                          .customerSingular,
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark
+                                            ? DesignColors.darkTextPrimary
+                                            : DesignColors.textPrimary,
+                                      ),
+                                    ),
+                                    Text(
+                                      cart.customerName ?? 'Walk-in',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: isDark
+                                            ? DesignColors.darkTextSecondary
+                                            : DesignColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(Icons.chevron_right_rounded,
+                                  color: isDark
+                                      ? DesignColors.darkTextTertiary
+                                      : DesignColors.textTertiary),
+                            ],
                           ),
                         ),
-                        const Spacer(),
-                        Text(
-                          '${cart.itemCount} item${cart.itemCount > 1 ? 's' : ''}',
-                          style: TextStyle(
-                            fontSize: DesignType.chatSecondary,
-                            color: isDark
-                                ? DesignColors.darkTextSecondary
-                                : DesignColors.textSecondary,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
 
@@ -183,15 +180,61 @@ class CartScreen extends ConsumerWidget {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
                     DesignSpacing.sm, DesignSpacing.lg, DesignSpacing.lg),
-                // The total is already shown prominently in the summary card
-                // right above this button — repeating it here read as three
-                // redundant copies of the same price on one screen.
-                child: GradientButton(
-                  label: 'Proceed to Payment',
-                  icon: Icons.payment_rounded,
-                  onPressed: () => context.push('/payment'),
-                  height: 56,
-                  borderRadius: DesignSpacing.radiusLg,
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 10,
+                      child: SizedBox(
+                        height: 54,
+                        child: OutlinedButton(
+                          onPressed: () => _holdSale(context, ref, cart),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: isDark
+                                ? DesignColors.darkTextPrimary
+                                : DesignColors.textPrimary,
+                            side: BorderSide(
+                              color: isDark
+                                  ? DesignColors.darkBorder
+                                  : DesignColors.surfaceBorder,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(DesignSpacing.radiusLg),
+                            ),
+                            textStyle: const TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w700),
+                          ),
+                          child: Badge(
+                            isLabelVisible: heldSalesCount > 0,
+                            label: Text('$heldSalesCount'),
+                            offset: const Offset(10, -8),
+                            child: const Text('Hold'),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: DesignSpacing.md),
+                    Expanded(
+                      flex: 22,
+                      child: SizedBox(
+                        height: 54,
+                        child: FilledButton(
+                          onPressed: () => context.push('/payment'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: DesignColors.accent,
+                            foregroundColor: DesignColors.textPrimary,
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(DesignSpacing.radiusLg),
+                            ),
+                            textStyle: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w800),
+                          ),
+                          child: const Text('Take payment'),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -201,9 +244,9 @@ class CartScreen extends ConsumerWidget {
   Widget _buildEmptyCart(BuildContext context) {
     return EmptyState(
       icon: Icons.shopping_cart_outlined,
-      title: 'Your cart is empty',
-      subtitle: 'Add items from the POS screen',
-      actionLabel: 'Start Shopping',
+      title: 'Nothing in this sale yet',
+      subtitle: 'Add items from the Sell screen',
+      actionLabel: 'Back to Sell',
       actionIcon: Icons.add_shopping_cart_rounded,
       onAction: () => context.pop(),
     );
@@ -211,17 +254,17 @@ class CartScreen extends ConsumerWidget {
 
   Widget _buildOrderSummary(BuildContext context, CartState cart) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return GlassCard(
+    return Container(
       padding: const EdgeInsets.all(DesignSpacing.lg),
       margin:
           const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, 0),
-      borderRadius: DesignSpacing.radiusLg,
-      blur: 12,
-      tint: isDark
-          ? DesignColors.darkSurfaceElevated.withValues(alpha: 0.95)
-          : Colors.white.withValues(alpha: 0.95),
-      borderColor:
-          isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+      decoration: BoxDecoration(
+        color: isDark ? DesignColors.darkSurface : Colors.white,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        border: Border.all(
+          color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+        ),
+      ),
       child: Column(
         children: [
           if (!getIt<AuthService>().isLocalWorkspace) ...[
@@ -270,7 +313,7 @@ class CartScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Total due',
+                    'Total',
                     style: TextStyle(
                       fontSize: DesignType.chatBody,
                       fontWeight: FontWeight.w600,
@@ -293,10 +336,12 @@ class CartScreen extends ConsumerWidget {
               ),
               RollingNumber(
                 formatMoney(cart.total),
-                style: DesignType.numeric(
-                  fontSize: 26,
+                style: DesignType.display.copyWith(
+                  fontSize: 22,
                   fontWeight: FontWeight.w800,
-                  color: DesignColors.accent,
+                  color: isDark
+                      ? DesignColors.darkTextPrimary
+                      : DesignColors.textPrimary,
                 ),
               ),
             ],

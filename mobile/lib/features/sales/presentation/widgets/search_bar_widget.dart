@@ -73,14 +73,17 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: GlassCard(
+      child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 4),
-        borderRadius: 14,
-        blur: 8,
-        tint: isDark ? DesignColors.glassDark : DesignColors.glassWhite,
-        borderColor: isDark
-            ? DesignColors.glassDarkBorder
-            : DesignColors.surfaceBorder.withValues(alpha: 0.6),
+        decoration: BoxDecoration(
+          color: isDark
+              ? DesignColors.darkSurfaceElevated
+              : DesignColors.surfaceSubtle,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+          ),
+        ),
         child: TextField(
           controller: _controller,
           focusNode: _focusNode,

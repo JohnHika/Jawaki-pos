@@ -52,6 +52,34 @@ class ReceiptScreen extends ConsumerWidget {
       }
     });
 
+    Future<void> shareReceipt() async {
+      final receipt = receiptAsync.valueOrNull;
+      if (receipt == null) {
+        showGlassSnackBar(
+          context,
+          'Receipt is still loading — try again in a moment.',
+          icon: Icons.hourglass_empty_rounded,
+          color: DesignColors.warning,
+        );
+        return;
+      }
+      final format = await showShareFormatSheet(
+        context,
+        title: 'Share Receipt',
+        formats: const [
+          ShareFormatOption.pdf,
+          ShareFormatOption.plainText,
+        ],
+      );
+      if (format == null || !context.mounted) return;
+
+      if (format == ShareFormat.plainText) {
+        await ExportDocumentService.sharePlainText(_buildShareText(receipt));
+        return;
+      }
+      await _shareReceiptPdf(ref, receipt);
+    }
+
     return Scaffold(
       appBar: AppBar(
         leading: Container(
@@ -88,59 +116,6 @@ class ReceiptScreen extends ConsumerWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         actions: [
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(DesignSpacing.sm),
-              decoration: BoxDecoration(
-                color: DesignColors.accent.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
-              ),
-              child: const Icon(Icons.share_outlined,
-                  size: 20, color: DesignColors.accent),
-            ),
-            tooltip: 'Share receipt',
-            onPressed: () async {
-              final receipt = receiptAsync.valueOrNull;
-              if (receipt == null) {
-                showGlassSnackBar(
-                  context,
-                  'Receipt is still loading — try again in a moment.',
-                  icon: Icons.hourglass_empty_rounded,
-                  color: DesignColors.warning,
-                );
-                return;
-              }
-              final format = await showShareFormatSheet(
-                context,
-                title: 'Share Receipt',
-                formats: const [
-                  ShareFormatOption.pdf,
-                  ShareFormatOption.plainText,
-                ],
-              );
-              if (format == null || !context.mounted) return;
-
-              if (format == ShareFormat.plainText) {
-                await ExportDocumentService.sharePlainText(
-                    _buildShareText(receipt));
-                return;
-              }
-              await _shareReceiptPdf(ref, receipt);
-            },
-          ),
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(DesignSpacing.sm),
-              decoration: BoxDecoration(
-                color: DesignColors.accent.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
-              ),
-              child: const Icon(Icons.print_outlined,
-                  size: 20, color: DesignColors.accent),
-            ),
-            tooltip: 'Print receipt',
-            onPressed: () => _printReceipt(context, receiptAsync.valueOrNull),
-          ),
           if (permissions.canVoidSales &&
               receiptAsync.hasValue &&
               (receiptAsync.valueOrNull?['status'] ?? '')
@@ -239,21 +214,58 @@ class ReceiptScreen extends ConsumerWidget {
           );
         },
       ),
-      bottomNavigationBar: canMakeSales
-          ? SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
-                    DesignSpacing.sm, DesignSpacing.lg, DesignSpacing.lg),
-                child: GradientButton(
-                  label: 'New Sale',
-                  icon: Icons.add_shopping_cart_rounded,
-                  onPressed: () => context.go('/'),
-                  height: 56,
-                  borderRadius: DesignSpacing.radiusLg,
-                ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.sm,
+              DesignSpacing.lg, DesignSpacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _ReceiptActionButton(
+                      icon: Icons.print_outlined,
+                      label: 'Print',
+                      onPressed: () =>
+                          _printReceipt(context, receiptAsync.valueOrNull),
+                    ),
+                  ),
+                  const SizedBox(width: DesignSpacing.md),
+                  Expanded(
+                    child: _ReceiptActionButton(
+                      icon: Icons.ios_share_rounded,
+                      label: 'Share',
+                      onPressed: shareReceipt,
+                    ),
+                  ),
+                ],
               ),
-            )
-          : null,
+              if (canMakeSales) ...[
+                const SizedBox(height: DesignSpacing.sm),
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: FilledButton(
+                    onPressed: () => context.go('/'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: DesignColors.accent,
+                      foregroundColor: DesignColors.textPrimary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusLg),
+                      ),
+                      textStyle: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w800),
+                    ),
+                    child: const Text('New sale'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1092,5 +1104,41 @@ class ReceiptScreen extends ConsumerWidget {
         );
       }
     }
+  }
+}
+
+class _ReceiptActionButton extends StatelessWidget {
+  const _ReceiptActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SizedBox(
+      height: 46,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18),
+        label: Text(label),
+        style: OutlinedButton.styleFrom(
+          foregroundColor:
+              isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
+          side: BorderSide(
+            color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+          ),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
   }
 }

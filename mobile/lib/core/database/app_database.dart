@@ -4127,6 +4127,12 @@ class AppDatabase extends _$AppDatabase {
     var cardSalesCents = 0;
     var creditSalesCents = 0;
     var otherSalesCents = 0;
+    // Payments the shop recorded itself (M-Pesa to its own till, bank
+    // transfer). They are real sales but Counterbase could not verify them, so
+    // they get their own lines instead of landing in "other".
+    var recordedMpesaCents = 0;
+    var recordedBankCents = 0;
+    var recordedCount = 0;
     final otherPaymentMethodsCents = <String, int>{};
     for (final sale in paymentRows) {
       final method = sale.read<String>('payment_method').trim().toUpperCase();
@@ -4136,6 +4142,12 @@ class AppDatabase extends _$AppDatabase {
           cashSalesCents += totalCents;
         case 'MPESA':
           mpesaSalesCents += totalCents;
+        case 'MPESA_RECORDED':
+          recordedMpesaCents += totalCents;
+          recordedCount++;
+        case 'BANK_RECORDED':
+          recordedBankCents += totalCents;
+          recordedCount++;
         case 'CREDIT':
           creditSalesCents += totalCents;
         case 'PESAPAL':
@@ -4233,6 +4245,10 @@ class AppDatabase extends _$AppDatabase {
       'cashRefunds': cashRefunds,
       'voidedCashReceived': voidedCashReceivedCents / 100,
       'mpesaSales': mpesaSalesCents / 100,
+      'recordedMpesaSales': recordedMpesaCents / 100,
+      'recordedBankSales': recordedBankCents / 100,
+      'recordedSales': (recordedMpesaCents + recordedBankCents) / 100,
+      'recordedCount': recordedCount,
       'cardSales': cardSalesCents / 100,
       'creditSales': creditSalesCents / 100,
       'otherSales': otherSalesCents / 100,

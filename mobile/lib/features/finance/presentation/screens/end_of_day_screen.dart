@@ -1,3 +1,5 @@
+import '../../../dashboard/presentation/widgets/home_cards.dart';
+import '../../../home/domain/shop_guidance.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -285,6 +287,9 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     final cashRefunds = asDouble(summary['cashRefunds']);
     final voidedCashReceived = asDouble(summary['voidedCashReceived']);
     final mpesaSales = asDouble(summary['mpesaSales']);
+    final recordedMpesaSales = asDouble(summary['recordedMpesaSales']);
+    final recordedBankSales = asDouble(summary['recordedBankSales']);
+    final recordedCount = asInt(summary['recordedCount']);
     final cardSales = asDouble(summary['cardSales']);
     final creditSales = asDouble(summary['creditSales']);
     final otherSales = asDouble(summary['otherSales']);
@@ -489,6 +494,20 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
           const SizedBox(height: DesignSpacing.lg),
         ],
 
+        if (!summaryUnavailable) ...[
+          HomeTakingsCard(
+            revenue: totalSales,
+            transactions: txns,
+            averageTicket: txns > 0 ? totalSales / txns : 0,
+            split: TakingsSplit(
+              cash: cashSales,
+              recorded: recordedMpesaSales + recordedBankSales,
+              credit: creditSales,
+              other: mpesaSales + cardSales + otherSales,
+            ),
+          ),
+          const SizedBox(height: DesignSpacing.lg),
+        ],
         const SettingsGroupLabel("Today's sales"),
         StaggeredItem(
           itemKey: 'eod-summary',
@@ -547,6 +566,14 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                     ? 'Unavailable'
                     : _currencyFmt.format(mpesaSales),
                 isDark),
+            if (recordedMpesaSales > 0)
+              _summaryRow(
+                  'M-Pesa to your till, recorded',
+                  _currencyFmt.format(recordedMpesaSales),
+                  isDark),
+            if (recordedBankSales > 0)
+              _summaryRow('Bank transfers, recorded',
+                  _currencyFmt.format(recordedBankSales), isDark),
             _summaryRow(
                 'Card',
                 summaryUnavailable
@@ -572,6 +599,31 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
               ),
           ]),
         ),
+
+        if (recordedCount > 0) ...[
+          const SizedBox(height: DesignSpacing.md),
+          Container(
+            padding: const EdgeInsets.all(DesignSpacing.md),
+            decoration: BoxDecoration(
+              color: DesignColors.warning.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.fact_check_outlined,
+                    color: DesignColors.warning),
+                const SizedBox(width: DesignSpacing.sm),
+                Expanded(
+                  child: Text(
+                    '$recordedCount recorded ${recordedCount == 1 ? 'payment' : 'payments'} to check against your own M-Pesa or bank statement. Counterbase has not verified them.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
 
         if (close != null) ...[
           const SizedBox(height: DesignSpacing.lg),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import '../../../../core/utils/format.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -292,99 +293,66 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Order Total Card — full width (the column is start-aligned, so
-            // without this the card shrinks to its text and sits off-centre).
+            // Amount due: the same dark card as Home.
             SizedBox(
               width: double.infinity,
-              child: GlassCard(
-                padding: const EdgeInsets.all(DesignSpacing.xl),
-                borderRadius: DesignSpacing.radiusXl,
-                blur: 8,
-                tint: DesignColors.accent.withValues(alpha: 0.08),
-                borderColor: DesignColors.accent.withValues(alpha: 0.15),
+              child: Container(
+                padding: const EdgeInsets.all(DesignSpacing.lg + 2),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF211C16)
+                      : const Color(0xFF1A1610),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
+                ),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Total Amount',
-                      style: TextStyle(
-                        color: isDark
-                            ? DesignColors.darkTextSecondary
-                            : DesignColors.textSecondary,
-                        fontSize: DesignType.chatBody,
-                        fontWeight: FontWeight.w500,
+                      'AMOUNT DUE',
+                      style: DesignType.numeric(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFFB3A89A),
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: DesignSpacing.sm),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        formatMoney(cart.total, decimals: cart.total % 1 != 0),
+                        style: DesignType.display.copyWith(
+                          color: const Color(0xFFF6EFE6),
+                          fontSize: 34,
+                          fontWeight: FontWeight.w800,
+                          height: 1.05,
+                        ),
                       ),
                     ),
                     const SizedBox(height: DesignSpacing.sm),
                     Text(
-                      'KES ${cart.total.toStringAsFixed(2)}',
-                      style: DesignType.numeric(
-                        color: isDark
-                            ? DesignColors.darkTextPrimary
-                            : DesignColors.textPrimary,
-                        fontSize: 34,
-                        fontWeight: FontWeight.w800,
+                      cart.customerName == null
+                          ? '${cart.itemCount} ${cart.itemCount == 1 ? 'item' : 'items'}'
+                          : '${cart.itemCount} ${cart.itemCount == 1 ? 'item' : 'items'} · ${cart.customerName}',
+                      style: const TextStyle(
+                        color: Color(0xFFB3A89A),
+                        fontSize: 13,
                       ),
                     ),
-                    const SizedBox(height: DesignSpacing.xs),
-                    Text(
-                      '${cart.itemCount} ${cart.itemCount == 1 ? 'item' : 'items'}',
-                      style: TextStyle(
-                        color: isDark
-                            ? DesignColors.darkTextSecondary
-                            : DesignColors.textSecondary,
-                        fontSize: DesignType.chatBody,
-                      ),
-                    ),
-                    if (cart.customerName != null) ...[
-                      const SizedBox(height: DesignSpacing.md - 2),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: DesignSpacing.md + 2,
-                            vertical: DesignSpacing.sm - 2),
-                        decoration: BoxDecoration(
-                          color: DesignColors.accent.withValues(alpha: 0.12),
-                          borderRadius:
-                              BorderRadius.circular(DesignSpacing.radiusMd),
-                          border: Border.all(
-                              color:
-                                  DesignColors.accent.withValues(alpha: 0.25)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.person_rounded,
-                                size: 15, color: DesignColors.accent),
-                            const SizedBox(width: DesignSpacing.sm - 2),
-                            Text(
-                              cart.customerName!,
-                              style: const TextStyle(
-                                  color: DesignColors.accent,
-                                  fontSize: DesignType.chatBody - 1,
-                                  fontWeight: FontWeight.w600),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: DesignSpacing.xxl),
+            const SizedBox(height: DesignSpacing.lg),
 
             // Select Payment Method
-            const SectionHeader(
-              title: 'Payment Method',
-              subtitle: 'Choose how to pay',
-            ),
-            const SizedBox(height: DesignSpacing.sm),
-
             // Cash
             _PaymentMethodTile(
               icon: Icons.money_rounded,
               title: 'Cash',
-              subtitle: 'Pay with cash',
-              color: DesignColors.accent,
+              subtitle: 'Counts into the till',
+              color: MoneyColors.cash,
               isSelected: _selectedMethod == PaymentMethod.cash,
               onTap: canChangePaymentMethod
                   ? () => setState(() => _selectedMethod = PaymentMethod.cash)
@@ -393,37 +361,15 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             const SizedBox(height: DesignSpacing.md - 2),
 
             if (_isLocalWorkspace) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(DesignSpacing.md),
-                decoration: BoxDecoration(
-                  color: DesignColors.info.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                  border: Border.all(
-                      color: DesignColors.info.withValues(alpha: 0.2)),
-                ),
-                child: const Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.phone_android_rounded, color: DesignColors.info),
-                    SizedBox(width: DesignSpacing.sm),
-                    Expanded(
-                      child: Text(
-                        'This device-only checkout works offline. Record cash, customer credit, or split payments here. Payments sent to your own till or bank can be recorded too. They are not verified by Counterbase.',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.md - 2),
               if (_recordedRules.enabled) ...[
                 _PaymentMethodTile(
                   icon: Icons.phone_android_rounded,
-                  title: 'M-Pesa to our till (recorded)',
+                  title: 'M-Pesa to our till',
                   subtitle: _recordedRules.tillNumber.isEmpty
-                      ? 'Customer pays your own till. Record it here.'
-                      : 'Customer pays ${_recordedRules.tillNumber}. Record it here.',
-                  color: DesignColors.warning,
+                      ? 'Customer pays your own till'
+                      : 'Till ${_recordedRules.tillNumber} · recorded by you',
+                  badge: 'Recorded',
+                  color: MoneyColors.recorded,
                   isSelected: _selectedMethod == PaymentMethod.recordedMpesa,
                   onTap: canChangePaymentMethod
                       ? () => setState(
@@ -433,9 +379,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 const SizedBox(height: DesignSpacing.md - 2),
                 _PaymentMethodTile(
                   icon: Icons.account_balance_rounded,
-                  title: 'Bank transfer (recorded)',
-                  subtitle: 'For larger payments. Record the bank reference.',
-                  color: DesignColors.warning,
+                  title: 'Bank transfer',
+                  subtitle: 'Recorded with a reference',
+                  badge: 'Recorded',
+                  color: MoneyColors.recorded,
                   isSelected: _selectedMethod == PaymentMethod.recordedBank,
                   onTap: canChangePaymentMethod
                       ? () => setState(
@@ -475,11 +422,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             // Debt (sell now, customer pays later)
             _PaymentMethodTile(
               icon: Icons.account_balance_wallet_outlined,
-              title: 'Add to Debt',
+              title: 'Customer credit',
               subtitle: cart.customerId == null
                   ? 'Choose or add a ${businessLayout.customerSingular.toLowerCase()} to continue'
-                  : '${businessLayout.customerSingular} pays later',
-              color: DesignColors.accent,
+                  : 'Adds to what they owe',
+              color: MoneyColors.credit,
               isSelected: _selectedMethod == PaymentMethod.debt,
               onTap: canChangePaymentMethod
                   ? () async {
@@ -502,9 +449,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             // Split
             _PaymentMethodTile(
               icon: Icons.call_split_rounded,
-              title: 'Split Payment',
-              subtitle: 'Part cash, part debt',
-              color: DesignColors.accent,
+              title: 'Split',
+              subtitle: 'Part cash, part customer credit',
+              color: DesignColors.textSecondary,
               isSelected: _selectedMethod == PaymentMethod.split,
               onTap: canChangePaymentMethod
                   ? () => setState(() => _selectedMethod = PaymentMethod.split)
@@ -1748,6 +1695,7 @@ class _PaymentMethodTile extends StatelessWidget {
   final Color color;
   final bool isSelected;
   final VoidCallback? onTap;
+  final String? badge;
 
   const _PaymentMethodTile({
     required this.icon,
@@ -1756,96 +1704,106 @@ class _PaymentMethodTile extends StatelessWidget {
     required this.color,
     required this.isSelected,
     required this.onTap,
+    this.badge,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final ink =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final soft =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
 
     return Opacity(
       opacity: onTap == null ? 0.55 : 1,
-      child: GlassCard(
-        onTap: onTap,
-        padding: const EdgeInsets.all(DesignSpacing.md + 2),
-        borderRadius: DesignSpacing.radiusMd + 2,
-        blur: isSelected ? 12 : 4,
-        tint: isSelected
-            ? color.withValues(alpha: 0.08)
-            : (isDark ? DesignColors.glassDark : DesignColors.glassWhite),
-        borderColor: isSelected
-            ? color.withValues(alpha: 0.4)
-            : (isDark
-                ? DesignColors.glassDarkBorder
-                : DesignColors.glassBorder),
-        boxShadow: isSelected
-            ? [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.15),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : null,
-        child: Row(
-          children: [
-            Container(
-              width: DesignSpacing.xxl + 24,
-              height: DesignSpacing.xxl + 24,
+      child: Semantics(
+        button: true,
+        selected: isSelected,
+        label: badge == null ? title : '$title, $badge',
+        child: Material(
+          color: isDark ? DesignColors.darkSurface : Colors.white,
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 64),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                border: Border.all(color: color.withValues(alpha: 0.2)),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+                border: Border.all(
+                  color: isSelected
+                      ? DesignColors.accent
+                      : (isDark
+                          ? DesignColors.darkBorder
+                          : DesignColors.surfaceBorder),
+                  width: isSelected ? 1.5 : 1,
+                ),
               ),
-              child: Icon(icon, color: color, size: 22),
-            ),
-            const SizedBox(width: DesignSpacing.md + 2),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: DesignType.chatBody + 2,
-                      fontWeight: FontWeight.w600,
-                      color: isSelected
-                          ? color
-                          : (isDark
-                              ? DesignColors.darkTextPrimary
-                              : DesignColors.textPrimary),
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, color: color, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w700,
+                            color: ink,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: TextStyle(fontSize: 12.5, color: soft, height: 1.3),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: DesignSpacing.xs - 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: DesignType.chatBody - 1,
-                      color: isDark
-                          ? DesignColors.darkTextSecondary
-                          : DesignColors.textSecondary,
+                  if (badge != null) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 9, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        badge!,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: isDark
+                              ? color
+                              : const Color(0xFF8A4A12),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
+                  if (isSelected) ...[
+                    const SizedBox(width: 8),
+                    const Icon(Icons.check_circle_rounded,
+                        color: DesignColors.accent, size: 22),
+                  ],
                 ],
               ),
             ),
-            if (isSelected)
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.4),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: const Icon(Icons.check_rounded,
-                    color: Colors.white, size: 18),
-              ),
-          ],
+          ),
         ),
       ),
     );

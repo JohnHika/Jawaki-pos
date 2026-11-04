@@ -438,6 +438,8 @@ class _ProductCard extends ConsumerWidget {
     }
     final trackInventory = product['trackInventory'] as bool? ?? true;
     final isOutOfStock = trackInventory && stock <= 0;
+    final minStock = (product['minStock'] as num?)?.toDouble() ?? 0;
+    final lowStockLevel = minStock > 0 ? minStock : 3.0;
     final quantityInCart = cartState.items
         .where((item) => item.productId == productId)
         .fold<double>(0, (sum, item) => sum + item.quantity);
@@ -616,29 +618,9 @@ class _ProductCard extends ConsumerWidget {
       );
     }
 
-    return GlassCard(
+    return _PlainCard(
       onTap: () => _addToCart(context, ref),
-      animatePress: false,
-      padding: EdgeInsets.zero,
-      borderRadius: 16,
-      blur: quantityInCart > 0 ? 12 : 6,
-      tint: isDark
-          ? DesignColors.glassDark
-          : (quantityInCart > 0
-              ? DesignColors.accent.withValues(alpha: 0.04)
-              : DesignColors.glassWhite),
-      borderColor: quantityInCart > 0
-          ? DesignColors.accent.withValues(alpha: 0.3)
-          : (isDark ? DesignColors.glassDarkBorder : DesignColors.glassBorder),
-      boxShadow: quantityInCart > 0
-          ? [
-              BoxShadow(
-                color: DesignColors.accent.withValues(alpha: 0.15),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ]
-          : null,
+      selected: quantityInCart > 0,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -658,6 +640,30 @@ class _ProductCard extends ConsumerWidget {
                     placeholder: _ImagePlaceholder(name: productName),
                   ),
                 ),
+
+                if (quantityInCart > 0 && !isOutOfStock)
+                  Positioned(
+                    top: 6,
+                    left: 6,
+                    child: Container(
+                      constraints:
+                          const BoxConstraints(minWidth: 24, minHeight: 24),
+                      padding: const EdgeInsets.symmetric(horizontal: 7),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: DesignColors.accent,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        quantityLabel,
+                        style: const TextStyle(
+                          color: DesignColors.textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
 
                 // Quantity Badge
                 if (isOutOfStock)
@@ -761,27 +767,52 @@ class _ProductCard extends ConsumerWidget {
                               style: DesignType.numeric(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
-                                color: DesignColors.accent,
+                                color: isDark
+                                    ? DesignColors.darkTextPrimary
+                                    : DesignColors.textPrimary,
                               ),
                             ),
                             const SizedBox(height: 3),
-                            Text(
-                              trackInventory
-                                  ? '${_ProductCard._formatCount(stock)} ${pluralizeUnit(unit, stock)} in stock'
-                                  : 'Stock not tracked',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: isOutOfStock
-                                    ? DesignColors.error
-                                    : (isDark
-                                        ? DesignColors.darkTextTertiary
-                                        : DesignColors.textTertiary),
-                                fontWeight: isOutOfStock
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
-                              ),
+                            Row(
+                              children: [
+                                if (trackInventory) ...[
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: BoxDecoration(
+                                      color: isOutOfStock
+                                          ? DesignColors.error
+                                          : stock <= lowStockLevel
+                                              ? const Color(0xFFE0A21B)
+                                              : const Color(0xFF3FAE77),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                ],
+                                Flexible(
+                                  child: Text(
+                                    trackInventory
+                                        ? (isOutOfStock
+                                            ? 'Out of stock'
+                                            : '${_ProductCard._formatCount(stock)} ${pluralizeUnit(unit, stock)} in stock')
+                                        : 'Stock not tracked',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: isOutOfStock
+                                          ? DesignColors.error
+                                          : (isDark
+                                              ? DesignColors.darkTextSecondary
+                                              : DesignColors.textSecondary),
+                                      fontWeight: isOutOfStock
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -2012,5 +2043,49 @@ class _StockBreakdown extends StatelessWidget {
       return '${unit}es';
     }
     return '${unit}s';
+  }
+}
+
+/// Plain bordered card used for product tiles: solid surface, thin line, an
+/// orange outline once the item is in the sale.
+class _PlainCard extends StatelessWidget {
+  const _PlainCard({
+    required this.child,
+    required this.onTap,
+    required this.selected,
+  });
+
+  final Widget child;
+  final VoidCallback onTap;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      color: isDark ? DesignColors.darkSurface : Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected
+                  ? DesignColors.accent
+                  : (isDark
+                      ? DesignColors.darkBorder
+                      : DesignColors.surfaceBorder),
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(15),
+            child: child,
+          ),
+        ),
+      ),
+    );
   }
 }

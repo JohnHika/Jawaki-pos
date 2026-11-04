@@ -147,6 +147,13 @@ class _POSScreenState extends ConsumerState<POSScreen> {
         setState(() => _selectedProductPageId = null);
       }
     });
+    ref.listen<bool>(customerPickerRequestProvider, (_, requested) {
+      if (!requested) return;
+      ref.read(customerPickerRequestProvider.notifier).state = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showCustomerDialog(this.context);
+      });
+    });
     final showFavorites =
         businessLayout.effectiveShowPosFavorites && _showFavorites;
     final selectedProductPage = businessLayout.posProductPages
@@ -186,7 +193,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: businessLayout.actionLabel('/', 'POS'),
+        title: businessLayout.actionLabel('/', 'Sell'),
         showBackButton: false,
         actions: [
           ...visiblePosActions.map((entry) => entry.value!),
@@ -345,85 +352,29 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 ],
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
-                DesignSpacing.sm, DesignSpacing.lg, DesignSpacing.sm - 3),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(DesignSpacing.sm - 1),
-                  decoration: BoxDecoration(
-                    color: DesignColors.brand.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(DesignSpacing.sm + 1),
-                  ),
-                  child: const Icon(Icons.point_of_sale_rounded,
-                      size: 17, color: DesignColors.brand),
-                ),
-                const SizedBox(width: DesignSpacing.sm + 1),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        showFavorites
-                            ? 'Favorites'
-                            : selectedProductPage?.name ?? 'Sell',
-                        style: TextStyle(
-                          fontSize: DesignType.chatBody + 1,
-                          fontWeight: FontWeight.w800,
-                          color: isDark
-                              ? DesignColors.darkTextPrimary
-                              : DesignColors.textPrimary,
-                        ),
+          if (showFavorites || selectedProductPage != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  DesignSpacing.lg, DesignSpacing.sm, DesignSpacing.lg, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      showFavorites
+                          ? 'Saved ${businessLayout.productsLabel.toLowerCase()}'
+                          : '${selectedProductPage!.name} · ${selectedProductPage.productIds.length} quick items',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? DesignColors.darkTextSecondary
+                            : DesignColors.textSecondary,
                       ),
-                      Text(
-                        showFavorites
-                            ? 'Saved ${businessLayout.productsLabel.toLowerCase()}'
-                            : selectedProductPage != null
-                                ? '${selectedProductPage.productIds.length} quick items'
-                                : 'Choose ${businessLayout.productsLabel.toLowerCase()} to start a sale',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: isDark
-                              ? DesignColors.darkTextSecondary
-                              : DesignColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (cart.itemCount > 0)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: DesignSpacing.md - 2,
-                        vertical: DesignSpacing.sm - 3),
-                    decoration: BoxDecoration(
-                      color: DesignColors.success.withValues(alpha: 0.12),
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusFull),
-                      border: Border.all(
-                          color: DesignColors.success.withValues(alpha: 0.24)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.shopping_bag_rounded,
-                            size: 14, color: DesignColors.success),
-                        const SizedBox(width: DesignSpacing.sm - 2),
-                        Text(
-                          '${cart.itemCount} Cart',
-                          style: const TextStyle(
-                            fontSize: DesignType.chatMeta,
-                            fontWeight: FontWeight.w700,
-                            color: DesignColors.success,
-                          ),
-                        ),
-                      ],
                     ),
                   ),
-              ],
+                ],
+              ),
             ),
-          ),
           // ── Body ──
           const SearchBarWidget(),
           if (!showFavorites && businessLayout.effectiveShowPosCategories)

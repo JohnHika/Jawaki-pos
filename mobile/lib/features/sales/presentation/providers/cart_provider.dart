@@ -1810,3 +1810,7 @@ final cartProvider = StateNotifierProvider<CartNotifier, CartState>((ref) {
   );
   return notifier;
 });
+
+/// Set by Review sale when the cashier taps the customer row. Sell listens,
+/// clears it and opens the customer picker once the cart has closed.
+final customerPickerRequestProvider = StateProvider<bool>((ref) => false);
