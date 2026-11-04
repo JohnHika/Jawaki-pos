@@ -11,23 +11,22 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
-import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/theme/share_format_sheet.dart';
 import '../../../../core/services/export_document_service.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/providers/business_layout_provider.dart';
-import '../../../../core/widgets/motion.dart';
 import '../../../ai/presentation/screens/ai_chat_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../finance/presentation/end_of_day_prompt.dart';
 import '../widgets/staff_invite_nudge.dart';
+import '../widgets/home_cards.dart';
+import '../../../home/domain/shop_guidance.dart';
 import '../../../accountability/presentation/widgets/shop_attention_card.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../notifications/presentation/widgets/notification_bell.dart';
-import '../../../news/presentation/providers/news_provider.dart';
 
 final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((ref) {
   final db = getIt<AppDatabase>();
@@ -356,20 +355,48 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final showDailyFigures =
         businessLayout.showsDashboardSection('summary_metrics');
     final showEndOfDay = businessLayout.showsDashboardSection('end_of_day');
-    final showBusinessBrief = businessLayout.showsDashboardSection('ai_brief');
+    // The templated snapshot only repeats generic advice; in a device-only
+    // shop the "up to date" card below takes its place.
+    final showBusinessBrief =
+        !isLocalWorkspace && businessLayout.showsDashboardSection('ai_brief');
     final showCostAndProfit =
         businessLayout.showsDashboardSection('cost_profit');
     final showRecentSales =
         businessLayout.showsDashboardSection('recent_sales');
     final needsSummary =
         showDailyFigures || showBusinessBrief || showCostAndProfit;
+    final todaysSales = salesAsync.asData?.value ?? const <PendingSale>[];
+    Widget takingsBlock(Map<String, dynamic> summary) {
+      final split = splitTakings(todaysSales.map((sale) => (
+            method: sale.paymentMethod,
+            reference: sale.paymentReference,
+            total: sale.total,
+            status: sale.status,
+          )));
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          HomeTakingsCard(
+            revenue: _amountForDashboard(summary['totalRevenue']),
+            transactions: (summary['transactionCount'] as num?)?.toInt() ?? 0,
+            averageTicket: _amountForDashboard(summary['avgTicket']),
+            itemsSold: _amountForDashboard(summary['itemsSold']),
+            split: split,
+          ),
+          const SizedBox(height: DesignSpacing.md),
+          HomeStartSaleButton(onPressed: () => context.go('/')),
+          if (split.recordedCount > 0) ...[
+            const SizedBox(height: DesignSpacing.md),
+            HomeRecordedReminder(count: split.recordedCount),
+          ],
+        ],
+      );
+    }
+
     List<Widget> overviewCards(Map<String, dynamic> summary) {
       final cards = <Widget>[];
       void addCard(Widget card) => cards.add(card);
 
-      if (showDailyFigures) {
-        addCard(_buildSummaryGrid(context, summary, businessLayout));
-      }
       if (showBusinessBrief) {
         addCard(_buildAiBrief(context, ref, summary));
       }
@@ -383,18 +410,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       data: overviewCards,
       loading: () => needsSummary
           ? [
-              if (showDailyFigures)
-                _buildSummaryGrid(
-                  context,
-                  const {
-                    'transactionCount': 0,
-                    'totalRevenue': 0.0,
-                    'avgTicket': 0.0,
-                    'itemsSold': 0,
-                  },
-                  businessLayout,
-                )
-              else
+              if (!showDailyFigures)
                 const Padding(
                   padding: EdgeInsets.all(DesignSpacing.md),
                   child: Center(
@@ -492,7 +508,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Greeting header
+              // Greeting header: one quiet line, so today's money comes first.
               Padding(
                 padding: const EdgeInsets.only(
                   left: DesignSpacing.xs,
@@ -502,36 +518,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    FadeSlideIn(
-                        from: SlideFrom.left,
-                        distance: 18,
-                        child: Text(
-                          identity.userFirstName.isNotEmpty
-                              ? 'Good ${_getGreeting()}, ${identity.userFirstName}'
-                              : 'Good ${_getGreeting()}',
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
-                              ?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: Theme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? DesignColors.darkTextPrimary
-                                    : DesignColors.textPrimary,
-                              ),
-                        )),
-                    const SizedBox(height: DesignSpacing.xs - 2),
                     Text(
-                      identity.companyName,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: DesignColors.accent,
-                          ),
+                      identity.userFirstName.isNotEmpty
+                          ? 'Good ${_getGreeting()}, ${identity.userFirstName}'
+                          : 'Good ${_getGreeting()}',
+                      style: DesignType.display.copyWith(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? DesignColors.darkTextPrimary
+                            : DesignColors.textPrimary,
+                      ),
                     ),
                     const SizedBox(height: DesignSpacing.xs),
                     Text(
-                      _dateFmt.format(DateTime.now()),
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      '${identity.companyName} · ${DateFormat('EEE d MMM').format(DateTime.now())}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color:
                                 Theme.of(context).brightness == Brightness.dark
                                     ? DesignColors.darkTextSecondary
@@ -541,13 +543,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   ],
                 ),
               ),
-              const SizedBox(height: DesignSpacing.xl),
+              const SizedBox(height: DesignSpacing.md),
 
-              if (!isLocalWorkspace &&
-                  ref.watch(permissionsProvider).has('news.view') &&
-                  businessLayout.isActionVisible('/news')) ...[
-                _BusinessNewsEntryCard(
-                  onOpen: () => context.push('/news'),
+              if (showDailyFigures) ...[
+                summaryAsync.when(
+                  data: takingsBlock,
+                  loading: () => takingsBlock(const {
+                    'transactionCount': 0,
+                    'totalRevenue': 0.0,
+                    'avgTicket': 0.0,
+                    'itemsSold': 0,
+                  }),
+                  error: (_, __) => const SizedBox.shrink(),
                 ),
                 const SizedBox(height: DesignSpacing.xl),
               ],
@@ -571,6 +578,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 _buildEndOfDayCard(context, ref),
                 const SizedBox(height: DesignSpacing.xl),
               ],
+
+              ShopUpToDateCard(
+                profileId: businessLayout.preset.id,
+                profileName: businessLayout.preset.name,
+                onOpen: (path) => context.go(path),
+              ),
+              const SizedBox(height: DesignSpacing.xl),
 
               if (overviewContent.isNotEmpty) ...[
                 for (var index = 0;
@@ -752,90 +766,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildSummaryGrid(
-    BuildContext context,
-    Map<String, dynamic> summary,
-    BusinessLayoutConfig businessLayout,
-  ) {
-    Widget metricCard(String id, int index) {
-      return switch (id) {
-        'revenue' => StaggeredItem(
-            itemKey: 'dash-metric-revenue',
-            index: index,
-            child: FlashOnChange(
-              trigger: summary['totalRevenue'],
-              radius: 20,
-              child: MetricCard(
-                title: "Today's Revenue",
-                value: _currencyFmt.format(summary['totalRevenue'] ?? 0),
-                icon: Icons.trending_up_rounded,
-                color: DesignColors.success,
-              ),
-            ),
-          ),
-        'transactions' => StaggeredItem(
-            itemKey: 'dash-metric-transactions',
-            index: index,
-            child: FlipIn(
-              delay: const Duration(milliseconds: 160),
-              child: MetricCard(
-                title: 'Transactions',
-                value: '${summary['transactionCount'] ?? 0}',
-                icon: Icons.receipt_long_rounded,
-                color: DesignColors.brand,
-              ),
-            ),
-          ),
-        'avgTicket' => StaggeredItem(
-            itemKey: 'dash-metric-avg-ticket',
-            index: index,
-            child: SwingIn(
-              angle: 0.12,
-              delay: const Duration(milliseconds: 240),
-              child: MetricCard(
-                title: 'Avg. Ticket',
-                value: _currencyFmt.format(summary['avgTicket'] ?? 0),
-                icon: Icons.shopping_cart_rounded,
-                color: DesignColors.info,
-              ),
-            ),
-          ),
-        'itemsSold' => StaggeredItem(
-            itemKey: 'dash-metric-items-sold',
-            index: index,
-            child: ZoomSettle(
-              delay: const Duration(milliseconds: 320),
-              child: MetricCard(
-                title: 'Items Sold',
-                value: '${summary['itemsSold'] ?? 0}',
-                icon: Icons.inventory_2_rounded,
-                color: DesignColors.accent,
-              ),
-            ),
-          ),
-        _ => const SizedBox.shrink(),
-      };
-    }
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cardWidth = (constraints.maxWidth - DesignSpacing.md) / 2;
-        return Wrap(
-          spacing: DesignSpacing.md,
-          runSpacing: DesignSpacing.md,
-          children: [
-            for (final entry
-                in businessLayout.effectiveDashboardMetrics.asMap().entries)
-              SizedBox(
-                width: cardWidth,
-                child: metricCard(entry.value, entry.key),
-              ),
-          ],
-        );
-      },
     );
   }
 
@@ -1448,107 +1378,5 @@ Sent from your POS workspace
       ],
     );
     await ExportDocumentService.sharePdf(bytes, 'daily_sales_report');
-  }
-}
-
-class _BusinessNewsEntryCard extends ConsumerWidget {
-  const _BusinessNewsEntryCard({required this.onOpen});
-
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final digest = ref.watch(newsDigestProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final secondary =
-        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final stories = digest.maybeWhen(
-      data: (value) => value.urgent.take(2).toList(),
-      orElse: () => const [],
-    );
-
-    return GlassCard(
-      onTap: onOpen,
-      padding: const EdgeInsets.all(DesignSpacing.lg),
-      borderRadius: DesignSpacing.radiusXl,
-      tint: DesignColors.info.withValues(alpha: 0.07),
-      borderColor: DesignColors.info.withValues(alpha: 0.2),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: DesignColors.info.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                ),
-                child: const Icon(Icons.newspaper_rounded,
-                    color: DesignColors.info),
-              ),
-              const SizedBox(width: DesignSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Business News',
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                )),
-                    Text('Market, tax and trade updates for your shop',
-                        style: TextStyle(color: secondary, fontSize: 12)),
-                  ],
-                ),
-              ),
-              const Icon(Icons.arrow_forward_rounded, color: DesignColors.info),
-            ],
-          ),
-          if (stories.isNotEmpty) ...[
-            const SizedBox(height: DesignSpacing.md),
-            for (var i = 0; i < stories.length; i++) ...[
-              if (i > 0)
-                Divider(
-                  height: DesignSpacing.md,
-                  color: isDark
-                      ? DesignColors.darkBorder
-                      : DesignColors.surfaceBorder,
-                ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 5),
-                    child:
-                        Icon(Icons.circle, size: 7, color: DesignColors.error),
-                  ),
-                  const SizedBox(width: DesignSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      stories[i].title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ] else ...[
-            const SizedBox(height: DesignSpacing.md),
-            Text(
-              digest.hasError
-                  ? 'Open the latest business updates when you are online.'
-                  : 'See updates that may affect your costs, stock and sales.',
-              style: TextStyle(color: secondary),
-            ),
-          ],
-        ],
-      ),
-    );
   }
 }
