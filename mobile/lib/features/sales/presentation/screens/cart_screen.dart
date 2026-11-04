@@ -146,6 +146,79 @@ class CartScreen extends ConsumerWidget {
                     ),
                   ),
 
+                // Discount row: the shop's discount limit is checked at payment.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                      DesignSpacing.sm, DesignSpacing.lg, 0),
+                  child: Material(
+                    color: isDark ? DesignColors.darkSurface : Colors.white,
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+                      onTap: () => _showDiscountSheet(context, ref, cart),
+                      child: Container(
+                        constraints: const BoxConstraints(minHeight: 56),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusLg),
+                          border: Border.all(
+                            color: isDark
+                                ? DesignColors.darkBorder
+                                : DesignColors.surfaceBorder,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.sell_outlined,
+                                size: 20,
+                                color: isDark
+                                    ? DesignColors.darkTextSecondary
+                                    : DesignColors.textSecondary),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Discount',
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark
+                                          ? DesignColors.darkTextPrimary
+                                          : DesignColors.textPrimary,
+                                    ),
+                                  ),
+                                  Text(
+                                    cart.manualDiscount > 0
+                                        ? (cart.discountPercent > 0
+                                            ? '${cart.discountPercent.toStringAsFixed(cart.discountPercent % 1 == 0 ? 0 : 1)}% off · ${formatMoney(cart.manualDiscount)}'
+                                            : formatMoney(cart.manualDiscount))
+                                        : 'None',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isDark
+                                          ? DesignColors.darkTextSecondary
+                                          : DesignColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.chevron_right_rounded,
+                                color: isDark
+                                    ? DesignColors.darkTextTertiary
+                                    : DesignColors.textTertiary),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
                 // Cart Items List — first-mount entrance stagger with stable
                 // per-item keys (item identity, not index) so quantity edits
                 // and removals never replay the choreography.
@@ -384,6 +457,140 @@ class CartScreen extends ConsumerWidget {
                 )),
       ],
     );
+  }
+
+  Future<void> _showDiscountSheet(
+      BuildContext context, WidgetRef ref, CartState cart) async {
+    final controller = TextEditingController(
+      text: cart.discountPercent > 0
+          ? cart.discountPercent.toStringAsFixed(cart.discountPercent % 1 == 0 ? 0 : 1)
+          : cart.discountAmount > 0
+              ? cart.discountAmount.toStringAsFixed(cart.discountAmount % 1 == 0 ? 0 : 2)
+              : '',
+    );
+    var percent = cart.discountAmount <= 0;
+    String? error;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        final ink =
+            isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+        final soft = isDark
+            ? DesignColors.darkTextSecondary
+            : DesignColors.textSecondary;
+        return StatefulBuilder(builder: (ctx, setSheet) {
+          return Padding(
+            padding:
+                EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: SafeArea(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                decoration: BoxDecoration(
+                  color: isDark ? DesignColors.darkSurface : Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: isDark
+                        ? DesignColors.darkBorder
+                        : DesignColors.surfaceBorder,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('Discount',
+                        style: DesignType.display.copyWith(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: ink)),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Your shop sets the biggest discount a cashier can give. It is checked when you take payment.',
+                      style: TextStyle(fontSize: 13, color: soft, height: 1.4),
+                    ),
+                    const SizedBox(height: 14),
+                    SegmentedButton<bool>(
+                      segments: const [
+                        ButtonSegment(value: true, label: Text('Percent')),
+                        ButtonSegment(value: false, label: Text('Amount')),
+                      ],
+                      selected: {percent},
+                      onSelectionChanged: (value) =>
+                          setSheet(() => percent = value.first),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: controller,
+                      autofocus: true,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        prefixText: percent ? null : 'KES ',
+                        suffixText: percent ? '%' : null,
+                        errorText: error,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 52,
+                      child: FilledButton(
+                        onPressed: () {
+                          final value = double.tryParse(controller.text.trim());
+                          if (value == null || value <= 0) {
+                            setSheet(() => error = 'Enter a number above 0.');
+                            return;
+                          }
+                          if (percent && value > 100) {
+                            setSheet(() => error = 'A percent cannot be over 100.');
+                            return;
+                          }
+                          final notifier = ref.read(cartProvider.notifier);
+                          if (percent) {
+                            notifier.setDiscountPercent(value);
+                          } else {
+                            notifier.setDiscountAmount(value);
+                          }
+                          Navigator.pop(ctx);
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: DesignColors.accent,
+                          foregroundColor: DesignColors.textPrimary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          textStyle: const TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w800),
+                        ),
+                        child: const Text('Apply discount'),
+                      ),
+                    ),
+                    if (cart.manualDiscount > 0) ...[
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: () {
+                          ref.read(cartProvider.notifier)
+                            ..setDiscountPercent(0)
+                            ..setDiscountAmount(0);
+                          Navigator.pop(ctx);
+                        },
+                        child: const Text('Remove discount'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        });
+      },
+    );
+    controller.dispose();
   }
 
   void _showClearCartDialog(BuildContext context, WidgetRef ref) {
