@@ -1,3 +1,4 @@
+import '../../../licence/presentation/licence_providers.dart';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -230,6 +231,15 @@ class SettingsScreen extends ConsumerWidget {
         id: 'money',
         title: 'Money',
         entries: [
+          if (isLocalWorkspace && licenceEnforced)
+            SettingsEntry(
+              id: 'plan-licence',
+              icon: Icons.workspace_premium_rounded,
+              title: 'Plan and licence',
+              subtitle: 'Your plan, next payment and licence code',
+              keywords: const ['licence', 'license', 'plan', 'pay', 'subscription', 'trial'],
+              onTap: () => context.push('/settings/plan'),
+            ),
           if ((isLocalWorkspace && isLocalWorkspaceOwner) ||
               (!isLocalWorkspace && isBillingAdmin))
             SettingsEntry(

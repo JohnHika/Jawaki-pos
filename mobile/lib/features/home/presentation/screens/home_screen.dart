@@ -1,3 +1,5 @@
+import 'dart:async';
+import '../../../licence/presentation/licence_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -36,6 +38,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     HomeNavKeys.moreSheetOpenRequest.addListener(_handleMoreSheetRequest);
     WidgetsBinding.instance.addPostFrameCallback((_) => _offerNotifications());
+    _checkLicence();
+    _licenceTimer = Timer.periodic(
+        const Duration(minutes: 30), (_) => _checkLicence());
+  }
+
+  Timer? _licenceTimer;
+
+  /// Keeps the shop's payment standing fresh. Does nothing until licences are
+  /// switched on.
+  void _checkLicence() {
+    if (!getIt<AuthService>().isLocalWorkspace) return;
+    unawaited(licenceService().refresh().then((_) {
+      if (mounted) ref.invalidate(licenceViewProvider);
+    }));
   }
 
   /// First time a signed-in user lands in the app, explain what alerts are
@@ -85,6 +101,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
+    _licenceTimer?.cancel();
     HomeNavKeys.moreSheetOpenRequest.removeListener(_handleMoreSheetRequest);
     super.dispose();
   }

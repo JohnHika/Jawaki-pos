@@ -50,6 +50,8 @@ class StorageService implements LifecycleLockStorage {
   static const String keyBiometricEnabled = 'setting_biometric_enabled';
   static const String keyRecordedPaymentRules = 'recorded_payment_rules_v1';
   static const String keyRecordedPaymentChecks = 'recorded_payment_checks_v1';
+  static const String keyLicenceToken = 'licence_token_v1';
+  static const String keyLicenceLastSeenMs = 'licence_last_seen_ms_v1';
   static const String keyRequireUnlockOnResume =
       'setting_require_unlock_on_resume';
   static const String keyAutoLockMinutes = 'setting_auto_lock_minutes';
@@ -895,6 +897,24 @@ class StorageService implements LifecycleLockStorage {
   Future<void> saveRecordedPaymentChecksJson(String json) async {
     _checkInitialized();
     await _prefs!.setString(keyRecordedPaymentChecks, json);
+  }
+
+  /// The shop's signed licence code. It is not secret: it only works for this
+  /// shop and cannot be changed without breaking its signature.
+  String? getLicenceToken() => _prefs?.getString(keyLicenceToken);
+
+  Future<void> saveLicenceToken(String token) async {
+    _checkInitialized();
+    await _prefs!.setString(keyLicenceToken, token);
+  }
+
+  /// The latest moment, in milliseconds, this phone has seen. Used so winding
+  /// the clock back cannot extend a trial or a paid period.
+  int? getLicenceLastSeenMs() => _prefs?.getInt(keyLicenceLastSeenMs);
+
+  Future<void> saveLicenceLastSeenMs(int value) async {
+    _checkInitialized();
+    await _prefs!.setInt(keyLicenceLastSeenMs, value);
   }
 
   bool isBiometricEnabled() {

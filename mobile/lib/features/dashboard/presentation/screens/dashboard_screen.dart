@@ -21,6 +21,8 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../finance/presentation/end_of_day_prompt.dart';
 import '../widgets/staff_invite_nudge.dart';
 import '../widgets/home_cards.dart';
+import '../../../licence/domain/licence_standing.dart';
+import '../../../licence/presentation/licence_providers.dart';
 import '../../../home/domain/shop_guidance.dart';
 import '../../../accountability/presentation/widgets/shop_attention_card.dart';
 import '../../../../core/utils/format.dart';
@@ -512,6 +514,30 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Builder(builder: (context) {
+                final licence = ref.watch(licenceViewProvider).valueOrNull;
+                if (licence == null) return const SizedBox.shrink();
+                final standing = licence.standing;
+                final kind = switch (standing.status) {
+                  LicenceStatus.salesPaused => LicenceStatusKind.paused,
+                  LicenceStatus.grace => LicenceStatusKind.late,
+                  LicenceStatus.trial when standing.daysLeft <= 3 =>
+                    LicenceStatusKind.trial,
+                  LicenceStatus.active when standing.daysLeft <= 3 =>
+                    LicenceStatusKind.due,
+                  _ => null,
+                };
+                if (kind == null) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: DesignSpacing.lg),
+                  child: HomeLicenceBanner(
+                    status: kind,
+                    daysLeft: standing.daysLeft,
+                    onTap: () => context.push('/settings/plan'),
+                  ),
+                );
+              }),
+
               if (showDailyFigures) ...[
                 summaryAsync.when(
                   data: takingsBlock,

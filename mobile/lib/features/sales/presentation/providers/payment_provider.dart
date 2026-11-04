@@ -1,3 +1,4 @@
+import '../../../licence/data/licence_service.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -1089,6 +1090,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String? paymentReference,
     String? customerId,
   }) async {
+    if (!LicenceGate.canSell) {
+      throw StateError(LicenceGate.pausedMessage);
+    }
     final subtotal = items.fold<double>(0, (sum, item) => sum + item.total);
     // Cash, credit and split receipts use the business rate shown in the cart.
     // Verified M-Pesa passes tax derived from the server-confirmed charge

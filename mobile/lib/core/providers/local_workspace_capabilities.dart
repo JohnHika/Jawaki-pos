@@ -34,6 +34,7 @@ class LocalWorkspaceCapabilities {
         path == '/settings/business-layout' ||
         path == '/settings/ai-gateway' ||
         path == '/settings/recorded-payments' ||
+        path == '/settings/plan' ||
         path == '/settings/archive-history' ||
         path == '/users' ||
         path == '/workspace/unavailable' ||

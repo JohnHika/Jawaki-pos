@@ -483,3 +483,63 @@ class _Row extends StatelessWidget {
     );
   }
 }
+
+/// A quiet strip on Home about the shop's payment standing. Shown only when it
+/// needs attention: a trial or payment due within three days, a late payment,
+/// or paused sales.
+class HomeLicenceBanner extends StatelessWidget {
+  const HomeLicenceBanner({
+    super.key,
+    required this.status,
+    required this.daysLeft,
+    required this.onTap,
+  });
+
+  final LicenceStatusKind status;
+  final int daysLeft;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = SignInPalette.of(context);
+    final paused = status == LicenceStatusKind.paused;
+    final background = paused
+        ? (palette.isDark ? const Color(0xFF3D1C1C) : const Color(0xFFF6DADA))
+        : (palette.isDark ? const Color(0xFF3A2A14) : const Color(0xFFFBE9C8));
+    final foreground = paused
+        ? (palette.isDark ? const Color(0xFFF2A3A3) : const Color(0xFF7A1F1F))
+        : (palette.isDark ? const Color(0xFFF0BF82) : const Color(0xFF5A3A06));
+    final days = daysLeft == 1 ? '1 day' : '$daysLeft days';
+    final text = switch (status) {
+      LicenceStatusKind.trial => 'Your free trial ends in $days. Open Plan and licence to keep selling.',
+      LicenceStatusKind.due => 'Your payment is due in $days.',
+      LicenceStatusKind.late => 'Your payment is late. New sales pause in $days.',
+      LicenceStatusKind.paused => 'New sales are paused. Your records are safe. Tap to pay and unlock.',
+    };
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Icon(paused ? Icons.lock_outline_rounded : Icons.schedule_rounded,
+                  color: foreground, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(text,
+                    style: TextStyle(color: foreground, fontSize: 13.5, height: 1.4)),
+              ),
+              Icon(Icons.chevron_right_rounded, color: foreground),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum LicenceStatusKind { trial, due, late, paused }

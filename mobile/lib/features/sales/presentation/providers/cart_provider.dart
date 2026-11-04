@@ -1,3 +1,4 @@
+import '../../../licence/data/licence_service.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -1058,6 +1059,12 @@ class CartNotifier extends StateNotifier<CartState> {
     double? catalogUnitPrice,
     bool allowFractions = false,
   }) {
+    if (!LicenceGate.canSell) {
+      return Future.value(const CartMutationResult(
+        success: false,
+        message: LicenceGate.pausedMessage,
+      ));
+    }
     final generation = _sessionGeneration;
     return _serializeProductMutation(
       productId,

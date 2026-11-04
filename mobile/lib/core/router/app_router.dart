@@ -1,3 +1,4 @@
+import '../../features/licence/presentation/plan_licence_screen.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -867,6 +868,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
 
           // Rules for payments the shop records itself
+          GoRoute(
+            path: '/settings/plan',
+            name: 'plan-licence',
+            builder: (context, state) => const PlanLicenceScreen(),
+          ),
           GoRoute(
             path: '/settings/recorded-payments',
             name: 'recorded-payments',
