@@ -347,6 +347,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
   }
 
+  /// The time of today's first sale, as "7:42", or null before the first one.
+  String? _firstSaleToday(List<PendingSale> sales) {
+    final now = DateTime.now();
+    DateTime? first;
+    for (final sale in sales) {
+      if (const {'VOIDED', 'REFUNDED', 'FAILED', 'CANCELLED'}
+          .contains(sale.status)) {
+        continue;
+      }
+      final at = sale.createdAt.toLocal();
+      if (at.year != now.year || at.month != now.month || at.day != now.day) {
+        continue;
+      }
+      if (first == null || at.isBefore(first)) first = at;
+    }
+    return first == null ? null : DateFormat('H:mm').format(first);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
@@ -385,6 +403,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             itemsSold: _amountForDashboard(summary['itemsSold']),
             split: split,
             dateLabel: DateFormat('EEE d MMM').format(DateTime.now()),
+            sellingSince: _firstSaleToday(todaysSales),
           ),
           const SizedBox(height: DesignSpacing.md),
           HomeStartSaleButton(onPressed: () => context.go('/')),

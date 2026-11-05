@@ -19,7 +19,9 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../sales/presentation/providers/catalog_provider.dart'
     as catalog_cache;
+import '../../../auth/presentation/widgets/sign_in_kit.dart';
 import '../providers/catalog_categories_provider.dart';
+import '../screens/barcode_scan_screen.dart';
 import 'image_picker_section.dart';
 
 class _UnitPriceTier {
@@ -39,7 +41,11 @@ class _UnitPriceTier {
 class AddEditProductSheet extends ConsumerStatefulWidget {
   final Product? product;
   final String? entityLabel;
-  const AddEditProductSheet({super.key, this.product, this.entityLabel});
+
+  /// A name to start the form with, such as one tapped from the starter list.
+  final String? initialName;
+  const AddEditProductSheet(
+      {super.key, this.product, this.entityLabel, this.initialName});
   @override
   ConsumerState<AddEditProductSheet> createState() =>
       _AddEditProductSheetState();
@@ -47,6 +53,9 @@ class AddEditProductSheet extends ConsumerStatefulWidget {
 
 class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   final _formKey = GlobalKey<FormState>();
+  final _moreFormKey = GlobalKey<FormState>();
+  final TextEditingController _stockController = TextEditingController();
+  Key _photoKey = UniqueKey();
   late final TextEditingController _nameController;
   late final TextEditingController _skuController;
   late final TextEditingController _descriptionController;
@@ -98,7 +107,8 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.product?.name ?? '');
+    _nameController = TextEditingController(
+        text: widget.product?.name ?? widget.initialName ?? '');
     _skuController = TextEditingController(text: widget.product?.sku ?? '');
     _descriptionController =
         TextEditingController(text: widget.product?.description ?? '');
@@ -408,6 +418,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     _skuController.dispose();
     _descriptionController.dispose();
     _minStockController.dispose();
+    _stockController.dispose();
     _minPriceController.dispose();
     for (final controller in _industryFieldControllers.values) {
       controller.dispose();
@@ -423,21 +434,14 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   Widget build(BuildContext context) {
     final businessLayout = ref.watch(businessLayoutProvider);
     final entityLabel = widget.entityLabel ?? businessLayout.productSingular;
-    final entityLabelLower = entityLabel.toLowerCase();
+    final entityLower = entityLabel.toLowerCase();
     final categoriesAsync = ref.watch(categoriesProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final titleColor =
-        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
-    final secondaryColor =
-        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final tertiaryColor =
-        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final fieldBorder =
-        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-    final fieldFill =
-        isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle;
+    final palette = SignInPalette.of(context);
+    final isLocal = getIt<AuthService>().isLocalWorkspace;
+    final primary = _unitPriceTiers[0];
+
     // The fields scroll; the save button stays pinned above the keyboard so
-    // it is never lost when a long form is half filled in.
+    // it is never lost when the form is half filled in.
     return Form(
       key: _formKey,
       child: Column(
@@ -445,15 +449,11 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           Expanded(
             child: SingleChildScrollView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(DesignSpacing.xxl,
-                  DesignSpacing.lg, DesignSpacing.xxl, DesignSpacing.xxl),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (_aiLooking ||
-                      _aiSuggestion != null ||
-                      _aiMessage != null) ...[
+                  if (_aiLooking || _aiSuggestion != null || _aiMessage != null) ...[
                     _AiProductCard(
                       looking: _aiLooking,
                       suggestion: _aiSuggestion,
@@ -461,86 +461,348 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                       onUse: () => _applyAiSuggestion(
                           categoriesAsync.valueOrNull ?? const <dynamic>[]),
                     ),
-                    const SizedBox(height: DesignSpacing.md + 2),
+                    const SizedBox(height: 14),
                   ],
-
-                  // ── Product Name ──────────────────────────────────────────
+                  _photoCard(palette, entityLower),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _nameController,
-                    style: TextStyle(color: titleColor),
-                    decoration: InputDecoration(
-                      labelText: '$entityLabel Name *',
-                      hintText: businessLayout.productNameHint,
-                      hintStyle: TextStyle(color: tertiaryColor),
-                      labelStyle: TextStyle(
-                        color: secondaryColor,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      floatingLabelBehavior: FloatingLabelBehavior.auto,
-                      prefixIcon: Icon(Icons.inventory_2_outlined,
-                          color: tertiaryColor),
-                      filled: true,
-                      fillColor: fieldFill,
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusMd),
-                        borderSide: BorderSide(color: fieldBorder),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusMd),
-                        borderSide: BorderSide(color: fieldBorder),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusMd),
-                        borderSide: const BorderSide(
-                            color: DesignColors.brand, width: 1.5),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: DesignSpacing.lg, vertical: 14),
+                    style: TextStyle(color: palette.ink),
+                    decoration: kitFieldDecoration(
+                      context,
+                      label: '$entityLabel name',
+                      hint: businessLayout.productNameHint,
                     ),
                     textCapitalization: TextCapitalization.words,
                     validator: (v) => v == null || v.trim().isEmpty
-                        ? 'Enter $entityLabelLower name'
+                        ? 'Enter the $entityLower name'
                         : null,
                   ),
-                  const SizedBox(height: DesignSpacing.md + 2),
+                  const SizedBox(height: 14),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 5,
+                        child: TextFormField(
+                          controller: primary.priceController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          style: TextStyle(
+                              color: palette.ink, fontWeight: FontWeight.w700),
+                          decoration: kitFieldDecoration(
+                            context,
+                            label: 'Price',
+                            hint: '0',
+                            prefixText: 'KES ',
+                          ),
+                          validator: (v) =>
+                              _validateNonNegativeNumber(v, required: true),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(flex: 4, child: _unitField(primary)),
+                    ],
+                  ),
+                  if (!isEditing && isLocal && _trackInventory) ...[
+                    const SizedBox(height: 14),
+                    _openingStockField(palette, primary.unit),
+                  ],
+                  const SizedBox(height: 14),
+                  _SwitchCard(
+                    palette: palette,
+                    title: 'Count stock for this',
+                    subtitle: _trackInventory
+                        ? 'Warns you when it runs low. Sell stops at zero.'
+                        : 'For services and loose items. Turn on to count it.',
+                    value: _trackInventory,
+                    onChanged: (value) => setState(() => _trackInventory = value),
+                  ),
+                  const SizedBox(height: 12),
+                  _moreDetailsRow(palette, categoriesAsync.valueOrNull),
+                ],
+              ),
+            ),
+          ),
+          PinnedActionBar(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SignInButton(
+                  label: _isSaving
+                      ? 'Saving…'
+                      : isEditing
+                          ? 'Save changes'
+                          : 'Save $entityLower',
+                  onPressed: _isSaving ? null : () => _saveProduct(),
+                ),
+                if (!isEditing)
+                  TextButton(
+                    onPressed: _isSaving ? null : () => _saveProduct(another: true),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(0, 44),
+                      foregroundColor: palette.soft,
+                    ),
+                    child: const Text('Save and add another',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
+  // ─── Essentials ────────────────────────────────────────────────────────
+
+  Widget _photoCard(SignInPalette palette, String entityLower) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: palette.card,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        border: Border.all(color: palette.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ImagePickerSection(
+            key: _photoKey,
+            initialImageUrl: _imageUrl,
+            type: 'product',
+            label: 'Take or choose a photo (optional)',
+            onImageChanged: (url, publicId) => setState(() {
+              _imageUrl = url;
+              _imagePublicId = publicId;
+            }),
+          ),
+          if (getIt<AuthService>().isLocalWorkspace &&
+              _imageUrl != null &&
+              !_imageUrl!.startsWith('http://') &&
+              !_imageUrl!.startsWith('https://')) ...[
+            const SizedBox(height: 10),
+            Text(
+              'The photo stays on this device unless you choose to send it to Axon AI to suggest the name and category.',
+              style: TextStyle(color: palette.soft, fontSize: 12.5, height: 1.4),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _aiLooking ? null : () => _identifyFromPhoto(_imageUrl!),
+              icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+              label: Text(_aiLooking ? 'Looking at the photo…' : 'Suggest with Axon AI'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 46),
+                foregroundColor: palette.ink,
+                side: BorderSide(color: palette.line),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _unitField(_UnitPriceTier tier) {
+    final units = [
+      ...businessLayoutUnits,
+      if (!businessLayoutUnits.contains(tier.unit)) tier.unit,
+    ];
+    return DropdownButtonFormField<String>(
+      initialValue: tier.unit,
+      isExpanded: true,
+      decoration: kitFieldDecoration(context, label: 'Sold per'),
+      items: [
+        for (final u in units)
+          DropdownMenuItem(value: u, child: Text(u[0].toUpperCase() + u.substring(1))),
+      ],
+      onChanged: (value) => setState(() => tier.unit = value ?? tier.unit),
+    );
+  }
+
+  Widget _openingStockField(SignInPalette palette, String unit) {
+    void nudge(double by) {
+      final current = double.tryParse(_stockController.text.trim()) ?? 0;
+      final next = (current + by).clamp(0, 1e9).toDouble();
+      final text = kitNumber(next);
+      setState(() => _stockController.value = TextEditingValue(
+            text: text,
+            selection: TextSelection.collapsed(offset: text.length),
+          ));
+    }
+
+    Widget step(IconData icon, String label, double by) => Semantics(
+          button: true,
+          label: label,
+          child: InkWell(
+            onTap: () => nudge(by),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: palette.card,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: palette.line),
+              ),
+              child: Icon(icon, size: 20, color: palette.ink),
+            ),
+          ),
+        );
+
+    return TextFormField(
+      controller: _stockController,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      style: TextStyle(color: palette.ink, fontWeight: FontWeight.w700),
+      decoration: kitFieldDecoration(
+        context,
+        label: 'On the shelf now',
+        hint: '0',
+        suffixText: unit,
+      ).copyWith(
+        prefixIcon: Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: step(Icons.remove_rounded, 'One less', -1),
+        ),
+        prefixIconConstraints: const BoxConstraints(minWidth: 52),
+        suffix: step(Icons.add_rounded, 'One more', 1),
+      ),
+      validator: (v) => _validateNonNegativeNumber(v),
+    );
+  }
+
+  Widget _moreDetailsRow(SignInPalette palette, List<dynamic>? categories) {
+    final parts = <String>[];
+    final code = _skuController.text.trim();
+    if (code.isNotEmpty) parts.add('Code $code');
+    if (_selectedCategoryId != null && categories != null) {
+      for (final c in categories) {
+        if (c.id == _selectedCategoryId) {
+          parts.add(c.name as String);
+          break;
+        }
+      }
+    }
+    final extra = _unitPriceTiers.length - 1;
+    if (extra > 0) parts.add('$extra more ${extra == 1 ? 'unit' : 'units'}');
+    final low = _minStockController.text.trim();
+    if (low.isNotEmpty && _trackInventory) parts.add('Warns below $low');
+    return Semantics(
+      button: true,
+      label: 'More details',
+      child: InkWell(
+        onTap: _openMoreDetails,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: palette.card,
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+            border: Border.all(color: palette.line),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('More details',
+                        style: TextStyle(
+                            color: palette.ink,
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(
+                      parts.isEmpty
+                          ? 'Barcode, category, carton price, low stock level'
+                          : parts.join(' · '),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: palette.soft, fontSize: 12.5),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: palette.soft),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── More details ─────────────────────────────────────────────────────
+
+  Future<void> _scanBarcode() async {
+    final code = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const BarcodeScanScreen()),
+    );
+    if (code == null || !mounted) return;
+    setState(() => _skuController.text =
+        code.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '').toUpperCase());
+  }
+
+  Future<void> _openMoreDetails() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (routeContext) => StatefulBuilder(
+          builder: (ctx, setPage) => _buildMoreDetails(ctx, () {
+            if (mounted) setState(() {});
+            setPage(() {});
+          }),
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Widget _buildMoreDetails(BuildContext ctx, VoidCallback refresh) {
+    final palette = SignInPalette.of(ctx);
+    final isLocal = getIt<AuthService>().isLocalWorkspace;
+    final businessLayout = ref.read(businessLayoutProvider);
+    final primary = _unitPriceTiers[0];
+    return Scaffold(
+      backgroundColor: palette.page,
+      appBar: AppBar(
+        backgroundColor: palette.page,
+        foregroundColor: palette.ink,
+        elevation: 0,
+        title: Text('More details',
+            style: DesignType.display.copyWith(
+                color: palette.ink, fontSize: 18, fontWeight: FontWeight.w700)),
+      ),
+      body: Form(
+        key: _moreFormKey,
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                children: [
                   TextFormField(
                     controller: _skuController,
-                    style: TextStyle(color: titleColor),
+                    style: TextStyle(color: palette.ink),
                     textCapitalization: TextCapitalization.characters,
                     inputFormatters: [
-                      FilteringTextInputFormatter.allow(
-                          RegExp(r'[A-Za-z0-9_-]')),
+                      FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9_-]')),
                       LengthLimitingTextInputFormatter(50),
                     ],
-                    decoration: InputDecoration(
-                      labelText: businessLayout.productCodeLabel,
-                      hintText: businessLayout.productCodeHint,
-                      hintStyle: TextStyle(color: tertiaryColor),
-                      prefixIcon:
-                          Icon(Icons.qr_code_2_rounded, color: tertiaryColor),
-                      filled: true,
-                      fillColor: fieldFill,
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusMd),
-                        borderSide: BorderSide(color: fieldBorder),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusMd),
-                        borderSide: BorderSide(color: fieldBorder),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusMd),
-                        borderSide: const BorderSide(
-                            color: DesignColors.brand, width: 1.5),
+                    decoration: kitFieldDecoration(
+                      ctx,
+                      label: businessLayout.productCodeLabel,
+                      hint: businessLayout.productCodeHint,
+                    ).copyWith(
+                      suffixIcon: IconButton(
+                        tooltip: 'Scan the barcode',
+                        icon: const Icon(Icons.qr_code_scanner_rounded),
+                        onPressed: () async {
+                          await _scanBarcode();
+                          refresh();
+                        },
                       ),
                     ),
+                    onChanged: (_) => refresh(),
                     validator: (value) {
                       final code = value?.trim() ?? '';
                       if (code.isNotEmpty && code.length < 3) {
@@ -549,292 +811,356 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: DesignSpacing.md + 2),
-
-                  // ── Category ──────────────────────────────────────────────
-                  categoriesAsync.when(
-                    data: (categories) {
-                      final ac = categories
-                          .where(
-                              (c) => c.isActive || c.id == _selectedCategoryId)
-                          .toList();
-                      return Container(
-                        decoration: BoxDecoration(
-                          color: fieldFill,
-                          borderRadius:
-                              BorderRadius.circular(DesignSpacing.radiusMd),
-                          border: Border.all(color: fieldBorder),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: DesignSpacing.md),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _selectedCategoryId,
-                            style: TextStyle(color: titleColor),
-                            decoration: InputDecoration(
-                              labelText: 'Category (optional)',
-                              labelStyle: TextStyle(
-                                color: secondaryColor,
-                                fontWeight: FontWeight.w500,
+                  const SizedBox(height: 14),
+                  Consumer(builder: (context, ref, _) {
+                    final categories = ref.watch(categoriesProvider);
+                    return categories.when(
+                      data: (list) {
+                        final usable = list
+                            .where((c) => c.isActive || c.id == _selectedCategoryId)
+                            .toList();
+                        return DropdownButtonFormField<String>(
+                          initialValue: _selectedCategoryId,
+                          isExpanded: true,
+                          decoration:
+                              kitFieldDecoration(ctx, label: 'Category (optional)'),
+                          hint: const Text('Uncategorized'),
+                          items: [
+                            for (final c in usable)
+                              DropdownMenuItem(
+                                value: c.id,
+                                child: Text(
+                                    c.isActive ? c.name : '${c.name} (inactive)'),
                               ),
-                              floatingLabelBehavior: FloatingLabelBehavior.auto,
-                              prefixIcon: Icon(Icons.category_outlined,
-                                  color: tertiaryColor),
-                              // The wrapping Container already draws the field box;
-                              // without these the theme added a second outline inside.
-                              filled: false,
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              errorBorder: InputBorder.none,
-                              focusedErrorBorder: InputBorder.none,
-                              disabledBorder: InputBorder.none,
-                            ),
-                            dropdownColor: isDark
-                                ? DesignColors.darkSurface
-                                : Colors.white,
-                            items: ac
-                                .map((c) => DropdownMenuItem(
-                                      value: c.id,
-                                      child: Text(c.isActive
-                                          ? c.name
-                                          : '${c.name} (inactive)'),
-                                    ))
-                                .toList(),
-                            hint: const Text('Uncategorized'),
-                            onChanged: (v) =>
-                                setState(() => _selectedCategoryId = v),
-                          ),
-                        ),
-                      );
+                          ],
+                          onChanged: (v) {
+                            _selectedCategoryId = v;
+                            refresh();
+                          },
+                        );
+                      },
+                      loading: () => _buildCategoryLoading(palette.isDark),
+                      error: (e, _) => _buildCategoryError(palette.isDark),
+                    );
+                  }),
+                  const SizedBox(height: 22),
+                  Text('ALSO SOLD BY THE',
+                      style: DesignType.numeric(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: palette.soft,
+                          letterSpacing: 1.1)),
+                  const SizedBox(height: 10),
+                  for (var i = 1; i < _unitPriceTiers.length; i++) ...[
+                    _extraTierCard(ctx, palette, i, refresh),
+                    const SizedBox(height: 10),
+                  ],
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      _unitPriceTiers.add(_UnitPriceTier(unit: _getNextUnit()));
+                      refresh();
                     },
-                    loading: () => _buildCategoryLoading(isDark),
-                    error: (e, _) => _buildCategoryError(isDark),
-                  ),
-                  const SizedBox(height: DesignSpacing.md + 2),
-
-                  // ── Multi-unit Pricing ────────────────────────────────────
-                  _buildPricingSection(isDark),
-                  const SizedBox(height: DesignSpacing.md + 2),
-
-                  Container(
-                    decoration: BoxDecoration(
-                      color: fieldFill,
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusMd),
-                      border: Border.all(color: fieldBorder),
-                    ),
-                    child: Material(
-                      type: MaterialType.transparency,
-                      child: SwitchListTile.adaptive(
-                        value: _trackInventory,
-                        onChanged: (value) =>
-                            setState(() => _trackInventory = value),
-                        activeTrackColor: DesignColors.brand,
-                        secondary: Icon(Icons.inventory_2_outlined,
-                            color: secondaryColor),
-                        title: Text('Track stock for this item',
-                            style: TextStyle(color: titleColor)),
-                        subtitle: Text(
-                          _trackInventory
-                              ? 'Stock levels and low-stock alerts follow sales.'
-                              : 'Use for services or items that do not reduce stock.',
-                          style: TextStyle(color: secondaryColor),
-                        ),
-                      ),
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: Text(_unitPriceTiers.length == 1
+                        ? 'Also sell it by the carton or pack'
+                        : 'Add another unit'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 48),
+                      foregroundColor: palette.ink,
+                      side: BorderSide(color: palette.line),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(13)),
                     ),
                   ),
-                  const SizedBox(height: DesignSpacing.md + 2),
-
-                  // Weight, volume, fabric, and other measured goods may be sold
-                  // in partial base units. The POS and API both enforce this flag.
-                  Container(
-                    decoration: BoxDecoration(
-                      color: fieldFill,
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusMd),
-                      border: Border.all(color: fieldBorder),
-                    ),
-                    child: Material(
-                      type: MaterialType.transparency,
-                      child: SwitchListTile.adaptive(
-                        value: _allowFractions,
-                        onChanged: (value) =>
-                            setState(() => _allowFractions = value),
-                        activeTrackColor: DesignColors.brand,
-                        secondary:
-                            Icon(Icons.scale_outlined, color: secondaryColor),
-                        title: Text('Sell partial quantities',
-                            style: TextStyle(color: titleColor)),
-                        subtitle: Text(
-                          'Allow amounts such as 0.5 ${_unitPriceTiers.first.unit}.',
-                          style: TextStyle(color: secondaryColor),
-                        ),
-                      ),
-                    ),
+                  if (_trackInventory) ...[
+                    const SizedBox(height: 22),
+                    _buildReorderPointSection(palette, ctx, refresh, primary.unit),
+                  ],
+                  const SizedBox(height: 14),
+                  _SwitchCard(
+                    palette: palette,
+                    title: 'Sell partial amounts',
+                    subtitle: 'For kilos and litres, such as 0.5 ${primary.unit}.',
+                    value: _allowFractions,
+                    onChanged: (value) {
+                      _allowFractions = value;
+                      refresh();
+                    },
                   ),
-                  const SizedBox(height: DesignSpacing.md + 2),
-
-                  if (!getIt<AuthService>().isLocalWorkspace) ...[
+                  if (!isLocal) ...[
+                    const SizedBox(height: 14),
                     TextFormField(
                       controller: _minPriceController,
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
-                      style: TextStyle(color: titleColor),
+                      style: TextStyle(color: palette.ink),
                       decoration: kitFieldDecoration(
-                        context,
+                        ctx,
                         label: 'Lowest price you will accept (optional)',
                         prefixText: 'KES ',
                         helper:
-                            'Per ${_unitPriceTiers[0].unit}. Cashiers cannot sell below this without a manager.',
+                            'Per ${primary.unit}. Cashiers cannot sell below this without a manager.',
                       ),
                       validator: _validateNonNegativeNumber,
                     ),
-                    const SizedBox(height: DesignSpacing.md + 2),
                   ],
-
-                  // ── Reorder Point ─────────────────────────────────────────
-                  if (_trackInventory) ...[
-                    _buildReorderPointSection(isDark),
-                    const SizedBox(height: DesignSpacing.md + 2),
-                  ],
-
-                  // ── Description ───────────────────────────────────────────
+                  const SizedBox(height: 14),
                   TextFormField(
                     controller: _descriptionController,
-                    style: TextStyle(color: titleColor),
-                    decoration: InputDecoration(
-                      labelText: 'Description (optional)',
-                      hintStyle: TextStyle(color: tertiaryColor),
-                      labelStyle: TextStyle(
-                        color: secondaryColor,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      floatingLabelBehavior: FloatingLabelBehavior.auto,
-                      prefixIcon: Icon(Icons.description_outlined,
-                          color: tertiaryColor),
-                      filled: true,
-                      fillColor: fieldFill,
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusMd),
-                        borderSide: BorderSide(color: fieldBorder),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusMd),
-                        borderSide: BorderSide(color: fieldBorder),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusMd),
-                        borderSide: const BorderSide(
-                            color: DesignColors.brand, width: 1.5),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: DesignSpacing.lg, vertical: 14),
-                    ),
+                    style: TextStyle(color: palette.ink),
+                    decoration: kitFieldDecoration(ctx, label: 'Description (optional)'),
                     textCapitalization: TextCapitalization.sentences,
                     maxLines: 2,
                   ),
-                  const SizedBox(height: DesignSpacing.md + 2),
-
                   if (_industryFields.isNotEmpty) ...[
-                    Text(
-                      'Product details',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: titleColor,
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                    const SizedBox(height: DesignSpacing.sm),
+                    const SizedBox(height: 22),
+                    Text('${businessLayout.productSingular.toUpperCase()} DETAILS',
+                        style: DesignType.numeric(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: palette.soft,
+                            letterSpacing: 1.1)),
+                    const SizedBox(height: 10),
                     for (final field in _industryFields) ...[
                       TextFormField(
                         controller: _industryFieldControllers[field.key],
-                        style: TextStyle(color: titleColor),
-                        decoration: InputDecoration(
-                          labelText: '${field.label} (optional)',
-                          hintText: field.hint,
-                          hintStyle: TextStyle(color: tertiaryColor),
-                          labelStyle: TextStyle(color: secondaryColor),
-                          prefixIcon:
-                              Icon(Icons.tune_rounded, color: tertiaryColor),
-                          filled: true,
-                          fillColor: fieldFill,
-                          border: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(DesignSpacing.radiusMd),
-                            borderSide: BorderSide(color: fieldBorder),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(DesignSpacing.radiusMd),
-                            borderSide: BorderSide(color: fieldBorder),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(DesignSpacing.radiusMd),
-                            borderSide: const BorderSide(
-                                color: DesignColors.brand, width: 1.5),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: DesignSpacing.lg, vertical: 14),
+                        style: TextStyle(color: palette.ink),
+                        decoration: kitFieldDecoration(
+                          ctx,
+                          label: '${field.label} (optional)',
+                          hint: field.hint,
                         ),
                         textCapitalization: TextCapitalization.sentences,
                         maxLength: 120,
                       ),
-                      const SizedBox(height: DesignSpacing.md),
+                      const SizedBox(height: 6),
                     ],
                   ],
-
-                  // ── Product image ─────────────────────────────────────────
-                  ImagePickerSection(
-                    initialImageUrl: _imageUrl,
-                    type: 'product',
-                    label: 'Add $entityLabelLower image (optional)',
-                    onImageChanged: (url, publicId) => setState(() {
-                      _imageUrl = url;
-                      _imagePublicId = publicId;
-                    }),
-                  ),
-                  if (getIt<AuthService>().isLocalWorkspace &&
-                      _imageUrl != null &&
-                      !_imageUrl!.startsWith('http://') &&
-                      !_imageUrl!.startsWith('https://')) ...[
-                    const SizedBox(height: DesignSpacing.sm),
-                    Text(
-                      'The photo stays on this device unless you choose to send it to Axon AI for product recognition.',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: DesignSpacing.xs),
-                    OutlinedButton.icon(
-                      onPressed: _aiLooking
-                          ? null
-                          : () => _identifyFromPhoto(_imageUrl!),
-                      icon: const Icon(Icons.auto_awesome_rounded),
-                      label: Text(_aiLooking
-                          ? 'Analyzing photo…'
-                          : 'Identify with Axon AI'),
-                    ),
-                  ],
-                  const SizedBox(height: DesignSpacing.xxl),
                 ],
               ),
             ),
-          ),
-          PinnedActionBar(
-            child: GradientButton(
-              label: isEditing ? 'Save Changes' : 'Add $entityLabel',
-              icon: isEditing ? Icons.save_rounded : Icons.add_rounded,
-              onPressed: _isSaving ? null : _saveProduct,
-              isLoading: _isSaving,
-              height: 52,
-              borderRadius: DesignSpacing.radiusMd,
+            PinnedActionBar(
+              child: SignInButton(
+                label: 'Done',
+                onPressed: () {
+                  if (_moreFormKey.currentState?.validate() ?? true) {
+                    Navigator.of(ctx).pop();
+                  }
+                },
+              ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _extraTierCard(
+      BuildContext ctx, SignInPalette palette, int index, VoidCallback refresh) {
+    final tier = _unitPriceTiers[index];
+    final base = _unitPriceTiers[0];
+    final qty = double.tryParse(tier.qtyController.text.trim());
+    final price = double.tryParse(tier.priceController.text.trim());
+    final basePrice = double.tryParse(base.priceController.text.trim());
+    String? maths;
+    if (qty != null && qty > 0 && price != null && basePrice != null) {
+      final single = qty * basePrice;
+      final diff = single - price;
+      final each = '${kitNumber(qty)} ${base.unit} at ${kitNumber(basePrice)}';
+      maths = diff > 0
+          ? '$each would be KES ${kitNumber(single)}. This price gives KES ${kitNumber(diff)} off.'
+          : diff < 0
+              ? '$each would be KES ${kitNumber(single)}. This price is KES ${kitNumber(-diff)} more.'
+              : 'Same as buying them one by one.';
+    }
+    final units = [
+      ...businessLayoutUnits,
+      if (!businessLayoutUnits.contains(tier.unit)) tier.unit,
+    ];
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: palette.card,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        border: Border.all(color: palette.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 4,
+                child: DropdownButtonFormField<String>(
+                  initialValue: tier.unit,
+                  isExpanded: true,
+                  decoration: kitFieldDecoration(ctx, label: 'Unit'),
+                  items: [
+                    for (final u in units)
+                      DropdownMenuItem(
+                          value: u, child: Text(u[0].toUpperCase() + u.substring(1))),
+                  ],
+                  onChanged: (v) {
+                    tier.unit = v ?? tier.unit;
+                    refresh();
+                  },
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 4,
+                child: TextFormField(
+                  controller: tier.qtyController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  style: TextStyle(color: palette.ink, fontWeight: FontWeight.w700),
+                  decoration: kitFieldDecoration(ctx,
+                      label: '${base.unit.endsWith('s') ? base.unit : '${base.unit}s'} in it', hint: '12'),
+                  onChanged: (_) => refresh(),
+                  validator: _validatePositiveNumber,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Remove this unit',
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 56),
+                icon: const Icon(Icons.delete_outline_rounded,
+                    color: DesignColors.error),
+                onPressed: () {
+                  tier.priceController.dispose();
+                  tier.qtyController.dispose();
+                  _unitPriceTiers.removeAt(index);
+                  refresh();
+                },
+              ),
+            ],
           ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: tier.priceController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: TextStyle(color: palette.ink, fontWeight: FontWeight.w700),
+            decoration: kitFieldDecoration(ctx,
+                label: '${tier.unit[0].toUpperCase()}${tier.unit.substring(1)} price',
+                hint: '0',
+                prefixText: 'KES '),
+            onChanged: (_) => refresh(),
+            validator: (v) => _validateNonNegativeNumber(v, required: true),
+          ),
+          if (maths != null) ...[
+            const SizedBox(height: 8),
+            Text(maths,
+                style: TextStyle(color: palette.soft, fontSize: 12.5, height: 1.4)),
+          ],
         ],
       ),
     );
+  }
+
+  Widget _buildReorderPointSection(SignInPalette palette, BuildContext ctx,
+      VoidCallback refresh, String baseUnit) {
+    final tierUnits = _unitPriceTiers.map((t) => t.unit).toList();
+    if (!tierUnits.contains(_minStockUnit)) _minStockUnit = tierUnits.first;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 5,
+          child: TextFormField(
+            controller: _minStockController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: TextStyle(color: palette.ink, fontWeight: FontWeight.w700),
+            decoration: kitFieldDecoration(
+              ctx,
+              label: 'Warn me when fewer than',
+              hint: '10',
+              helper: 'Sell stops at zero.',
+            ),
+            onChanged: (_) => refresh(),
+            validator: _validateNonNegativeNumber,
+          ),
+        ),
+        if (tierUnits.length > 1) ...[
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 3,
+            child: DropdownButtonFormField<String>(
+              initialValue: _minStockUnit,
+              isExpanded: true,
+              decoration: kitFieldDecoration(ctx, label: 'In'),
+              items: [
+                for (final u in tierUnits) DropdownMenuItem(value: u, child: Text(u)),
+              ],
+              onChanged: (v) {
+                if (v != null) {
+                  _minStockUnit = v;
+                  refresh();
+                }
+              },
+            ),
+          ),
+        ] else ...[
+          const SizedBox(width: 10),
+          Padding(
+            padding: const EdgeInsets.only(top: 18),
+            child: Text(baseUnit,
+                style: TextStyle(color: palette.soft, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Asks before saving a price that loses money on every sale.
+  Future<bool> _confirmBelowCost(double cost, double price, String unit) async {
+    final palette = SignInPalette.of(context);
+    final loss = cost - price;
+    final go = await showModalBottomSheet<bool>(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: palette.card,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (sheet) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: palette.line, borderRadius: BorderRadius.circular(3)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text('Price is below what you paid',
+                  style: DesignType.display.copyWith(
+                      color: palette.ink, fontSize: 18, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Text(
+                'KES ${kitNumber(price)} is below the KES ${kitNumber(cost)} you paid last time. You lose KES ${kitNumber(loss)} on each $unit.',
+                style: TextStyle(color: palette.soft, fontSize: 14, height: 1.45),
+              ),
+              const SizedBox(height: 18),
+              SignInButton(
+                  label: 'Check the price', onPressed: () => Navigator.pop(sheet, false)),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(sheet, true),
+                style: TextButton.styleFrom(
+                    minimumSize: const Size(0, 46), foregroundColor: palette.soft),
+                child: const Text('Save it anyway',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return go ?? false;
   }
 
   /// Polished loading state for the category dropdown — uses a shimmer-like
@@ -921,7 +1247,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     );
   }
 
-  Future<void> _saveProduct() async {
+  Future<void> _saveProduct({bool another = false}) async {
     if (!_formKey.currentState!.validate()) return;
     final units = _unitPriceTiers
         .map((tier) => tier.unit.trim().toLowerCase())
@@ -953,6 +1279,16 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
       final primaryPrice = double.tryParse(primary.priceController.text.trim());
       if (primaryPrice == null || !primaryPrice.isFinite || primaryPrice < 0) {
         throw StateError('Enter a valid primary price of 0 or more.');
+      }
+
+      // Selling below what the shop last paid loses money on every sale. Ask
+      // once, plainly, and let the shop decide.
+      final lastCost = widget.product?.costPrice;
+      if (lastCost != null && lastCost > 0 && primaryPrice < lastCost) {
+        if (!await _confirmBelowCost(lastCost, primaryPrice, primary.unit)) {
+          if (mounted) setState(() => _isSaving = false);
+          return;
+        }
       }
 
       // Every tier beyond the primary — any number of them — with its real,
@@ -1074,10 +1410,57 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             updatedAt: now,
           ),
         );
+        // The starting count. A counted product always gets a stock row, even
+        // at zero, so Sell says "out of stock" instead of "not found".
+        String? stockProblem;
+        if (_trackInventory) {
+          try {
+            final opening = isEditing
+                ? 0.0
+                : (double.tryParse(_stockController.text.trim()) ?? 0.0);
+            if (opening > 0) {
+              await database.recordLocalStockReceipt(
+                receiptId: 'opening-$productId',
+                productId: productId,
+                branchId: branchId,
+                batches: [
+                  {
+                    'quantity': opening,
+                    'unit': primary.unit,
+                    'unitsPerQuantity': 1.0,
+                    'notes': 'Opening stock',
+                  },
+                ],
+                receivedAt: now,
+              );
+            } else if (await database.getProductStock(productId, branchId) ==
+                null) {
+              await database.upsertAuthoritativeStock(
+                productId: productId,
+                branchId: branchId,
+                quantity: 0,
+              );
+            }
+          } catch (_) {
+            stockProblem =
+                'Saved, but the starting count was not recorded. Use Receive stock on the product page.';
+          }
+        }
         if (!mounted) return;
         ref.invalidate(catalog_cache.filteredProductsProvider);
         ref.invalidate(catalog_cache.favoriteProductsProvider);
         ref.invalidate(catalog_cache.categoriesProvider);
+        if (stockProblem != null) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(stockProblem)));
+        }
+        if (another) {
+          _resetForNext();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Saved. Add the next one.')),
+          );
+          return;
+        }
         Navigator.pop(context);
         return;
       }
@@ -1155,471 +1538,41 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     }
   }
 
+  /// Clears the form for the next product after "Save and add another". The
+  /// category, unit and counting choice stay, because a shop adds similar
+  /// products in a run.
+  void _resetForNext() {
+    setState(() {
+      _nameController.clear();
+      _skuController.clear();
+      _descriptionController.clear();
+      _minStockController.clear();
+      _stockController.clear();
+      for (final c in _industryFieldControllers.values) {
+        c.clear();
+      }
+      final unit = _unitPriceTiers[0].unit;
+      for (final tier in _unitPriceTiers) {
+        tier.priceController.dispose();
+        tier.qtyController.dispose();
+      }
+      _unitPriceTiers = [_UnitPriceTier(unit: unit)];
+      _minStockUnit = unit;
+      _imageUrl = null;
+      _imagePublicId = null;
+      _aiSuggestion = null;
+      _aiMessage = null;
+      _photoKey = UniqueKey();
+    });
+    _formKey.currentState?.reset();
+  }
+
   String _productSaveErrorMessage(Object error) {
     final reason = apiErrorMessage(error);
     if (reason == 'Something went wrong. Please try again.') {
       return 'Could not save product. Please check the details and try again.';
     }
     return 'Could not save product: $reason';
-  }
-
-  // ─── Reorder point ──────────────────────────────────────────────────────
-
-  Widget _buildReorderPointSection(bool isDark) {
-    final tierUnits = _unitPriceTiers.map((t) => t.unit).toList();
-    if (!tierUnits.contains(_minStockUnit)) {
-      _minStockUnit = tierUnits.first;
-    }
-    final fill =
-        isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle;
-    final titleColor =
-        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
-    final secondaryColor =
-        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final tertiaryColor =
-        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final fieldBorder =
-        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          flex: 2,
-          child: TextFormField(
-            controller: _minStockController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: TextStyle(color: titleColor),
-            decoration: InputDecoration(
-              labelText: 'Low stock at',
-              hintStyle: TextStyle(color: tertiaryColor),
-              labelStyle: TextStyle(
-                color: secondaryColor,
-                fontWeight: FontWeight.w500,
-              ),
-              floatingLabelBehavior: FloatingLabelBehavior.auto,
-              prefixIcon:
-                  Icon(Icons.warning_amber_rounded, color: tertiaryColor),
-              filled: true,
-              fillColor: fill,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                borderSide: BorderSide(color: fieldBorder),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                borderSide: BorderSide(color: fieldBorder),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                borderSide:
-                    const BorderSide(color: DesignColors.brand, width: 1.5),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: DesignSpacing.lg, vertical: 14),
-            ),
-            validator: _validateNonNegativeNumber,
-          ),
-        ),
-        const SizedBox(width: DesignSpacing.md),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.md),
-            height: 52,
-            decoration: BoxDecoration(
-              color: fill,
-              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-              border: Border.all(color: fieldBorder),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _minStockUnit,
-                isExpanded: true,
-                style: TextStyle(color: titleColor),
-                dropdownColor: isDark ? DesignColors.darkSurface : Colors.white,
-                items: tierUnits
-                    .map((u) => DropdownMenuItem(value: u, child: Text(u)))
-                    .toList(),
-                onChanged: (v) {
-                  if (v != null) setState(() => _minStockUnit = v);
-                },
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ─── Pricing section helpers ────────────────────────────────────────────
-
-  Widget _buildPricingSection(bool isDark) {
-    final titleColor =
-        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
-    final tertiaryColor =
-        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Section header
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: DesignColors.brand.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
-              ),
-              child: const Icon(Icons.local_offer_rounded,
-                  color: DesignColors.brand, size: 16),
-            ),
-            const SizedBox(width: DesignSpacing.sm),
-            Text(
-              'Pricing by Unit',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: titleColor,
-                letterSpacing: -0.2,
-              ),
-            ),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: DesignSpacing.sm, vertical: 3),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? DesignColors.darkSurfaceElevated
-                    : DesignColors.surfaceSubtle,
-                borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
-              ),
-              child: Text(
-                '${_unitPriceTiers.length} '
-                '${_unitPriceTiers.length == 1 ? 'tier' : 'tiers'}',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: tertiaryColor,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: DesignSpacing.sm + 2),
-        // Tiers container — no cap: add as many pricing tiers (piece,
-        // dozen, carton, pallet, ...) as the business actually sells in.
-        Container(
-          decoration: BoxDecoration(
-            color: isDark
-                ? DesignColors.darkSurfaceElevated
-                : DesignColors.surfaceSubtle,
-            borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
-          ),
-          child: Column(
-            children: [
-              for (int i = 0; i < _unitPriceTiers.length; i++)
-                _buildPricingRow(i, isDark),
-              _buildAddTierButton(isDark),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPricingRow(int index, bool isDark) {
-    final tier = _unitPriceTiers[index];
-    final isPrimary = index == 0;
-    final titleColor =
-        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
-    final secondaryColor =
-        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final tertiaryColor =
-        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final fieldBorder =
-        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (index > 0)
-          Divider(
-            height: 1,
-            thickness: 1,
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.06)
-                : Colors.black.withValues(alpha: 0.06),
-            indent: DesignSpacing.md,
-            endIndent: DesignSpacing.md,
-          ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-              DesignSpacing.md, DesignSpacing.md, DesignSpacing.md, 0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Unit selector
-              Expanded(
-                flex: 5,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isDark ? DesignColors.darkSurface : Colors.white,
-                    borderRadius:
-                        BorderRadius.circular(DesignSpacing.radiusSm + 2),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: DesignSpacing.sm + 2),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: tier.unit,
-                      isDense: true,
-                      isExpanded: true,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: titleColor,
-                      ),
-                      dropdownColor:
-                          isDark ? DesignColors.darkSurface : Colors.white,
-                      // A product saved with a unit that is not in the
-                      // standard list (e.g. "bale") must still be selectable,
-                      // or the dropdown asserts on its own value.
-                      items: [
-                        ...businessLayoutUnits,
-                        if (!businessLayoutUnits.contains(tier.unit)) tier.unit,
-                      ]
-                          .map(
-                            (u) => DropdownMenuItem(
-                              value: u,
-                              child: Text(
-                                u[0].toUpperCase() + u.substring(1),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (val) =>
-                          setState(() => tier.unit = val ?? tier.unit),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: DesignSpacing.sm),
-              // Price field
-              Expanded(
-                flex: 7,
-                child: TextFormField(
-                  controller: tier.priceController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  style: TextStyle(
-                    color: titleColor,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: 'Price',
-                    hintText: '0.00',
-                    hintStyle: TextStyle(
-                      color: tertiaryColor,
-                      fontWeight: FontWeight.normal,
-                    ),
-                    prefixText: 'KES ',
-                    prefixStyle: TextStyle(
-                      color: secondaryColor,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                    filled: true,
-                    fillColor: isDark ? DesignColors.darkSurface : Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusSm + 2),
-                      borderSide: BorderSide(color: fieldBorder),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusSm + 2),
-                      borderSide: BorderSide(color: fieldBorder),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusSm + 2),
-                      borderSide: const BorderSide(
-                          color: DesignColors.brand, width: 1.5),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: DesignSpacing.md,
-                        vertical: DesignSpacing.md),
-                  ),
-                  validator: (v) => _validateNonNegativeNumber(
-                    v,
-                    required: true,
-                  ),
-                ),
-              ),
-              // Delete button (not on primary row)
-              if (!isPrimary) ...[
-                const SizedBox(width: 6),
-                GestureDetector(
-                  onTap: () => setState(() {
-                    _unitPriceTiers[index].priceController.dispose();
-                    _unitPriceTiers[index].qtyController.dispose();
-                    _unitPriceTiers.removeAt(index);
-                  }),
-                  child: Container(
-                    padding: const EdgeInsets.all(DesignSpacing.sm),
-                    decoration: BoxDecoration(
-                      color: DesignColors.error.withValues(alpha: 0.1),
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusSm),
-                    ),
-                    child: const Icon(Icons.delete_outline_rounded,
-                        color: DesignColors.error, size: 18),
-                  ),
-                ),
-              ] else
-                // Spacer to keep row height consistent when no delete btn
-                const SizedBox(width: 34),
-            ],
-          ),
-        ),
-        // Conversion count — how many primary units make up one of this
-        // tier's unit. Entered directly, not derived from price, since
-        // bulk pricing often includes a discount that would otherwise
-        // silently corrupt the real physical count.
-        if (!isPrimary)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-                DesignSpacing.md, DesignSpacing.sm, DesignSpacing.md, 0),
-            child: TextFormField(
-              controller: tier.qtyController,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              style: TextStyle(
-                color: titleColor,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
-              decoration: InputDecoration(
-                labelText:
-                    'How many ${_unitPriceTiers[0].unit} per ${tier.unit}? (optional)',
-                labelStyle: TextStyle(
-                  color: secondaryColor,
-                  fontSize: 12,
-                ),
-                hintText: 'e.g. 12 — defaults to 1 if left blank',
-                hintStyle: TextStyle(
-                  color: tertiaryColor,
-                  fontWeight: FontWeight.normal,
-                ),
-                filled: true,
-                fillColor: isDark ? DesignColors.darkSurface : Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius:
-                      BorderRadius.circular(DesignSpacing.radiusSm + 2),
-                  borderSide: BorderSide(color: fieldBorder),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius:
-                      BorderRadius.circular(DesignSpacing.radiusSm + 2),
-                  borderSide: BorderSide(color: fieldBorder),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius:
-                      BorderRadius.circular(DesignSpacing.radiusSm + 2),
-                  borderSide:
-                      const BorderSide(color: DesignColors.brand, width: 1.5),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: DesignSpacing.md,
-                    vertical: DesignSpacing.sm + 2),
-              ),
-              // Optional: only validate the format when something was
-              // typed. A blank value is fine -- _saveProduct() defaults
-              // the conversion count to 1 rather than dropping the tier.
-              validator: _validatePositiveNumber,
-            ),
-          ),
-        // Label below each row
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 4, 14, DesignSpacing.md),
-          child: isPrimary
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.star_rounded,
-                            size: 11, color: DesignColors.brand),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Primary — base for stock deductions',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: tertiaryColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Tip: make this your smallest unit (e.g. Piece) — add '
-                      'bigger units like Pack or Carton as tiers below.',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: tertiaryColor.withValues(alpha: 0.9),
-                      ),
-                    ),
-                  ],
-                )
-              : Text(
-                  'Tier ${index + 1} — set the real pack/carton size',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: tertiaryColor,
-                  ),
-                ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAddTierButton(bool isDark) {
-    return InkWell(
-      onTap: () => setState(() {
-        _unitPriceTiers.add(_UnitPriceTier(unit: _getNextUnit()));
-      }),
-      borderRadius: const BorderRadius.only(
-        bottomLeft: Radius.circular(14),
-        bottomRight: Radius.circular(14),
-      ),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 13),
-        decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : Colors.black.withValues(alpha: 0.06),
-            ),
-          ),
-        ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.add_circle_outline_rounded,
-                color: DesignColors.brand, size: 17),
-            SizedBox(width: 6),
-            Text(
-              'Add pricing tier',
-              style: TextStyle(
-                color: DesignColors.brand,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   String _getNextUnit() {
@@ -1744,6 +1697,120 @@ class _AiProductCard extends StatelessWidget {
                             ?.copyWith(color: secondary)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A yes/no choice on its own card, with one plain sentence under it.
+class _SwitchCard extends StatelessWidget {
+  const _SwitchCard({
+    required this.palette,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final SignInPalette palette;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: palette.card,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        border: Border.all(color: palette.line),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: TextStyle(
+                        color: palette.ink,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    style: TextStyle(
+                        color: palette.soft, fontSize: 12.5, height: 1.35)),
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: value,
+            onChanged: onChanged,
+            activeTrackColor: DesignColors.accent,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Opens the add or edit form as its own full screen, above the bottom bar.
+Future<void> openProductForm(
+  BuildContext context, {
+  Product? product,
+  required String entityLabel,
+  String? initialName,
+}) {
+  return Navigator.of(context, rootNavigator: true).push<void>(
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => ProductFormPage(
+        product: product,
+        entityLabel: entityLabel,
+        initialName: initialName,
+      ),
+    ),
+  );
+}
+
+class ProductFormPage extends StatelessWidget {
+  const ProductFormPage({
+    super.key,
+    this.product,
+    required this.entityLabel,
+    this.initialName,
+  });
+
+  final Product? product;
+  final String entityLabel;
+  final String? initialName;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = SignInPalette.of(context);
+    return Scaffold(
+      backgroundColor: palette.page,
+      appBar: AppBar(
+        backgroundColor: palette.page,
+        foregroundColor: palette.ink,
+        elevation: 0,
+        title: Text(
+          product == null
+              ? 'New ${entityLabel.toLowerCase()}'
+              : 'Edit ${entityLabel.toLowerCase()}',
+          style: DesignType.display.copyWith(
+              color: palette.ink, fontSize: 18, fontWeight: FontWeight.w700),
+        ),
+      ),
+      body: SafeArea(
+        top: false,
+        child: AddEditProductSheet(
+          product: product,
+          entityLabel: entityLabel,
+          initialName: initialName,
+        ),
       ),
     );
   }

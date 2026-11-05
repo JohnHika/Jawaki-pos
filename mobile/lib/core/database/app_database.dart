@@ -357,6 +357,28 @@ class SupplierPayments extends Table {
 class AppDatabase extends _$AppDatabase {
   final StorageService _storage;
 
+  /// Raw SQL statements take plain values. Several callers build their
+  /// arguments with drift's `Variable`, which the SQLite library refuses, so a
+  /// statement such as receiving stock failed the moment it ran. Unwrapping
+  /// here makes every such call work, in one place.
+  @override
+  Future<void> customStatement(String statement, [List<dynamic>? args]) {
+    return super.customStatement(
+      statement,
+      args == null
+          ? null
+          : [
+              for (final arg in args)
+                if (arg is Variable)
+                  (arg.value is DateTime
+                      ? (arg.value as DateTime).millisecondsSinceEpoch ~/ 1000
+                      : arg.value)
+                else
+                  arg,
+            ],
+    );
+  }
+
   String? get _customerTenantId {
     final tenantId = _storage.getTenantId()?.trim();
     return tenantId == null || tenantId.isEmpty ? null : tenantId;
@@ -3098,6 +3120,202 @@ class AppDatabase extends _$AppDatabase {
                   row.readNullable<String>('supplier_references'),
             })
         .toList(growable: false);
+  }
+
+  /// What happened to one product's stock, newest first: sales, deliveries
+  /// and count corrections. Built from records that already exist, so no extra
+  /// table is needed. Each map has `kind` (sale, delivery or correction), `at`,
+  /// a signed `quantity` in base units, and optionally `note` and `unitCost`.
+  Future<List<Map<String, dynamic>>> getLocalProductStockHistory(
+    String productId, {
+    int limit = 30,
+  }) async {
+    final safeLimit = limit.clamp(1, 100).toInt();
+    final moves = <Map<String, dynamic>>[];
+
+    final sales = await customSelect(
+      'SELECT i.quantity AS qty, COALESCE(i.quantity_per_unit, 1) AS per, '
+      's.created_at AS at, s.receipt_number AS receipt '
+      'FROM pending_sale_items i JOIN pending_sales s ON s.id = i.sale_id '
+      'WHERE i.product_id = ? AND s.voided_at IS NULL '
+      'ORDER BY s.created_at DESC LIMIT ?',
+      variables: [Variable.withString(productId), Variable.withInt(safeLimit)],
+    ).get();
+    for (final row in sales) {
+      moves.add({
+        'kind': 'sale',
+        'at': row.read<DateTime>('at'),
+        'quantity': -(row.read<double>('qty') * row.read<double>('per')),
+        'note': row.readNullable<String>('receipt'),
+      });
+    }
+
+    final tenantId = _customerTenantId;
+    if (tenantId != null) {
+      await _ensureLocalStockReceiptsTable();
+      final receipts = await customSelect(
+        'SELECT base_quantity, cost_price, received_at, supplier_ref, notes '
+        'FROM local_stock_receipts WHERE tenant_id = ? AND product_id = ? '
+        'ORDER BY received_at DESC LIMIT ?',
+        variables: [
+          Variable.withString(tenantId),
+          Variable.withString(productId),
+          Variable.withInt(safeLimit),
+        ],
+      ).get();
+      for (final row in receipts) {
+        final supplier = row.readNullable<String>('supplier_ref');
+        final notes = row.readNullable<String>('notes');
+        moves.add({
+          'kind': 'delivery',
+          'at': DateTime.parse(row.read<String>('received_at')).toLocal(),
+          'quantity': row.read<double>('base_quantity'),
+          'unitCost': row.readNullable<double>('cost_price'),
+          'note': [supplier, notes]
+              .whereType<String>()
+              .where((t) => t.trim().isNotEmpty)
+              .join(' · '),
+        });
+      }
+
+      await _ensureLocalStockCountTables();
+      final counts = await customSelect(
+        'SELECT l.counted_qty - l.expected_qty AS diff, c.approved_at, '
+        'c.approved_by_name, c.title '
+        'FROM local_stock_count_lines l '
+        'JOIN local_stock_counts c ON c.id = l.count_id '
+        "WHERE c.tenant_id = ? AND l.product_id = ? AND c.status = 'APPROVED' "
+        'AND l.counted_qty IS NOT NULL AND c.approved_at IS NOT NULL '
+        'ORDER BY c.approved_at DESC LIMIT ?',
+        variables: [
+          Variable.withString(tenantId),
+          Variable.withString(productId),
+          Variable.withInt(safeLimit),
+        ],
+      ).get();
+      for (final row in counts) {
+        final diff = row.read<double>('diff');
+        if (diff == 0) continue;
+        final by = row.readNullable<String>('approved_by_name');
+        final title = row.readNullable<String>('title');
+        moves.add({
+          'kind': 'correction',
+          'at': DateTime.parse(row.read<String>('approved_at')).toLocal(),
+          'quantity': diff,
+          'note': [by, title]
+              .whereType<String>()
+              .where((t) => t.trim().isNotEmpty)
+              .join(' · '),
+        });
+      }
+    }
+
+    moves.sort(
+        (a, b) => (b['at'] as DateTime).compareTo(a['at'] as DateTime));
+    return moves.take(safeLimit).toList(growable: false);
+  }
+
+  /// Sets one product's count to what was counted on the shelf and leaves a
+  /// record of it, so the change shows in the product's history and in stock
+  /// counts. It is never a silent overwrite: the old and new numbers, who, and
+  /// why are kept.
+  Future<void> correctLocalStock({
+    required String productId,
+    required String branchId,
+    required double countedQty,
+    String? reason,
+    String? byName,
+  }) async {
+    final tenantId = _requireCustomerTenantId();
+    if (!countedQty.isFinite || countedQty < 0) {
+      throw ArgumentError('Enter a count of 0 or more.');
+    }
+    if (!_activeBranchIds().contains(branchId)) {
+      throw StateError('This device cannot change stock for that branch.');
+    }
+    final product = await getProduct(productId);
+    if (product == null) {
+      throw StateError('This product is not available on this device.');
+    }
+    if (!product.trackInventory) {
+      throw StateError('This product is not counted, so it has no stock to correct.');
+    }
+    await _ensureLocalStockCountTables();
+    final title = _optionalReceiptText(reason);
+    final by = _optionalReceiptText(byName);
+    await transaction(() async {
+      final existing = await getProductStock(productId, branchId);
+      final expected = (existing?.quantity ?? 0).toDouble();
+      final iso = DateTime.now().toUtc().toIso8601String();
+      final countId = const Uuid().v4();
+      Variable<String> text(String? v) =>
+          v == null ? const Variable<String>(null) : Variable.withString(v);
+      await customStatement(
+        'INSERT INTO local_stock_counts '
+        '(id, tenant_id, branch_id, title, blind, status, created_by_name, '
+        'submitted_by_name, approved_by_name, created_at, submitted_at, approved_at) '
+        "VALUES (?, ?, ?, ?, 0, 'APPROVED', ?, ?, ?, ?, ?, ?)",
+        [
+          Variable.withString(countId),
+          Variable.withString(tenantId),
+          Variable.withString(branchId),
+          text(title == null ? 'Correction' : 'Correction: $title'),
+          text(by),
+          text(by),
+          text(by),
+          Variable.withString(iso),
+          Variable.withString(iso),
+          Variable.withString(iso),
+        ],
+      );
+      await customStatement(
+        'INSERT INTO local_stock_count_lines '
+        '(id, count_id, product_id, product_name, sku, unit, allow_fractions, '
+        'expected_qty, expected_stock_updated_at, counted_qty, cost_price, counted_by_name) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          Variable.withString('$countId-0'),
+          Variable.withString(countId),
+          Variable.withString(productId),
+          Variable.withString(product.name),
+          Variable.withString(product.sku),
+          Variable.withString(product.unit),
+          Variable.withInt(product.allowFractions ? 1 : 0),
+          Variable.withReal(expected),
+          existing == null
+              ? const Variable<int>(null)
+              : Variable.withInt(
+                  existing.updatedAt.millisecondsSinceEpoch ~/ 1000),
+          Variable.withReal(countedQty),
+          Variable.withReal(product.costPrice ?? 0),
+          text(by),
+        ],
+      );
+      await upsertAuthoritativeStock(
+        productId: productId,
+        branchId: branchId,
+        quantity: countedQty,
+      );
+    });
+  }
+
+  /// Remembers what the shop last paid for one unit of a product, so the next
+  /// delivery starts with that price filled in and Products can show a profit.
+  Future<void> setProductCostPrice(String productId, double? costPrice) async {
+    if (costPrice != null && (!costPrice.isFinite || costPrice < 0)) {
+      throw ArgumentError('A buying price cannot be negative.');
+    }
+    await customUpdate(
+      'UPDATE products SET cost_price = ?, updated_at = ? WHERE id = ?',
+      variables: [
+        costPrice == null
+            ? const Variable<double>(null)
+            : Variable.withReal(costPrice),
+        Variable.withDateTime(DateTime.now()),
+        Variable.withString(productId),
+      ],
+      updates: {products},
+    );
   }
 
   Future<void> decrementStock(

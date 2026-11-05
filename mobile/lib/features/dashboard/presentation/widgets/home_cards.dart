@@ -29,6 +29,7 @@ class HomeTakingsCard extends StatelessWidget {
     this.itemsSold,
     required this.split,
     this.dateLabel,
+    this.sellingSince,
   });
 
   final double revenue;
@@ -37,6 +38,9 @@ class HomeTakingsCard extends StatelessWidget {
   final double? itemsSold;
   final TakingsSplit split;
   final String? dateLabel;
+
+  /// "7:42": when today's first sale was rung. Shown in place of the date.
+  final String? sellingSince;
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +89,21 @@ class HomeTakingsCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (dateLabel != null)
+                if (sellingSince != null)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF173325),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text('Selling since $sellingSince',
+                        style: const TextStyle(
+                            color: Color(0xFF7FD3A4),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700)),
+                  )
+                else if (dateLabel != null)
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 9, vertical: 3),

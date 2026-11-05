@@ -52,4 +52,38 @@ void main() {
     expect(bars.evaluate().single.renderObject!.paintBounds.width,
         greaterThan(100));
   });
+
+  testWidgets('once a sale has been rung the card says when selling began',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: HomeTakingsCard(
+          revenue: 250,
+          transactions: 1,
+          averageTicket: 250,
+          split: TakingsSplit(cash: 250),
+          dateLabel: 'Wed 4 Nov',
+          sellingSince: '7:42',
+        ),
+      ),
+    ));
+    expect(find.text('Selling since 7:42'), findsOneWidget);
+    expect(find.text('Wed 4 Nov'), findsNothing);
+  });
+
+  testWidgets('before the first sale the card shows the date', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: HomeTakingsCard(
+          revenue: 0,
+          transactions: 0,
+          averageTicket: 0,
+          split: TakingsSplit(),
+          dateLabel: 'Wed 4 Nov',
+        ),
+      ),
+    ));
+    expect(find.text('Wed 4 Nov'), findsOneWidget);
+    expect(find.textContaining('Selling since'), findsNothing);
+  });
 }

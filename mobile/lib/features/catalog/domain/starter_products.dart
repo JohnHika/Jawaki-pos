@@ -1,0 +1,147 @@
+/// Everyday products a new shop of each type usually starts with. Names only:
+/// tapping one starts a product with that name. No price, stock or category is
+/// ever guessed.
+const List<String> _generalShop = [
+  'Unga',
+  'Sugar',
+  'Cooking oil',
+  'Milk',
+  'Bread',
+  'Tea leaves',
+  'Bar soap',
+];
+
+const Map<String, List<String>> _startersByProfile = {
+  'general_retail': _generalShop,
+  'grocery': [
+    'Unga',
+    'Rice',
+    'Sugar',
+    'Cooking oil',
+    'Milk',
+    'Eggs',
+    'Tomatoes',
+    'Onions',
+  ],
+  'market_stall': [
+    'Tomatoes',
+    'Onions',
+    'Kale',
+    'Potatoes',
+    'Bananas',
+    'Oranges',
+    'Cabbage',
+  ],
+  'pharmacy_retail': [
+    'Paracetamol',
+    'Pain relief gel',
+    'Cough syrup',
+    'Bandages',
+    'Antiseptic',
+    'Vitamin C',
+    'Hand sanitiser',
+  ],
+  'cafe_takeaway': [
+    'Tea',
+    'Coffee',
+    'Mandazi',
+    'Samosa',
+    'Chapati',
+    'Soda',
+    'Bottled water',
+  ],
+  'bakery_food_counter': [
+    'White bread',
+    'Brown bread',
+    'Mandazi',
+    'Cake slice',
+    'Buns',
+    'Chapati',
+    'Samosa',
+  ],
+  'stationery': [
+    'Exercise book',
+    'Pen',
+    'Pencil',
+    'Ruler',
+    'Printing paper',
+    'Stapler',
+    'Glue stick',
+  ],
+  'bookshop': [
+    'Exercise book',
+    'Novel',
+    'Revision guide',
+    'Dictionary',
+    'Pen',
+    'Atlas',
+  ],
+  'hardware': [
+    'Nails',
+    'Cement',
+    'Paint',
+    'Padlock',
+    'Hammer',
+    'Electrical cable',
+    'Screws',
+  ],
+  'beauty': [
+    'Hair oil',
+    'Body lotion',
+    'Shampoo',
+    'Soap',
+    'Nail polish',
+    'Hair extensions',
+  ],
+  'electronics': [
+    'Phone charger',
+    'Earphones',
+    'Power bank',
+    'Phone case',
+    'Memory card',
+    'Batteries',
+  ],
+  'fashion': [
+    'T-shirt',
+    'Jeans',
+    'Dress',
+    'Sandals',
+    'Socks',
+    'Belt',
+  ],
+  'agrovet': [
+    'Animal feed',
+    'Maize seed',
+    'Fertiliser',
+    'Dewormer',
+    'Pesticide',
+    'Milk can',
+  ],
+  'auto_parts': [
+    'Engine oil',
+    'Brake pads',
+    'Air filter',
+    'Spark plug',
+    'Car battery',
+    'Wiper blade',
+  ],
+  'wholesale': [
+    'Unga 2kg carton',
+    'Sugar 50kg bag',
+    'Cooking oil carton',
+    'Rice 25kg bag',
+    'Soap carton',
+  ],
+  'kamukunji_counter': [
+    'Phone charger',
+    'Earphones',
+    'Phone case',
+    'Screen protector',
+    'Power bank',
+  ],
+};
+
+/// Suggestions for the shop type chosen at setup. An unknown or missing type
+/// gets the general shop list.
+List<String> starterProductsFor(String? profileId) =>
+    _startersByProfile[profileId] ?? _generalShop;

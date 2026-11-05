@@ -52,6 +52,7 @@ import '../../features/inventory/presentation/screens/inventory_screen.dart';
 import '../../features/inventory/presentation/screens/stock_request_screen.dart';
 import '../../features/inventory/presentation/screens/stock_requests_list_screen.dart';
 import '../../features/inventory/presentation/screens/batch_receive_screen.dart';
+import '../../features/inventory/presentation/screens/receive_stock_screen.dart';
 import '../../features/reports/presentation/screens/reports_screen.dart';
 import '../../features/reports/presentation/screens/analytics_dashboard_screen.dart';
 import '../../features/reports/presentation/screens/inventory_forecasting_screen.dart';
@@ -315,7 +316,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             !perms.canManageStock) {
           return '/';
         }
-        if ((path == '/inventory/receive-batch' ||
+        if ((path == '/inventory/receive' ||
+                path == '/inventory/receive-batch' ||
                 path == '/inventory/batch-receive') &&
             !perms.canManageStock) {
           return '/';
@@ -330,6 +332,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         }
         if (path.startsWith('/inventory/') &&
             path != '/inventory/request-stock' &&
+            path != '/inventory/receive' &&
             path != '/inventory/receive-batch' &&
             path != '/inventory/batch-receive' &&
             path != '/inventory/stock-requests' &&
@@ -720,6 +723,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 path: 'stock-requests',
                 name: 'stock-requests',
                 builder: (context, state) => const StockRequestsListScreen(),
+              ),
+              // Receive a delivery, one or many products (supervisor+). A shop
+              // connected to the cloud keeps the detailed single-product form.
+              GoRoute(
+                path: 'receive',
+                name: 'receive-stock',
+                builder: (context, state) =>
+                    getIt<AuthService>().isLocalWorkspace
+                        ? ReceiveStockScreen(
+                            productId: state.uri.queryParameters['productId'],
+                          )
+                        : BatchReceiveScreen(
+                            productId: state.uri.queryParameters['productId'],
+                            productName: state.uri.queryParameters['productName'],
+                            branchId: state.uri.queryParameters['branchId'],
+                          ),
               ),
               // Receive batch with multi-unit (supervisor+)
               GoRoute(
