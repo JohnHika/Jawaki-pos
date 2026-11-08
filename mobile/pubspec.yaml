@@ -1,7 +1,7 @@
 name: axon_pos
 description: Counterbase - Professional Point of Sale Platform by Arche Axon
 publish_to: 'none'
-version: 1.0.176+2219
+version: 1.0.177+2220
 
 environment:
   sdk: '>=3.2.0 <4.0.0'

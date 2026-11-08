@@ -29,6 +29,29 @@ class WhatsNew {
 /// with no connection.
 const List<WhatsNew> kWhatsNew = [
   WhatsNew(
+    title: 'Pay several suppliers in one go',
+    body:
+        'In Finance, under Suppliers, tick the bills you are paying and record them together, in cash or by M-Pesa.',
+    path: '/finance',
+  ),
+  WhatsNew(
+    title: 'See what is left after expenses',
+    body:
+        'Record rent, transport and other spending. End of day takes cash expenses off the till.',
+    path: '/expenses',
+  ),
+  WhatsNew(
+    title: 'Cash given and change on receipts',
+    body:
+        'Receipts also show your location, phone and the customer. Set them in Settings, under Receipt details.',
+  ),
+  WhatsNew(
+    title: 'Customer statements to share',
+    body:
+        'Open a customer and tap Customer statement for a PDF, a spreadsheet or a short message.',
+    path: '/customers',
+  ),
+  WhatsNew(
     title: 'Record M-Pesa paid to your own till',
     body:
         'Paste the message at checkout. Counterbase reads the code and amount, and a code works on one sale only.',
