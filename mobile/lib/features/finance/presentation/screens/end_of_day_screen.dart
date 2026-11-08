@@ -93,6 +93,10 @@ final _eodProvider =
                 close?['cashRefunds'],
               ) ||
               _cashCloseAmountChanged(
+                summary['cashExpenses'],
+                close?['cashExpenses'],
+              ) ||
+              _cashCloseAmountChanged(
                 summary['voidedCashReceived'],
                 close?['voidedCashReceived'],
               );
@@ -292,6 +296,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     final cashCollections = asDouble(summary['cashCollections']);
     final cashPayouts = asDouble(summary['cashPayouts']);
     final cashRefunds = asDouble(summary['cashRefunds']);
+    final cashExpenses = asDouble(summary['cashExpenses']);
     final voidedCashReceived = asDouble(summary['voidedCashReceived']);
     final mpesaSales = asDouble(summary['mpesaSales']);
     final recordedMpesaSales = asDouble(summary['recordedMpesaSales']);
@@ -567,6 +572,12 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                     : _outflow(cashPayouts),
                 isDark,
               ),
+            if (localOnly && (summaryUnavailable || cashExpenses > 0))
+              _summaryRow(
+                'Expenses paid from till',
+                summaryUnavailable ? 'Unavailable' : _outflow(cashExpenses),
+                isDark,
+              ),
             _summaryRow(
                 'M-Pesa',
                 summaryUnavailable
@@ -667,6 +678,11 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                     'Supplier payments from till',
                     _outflow(asDouble(close['cashPayouts'])),
                     isDark),
+              if (localOnly && asDouble(close['cashExpenses']) > 0)
+                _summaryRow(
+                    'Expenses paid from till',
+                    _outflow(asDouble(close['cashExpenses'])),
+                    isDark),
               if (localOnly)
                 _summaryRow(
                     'Net cash movement',
@@ -702,6 +718,29 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
           const SizedBox(height: DesignSpacing.sm),
         ],
 
+        if (localOnly && !closed) ...[
+          const SizedBox(height: DesignSpacing.lg),
+          SizedBox(
+            height: 48,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                await context.push('/expenses');
+                if (mounted) ref.invalidate(_eodProvider);
+              },
+              icon: const Icon(Icons.request_quote_outlined, size: 20),
+              label: Text(cashExpenses > 0
+                  ? 'Expenses: ${_currencyFmt.format(cashExpenses)} in cash'
+                  : 'Add an expense paid today'),
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                ),
+                textStyle: const TextStyle(
+                    fontSize: 14.5, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
         if (recordedCount > 0) ...[
           const SizedBox(height: DesignSpacing.lg),
           SizedBox(
@@ -754,6 +793,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                         cashCollections: cashCollections,
                         cashPayouts: cashPayouts,
                         cashRefunds: cashRefunds,
+                        cashExpenses: cashExpenses,
                         voidedCashReceived: voidedCashReceived,
                         businessDate: businessDate,
                         existingClose: close,
@@ -812,6 +852,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     required double cashCollections,
     required double cashPayouts,
     required double cashRefunds,
+    required double cashExpenses,
     required double voidedCashReceived,
     required String businessDate,
     Map<String, dynamic>? existingClose,
@@ -868,7 +909,8 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                     (cashCollections * 100).round() -
                     (cashPayouts * 100).round() +
                     (voidedCashReceived * 100).round() -
-                    (cashRefunds * 100).round() +
+                    (cashRefunds * 100).round() -
+                    (cashExpenses * 100).round() +
                     (movement * 100).round();
             final expected = expectedCents == null ? null : expectedCents / 100;
             final discrepancy = expectedCents != null && counted != null
@@ -923,7 +965,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                               BorderRadius.circular(DesignSpacing.radiusMd),
                         ),
                         child: Text(
-                          'Cash sales ${_currencyFmt.format(cashSales)} · debts paid in cash ${_currencyFmt.format(cashCollections)} · cash kept from voided sales ${_currencyFmt.format(voidedCashReceived)} · paid to suppliers ${_currencyFmt.format(cashPayouts)} · cash refunds ${_currencyFmt.format(cashRefunds)}. Cash you put in or took out for anything else goes under net cash movement, with a note.',
+                          'Cash sales ${_currencyFmt.format(cashSales)} · debts paid in cash ${_currencyFmt.format(cashCollections)} · cash kept from voided sales ${_currencyFmt.format(voidedCashReceived)} · paid to suppliers ${_currencyFmt.format(cashPayouts)} · cash refunds ${_currencyFmt.format(cashRefunds)} · expenses paid in cash ${_currencyFmt.format(cashExpenses)}. Cash you put in or took out for anything else goes under net cash movement, with a note.',
                         ),
                       ),
                       const SizedBox(height: DesignSpacing.md),
@@ -1091,6 +1133,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
         cashCollections: cashCollections,
         cashPayouts: cashPayouts,
         cashRefunds: cashRefunds,
+        cashExpenses: cashExpenses,
         voidedCashReceived: voidedCashReceived,
         netCashMovement: netCashMovement,
         countedCash: countedCash,

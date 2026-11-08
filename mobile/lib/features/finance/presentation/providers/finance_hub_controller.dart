@@ -536,10 +536,6 @@ class _LocalFinanceHubDataSource implements FinanceHubDataSource {
   @override
   Future<void> recordRetailCollection(
       ReceivableCollectionRequest request) async {
-    if (request.method.trim().toUpperCase() != 'CASH') {
-      throw const FinanceFormException(
-          'Only cash collections can be recorded in the standalone app.');
-    }
     await _database.recordLocalCustomerCollections(
       branchId: request.branchId,
       allocations: [
@@ -547,16 +543,30 @@ class _LocalFinanceHubDataSource implements FinanceHubDataSource {
       ],
       requestId: request.offlineId ?? '',
       reference: request.reference,
+      paymentMethod: _localCollectionMethod(request.method, request.reference),
     );
+  }
+
+  /// Cash, or M-Pesa to the shop's own till, or a bank transfer, recorded
+  /// by the shop with its code. Only cash counts toward the till.
+  static String _localCollectionMethod(String method, String? reference) {
+    final value = method.trim().toUpperCase();
+    if (!const {'CASH', 'MPESA_RECORDED', 'BANK_RECORDED'}.contains(value)) {
+      throw const FinanceFormException(
+          'Record cash, M-Pesa to your till or a bank transfer.');
+    }
+    if (value != 'CASH' && (reference?.trim().isEmpty ?? true)) {
+      throw const FinanceFormException(
+          'Enter the M-Pesa code or bank reference.');
+    }
+    return value;
   }
 
   @override
   Future<void> recordRetailBulkCollection(BulkCollectionRequest request) async {
-    if (request.method.trim().toUpperCase() != 'CASH') {
-      throw const FinanceFormException(
-          'Only cash collections can be recorded in the standalone app.');
-    }
+    final method = _localCollectionMethod(request.method, request.reference);
     await _database.recordLocalCustomerCollections(
+      paymentMethod: method,
       branchId: request.branchId,
       allocations: request.allocations
           .map((allocation) => <String, dynamic>{

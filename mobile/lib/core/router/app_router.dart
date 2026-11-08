@@ -30,6 +30,7 @@ import '../../features/accountability/presentation/screens/accountability_rules_
 import '../../features/accountability/presentation/screens/shop_alerts_screen.dart';
 import '../../features/stocktake/presentation/screens/stock_count_screen.dart';
 import '../../features/stocktake/presentation/screens/stock_counts_screen.dart';
+import '../../features/expenses/presentation/screens/expenses_screen.dart';
 import '../../features/imports/presentation/screens/import_detail_screen.dart';
 import '../../features/imports/presentation/screens/imports_screen.dart';
 import '../../features/news/presentation/screens/business_news_screen.dart';
@@ -391,6 +392,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         }
         if ((path == '/stock-counts' || path.startsWith('/stock-counts/')) &&
             !perms.has('inventory.stocktake.view')) {
+          return '/';
+        }
+        if (path == '/expenses' && !perms.canViewFinance) {
           return '/';
         }
         if ((path == '/containers' || path.startsWith('/containers/')) &&
@@ -996,6 +1000,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 builder: (context, state) => const AccountabilityRulesScreen(),
               ),
             ],
+          ),
+          GoRoute(
+            path: '/expenses',
+            name: 'expenses',
+            builder: (context, state) => const ExpensesScreen(),
           ),
           GoRoute(
             path: '/stock-counts',

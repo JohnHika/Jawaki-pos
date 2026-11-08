@@ -1349,7 +1349,9 @@ class AppDatabase extends _$AppDatabase {
     double customerBalanceDelta = 0,
     bool decrementLocalStock = false,
     bool recordLocalCustomerPurchase = false,
+    double? cashGiven,
   }) async {
+    if (cashGiven != null) await _ensureLocalSaleCashTendersTable();
     await transaction(() async {
       if (decrementLocalStock) {
         final subtotal = sale.subtotal.value;
@@ -1441,6 +1443,21 @@ class AppDatabase extends _$AppDatabase {
       await batch((batch) {
         batch.insertAll(pendingSaleItems, items);
       });
+      if (cashGiven != null && cashGiven.isFinite) {
+        final givenCents = (cashGiven * 100).round();
+        final totalCents = (sale.total.value * 100).round();
+        if (givenCents >= totalCents) {
+          await customStatement(
+            'INSERT OR REPLACE INTO local_sale_cash_tenders '
+            '(sale_id, cash_given, change_given) VALUES (?, ?, ?)',
+            [
+              Variable.withString(sale.id.value),
+              Variable.withReal(givenCents / 100),
+              Variable.withReal((givenCents - totalCents) / 100),
+            ],
+          );
+        }
+      }
 
       // A local sale, its stock deductions, customer aggregates, and any new
       // customer debt must commit together. Otherwise an error between these
@@ -4471,6 +4488,12 @@ class AppDatabase extends _$AppDatabase {
       branchId: branchId,
       date: date,
     );
+    final expenses = await _sumLocalExpenses(branchId: branchId, date: date);
+    final cashExpenses = await _sumLocalExpenses(
+      branchId: branchId,
+      date: date,
+      cashOnly: true,
+    );
 
     return {
       'date':
@@ -4483,6 +4506,8 @@ class AppDatabase extends _$AppDatabase {
       'cashCollections': cashCollections,
       'cashPayouts': cashPayouts,
       'cashRefunds': cashRefunds,
+      'expenses': expenses,
+      'cashExpenses': cashExpenses,
       'voidedCashReceived': voidedCashReceivedCents / 100,
       'mpesaSales': mpesaSalesCents / 100,
       'recordedMpesaSales': recordedMpesaCents / 100,
@@ -4577,6 +4602,7 @@ class AppDatabase extends _$AppDatabase {
     required double netCashMovement,
     required double countedCash,
     required String closedBy,
+    double cashExpenses = 0,
     String? notes,
   }) async {
     final tenantId = _requireCustomerTenantId();
@@ -4591,6 +4617,7 @@ class AppDatabase extends _$AppDatabase {
     final collectionCents = _amountToCents(cashCollections);
     final payoutCents = _amountToCents(cashPayouts);
     final refundCents = _amountToCents(cashRefunds);
+    final expenseCents = _amountToCents(cashExpenses);
     final voidedReceivedCents = _amountToCents(voidedCashReceived);
     final movementCents = netCashMovement.isFinite
         ? (netCashMovement * 100).round()
@@ -4604,7 +4631,8 @@ class AppDatabase extends _$AppDatabase {
         collectionCents -
         payoutCents +
         voidedReceivedCents -
-        refundCents +
+        refundCents -
+        expenseCents +
         movementCents;
     if (expectedCents < 0) {
       throw ArgumentError('Net cash movements cannot exceed available cash.');
@@ -4619,6 +4647,7 @@ class AppDatabase extends _$AppDatabase {
       throw StateError('Explain the cash discrepancy before closing.');
     }
     await _ensureLocalDailyClosesTable();
+    await _ensureLocalDailyCloseExpensesTable();
     await transaction(() async {
       // The user may have left the count sheet open while another staff
       // member records a sale, debt collection, refund, or supplier payment.
@@ -4633,6 +4662,7 @@ class AppDatabase extends _$AppDatabase {
         'cash collections': (current['cashCollections'] as num).toDouble(),
         'cash supplier payments': (current['cashPayouts'] as num).toDouble(),
         'cash refunds': (current['cashRefunds'] as num).toDouble(),
+        'cash expenses': (current['cashExpenses'] as num).toDouble(),
         'cash received on voided sales':
             (current['voidedCashReceived'] as num).toDouble(),
       };
@@ -4641,6 +4671,7 @@ class AppDatabase extends _$AppDatabase {
         'cash collections': cashCollections,
         'cash supplier payments': cashPayouts,
         'cash refunds': cashRefunds,
+        'cash expenses': cashExpenses,
         'cash received on voided sales': voidedCashReceived,
       };
       final changedAmounts = currentAmounts.entries
@@ -4686,6 +4717,16 @@ class AppDatabase extends _$AppDatabase {
           Variable.withString(now.toIso8601String()),
         ],
       );
+      if (expenseCents > 0) {
+        await customStatement(
+          'INSERT INTO local_daily_close_expenses (close_id, cash_expenses) '
+          'VALUES (?, ?)',
+          [
+            Variable.withString(closeId),
+            Variable.withReal(expenseCents / 100),
+          ],
+        );
+      }
     });
   }
 
@@ -4696,10 +4737,13 @@ class AppDatabase extends _$AppDatabase {
     final tenantId = _customerTenantId;
     if (tenantId == null || !_activeBranchIds().contains(branchId)) return null;
     await _ensureLocalDailyClosesTable();
+    await _ensureLocalDailyCloseExpensesTable();
     final rows = await customSelect(
-      'SELECT * FROM local_daily_closes '
-      'WHERE tenant_id = ? AND branch_id = ? AND business_date = ? '
-      'ORDER BY closed_at DESC LIMIT 1',
+      'SELECT c.*, COALESCE(e.cash_expenses, 0) AS cash_expenses '
+      'FROM local_daily_closes c '
+      'LEFT JOIN local_daily_close_expenses e ON e.close_id = c.id '
+      'WHERE c.tenant_id = ? AND c.branch_id = ? AND c.business_date = ? '
+      'ORDER BY c.closed_at DESC LIMIT 1',
       variables: [
         Variable.withString(tenantId),
         Variable.withString(branchId),
@@ -4717,6 +4761,7 @@ class AppDatabase extends _$AppDatabase {
       'cashCollections': row.read<double>('cash_collections'),
       'cashPayouts': row.read<double>('cash_payouts'),
       'cashRefunds': row.read<double>('cash_refunds'),
+      'cashExpenses': row.read<double>('cash_expenses'),
       'voidedCashReceived': row.read<double>('voided_cash_received'),
       'netCashMovement': row.read<double>('net_cash_movement'),
       'expectedCash': row.read<double>('expected_cash'),
@@ -4741,10 +4786,13 @@ class AppDatabase extends _$AppDatabase {
     }
     final safeLimit = limit.clamp(1, 100);
     await _ensureLocalDailyClosesTable();
+    await _ensureLocalDailyCloseExpensesTable();
     final rows = await customSelect(
-      'SELECT * FROM local_daily_closes '
-      'WHERE tenant_id = ? AND branch_id = ? '
-      'ORDER BY closed_at DESC LIMIT ?',
+      'SELECT c.*, COALESCE(e.cash_expenses, 0) AS cash_expenses '
+      'FROM local_daily_closes c '
+      'LEFT JOIN local_daily_close_expenses e ON e.close_id = c.id '
+      'WHERE c.tenant_id = ? AND c.branch_id = ? '
+      'ORDER BY c.closed_at DESC LIMIT ?',
       variables: [
         Variable.withString(tenantId),
         Variable.withString(branchId),
@@ -4761,6 +4809,7 @@ class AppDatabase extends _$AppDatabase {
               'cashCollections': row.read<double>('cash_collections'),
               'cashPayouts': row.read<double>('cash_payouts'),
               'cashRefunds': row.read<double>('cash_refunds'),
+              'cashExpenses': row.read<double>('cash_expenses'),
               'voidedCashReceived': row.read<double>('voided_cash_received'),
               'netCashMovement': row.read<double>('net_cash_movement'),
               'expectedCash': row.read<double>('expected_cash'),
@@ -4864,6 +4913,233 @@ class AppDatabase extends _$AppDatabase {
       ],
     ).getSingle();
     return row.read<double>('total');
+  }
+
+  // ════════ EXPENSES (device-only shops) ════════
+
+  /// Money the shop spent that is not stock: rent, transport, wages and so
+  /// on. An expense paid in cash leaves the till, so End of day takes it off
+  /// the cash that should be there. Removing one keeps the row (with who and
+  /// when) so the day's figures can be explained later.
+  Future<void> _ensureLocalExpensesTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS local_expenses (
+        id TEXT PRIMARY KEY NOT NULL,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
+        amount REAL NOT NULL CHECK (amount > 0),
+        category TEXT NOT NULL,
+        note TEXT,
+        payment_method TEXT NOT NULL DEFAULT 'CASH',
+        spent_at TEXT NOT NULL,
+        recorded_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        removed_at TEXT,
+        removed_by TEXT
+      )
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_local_expenses_scope
+      ON local_expenses (tenant_id, branch_id, spent_at)
+    ''');
+  }
+
+  static const localExpenseMethods = {'CASH', 'MPESA', 'BANK'};
+
+  Future<String> addLocalExpense({
+    required String branchId,
+    required double amount,
+    required String category,
+    required String paymentMethod,
+    required String recordedBy,
+    String? note,
+    DateTime? spentAt,
+  }) async {
+    final tenantId = _requireCustomerTenantId();
+    if (!_activeBranchIds().contains(branchId)) {
+      throw StateError('This branch is not part of the active workspace.');
+    }
+    final cents = amount.isFinite ? (amount * 100).round() : 0;
+    if (cents <= 0 || amount > _maxSafeLocalSaleAmount) {
+      throw ArgumentError('Enter an amount above zero.');
+    }
+    final method = paymentMethod.trim().toUpperCase();
+    if (!localExpenseMethods.contains(method)) {
+      throw ArgumentError.value(paymentMethod, 'paymentMethod');
+    }
+    final cleanCategory = category.trim();
+    if (cleanCategory.isEmpty) {
+      throw ArgumentError('Choose what the money was for.');
+    }
+    final cleanNote = note?.trim();
+    await _ensureLocalExpensesTable();
+    final now = DateTime.now().toUtc();
+    final id = 'exp-${const Uuid().v4()}';
+    await customStatement(
+      'INSERT INTO local_expenses (id, tenant_id, branch_id, amount, category, '
+      'note, payment_method, spent_at, recorded_by, created_at) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        Variable.withString(id),
+        Variable.withString(tenantId),
+        Variable.withString(branchId),
+        Variable.withReal(cents / 100),
+        Variable.withString(cleanCategory),
+        cleanNote == null || cleanNote.isEmpty
+            ? const Variable<String>(null)
+            : Variable.withString(cleanNote),
+        Variable.withString(method),
+        Variable.withString((spentAt ?? now).toUtc().toIso8601String()),
+        Variable.withString(recordedBy),
+        Variable.withString(now.toIso8601String()),
+      ],
+    );
+    return id;
+  }
+
+  /// Expenses spent from [from] (inclusive) to [to] (exclusive), newest
+  /// first. Removed expenses are left out.
+  Future<List<Map<String, dynamic>>> getLocalExpenses({
+    required String branchId,
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    final tenantId = _customerTenantId;
+    if (tenantId == null || !_activeBranchIds().contains(branchId)) {
+      return const <Map<String, dynamic>>[];
+    }
+    await _ensureLocalExpensesTable();
+    final rows = await customSelect(
+      'SELECT * FROM local_expenses '
+      'WHERE tenant_id = ? AND branch_id = ? AND removed_at IS NULL '
+      'AND spent_at >= ? AND spent_at < ? '
+      'ORDER BY spent_at DESC, created_at DESC',
+      variables: [
+        Variable.withString(tenantId),
+        Variable.withString(branchId),
+        Variable.withString(from.toUtc().toIso8601String()),
+        Variable.withString(to.toUtc().toIso8601String()),
+      ],
+    ).get();
+    return rows
+        .map((row) => <String, dynamic>{
+              'id': row.read<String>('id'),
+              'amount': row.read<double>('amount'),
+              'category': row.read<String>('category'),
+              'note': row.readNullable<String>('note'),
+              'paymentMethod': row.read<String>('payment_method'),
+              'spentAt': DateTime.parse(row.read<String>('spent_at')).toLocal(),
+              'recordedBy': row.read<String>('recorded_by'),
+            })
+        .toList(growable: false);
+  }
+
+  /// Completed sales between [from] (inclusive) and [to] (exclusive), for
+  /// setting expenses against what the shop sold.
+  Future<({double total, int count})> getLocalCompletedSalesTotal({
+    required String branchId,
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    if (!_activeBranchIds().contains(branchId)) return (total: 0.0, count: 0);
+    final row = await customSelect(
+      'SELECT COUNT(*) AS sale_count, COALESCE(SUM(total), 0) AS total_sales '
+      'FROM pending_sales '
+      'WHERE branch_id = ? AND created_at >= ? AND created_at < ? '
+      "AND UPPER(status) = 'COMPLETED'",
+      variables: [
+        Variable.withString(branchId),
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+      ],
+    ).getSingle();
+    return (
+      total: row.read<double>('total_sales'),
+      count: row.read<int>('sale_count'),
+    );
+  }
+
+  Future<void> removeLocalExpense({
+    required String id,
+    required String removedBy,
+  }) async {
+    final tenantId = _requireCustomerTenantId();
+    await _ensureLocalExpensesTable();
+    await customStatement(
+      'UPDATE local_expenses SET removed_at = ?, removed_by = ? '
+      'WHERE id = ? AND tenant_id = ? AND removed_at IS NULL',
+      [
+        Variable.withString(DateTime.now().toUtc().toIso8601String()),
+        Variable.withString(removedBy),
+        Variable.withString(id),
+        Variable.withString(tenantId),
+      ],
+    );
+  }
+
+  Future<double> _sumLocalExpenses({
+    required String branchId,
+    required DateTime date,
+    bool cashOnly = false,
+  }) async {
+    await _ensureLocalExpensesTable();
+    final tenantId = _customerTenantId;
+    if (tenantId == null || !_activeBranchIds().contains(branchId)) return 0;
+    final start = DateTime(date.year, date.month, date.day);
+    final end = start.add(const Duration(days: 1));
+    final row = await customSelect(
+      'SELECT COALESCE(SUM(amount), 0) AS total FROM local_expenses '
+      'WHERE tenant_id = ? AND branch_id = ? AND removed_at IS NULL '
+      '${cashOnly ? "AND payment_method = 'CASH' " : ''}'
+      'AND spent_at >= ? AND spent_at < ?',
+      variables: [
+        Variable.withString(tenantId),
+        Variable.withString(branchId),
+        Variable.withString(start.toUtc().toIso8601String()),
+        Variable.withString(end.toUtc().toIso8601String()),
+      ],
+    ).getSingle();
+    return row.read<double>('total');
+  }
+
+  /// Cash expenses counted in a till close. Kept beside the close rather
+  /// than as a new column, so backups made before expenses existed still
+  /// restore.
+  Future<void> _ensureLocalDailyCloseExpensesTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS local_daily_close_expenses (
+        close_id TEXT PRIMARY KEY NOT NULL,
+        cash_expenses REAL NOT NULL
+      )
+    ''');
+  }
+
+  // ════════ CASH GIVEN AND CHANGE ════════
+
+  /// What the customer handed over for a cash sale, so the receipt can show
+  /// "Cash given" and "Change" long after the payment screen has gone.
+  Future<void> _ensureLocalSaleCashTendersTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS local_sale_cash_tenders (
+        sale_id TEXT PRIMARY KEY NOT NULL,
+        cash_given REAL NOT NULL,
+        change_given REAL NOT NULL
+      )
+    ''');
+  }
+
+  Future<Map<String, double>?> getSaleCashTender(String saleId) async {
+    await _ensureLocalSaleCashTendersTable();
+    final row = await customSelect(
+      'SELECT cash_given, change_given FROM local_sale_cash_tenders '
+      'WHERE sale_id = ?',
+      variables: [Variable.withString(saleId)],
+    ).getSingleOrNull();
+    if (row == null) return null;
+    return {
+      'cashGiven': row.read<double>('cash_given'),
+      'change': row.read<double>('change_given'),
+    };
   }
 
   Future<void> ensureLocalCashCollectionsSchema() =>
@@ -5596,7 +5872,8 @@ class AppDatabase extends _$AppDatabase {
     if (tenantId == null || _activeBranchIds().isEmpty) {
       return const <Map<String, dynamic>>[];
     }
-    final safeLimit = limit.clamp(1, 50).toInt();
+    // Statements may list a customer's whole history.
+    final safeLimit = limit.clamp(1, 5000).toInt();
     final rows = await customSelect(
       // Drift stores this generated DateTime column as Unix seconds. Format
       // it in SQLite before reading a string for the shareable statement.
@@ -5635,7 +5912,8 @@ class AppDatabase extends _$AppDatabase {
     await _ensureLocalCashCollectionsTable();
     final tenantId = _customerTenantId;
     if (tenantId == null) return const <Map<String, dynamic>>[];
-    final safeLimit = limit.clamp(1, 50).toInt();
+    // Statements may list a customer's whole history.
+    final safeLimit = limit.clamp(1, 5000).toInt();
     final rows = await customSelect(
       'SELECT id, amount, payment_method, reference, collected_at '
       'FROM local_cash_collections '
@@ -6728,7 +7006,15 @@ class AppDatabase extends _$AppDatabase {
     required List<Map<String, dynamic>> allocations,
     required String requestId,
     String? reference,
+    String paymentMethod = 'CASH',
   }) async {
+    final method = paymentMethod.trim().toUpperCase();
+    if (!const {'CASH', 'MPESA_RECORDED', 'BANK_RECORDED'}.contains(method)) {
+      throw ArgumentError.value(paymentMethod, 'paymentMethod');
+    }
+    if (method != 'CASH' && (reference?.trim().isEmpty ?? true)) {
+      throw StateError('Enter the M-Pesa code or bank reference.');
+    }
     await createCustomersTable();
     await _ensureLocalCashCollectionsTable();
     final tenantId = _requireCustomerTenantId();
@@ -6837,7 +7123,7 @@ class AppDatabase extends _$AppDatabase {
             allocation.customerId,
             allocation.amount,
             collectedAt,
-            'CASH',
+            method,
             normalizedReference,
           ],
         );
@@ -7742,10 +8028,16 @@ class AppDatabase extends _$AppDatabase {
       final liveTableSet = liveTables.toSet();
       final missingFromBackup = liveTableSet.difference(sourceTableSet);
       final unknownInBackup = sourceTableSet.difference(liveTableSet);
-      // Backups created before private AI notes existed remain restorable;
-      // the new table stays empty. Unknown/newer tables still fail closed.
+      // Backups created before private AI notes, expenses or saved cash
+      // tenders existed remain restorable; those tables stay empty. Unknown
+      // or newer tables still fail closed.
       if (unknownInBackup.isNotEmpty ||
-          !const {'local_ai_memories'}.containsAll(missingFromBackup)) {
+          !const {
+            'local_ai_memories',
+            'local_expenses',
+            'local_daily_close_expenses',
+            'local_sale_cash_tenders',
+          }.containsAll(missingFromBackup)) {
         throw const FormatException(
           'This backup was made by a different Counterbase database version. Update both apps and try again.',
         );
@@ -8041,6 +8333,9 @@ class AppDatabase extends _$AppDatabase {
     await _ensureLocalDailyClosesTable();
     await _ensureLocalCashCollectionsTable();
     await _ensureLocalCashRefundsTable();
+    await _ensureLocalExpensesTable();
+    await _ensureLocalDailyCloseExpensesTable();
+    await _ensureLocalSaleCashTendersTable();
     await createBranchesTable();
     await createCustomersTable();
     await customStatement('''

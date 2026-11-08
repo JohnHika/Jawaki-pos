@@ -509,7 +509,12 @@ class ReceiptScreen extends ConsumerWidget {
       b.writeln('  Recorded by the shop.');
       b.writeln('  Not verified by Counterbase.');
     } else {
-      b.writeln(lr('Paid by', method));
+      b.writeln(lr('Paid by', _methodLabel(method)));
+      final cash = _cashTender(receipt, method);
+      if (cash != null) {
+        b.writeln(lr('  Cash given', money(cash.given)));
+        b.writeln(lr('  Change', money(cash.change)));
+      }
     }
     final ref = (receipt['paymentReference'] ?? '').toString();
     if (ref.isNotEmpty &&
@@ -540,6 +545,26 @@ class ReceiptScreen extends ConsumerWidget {
     return b.toString().trimRight();
   }
 
+  /// "Cash given" and "Change" for a cash sale, when the amount handed over
+  /// was saved with it (sales from this version on).
+  ({double given, double change})? _cashTender(
+      Map<String, dynamic> receipt, String method) {
+    final given = (receipt['cashGiven'] as num?)?.toDouble();
+    if (method != 'CASH' || given == null) return null;
+    return (
+      given: given,
+      change: (receipt['changeGiven'] as num?)?.toDouble() ?? 0,
+    );
+  }
+
+  String _methodLabel(String method) => switch (method) {
+        'CASH' => 'Cash',
+        'MPESA' => 'M-Pesa',
+        'CARD' => 'Card',
+        'CREDIT' => 'Customer credit',
+        _ => method,
+      };
+
   String _formatDateTime(dynamic dateTime) {
     if (dateTime == null) return 'N/A';
     final dt = dateTime is DateTime
@@ -564,9 +589,18 @@ class ReceiptScreen extends ConsumerWidget {
     if ((receipt['branchAddress'] as String?)?.isNotEmpty == true) {
       buffer.writeln(receipt['branchAddress']);
     }
+    if ((receipt['branchPhone'] as String?)?.isNotEmpty == true) {
+      buffer.writeln('Tel: ${receipt['branchPhone']}');
+    }
     buffer.writeln(
         'Receipt #${receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase()}');
     buffer.writeln(_formatDateTime(receipt['createdAt']));
+    if (receipt['customerName'] != null) {
+      buffer.writeln('Customer: ${receipt['customerName']}');
+    }
+    if (receipt['customerPhone'] != null) {
+      buffer.writeln('Phone: ${receipt['customerPhone']}');
+    }
     if ((receipt['status'] ?? '').toString().toUpperCase() == 'VOIDED') {
       buffer.writeln('*** VOIDED SALE ***');
       final vr = (receipt['voidReason'] ?? '').toString();
@@ -617,7 +651,12 @@ class ReceiptScreen extends ConsumerWidget {
             '  ${t['method']}: KES ${((t['amount'] as num?) ?? 0).toStringAsFixed(2)}');
       }
     } else {
-      buffer.writeln('Paid by: $method');
+      buffer.writeln('Paid by: ${_methodLabel(method)}');
+      final cash = _cashTender(receipt, method);
+      if (cash != null) {
+        buffer.writeln('Cash given: KES ${cash.given.toStringAsFixed(2)}');
+        buffer.writeln('Change: KES ${cash.change.toStringAsFixed(2)}');
+      }
     }
     final creditAdded =
         (receipt['creditAmountAtSale'] as num?)?.toDouble() ?? 0;
@@ -680,7 +719,12 @@ class ReceiptScreen extends ConsumerWidget {
       }
       summaryRows.add(['Note', 'Recorded by the shop. Not verified by Counterbase.']);
     } else {
-      summaryRows.add(['Payment', method]);
+      summaryRows.add(['Payment', _methodLabel(method)]);
+      final cash = _cashTender(receipt, method);
+      if (cash != null) {
+        summaryRows.add(['Cash given', 'KES ${cash.given.toStringAsFixed(2)}']);
+        summaryRows.add(['Change', 'KES ${cash.change.toStringAsFixed(2)}']);
+      }
     }
     final creditAdded =
         (receipt['creditAmountAtSale'] as num?)?.toDouble() ?? 0;
@@ -714,10 +758,18 @@ class ReceiptScreen extends ConsumerWidget {
       companyName: (receipt['branchName'] as String?)?.isNotEmpty == true
           ? receipt['branchName']
           : identity.companyName,
-      subtitle: _formatDateTime(receipt['createdAt']) +
-          (voided && (receipt['voidReason'] ?? '').toString().isNotEmpty
-              ? '  ·  VOIDED: ${receipt['voidReason']}'
-              : ''),
+      subtitle: [
+        if ((receipt['branchAddress'] ?? '').toString().isNotEmpty)
+          receipt['branchAddress'].toString(),
+        if ((receipt['branchPhone'] ?? '').toString().isNotEmpty)
+          'Tel: ${receipt['branchPhone']}',
+        _formatDateTime(receipt['createdAt']),
+        if (receipt['customerName'] != null)
+          'Customer: ${receipt['customerName']}',
+        if (receipt['customerPhone'] != null) '${receipt['customerPhone']}',
+        if (voided && (receipt['voidReason'] ?? '').toString().isNotEmpty)
+          'VOIDED: ${receipt['voidReason']}',
+      ].join('  ·  '),
       logoBytes: logoBytes,
       sections: [
         PdfReportSection(

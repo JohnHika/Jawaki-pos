@@ -213,7 +213,7 @@ class _StartCountSheetState extends State<_StartCountSheet> {
                 value: _blind,
                 activeThumbColor: DesignColors.accent,
                 onChanged: _busy ? null : (v) => setState(() => _blind = v),
-                title: const Text('Hide system quantities while counting'),
+                title: const Text('Hide the expected count while counting'),
                 subtitle: const Text(
                     'The counter reports what is really on the shelf, not what they expect to find.'),
               ),

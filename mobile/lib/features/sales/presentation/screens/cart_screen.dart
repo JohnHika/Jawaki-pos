@@ -597,10 +597,10 @@ class CartScreen extends ConsumerWidget {
   void _showClearCartDialog(BuildContext context, WidgetRef ref) {
     showConfirmDialog(
       context,
-      title: 'Clear Cart',
-      message: 'Are you sure you want to remove all items from the cart?',
-      confirmLabel: 'Clear',
-      cancelLabel: 'Cancel',
+      title: 'Clear this sale?',
+      message: 'Every item is taken out of the cart. Nothing is saved.',
+      confirmLabel: 'Clear sale',
+      cancelLabel: 'Keep items',
       confirmColor: DesignColors.error,
     ).then((confirmed) {
       if (confirmed) {

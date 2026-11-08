@@ -18,6 +18,7 @@ import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/widgets/motion_kit.dart';
+import '../../../../core/widgets/form_kit.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/bulk_allocation.dart';
@@ -576,6 +577,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final offlineId = const Uuid().v4();
     String? error;
     bool saving = false;
+    var method = 'CASH';
     final recorded = await _showSheetUntilFullyClosed<bool>(
       (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) => _SheetFrame(
@@ -583,10 +585,20 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           children: <Widget>[
             Text(
               isLocalWorkspace
-                  ? 'Record cash already received. This collection is saved on this device.'
+                  ? 'Record money already received. It is saved on this device.'
                   : 'Record cash already received. For M-Pesa, send a verified '
                       'request from this debt; its balance updates after verification.',
             ),
+            if (isLocalWorkspace) ...[
+              const SizedBox(height: DesignSpacing.md),
+              _LocalCollectionMethodPicker(
+                value: method,
+                onChanged: (value) => setSheetState(() {
+                  method = value;
+                  error = null;
+                }),
+              ),
+            ],
             const SizedBox(height: DesignSpacing.md),
             TextField(
                 controller: amountController,
@@ -598,8 +610,9 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             const SizedBox(height: DesignSpacing.md),
             TextField(
                 controller: reference,
-                decoration:
-                    const InputDecoration(labelText: 'Reference (optional)')),
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                    labelText: _collectionReferenceLabel(method))),
             const SizedBox(height: DesignSpacing.xl),
             SizedBox(
               width: double.infinity,
@@ -627,7 +640,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                         try {
                           await onSave(
                             parsed,
-                            'CASH',
+                            method,
                             reference.text.trim().isEmpty
                                 ? null
                                 : reference.text.trim(),
@@ -1193,6 +1206,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final offlineId = 'bulk-${DateTime.now().microsecondsSinceEpoch}';
     String? error;
     bool saving = false;
+    var bulkMethod = 'CASH';
 
     final recorded = await _showSheetUntilFullyClosed<bool>(
       (sheetContext) => StatefulBuilder(
@@ -1231,10 +1245,20 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               const SizedBox(height: DesignSpacing.md),
               Text(
                 isLocalWorkspace
-                    ? 'Record cash already received. The collection is stored on this device.'
+                    ? 'Record money already received. It is saved on this device.'
                     : 'Record cash already received. For M-Pesa, request payment '
                         'on each debt so the payment partner can verify and settle it.',
               ),
+              if (isLocalWorkspace) ...[
+                const SizedBox(height: DesignSpacing.md),
+                _LocalCollectionMethodPicker(
+                  value: bulkMethod,
+                  onChanged: (value) => setSheetState(() {
+                    bulkMethod = value;
+                    error = null;
+                  }),
+                ),
+              ],
               const SizedBox(height: DesignSpacing.md),
               TextField(
                 key: const ValueKey('bulk-amount'),
@@ -1257,8 +1281,9 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               const SizedBox(height: DesignSpacing.md),
               TextField(
                   controller: reference,
-                  decoration:
-                      const InputDecoration(labelText: 'Reference (optional)')),
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                      labelText: _collectionReferenceLabel(bulkMethod))),
               const SizedBox(height: DesignSpacing.xl),
               _sheetButton(saving ? 'Recording…' : 'Record collection',
                   () async {
@@ -1279,7 +1304,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                     BulkCollectionRequest(
                       branchId: snapshot.branchId,
                       allocations: plan.allocations,
-                      method: 'CASH',
+                      method: bulkMethod,
                       reference: reference.text.trim().isEmpty
                           ? null
                           : reference.text.trim(),
@@ -2163,6 +2188,56 @@ class _InvoiceAmount extends StatelessWidget {
           ),
         ],
       );
+}
+
+String _collectionReferenceLabel(String method) => switch (method) {
+      'MPESA_RECORDED' => 'M-Pesa code',
+      'BANK_RECORDED' => 'Bank reference',
+      _ => 'Reference (optional)',
+    };
+
+/// How a customer paid towards their debt in a shop kept on this phone.
+class _LocalCollectionMethodPicker extends StatelessWidget {
+  const _LocalCollectionMethodPicker({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    const options = [
+      ('CASH', 'Cash'),
+      ('MPESA_RECORDED', 'M-Pesa to our till'),
+      ('BANK_RECORDED', 'Bank transfer'),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (code, label) in options)
+              ChoicePill(
+                label: label,
+                selected: value == code,
+                onTap: () => onChanged(code),
+              ),
+          ],
+        ),
+        if (value != 'CASH') ...[
+          const SizedBox(height: 8),
+          Text(
+            'Check the money is in your own M-Pesa or bank first. Only cash counts toward the till at End of day.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ],
+    );
+  }
 }
 
 class _SheetFrame extends StatelessWidget {

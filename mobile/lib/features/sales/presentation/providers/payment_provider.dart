@@ -494,6 +494,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         total: amount,
         discountAmount: discountAmount,
         customerId: customerId,
+        cashGiven: tenderedAmount,
       );
       if (!_isCurrentSession(sessionGeneration)) return null;
 
@@ -1089,6 +1090,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     double customerBalanceDelta = 0,
     String? paymentReference,
     String? customerId,
+    double? cashGiven,
   }) async {
     if (!LicenceGate.canSell) {
       throw StateError(LicenceGate.pausedMessage);
@@ -1145,6 +1147,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       customerBalanceDelta: customerBalanceDelta,
       decrementLocalStock: true,
       recordLocalCustomerPurchase: _authService.isLocalWorkspace,
+      cashGiven: cashGiven,
     );
   }
 

@@ -825,7 +825,10 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                         customerId: _activeCustomerId,
                         customerName: _customerName,
                       ),
-                      if ((_customer!['balance'] as num? ?? 0) > 0) ...[
+                      // A shop kept on the phone can share any customer's
+                      // full account, not only one that owes.
+                      if ((_customer!['balance'] as num? ?? 0) > 0 ||
+                          getIt<AuthService>().isLocalWorkspace) ...[
                         const SizedBox(height: 12),
                         SendStatementButton(
                           customerId: _activeCustomerId,

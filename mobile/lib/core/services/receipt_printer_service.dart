@@ -2,6 +2,8 @@ import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
+import '../../features/sales/domain/recorded_payment.dart';
+
 /// SharedPreferences keys for printer settings — shared between
 /// settings_screen.dart (where they're set) and receipt_screen.dart
 /// (where they're read to print), so the two never drift apart.
@@ -146,6 +148,9 @@ class ReceiptPrinterService {
     if (receipt['customerName'] != null) {
       bytes.addAll(generator.text('Customer: ${receipt['customerName']}'));
     }
+    if (receipt['customerPhone'] != null) {
+      bytes.addAll(generator.text('Phone: ${receipt['customerPhone']}'));
+    }
     bytes.addAll(generator.hr());
 
     final items = (receipt['items'] as List?) ?? [];
@@ -222,8 +227,30 @@ class ReceiptPrinterService {
         bytes.addAll(_row(generator, '  ${t['method']}',
             ((t['amount'] as num?) ?? 0).toStringAsFixed(2)));
       }
+    } else if (RecordedPaymentMethod.isRecorded(paymentMethod)) {
+      bytes.addAll(generator.text(
+          'Paid by: ${RecordedPaymentMethod.label(paymentMethod)}'));
+      final recorded = RecordedPaymentDetails.tryParse(
+          receipt['paymentReference']?.toString());
+      if (recorded != null) {
+        bytes.addAll(generator.text('  Ref: ${recorded.code}'));
+      }
+      bytes.addAll(generator.text('  Recorded by the shop.'));
     } else {
-      bytes.addAll(generator.text('Paid by: $paymentMethod'));
+      bytes.addAll(generator.text('Paid by: ${switch (paymentMethod) {
+        'CASH' => 'Cash',
+        'MPESA' => 'M-Pesa',
+        'CARD' => 'Card',
+        'CREDIT' => 'Customer credit',
+        _ => paymentMethod,
+      }}'));
+      final cashGiven = (receipt['cashGiven'] as num?)?.toDouble();
+      if (paymentMethod == 'CASH' && cashGiven != null) {
+        bytes.addAll(
+            _row(generator, '  Cash given', cashGiven.toStringAsFixed(2)));
+        bytes.addAll(_row(generator, '  Change',
+            ((receipt['changeGiven'] as num?) ?? 0).toStringAsFixed(2)));
+      }
     }
 
     // This is the amount added at checkout, not the customer's current

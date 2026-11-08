@@ -31,6 +31,28 @@ String? receiptHeaderName(Map<String, dynamic>? user) {
   return combined.length <= 32 ? combined : company;
 }
 
+/// Location and phone printed under the shop name on a device-only shop's
+/// receipts: what the owner typed under Settings > Receipt details, else what
+/// the branch was saved with.
+Future<({String address, String phone})> localReceiptContact(
+  AppDatabase database,
+  Map<String, dynamic>? user,
+  String branchId,
+) async {
+  String clean(Object? value) => value?.toString().trim() ?? '';
+  final tenant = user?['tenant'];
+  final settings = tenant is Map ? tenant['settings'] : null;
+  var address = clean(settings is Map ? settings['receiptAddress'] : null);
+  var phone = clean(settings is Map ? settings['receiptPhone'] : null);
+  if (address.isEmpty || phone.isEmpty) {
+    final branches = await database.getBranches();
+    final branch = branches.where((b) => b['id'] == branchId).firstOrNull;
+    if (address.isEmpty) address = clean(branch?['location']);
+    if (phone.isEmpty) phone = clean(branch?['phone']);
+  }
+  return (address: address, phone: phone);
+}
+
 /// The amount this sale added to the customer's account. Collections are
 /// account-level in the local ledger, so a receipt cannot truthfully claim
 /// this amount is still outstanding after later payments.
@@ -215,6 +237,12 @@ final receiptProvider = StreamProvider.autoDispose
     final customer = currentSale.customerId == null
         ? null
         : await database.getCustomer(currentSale.customerId!);
+    final cashTender = await database.getSaleCashTender(saleId);
+    final contact = await localReceiptContact(
+      database,
+      auth.currentUser,
+      currentSale.branchId,
+    );
 
     yield {
       'id': currentSale.id,
@@ -227,6 +255,10 @@ final receiptProvider = StreamProvider.autoDispose
       'paymentReference': currentSale.paymentReference,
       'createdAt': currentSale.createdAt.toIso8601String(),
       'branchName': receiptHeaderName(auth.currentUser),
+      if (contact.address.isNotEmpty) 'branchAddress': contact.address,
+      if (contact.phone.isNotEmpty) 'branchPhone': contact.phone,
+      if (cashTender != null) 'cashGiven': cashTender['cashGiven'],
+      if (cashTender != null) 'changeGiven': cashTender['change'],
       'cashierName': auth.currentUser?['name'],
       'customerName': customer?['name'],
       'customerPhone': customer?['phone'],

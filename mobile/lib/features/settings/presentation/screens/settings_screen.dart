@@ -37,6 +37,9 @@ import '../../../../core/utils/api_message.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/utils/format.dart';
 import '../widgets/settings_layout.dart';
+import '../widgets/receipt_details_sheet.dart';
+import '../../../sales/presentation/providers/sales_provider.dart'
+    show localReceiptContact, receiptHeaderName;
 import '../widgets/living_icon_card.dart';
 
 // Package metadata is immutable for the life of the installed build. Cache it
@@ -173,6 +176,15 @@ class SettingsScreen extends ConsumerWidget {
                   : 'Change the logo for your shop',
               keywords: const ['picture', 'brand', 'photo'],
               onTap: () => _showLogoDialog(context, ref),
+            ),
+          if (isLocalWorkspace && isLocalWorkspaceOwner)
+            SettingsEntry(
+              id: 'receipt-details',
+              icon: Icons.storefront_rounded,
+              title: 'Receipt details',
+              subtitle: 'Location and phone printed on receipts',
+              keywords: const ['address', 'location', 'phone', 'receipt'],
+              onTap: () => _showReceiptDetailsSheet(context, ref),
             ),
           if (!isLocalWorkspace &&
               (perms.canManageBranches ||
@@ -2285,6 +2297,56 @@ class SettingsScreen extends ConsumerWidget {
         },
       ),
     );
+  }
+
+  /// Location and phone for the top of a device-only shop's receipts, kept
+  /// with the shop's settings on this device.
+  Future<void> _showReceiptDetailsSheet(
+      BuildContext context, WidgetRef ref) async {
+    final auth = getIt<AuthService>();
+    final tenant = auth.currentUser?['tenant'];
+    final currentTenant =
+        tenant is Map ? Map<String, dynamic>.from(tenant) : <String, dynamic>{};
+    final rawSettings = currentTenant['settings'];
+    final settings = rawSettings is Map
+        ? Map<String, dynamic>.from(rawSettings)
+        : <String, dynamic>{};
+    final contact = await localReceiptContact(
+      getIt<AppDatabase>(),
+      auth.currentUser,
+      auth.branchId ?? '',
+    );
+    if (!context.mounted) return;
+    final details = await showReceiptDetailsSheet(
+      context,
+      shopName: receiptHeaderName(auth.currentUser) ?? 'Your shop',
+      address: contact.address,
+      phone: contact.phone,
+    );
+    if (details == null || !context.mounted) return;
+    try {
+      settings['receiptAddress'] = details.address;
+      settings['receiptPhone'] = details.phone;
+      await auth.updateTenantSession({...currentTenant, 'settings': settings});
+      ref.read(authControllerProvider.notifier).refreshFromService();
+      if (context.mounted) {
+        showGlassSnackBar(
+          context,
+          'Receipt details saved',
+          icon: Icons.check_circle_rounded,
+          color: DesignColors.success,
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        showGlassSnackBar(
+          context,
+          'Could not save receipt details on this device. Please try again.',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+      }
+    }
   }
 
   /// Update the tenant's logo. Standalone workspaces keep it in app storage;

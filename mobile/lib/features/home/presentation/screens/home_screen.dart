@@ -196,6 +196,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           activeIcon: Icons.account_balance_wallet_rounded,
           label: 'Finance',
           path: '/finance'));
+      // Expenses are kept on the device only.
+      if (isLocalWorkspace) {
+        items.add(_NavItem(
+            icon: Icons.request_quote_outlined,
+            activeIcon: Icons.request_quote_rounded,
+            label: 'Expenses',
+            path: '/expenses'));
+      }
     }
     // Customer profiles are an important workflow, but should not displace
     // Dashboard, POS, AI, or Products from the four primary slots.
