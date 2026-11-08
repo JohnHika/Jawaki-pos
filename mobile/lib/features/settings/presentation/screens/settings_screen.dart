@@ -40,6 +40,7 @@ import '../../../../core/utils/format.dart';
 import '../widgets/settings_layout.dart';
 import '../widgets/receipt_details_sheet.dart';
 import '../widgets/living_icon_card.dart';
+import '../../../../core/widgets/modal_disposal.dart';
 
 // Package metadata is immutable for the life of the installed build. Cache it
 // so rebuilding Settings does not repeatedly cross the platform channel.
@@ -1054,10 +1055,7 @@ class SettingsScreen extends ConsumerWidget {
           );
         },
       ),
-    ).whenComplete(() {
-      password.dispose();
-      confirmation.dispose();
-    });
+    ).whenComplete(() => disposeAfterModalCloses([password, confirmation]));
   }
 
   Future<String?> _requestPortableBackupPassphrase(BuildContext context) {

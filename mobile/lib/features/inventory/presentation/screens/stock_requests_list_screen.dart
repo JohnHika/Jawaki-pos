@@ -7,6 +7,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/motion.dart';
+import '../../../../core/widgets/modal_disposal.dart';
 
 /// Stock Requests List Screen - For managers to view and approve stock requests
 class StockRequestsListScreen extends ConsumerStatefulWidget {
@@ -894,7 +895,7 @@ class _StockRequestsListScreenState
     );
 
     if (confirmed != true) {
-      reasonController.dispose();
+      disposeAfterModalCloses([reasonController]);
       return;
     }
 
@@ -923,7 +924,7 @@ class _StockRequestsListScreenState
         color: DesignColors.error,
       );
     } finally {
-      reasonController.dispose();
+      disposeAfterModalCloses([reasonController]);
     }
   }
 

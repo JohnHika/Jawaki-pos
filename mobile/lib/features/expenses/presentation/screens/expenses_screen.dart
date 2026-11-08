@@ -60,7 +60,9 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
     );
   }
 
-  void _reload() => setState(() => _data = _load());
+  void _reload() => setState(() {
+        _data = _load();
+      });
 
   bool get _canRemove {
     final permissions = ref.read(permissionsProvider);
@@ -306,7 +308,9 @@ class _SummaryCard extends StatelessWidget {
             line('Sales ($saleCount)', formatMoney(summary.sales)),
             line(
               'Expenses',
-              summary.expenses > 0 ? '-${formatMoney(summary.expenses)}' : formatMoney(0),
+              summary.expenses > 0
+                  ? '-${formatMoney(summary.expenses)}'
+                  : formatMoney(0),
               color: summary.expenses > 0 ? const Color(0xFFFFC9A8) : onInk,
             ),
             if (share != null && summary.expenses > 0) ...[

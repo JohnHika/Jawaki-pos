@@ -82,7 +82,8 @@ class ExportDocumentService {
                   pw.ClipRRect(
                     horizontalRadius: 8,
                     verticalRadius: 8,
-                    child: pw.Image(logoImage, width: 44, height: 44, fit: pw.BoxFit.cover),
+                    child: pw.Image(logoImage,
+                        width: 44, height: 44, fit: pw.BoxFit.cover),
                   ),
               ],
             ),
@@ -94,7 +95,9 @@ class ExportDocumentService {
         footer: (context) => pw.Align(
           alignment: pw.Alignment.centerRight,
           child: pw.Text(
-            'Page ${context.pageNumber} of ${context.pagesCount}  •  Generated from Counterbase',
+            // The built-in PDF font has no bullet (it printed as a box);
+            // the middle dot is in its character set.
+            'Page ${context.pageNumber} of ${context.pagesCount}  ·  Generated from Counterbase',
             style: const pw.TextStyle(fontSize: 8, color: _muted),
           ),
         ),
@@ -124,28 +127,37 @@ class ExportDocumentService {
             ),
             pw.SizedBox(height: 8),
             pw.Table(
-              border: pw.TableBorder.all(color: const PdfColor.fromInt(0xFFE5E7EB), width: 0.5),
+              border: pw.TableBorder.all(
+                  color: const PdfColor.fromInt(0xFFE5E7EB), width: 0.5),
               children: [
-                pw.TableRow(
-                  decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFF3F4F6)),
-                  children: [
-                    for (final header in section.headers)
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-                        child: pw.Text(
-                          header,
-                          style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+                // A table of label and value pairs has no headings; skip the
+                // empty grey row it would otherwise start with.
+                if (section.headers.any((header) => header.trim().isNotEmpty))
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(
+                        color: PdfColor.fromInt(0xFFF3F4F6)),
+                    children: [
+                      for (final header in section.headers)
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 5),
+                          child: pw.Text(
+                            header,
+                            style: pw.TextStyle(
+                                fontSize: 9, fontWeight: pw.FontWeight.bold),
+                          ),
                         ),
-                      ),
-                  ],
-                ),
+                    ],
+                  ),
                 for (final row in section.rows)
                   pw.TableRow(
                     children: [
                       for (final cell in row)
                         pw.Padding(
-                          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-                          child: pw.Text(cell, style: const pw.TextStyle(fontSize: 9)),
+                          padding: const pw.EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 5),
+                          child: pw.Text(cell,
+                              style: const pw.TextStyle(fontSize: 9)),
                         ),
                     ],
                   ),
@@ -168,14 +180,16 @@ class ExportDocumentService {
         DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
     final file = File('${dir.path}/${filenamePrefix}_$timestamp.pdf');
     await file.writeAsBytes(bytes);
-    await Printing.sharePdf(bytes: bytes, filename: file.path.split(Platform.pathSeparator).last);
+    await Printing.sharePdf(
+        bytes: bytes, filename: file.path.split(Platform.pathSeparator).last);
   }
 
   /// Saves any already-named file (PDF/DOCX/CSV/etc.) to a shareable location
   /// and opens the OS share sheet — for content whose exact filename and
   /// extension come from the server (e.g. an AI-generated report) rather
   /// than being decided on-device like [sharePdf]/[shareCsv].
-  static Future<void> shareGeneratedFile(Uint8List bytes, String filename) async {
+  static Future<void> shareGeneratedFile(
+      Uint8List bytes, String filename) async {
     final dir = await getApplicationDocumentsDirectory();
     final file = File('${dir.path}/$filename');
     await file.writeAsBytes(bytes);

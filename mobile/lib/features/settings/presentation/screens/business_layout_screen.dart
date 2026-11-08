@@ -1899,9 +1899,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
         ],
       ),
     );
-    for (final controller in controllers.values) {
-      controller.dispose();
-    }
+    disposeAfterModalCloses(controllers.values);
     if (result == null || !mounted) return;
     final defaults = {
       'productSingular': preset.productSingular,

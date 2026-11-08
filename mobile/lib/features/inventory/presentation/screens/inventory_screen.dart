@@ -262,7 +262,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   }
 
   void _replaceBranchesFuture() {
-    setState(() => _branchesFuture = getIt<ApiClient>().getBranches());
+    setState(() {
+      _branchesFuture = getIt<ApiClient>().getBranches();
+    });
   }
 
   void _invalidateTransferRequestKey() {

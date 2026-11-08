@@ -34,7 +34,9 @@ class _LocalArchiveHistoryScreenState extends State<LocalArchiveHistoryScreen> {
 
   Future<void> _refresh() async {
     final future = _service.listPreservedHistory();
-    setState(() => _archives = future);
+    setState(() {
+      _archives = future;
+    });
     await future;
   }
 
@@ -181,10 +183,9 @@ class _LocalArchiveHistoryDetailScreenState
                 children: [
                   InlineRetryNotice(
                     message: _safeArchiveError(snapshot.error),
-                    onRetry: () =>
-                        setState(() => _detail = _service.loadPreservedHistory(
-                              widget.archiveId,
-                            )),
+                    onRetry: () => setState(() {
+                      _detail = _service.loadPreservedHistory(widget.archiveId);
+                    }),
                   ),
                 ],
               );

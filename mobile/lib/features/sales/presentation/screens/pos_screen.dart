@@ -26,6 +26,7 @@ import '../../../../core/utils/format.dart';
 import '../../../accountability/data/till_guard_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../coupons/data/coupon_service.dart';
+import '../../../../core/widgets/modal_disposal.dart';
 
 class POSScreen extends ConsumerStatefulWidget {
   const POSScreen({super.key});
@@ -673,12 +674,11 @@ class _POSScreenState extends ConsumerState<POSScreen> {
       if (customerPickerClosed) return;
       customerPickerClosed = true;
       customerSearchGeneration++;
-      nameCtrl.dispose();
-      phoneCtrl.dispose();
+      disposeAfterModalCloses([nameCtrl, phoneCtrl]);
     }
 
     final customerPickerFuture = GlassBottomSheet.show<void>(context,
-        scrollable: true, child: StatefulBuilder(
+        title: customerSingular, scrollable: true, child: StatefulBuilder(
       builder: (ctx, setSheet) {
         final isDark = Theme.of(ctx).brightness == Brightness.dark;
         final secondaryColor = isDark
@@ -815,27 +815,34 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                 : DesignColors.surfaceBorder,
                           ),
                         ),
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          physics: const ClampingScrollPhysics(),
-                          primary: false,
-                          itemCount: customers.length,
-                          itemBuilder: (_, i) => ListTile(
-                            minTileHeight: 52,
-                            leading: CircleAvatar(
-                                backgroundColor:
-                                    DesignColors.accent.withValues(alpha: 0.12),
-                                child: Text((customers[i]['name'] as String)[0]
-                                    .toUpperCase())),
-                            title: Text(customers[i]['name'] as String),
-                            subtitle: Text(
-                                '${customers[i]['totalPurchases']} purchases'),
-                            onTap: () {
-                              ref.read(cartProvider.notifier).setCustomer(
-                                  customers[i]['id'] as String,
-                                  customerName: customers[i]['name'] as String);
-                              Navigator.pop(ctx);
-                            },
+                        // A see-through Material keeps the tap ripple
+                        // visible over this box's fill.
+                        child: Material(
+                          type: MaterialType.transparency,
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            physics: const ClampingScrollPhysics(),
+                            primary: false,
+                            itemCount: customers.length,
+                            itemBuilder: (_, i) => ListTile(
+                              minTileHeight: 52,
+                              leading: CircleAvatar(
+                                  backgroundColor: DesignColors.accent
+                                      .withValues(alpha: 0.12),
+                                  child: Text(
+                                      (customers[i]['name'] as String)[0]
+                                          .toUpperCase())),
+                              title: Text(customers[i]['name'] as String),
+                              subtitle: Text(
+                                  '${customers[i]['totalPurchases']} purchases'),
+                              onTap: () {
+                                ref.read(cartProvider.notifier).setCustomer(
+                                    customers[i]['id'] as String,
+                                    customerName:
+                                        customers[i]['name'] as String);
+                                Navigator.pop(ctx);
+                              },
+                            ),
                           ),
                         ),
                       );
@@ -851,8 +858,10 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                 .setCustomer(null, customerName: null);
                             Navigator.pop(ctx);
                           },
-                          child:
-                              Text('Clear ${customerSingular.toLowerCase()}'))),
+                          // Short enough for a third of a phone's width;
+                          // the sale goes back to Walk-in.
+                          child: const Text('Walk-in',
+                              maxLines: 1, overflow: TextOverflow.ellipsis))),
                   const SizedBox(width: DesignSpacing.md - 2),
                   Expanded(
                       flex: 2,

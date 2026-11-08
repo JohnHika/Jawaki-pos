@@ -24,6 +24,7 @@ import '../widgets/cash_tender_sheet.dart';
 import '../widgets/record_payment_sheet.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../domain/recorded_payment.dart';
+import '../../../../core/widgets/modal_disposal.dart';
 
 enum PaymentMethod {
   cash,
@@ -198,8 +199,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
   Widget _buildPayoutStatusNotice() {
     final pending = _payoutStatus == 'PENDING_VERIFICATION';
-    final title =
-        pending ? 'Verification pending' : 'M-Pesa setup needed';
+    final title = pending ? 'Verification pending' : 'M-Pesa setup needed';
     final detail = pending
         ? 'The payment partner must verify your business bank account before customers can pay by M-Pesa.'
         : _payoutStatus == 'NOT_CONFIGURED'
@@ -1420,9 +1420,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     );
 
     if (confirmed != true) {
-      for (final row in rows) {
-        row.amountController.dispose();
-      }
+      disposeAfterModalCloses([for (final row in rows) row.amountController]);
       return null;
     }
 
@@ -1433,9 +1431,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               amount: double.parse(r.amountController.text),
             ))
         .toList();
-    for (final row in rows) {
-      row.amountController.dispose();
-    }
+    disposeAfterModalCloses([for (final row in rows) row.amountController]);
     return tenders;
   }
 }
@@ -1769,7 +1765,8 @@ class _PaymentMethodTile extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           subtitle,
-                          style: TextStyle(fontSize: 12.5, color: soft, height: 1.3),
+                          style: TextStyle(
+                              fontSize: 12.5, color: soft, height: 1.3),
                         ),
                       ],
                     ),
@@ -1788,9 +1785,7 @@ class _PaymentMethodTile extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
-                          color: isDark
-                              ? color
-                              : const Color(0xFF8A4A12),
+                          color: isDark ? color : const Color(0xFF8A4A12),
                         ),
                       ),
                     ),

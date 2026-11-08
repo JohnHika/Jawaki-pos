@@ -18,6 +18,7 @@ import '../../../../core/utils/format.dart';
 import '../../../../core/utils/api_message.dart';
 import '../widgets/credit_limit_card.dart';
 import '../../../statements/presentation/widgets/send_statement_button.dart';
+import '../../../../core/widgets/modal_disposal.dart';
 
 class CustomerProfileScreen extends ConsumerStatefulWidget {
   final String customerId;
@@ -124,6 +125,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
           _purchases = purchases
               .map((r) => {
                     'id': r.read<String>('id'),
+                    'receiptNumber': r.readNullable<String>('receipt_number'),
                     'total': r.read<double>('total'),
                     'paymentMethod': r.read<String>('payment_method'),
                     'createdAt': r.read<String>('created_at'),
@@ -378,8 +380,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
         ),
       );
     } finally {
-      amountCtrl.dispose();
-      noteCtrl.dispose();
+      disposeAfterModalCloses([amountCtrl, noteCtrl]);
     }
   }
 
@@ -607,8 +608,14 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
     }
   }
 
-  String _shortReceiptId(String id) =>
-      (id.length > 8 ? id.substring(0, 8) : id).toUpperCase();
+  /// The number printed on the receipt, so the two match. Older rows
+  /// without one fall back to the start of the sale id.
+  String _receiptLabel(Map<String, dynamic> sale) {
+    final printed = sale['receiptNumber']?.toString().trim() ?? '';
+    if (printed.isNotEmpty) return printed;
+    final id = sale['id']?.toString() ?? '';
+    return (id.length > 8 ? id.substring(0, 8) : id).toUpperCase();
+  }
 
   String _purchaseDateLabel(Object? value) {
     final raw = value?.toString() ?? '';
@@ -1112,7 +1119,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                           child: Row(children: [
                                             Expanded(
                                                 child: Text(
-                                                    'Receipt #${_shortReceiptId(s['id']?.toString() ?? '')}',
+                                                    'Receipt #${_receiptLabel(s)}',
                                                     style: Theme.of(context)
                                                         .textTheme
                                                         .bodySmall

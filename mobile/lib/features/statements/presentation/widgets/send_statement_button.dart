@@ -64,7 +64,8 @@ class SendStatementButton extends ConsumerWidget {
 
   /// PDF and spreadsheet list the whole account; the message is a short
   /// summary that fits a chat.
-  Future<void> _chooseLocalStatement(BuildContext context, WidgetRef ref) async {
+  Future<void> _chooseLocalStatement(
+      BuildContext context, WidgetRef ref) async {
     final palette = SignInPalette.of(context);
     final choice = await showModalBottomSheet<String>(
       context: context,
@@ -196,7 +197,7 @@ class SendStatementButton extends ConsumerWidget {
             headers: const ['', ''],
             rows: [
               [
-                'Bought (${statement.purchases.length} purchases)',
+                'Bought (${statement.purchases.length} ${statement.purchases.length == 1 ? 'purchase' : 'purchases'})',
                 formatMoney(statement.totalBought, decimals: true),
               ],
               [

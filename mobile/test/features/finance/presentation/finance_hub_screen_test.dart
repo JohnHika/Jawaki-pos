@@ -335,7 +335,14 @@ void main() {
 
     // Defaults to the customer's full balance, so the whole credit is settled.
     expect(find.byKey(const ValueKey('bulk-preview')), findsOneWidget);
-    expect(find.textContaining('Settles 1 of 1 credit'), findsOneWidget);
+    expect(find.text('Clears what they owe.'), findsOneWidget);
+
+    // A part payment says what is left instead.
+    await tester.enterText(find.byKey(const ValueKey('bulk-amount')), '120');
+    await tester.pump();
+    expect(find.text('They will still owe KES 200.'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('bulk-amount')), '320');
+    await tester.pump();
 
     await tester.tap(find.text('Record collection'));
     await tester.pumpAndSettle();

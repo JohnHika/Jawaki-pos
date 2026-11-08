@@ -6863,7 +6863,14 @@ class AppDatabase extends _$AppDatabase {
     if (tenantId == null || _activeBranchIds().isEmpty) return const [];
     await createCustomersTable();
     return customSelect(
-      'SELECT ps.* FROM pending_sales ps '
+      // created_at is Unix seconds (a Drift DateTime). Read as text it gave
+      // "26/1/179418", so hand it back as an ISO date like
+      // getRecentCustomerSales does.
+      'SELECT ps.id, ps.receipt_number, ps.total, ps.payment_method, '
+      "CASE WHEN typeof(ps.created_at) = 'integer' "
+      "THEN strftime('%Y-%m-%dT%H:%M:%SZ', ps.created_at, 'unixepoch') "
+      'ELSE ps.created_at END AS created_at '
+      'FROM pending_sales ps '
       'INNER JOIN customers c ON c.id = ps.customer_id '
       "WHERE ps.customer_id = ? AND c.tenant_id = ? AND UPPER(ps.status) = 'COMPLETED'${scope.clause} "
       'ORDER BY ps.created_at DESC',

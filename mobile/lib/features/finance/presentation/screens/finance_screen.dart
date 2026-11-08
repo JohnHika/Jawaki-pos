@@ -29,6 +29,7 @@ import '../providers/finance_hub_controller.dart';
 import 'invoice_review_screen.dart';
 import 'shop_ledger_screen.dart';
 import '../../../../core/utils/format.dart';
+import '../../../../core/widgets/modal_disposal.dart';
 
 class FinanceScreen extends ConsumerStatefulWidget {
   const FinanceScreen({super.key, this.prefill});
@@ -681,13 +682,12 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         ),
       ),
     );
-    amountController.dispose();
-    reference.dispose();
+    disposeAfterModalCloses([amountController, reference]);
     if (recorded == true && mounted) {
       showGlassSnackBar(
         context,
         isLocalWorkspace
-            ? 'Cash collection saved on this device. Customer balance updated.'
+            ? 'Payment saved on this device. Customer balance updated.'
             : 'Customer collection recorded. Balance updated.',
         icon: Icons.check_circle_rounded,
         color: DesignColors.success,
@@ -907,8 +907,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         ),
       ),
     );
-    amountController.dispose();
-    phoneController.dispose();
+    disposeAfterModalCloses([amountController, phoneController]);
   }
 
   Future<void> _showMerchantPaymentStatus(
@@ -1184,8 +1183,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         ),
       ),
     );
-    amount.dispose();
-    notes.dispose();
+    disposeAfterModalCloses([amount, notes]);
   }
 
   /// Several supplier bills, from one supplier or many, paid in one go.
@@ -1209,6 +1207,30 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         color: DesignColors.success,
       );
     }
+  }
+
+  /// What a payment does to the customer's balance, shown under the amount.
+  static String _bulkPreview({
+    required double amount,
+    required double owed,
+    required BulkAllocationPlan plan,
+    required int credits,
+  }) {
+    if (!amount.isFinite || amount <= 0) {
+      return 'Enter the amount the customer paid.';
+    }
+    if (plan.unallocated > 0.005) {
+      return 'That is ${formatMoney(plan.unallocated)} more than they owe.';
+    }
+    final left = owed - plan.total;
+    if (left <= 0.005) {
+      return credits == 1
+          ? 'Clears what they owe.'
+          : 'Clears all $credits credits.';
+    }
+    return credits == 1
+        ? 'They will still owe ${formatMoney(left)}.'
+        : 'They will still owe ${formatMoney(left)}. The oldest credit is paid first.';
   }
 
   /// One payment from a customer, split across their open credits (oldest due first).
@@ -1301,10 +1323,12 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               ),
               const SizedBox(height: DesignSpacing.sm),
               Text(
-                amount <= 0
-                    ? 'Enter the amount the customer paid.'
-                    : 'Settles ${plan.allocations.length} of ${items.length} '
-                        'credit${items.length == 1 ? '' : 's'}, oldest due first',
+                _bulkPreview(
+                  amount: amount,
+                  owed: totalFor(selectedKey),
+                  plan: plan,
+                  credits: items.length,
+                ),
                 key: const ValueKey('bulk-preview'),
                 style: Theme.of(sheetContext).textTheme.bodySmall,
               ),
@@ -1363,13 +1387,12 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         },
       ),
     );
-    amountController.dispose();
-    reference.dispose();
+    disposeAfterModalCloses([amountController, reference]);
     if (recorded == true && mounted) {
       showGlassSnackBar(
         context,
         isLocalWorkspace
-            ? 'Cash collection saved on this device. Customer balance updated.'
+            ? 'Payment saved on this device. Customer balance updated.'
             : 'Customer collection recorded. Balance updated.',
         icon: Icons.check_circle_rounded,
         color: DesignColors.success,
@@ -1842,8 +1865,10 @@ class _RetailTab extends StatelessWidget {
           ),
         if (canManageReceivables) const SizedBox(height: DesignSpacing.md),
         ...open.map((item) => _LedgerCard(
-              title: item.receiptNumber ?? 'Receipt',
-              subtitle: item.customerName ?? 'Customer',
+              title: item.receiptNumber ?? item.customerName ?? 'Customer',
+              subtitle: item.receiptNumber == null
+                  ? 'Owed from credit sales'
+                  : item.customerName ?? 'Customer',
               value: item.outstandingAmount,
               dueDate: item.dueDate,
               icon: Icons.person_rounded,
@@ -2297,7 +2322,11 @@ class _SheetFrame extends StatelessWidget {
             DesignSpacing.xl,
             MediaQuery.viewInsetsOf(context).bottom + DesignSpacing.xl),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 400),
+          constraints: BoxConstraints(
+            maxHeight: (MediaQuery.sizeOf(context).height -
+                    MediaQuery.viewInsetsOf(context).bottom) *
+                0.8,
+          ),
           child: SingleChildScrollView(
             child: Column(
                 mainAxisSize: MainAxisSize.min,
