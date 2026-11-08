@@ -1,11 +1,69 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/database/app_database.dart';
+import '../../../../core/di/injection.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/form_kit.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
+import '../../../sales/presentation/providers/sales_provider.dart'
+    show localReceiptContact, receiptHeaderName;
 
 typedef ReceiptDetails = ({String address, String phone});
+
+/// Opens the receipt details sheet with what is saved now and keeps the
+/// owner's changes in the shop's settings. True when something was saved.
+Future<bool> editReceiptDetails(BuildContext context, WidgetRef ref) async {
+  final auth = getIt<AuthService>();
+  final tenant = auth.currentUser?['tenant'];
+  final currentTenant =
+      tenant is Map ? Map<String, dynamic>.from(tenant) : <String, dynamic>{};
+  final rawSettings = currentTenant['settings'];
+  final settings = rawSettings is Map
+      ? Map<String, dynamic>.from(rawSettings)
+      : <String, dynamic>{};
+  final contact = await localReceiptContact(
+    getIt<AppDatabase>(),
+    auth.currentUser,
+    auth.branchId ?? '',
+  );
+  if (!context.mounted) return false;
+  final details = await showReceiptDetailsSheet(
+    context,
+    shopName: receiptHeaderName(auth.currentUser) ?? 'Your shop',
+    address: contact.address,
+    phone: contact.phone,
+  );
+  if (details == null || !context.mounted) return false;
+  try {
+    settings['receiptAddress'] = details.address;
+    settings['receiptPhone'] = details.phone;
+    await auth.updateTenantSession({...currentTenant, 'settings': settings});
+    ref.read(authControllerProvider.notifier).refreshFromService();
+    if (context.mounted) {
+      showGlassSnackBar(
+        context,
+        'Receipt details saved',
+        icon: Icons.check_circle_rounded,
+        color: DesignColors.success,
+      );
+    }
+    return true;
+  } catch (_) {
+    if (context.mounted) {
+      showGlassSnackBar(
+        context,
+        'Could not save receipt details on this device. Please try again.',
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
+      );
+    }
+    return false;
+  }
+}
 
 /// Asks for the location and phone printed under the shop name on every
 /// receipt. Returns null if closed without saving.

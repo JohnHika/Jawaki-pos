@@ -5142,6 +5142,135 @@ class AppDatabase extends _$AppDatabase {
     };
   }
 
+  // ===========================================================================
+  // WELCOME AND SETUP (device-only shops)
+  // ===========================================================================
+
+  /// Who has seen the welcome tour and which setup steps the shop has
+  /// finished or skipped. `subject` is a person's id for the welcome tour, or
+  /// [onboardingShopSubject] for the setup checklist.
+  Future<void> _ensureLocalOnboardingTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS local_onboarding (
+        tenant_id TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        item TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('DONE', 'SKIPPED')),
+        noted_at TEXT NOT NULL,
+        noted_by TEXT,
+        PRIMARY KEY (tenant_id, subject, item)
+      )
+    ''');
+  }
+
+  static const onboardingShopSubject = 'shop';
+  static const _welcomeItem = 'welcome';
+
+  /// True when this person has finished or skipped the welcome tour in this
+  /// shop. Without a signed-in shop there is nothing to welcome them to.
+  Future<bool> hasSeenWelcome(String userId) async {
+    final tenantId = _customerTenantId;
+    final subject = userId.trim();
+    if (tenantId == null || subject.isEmpty) return true;
+    await _ensureLocalOnboardingTable();
+    final row = await customSelect(
+      'SELECT 1 FROM local_onboarding '
+      'WHERE tenant_id = ? AND subject = ? AND item = ?',
+      variables: [
+        Variable.withString(tenantId),
+        Variable.withString(subject),
+        Variable.withString(_welcomeItem),
+      ],
+    ).getSingleOrNull();
+    return row != null;
+  }
+
+  Future<void> noteWelcomeSeen(String userId) =>
+      _noteOnboarding(userId.trim(), _welcomeItem, 'DONE', userId.trim());
+
+  /// Setup steps the shop has finished (`DONE`) or put off (`SKIPPED`).
+  Future<Map<String, String>> getSetupNotes() async {
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return const {};
+    await _ensureLocalOnboardingTable();
+    final rows = await customSelect(
+      'SELECT item, status FROM local_onboarding '
+      'WHERE tenant_id = ? AND subject = ?',
+      variables: [
+        Variable.withString(tenantId),
+        Variable.withString(onboardingShopSubject),
+      ],
+    ).get();
+    return {
+      for (final row in rows) row.read<String>('item'): row.read<String>('status'),
+    };
+  }
+
+  /// Notes a setup step. A step that is done stays done: skipping it later
+  /// does not undo it, and the first time it was done is kept.
+  Future<void> noteSetupStep(
+    String item, {
+    String status = 'DONE',
+    String? notedBy,
+  }) =>
+      _noteOnboarding(onboardingShopSubject, item.trim(), status, notedBy);
+
+  /// Brings a skipped step back onto the checklist.
+  Future<void> reopenSetupStep(String item) async {
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return;
+    await _ensureLocalOnboardingTable();
+    await customStatement(
+      'DELETE FROM local_onboarding WHERE tenant_id = ? AND subject = ? '
+      "AND item = ? AND status = 'SKIPPED'",
+      [tenantId, onboardingShopSubject, item.trim()],
+    );
+  }
+
+  Future<void> _noteOnboarding(
+    String subject,
+    String item,
+    String status,
+    String? notedBy,
+  ) async {
+    final tenantId = _customerTenantId;
+    if (tenantId == null || subject.isEmpty || item.isEmpty) return;
+    if (status != 'DONE' && status != 'SKIPPED') {
+      throw ArgumentError.value(status, 'status');
+    }
+    await _ensureLocalOnboardingTable();
+    await customStatement(
+      'INSERT INTO local_onboarding '
+      '(tenant_id, subject, item, status, noted_at, noted_by) '
+      'VALUES (?, ?, ?, ?, ?, ?) '
+      'ON CONFLICT (tenant_id, subject, item) DO UPDATE SET '
+      'status = excluded.status, noted_at = excluded.noted_at, '
+      'noted_by = excluded.noted_by '
+      "WHERE local_onboarding.status <> 'DONE'",
+      [
+        tenantId,
+        subject,
+        item,
+        status,
+        DateTime.now().toUtc().toIso8601String(),
+        notedBy?.trim().isEmpty ?? true ? null : notedBy!.trim(),
+      ],
+    );
+  }
+
+  /// Completed sales in this shop's branches, for the setup checklist.
+  Future<int> getLocalCompletedSaleCount() async {
+    final branchIds = _activeBranchIds().toList();
+    if (branchIds.isEmpty) return 0;
+    final row = await customSelect(
+      'SELECT COUNT(*) AS sale_count FROM pending_sales '
+      'WHERE branch_id IN (${List.filled(branchIds.length, '?').join(', ')}) '
+      "AND UPPER(status) = 'COMPLETED'",
+      variables: [for (final id in branchIds) Variable.withString(id)],
+    ).getSingle();
+    return row.read<int>('sale_count');
+  }
+
   Future<void> ensureLocalCashCollectionsSchema() =>
       _ensureLocalCashCollectionsTable();
 
@@ -8028,8 +8157,9 @@ class AppDatabase extends _$AppDatabase {
       final liveTableSet = liveTables.toSet();
       final missingFromBackup = liveTableSet.difference(sourceTableSet);
       final unknownInBackup = sourceTableSet.difference(liveTableSet);
-      // Backups created before private AI notes, expenses or saved cash
-      // tenders existed remain restorable; those tables stay empty. Unknown
+      // Backups created before private AI notes, expenses, saved cash
+      // tenders or setup notes existed remain restorable; those tables stay
+      // empty. Unknown
       // or newer tables still fail closed.
       if (unknownInBackup.isNotEmpty ||
           !const {
@@ -8037,6 +8167,7 @@ class AppDatabase extends _$AppDatabase {
             'local_expenses',
             'local_daily_close_expenses',
             'local_sale_cash_tenders',
+            'local_onboarding',
           }.containsAll(missingFromBackup)) {
         throw const FormatException(
           'This backup was made by a different Counterbase database version. Update both apps and try again.',
@@ -8336,6 +8467,7 @@ class AppDatabase extends _$AppDatabase {
     await _ensureLocalExpensesTable();
     await _ensureLocalDailyCloseExpensesTable();
     await _ensureLocalSaleCashTendersTable();
+    await _ensureLocalOnboardingTable();
     await createBranchesTable();
     await createCustomersTable();
     await customStatement('''

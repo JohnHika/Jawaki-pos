@@ -20,6 +20,7 @@ import '../../../ai/presentation/screens/ai_chat_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../finance/presentation/end_of_day_prompt.dart';
 import '../widgets/staff_invite_nudge.dart';
+import '../../../onboarding/presentation/widgets/setup_progress_card.dart';
 import '../widgets/home_cards.dart';
 import '../../../licence/domain/licence_standing.dart';
 import '../../../licence/presentation/licence_providers.dart';
@@ -578,6 +579,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               // at least one staff invitation is accepted.
               if (!isLocalWorkspace) const StaffInviteNudge(),
 
+              // The owner of a shop kept on this phone sees how far setup has
+              // got until every step is done or put off.
+              if (isLocalWorkspace &&
+                  getIt<AuthService>().isLocalWorkspaceOwner)
+                const SetupProgressCard(),
+
               // End of Day — admin-only. Previously this lived only inside
               // Finance › Cash Flow, several taps deep; admins asked for it
               // to be reachable straight from the dashboard too. Staff
@@ -669,7 +676,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                 child: Row(
                                   children: [
                                     Builder(builder: (context) {
-                                      final look = _saleLook(sale.paymentMethod);
+                                      final look =
+                                          _saleLook(sale.paymentMethod);
                                       return Container(
                                         width: 38,
                                         height: 38,

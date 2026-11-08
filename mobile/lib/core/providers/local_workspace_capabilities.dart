@@ -22,6 +22,8 @@ class LocalWorkspaceCapabilities {
         path == '/inventory/batch-receive' ||
         path == '/stock-counts' ||
         path == '/expenses' ||
+        path == '/welcome' ||
+        path == '/setup' ||
         path == '/customers' ||
         path == '/reports' ||
         path == '/reports/analytics' ||

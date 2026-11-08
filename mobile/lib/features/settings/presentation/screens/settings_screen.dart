@@ -1,4 +1,5 @@
 import '../../../licence/presentation/licence_providers.dart';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -38,8 +39,6 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/utils/format.dart';
 import '../widgets/settings_layout.dart';
 import '../widgets/receipt_details_sheet.dart';
-import '../../../sales/presentation/providers/sales_provider.dart'
-    show localReceiptContact, receiptHeaderName;
 import '../widgets/living_icon_card.dart';
 
 // Package metadata is immutable for the life of the installed build. Cache it
@@ -87,7 +86,12 @@ String _companyCodeFor(Map<String, dynamic>? user) {
 }
 
 class SettingsScreen extends ConsumerWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.openEntry});
+
+  /// An entry to open as soon as the screen shows, so the setup checklist
+  /// can send the owner straight to the logo or a backup. `backup` starts a
+  /// new backup.
+  final String? openEntry;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -164,6 +168,30 @@ class SettingsScreen extends ConsumerWidget {
               ],
               onTap: () =>
                   context.push('/owner-welcome', extra: identity.companyName),
+            ),
+          if (isLocalWorkspace && isLocalWorkspaceOwner)
+            SettingsEntry(
+              id: 'setup-checklist',
+              icon: Icons.checklist_rounded,
+              title: 'Set up your shop',
+              subtitle: 'Receipts, products, staff, M-Pesa and backup',
+              keywords: const [
+                'onboarding',
+                'checklist',
+                'setup',
+                'getting started',
+                'first sale'
+              ],
+              onTap: () => context.push('/setup'),
+            ),
+          if (isLocalWorkspace)
+            SettingsEntry(
+              id: 'welcome-tour',
+              icon: Icons.waving_hand_outlined,
+              title: 'Welcome tour',
+              subtitle: 'A short look at what the app does',
+              keywords: const ['intro', 'tour', 'welcome', 'help', 'start'],
+              onTap: () => context.push('/welcome'),
             ),
           if ((isLocalWorkspace && isLocalWorkspaceOwner) ||
               (!isLocalWorkspace && isBillingAdmin))
@@ -249,7 +277,14 @@ class SettingsScreen extends ConsumerWidget {
               icon: Icons.workspace_premium_rounded,
               title: 'Plan and licence',
               subtitle: 'Your plan, next payment and licence code',
-              keywords: const ['licence', 'license', 'plan', 'pay', 'subscription', 'trial'],
+              keywords: const [
+                'licence',
+                'license',
+                'plan',
+                'pay',
+                'subscription',
+                'trial'
+              ],
               onTap: () => context.push('/settings/plan'),
             ),
           if ((isLocalWorkspace && isLocalWorkspaceOwner) ||
@@ -557,24 +592,44 @@ class SettingsScreen extends ConsumerWidget {
             .actionLabel('/settings', 'Settings'),
         showBackButton: false,
       ),
-      body: SettingsSectionList(
-        header: SettingsProfileHeader(
-          name: (user?['name'] ?? user?['email'] ?? 'User').toString(),
-          email: (user?['email'] ?? '').toString(),
-          roleLabel: _roleLabel(user?['role']),
-          businessName: identity.companyName,
-          // A local workspace has no invite or synchronization code. Its
-          // tenant slug is only a device-local identifier, so don't present it
-          // as something another shop should copy to join.
-          companyCode: isLocalWorkspace ? '' : _companyCodeFor(user),
-          branchName: identity.branchName,
-          isOnline: isOnline,
-          isLocalWorkspace: isLocalWorkspace,
+      body: _OpenEntryOnce(
+        onOpen: _openEntryAction(context, sections),
+        child: SettingsSectionList(
+          header: SettingsProfileHeader(
+            name: (user?['name'] ?? user?['email'] ?? 'User').toString(),
+            email: (user?['email'] ?? '').toString(),
+            roleLabel: _roleLabel(user?['role']),
+            businessName: identity.companyName,
+            // A local workspace has no invite or synchronization code. Its
+            // tenant slug is only a device-local identifier, so don't present it
+            // as something another shop should copy to join.
+            companyCode: isLocalWorkspace ? '' : _companyCodeFor(user),
+            branchName: identity.branchName,
+            isOnline: isOnline,
+            isLocalWorkspace: isLocalWorkspace,
+          ),
+          sections: sections,
+          footer: const _SettingsFooter(),
         ),
-        sections: sections,
-        footer: const _SettingsFooter(),
       ),
     );
+  }
+
+  VoidCallback? _openEntryAction(
+      BuildContext context, List<SettingsSection> sections) {
+    final wanted = openEntry?.trim();
+    if (wanted == null || wanted.isEmpty) return null;
+    if (wanted == 'backup') {
+      return getIt<AuthService>().isLocalWorkspace
+          ? () => _createLocalPortableBackup(context)
+          : null;
+    }
+    for (final section in sections) {
+      for (final entry in section.entries) {
+        if (entry.id == wanted) return entry.onTap;
+      }
+    }
+    return null;
   }
 
   void _showLogoutDialog(BuildContext context, WidgetRef ref,
@@ -748,6 +803,10 @@ class SettingsScreen extends ConsumerWidget {
     try {
       final service = _localPortableBackupService();
       final file = await service.createBackup(passphrase: passphrase);
+      unawaited(getIt<AppDatabase>()
+          .noteSetupStep('backup',
+              notedBy: getIt<AuthService>().currentUser?['name']?.toString())
+          .catchError((_) {}));
       if (!context.mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
       progressOpen = false;
@@ -2303,50 +2362,7 @@ class SettingsScreen extends ConsumerWidget {
   /// with the shop's settings on this device.
   Future<void> _showReceiptDetailsSheet(
       BuildContext context, WidgetRef ref) async {
-    final auth = getIt<AuthService>();
-    final tenant = auth.currentUser?['tenant'];
-    final currentTenant =
-        tenant is Map ? Map<String, dynamic>.from(tenant) : <String, dynamic>{};
-    final rawSettings = currentTenant['settings'];
-    final settings = rawSettings is Map
-        ? Map<String, dynamic>.from(rawSettings)
-        : <String, dynamic>{};
-    final contact = await localReceiptContact(
-      getIt<AppDatabase>(),
-      auth.currentUser,
-      auth.branchId ?? '',
-    );
-    if (!context.mounted) return;
-    final details = await showReceiptDetailsSheet(
-      context,
-      shopName: receiptHeaderName(auth.currentUser) ?? 'Your shop',
-      address: contact.address,
-      phone: contact.phone,
-    );
-    if (details == null || !context.mounted) return;
-    try {
-      settings['receiptAddress'] = details.address;
-      settings['receiptPhone'] = details.phone;
-      await auth.updateTenantSession({...currentTenant, 'settings': settings});
-      ref.read(authControllerProvider.notifier).refreshFromService();
-      if (context.mounted) {
-        showGlassSnackBar(
-          context,
-          'Receipt details saved',
-          icon: Icons.check_circle_rounded,
-          color: DesignColors.success,
-        );
-      }
-    } catch (_) {
-      if (context.mounted) {
-        showGlassSnackBar(
-          context,
-          'Could not save receipt details on this device. Please try again.',
-          icon: Icons.error_outline_rounded,
-          color: DesignColors.error,
-        );
-      }
-    }
+    await editReceiptDetails(context, ref);
   }
 
   /// Update the tenant's logo. Standalone workspaces keep it in app storage;
@@ -4731,4 +4747,32 @@ class _SettingsFooter extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Runs [onOpen] once, after the first frame, so a link can open one
+/// settings entry without the owner hunting for it.
+class _OpenEntryOnce extends StatefulWidget {
+  const _OpenEntryOnce({required this.onOpen, required this.child});
+
+  final VoidCallback? onOpen;
+  final Widget child;
+
+  @override
+  State<_OpenEntryOnce> createState() => _OpenEntryOnceState();
+}
+
+class _OpenEntryOnceState extends State<_OpenEntryOnce> {
+  @override
+  void initState() {
+    super.initState();
+    final open = widget.onOpen;
+    if (open != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) open();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

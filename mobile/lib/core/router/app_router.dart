@@ -10,6 +10,8 @@ import '../../features/auth/presentation/screens/company_choice_screen.dart';
 import '../../features/auth/presentation/screens/company_setup_screen.dart';
 import '../../features/settings/presentation/screens/recorded_payment_rules_screen.dart';
 import '../../features/auth/presentation/screens/owner_welcome_screen.dart';
+import '../../features/onboarding/presentation/screens/setup_screen.dart';
+import '../../features/onboarding/presentation/screens/welcome_screen.dart';
 import '../../features/auth/presentation/screens/local_workspace_transition_screen.dart';
 import '../../features/auth/presentation/screens/company_activation_screen.dart';
 import '../../features/subscription/presentation/screens/plan_selection_screen.dart';
@@ -187,9 +189,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         // (activation itself needs one), so it is intentionally not allowed
         // here — an unauthenticated visit falls through to the login
         // redirect below like any other protected route.
-        if (isSetupRoute ||
-            isLegalRoute ||
-            path == '/login') {
+        if (isSetupRoute || isLegalRoute || path == '/login') {
           return null;
         }
         // Redirect all others to cloud sign-in
@@ -201,10 +201,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // impossible and pointless. Park the stale session on the local
       // sign-in screen; a successful owner-PIN sign-in replaces the session
       // with the local profile.
-      final pendingLocalSignIn =
-          authService.isAuthenticated &&
-              !authService.isLocalWorkspace &&
-              storageService.hasLocalWorkspace();
+      final pendingLocalSignIn = authService.isAuthenticated &&
+          !authService.isLocalWorkspace &&
+          storageService.hasLocalWorkspace();
       if (pendingLocalSignIn && path != '/pin-login' && !isLegalRoute) {
         return '/pin-login';
       }
@@ -275,6 +274,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         final perms = RolePermissions(
           authService.currentUser?['permissions'] as List<dynamic>?,
         );
+
+        // The setup checklist changes shop-wide settings: owner only.
+        if (path == '/setup' && !authService.isLocalWorkspaceOwner) {
+          return LocalWorkspaceCapabilities.homePathFor(
+            perms,
+            businessLayoutFromUser(authService.currentUser),
+          );
+        }
 
         if ((path == '/' || path == '/cart' || path == '/payment') &&
             !perms.canMakeSales) {
@@ -525,6 +532,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'workspace-localize',
         builder: (context, state) => const LocalWorkspaceTransitionScreen(),
       ),
+      // First-run welcome tour and the owner's setup checklist for shops
+      // kept on this phone. HomeScreen opens the tour once per person.
+      GoRoute(
+        path: '/welcome',
+        name: 'welcome',
+        builder: (context, state) => const WelcomeScreen(),
+      ),
+      GoRoute(
+        path: '/setup',
+        name: 'setup',
+        builder: (context, state) => const SetupScreen(),
+      ),
       GoRoute(
         path: '/owner-welcome',
         name: 'owner-welcome',
@@ -733,16 +752,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'receive',
                 name: 'receive-stock',
-                builder: (context, state) =>
-                    getIt<AuthService>().isLocalWorkspace
-                        ? ReceiveStockScreen(
-                            productId: state.uri.queryParameters['productId'],
-                          )
-                        : BatchReceiveScreen(
-                            productId: state.uri.queryParameters['productId'],
-                            productName: state.uri.queryParameters['productName'],
-                            branchId: state.uri.queryParameters['branchId'],
-                          ),
+                builder: (context, state) => getIt<AuthService>()
+                        .isLocalWorkspace
+                    ? ReceiveStockScreen(
+                        productId: state.uri.queryParameters['productId'],
+                      )
+                    : BatchReceiveScreen(
+                        productId: state.uri.queryParameters['productId'],
+                        productName: state.uri.queryParameters['productName'],
+                        branchId: state.uri.queryParameters['branchId'],
+                      ),
               ),
               // Receive batch with multi-unit (supervisor+)
               GoRoute(
@@ -836,7 +855,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/settings',
             name: 'settings',
-            builder: (context, state) => const SettingsScreen(),
+            builder: (context, state) => SettingsScreen(
+              openEntry: state.uri.queryParameters['open'],
+            ),
           ),
           GoRoute(
             path: '/settings/business-layout',

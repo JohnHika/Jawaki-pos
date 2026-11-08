@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:axon_pos/core/di/injection.dart';
+import '../../../../core/database/app_database.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
@@ -38,9 +39,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     HomeNavKeys.moreSheetOpenRequest.addListener(_handleMoreSheetRequest);
     WidgetsBinding.instance.addPostFrameCallback((_) => _offerNotifications());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _offerWelcome());
     _checkLicence();
-    _licenceTimer = Timer.periodic(
-        const Duration(minutes: 30), (_) => _checkLicence());
+    _licenceTimer =
+        Timer.periodic(const Duration(minutes: 30), (_) => _checkLicence());
   }
 
   Timer? _licenceTimer;
@@ -52,6 +54,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     unawaited(licenceService().refresh().then((_) {
       if (mounted) ref.invalidate(licenceViewProvider);
     }));
+  }
+
+  /// The first time each person opens a shop kept on this phone, show the
+  /// welcome tour. The shop's database notes who has seen it.
+  Future<void> _offerWelcome() async {
+    final auth = getIt<AuthService>();
+    if (!auth.isLocalWorkspace) return;
+    final userId = auth.currentUser?['id']?.toString() ?? '';
+    if (userId.isEmpty) return;
+    try {
+      if (await getIt<AppDatabase>().hasSeenWelcome(userId)) return;
+    } catch (_) {
+      return;
+    }
+    if (!mounted) return;
+    final router = GoRouter.of(context);
+    final path = router.routerDelegate.currentConfiguration.uri.path;
+    if (path == '/welcome' || path == '/setup') return;
+    unawaited(router.push('/welcome'));
   }
 
   /// First time a signed-in user lands in the app, explain what alerts are
@@ -589,9 +610,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 width: 6,
                                 height: 6,
                                 decoration: BoxDecoration(
-                                    color: statusColor, shape: BoxShape.circle)),
+                                    color: statusColor,
+                                    shape: BoxShape.circle)),
                             const SizedBox(width: DesignSpacing.sm - 2),
-                            Text(isLocalWorkspace ? 'Local only' : 'Offline mode',
+                            Text(
+                                isLocalWorkspace
+                                    ? 'Local only'
+                                    : 'Offline mode',
                                 style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
