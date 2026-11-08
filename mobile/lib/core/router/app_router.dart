@@ -123,9 +123,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final startPath = authService.isLocalWorkspace
           ? LocalWorkspaceCapabilities.homePathFor(permissions, businessLayout)
           : businessLayout.homePathFor(permissions);
-      initialLocation = permissions.canSeeDashboard
+      // Shops kept on the phone show the welcome tour from HomeScreen
+      // instead of the older coach-mark tour.
+      initialLocation = permissions.canSeeDashboard ||
+              authService.isLocalWorkspace ||
+              storageService.hasSeenStaffTour()
           ? startPath
-          : (storageService.hasSeenStaffTour() ? startPath : '/staff-tour');
+          : '/staff-tour';
     }
   } else if (authService.isLocked) {
     // Session exists but is soft-locked (backgrounded past the auto-lock
@@ -246,9 +250,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ? LocalWorkspaceCapabilities.homePathFor(
                 permissions, businessLayout)
             : businessLayout.homePathFor(permissions);
-        return permissions.canSeeDashboard
+        return permissions.canSeeDashboard ||
+                authService.isLocalWorkspace ||
+                storageService.hasSeenStaffTour()
             ? homePath
-            : (storageService.hasSeenStaffTour() ? homePath : '/staff-tour');
+            : '/staff-tour';
       }
 
       // Role-based route guards
@@ -532,17 +538,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'workspace-localize',
         builder: (context, state) => const LocalWorkspaceTransitionScreen(),
       ),
-      // First-run welcome tour and the owner's setup checklist for shops
-      // kept on this phone. HomeScreen opens the tour once per person.
+      // First-run welcome tour for shops kept on this phone, full screen.
+      // HomeScreen opens it once per person.
       GoRoute(
         path: '/welcome',
         name: 'welcome',
         builder: (context, state) => const WelcomeScreen(),
-      ),
-      GoRoute(
-        path: '/setup',
-        name: 'setup',
-        builder: (context, state) => const SetupScreen(),
       ),
       GoRoute(
         path: '/owner-welcome',
@@ -1026,6 +1027,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/expenses',
             name: 'expenses',
             builder: (context, state) => const ExpensesScreen(),
+          ),
+          // The owner's setup checklist sits inside the shell: the screens it
+          // opens (products, staff, settings) are shell screens, and pushing
+          // them over a full-screen route duplicates the shell's navigator.
+          GoRoute(
+            path: '/setup',
+            name: 'setup',
+            builder: (context, state) => const SetupScreen(),
           ),
           GoRoute(
             path: '/stock-counts',

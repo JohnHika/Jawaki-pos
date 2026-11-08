@@ -22,6 +22,7 @@ import '../../../../core/widgets/form_kit.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/bulk_allocation.dart';
+import '../widgets/pay_suppliers_sheet.dart';
 import '../../domain/collections_ledger.dart';
 import '../../domain/finance_models.dart';
 import '../providers/finance_hub_controller.dart';
@@ -71,7 +72,6 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     }
   }
 
-
   /// Shows a modal bottom sheet and resolves only after its exit animation
   /// has finished. [showModalBottomSheet] resolves at pop time, while the
   /// sheet's builder keeps rebuilding during the closing transition � so
@@ -96,6 +96,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     await route.completed;
     return result;
   }
+
   @override
   Widget build(BuildContext context) {
     final hub = ref.watch(financeHubProvider);
@@ -190,6 +191,9 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               controller,
               canRecordPayment: permissions.canRecordSupplierPayment,
             ),
+            onPaySeveral: permissions.canRecordSupplierPayment
+                ? () => _showPaySuppliers(snapshot, controller)
+                : null,
           ),
         _ => _RetailTab(
             receivables: snapshot.retailReceivables,
@@ -235,6 +239,9 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             controller,
             canRecordPayment: permissions.canRecordSupplierPayment,
           ),
+          onPaySeveral: permissions.canRecordSupplierPayment
+              ? () => _showPaySuppliers(snapshot, controller)
+              : null,
         ),
       2 => _RetailTab(
           receivables: snapshot.retailReceivables,
@@ -1181,6 +1188,29 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     notes.dispose();
   }
 
+  /// Several supplier bills, from one supplier or many, paid in one go.
+  Future<void> _showPaySuppliers(
+      FinanceSnapshot snapshot, FinanceHubController controller) async {
+    final paid = await showPaySuppliersSheet(
+      context,
+      payables: snapshot.payables,
+      onPay: (batch) => controller.recordSupplierPayments(
+        payments: batch.payments,
+        fundingSource: batch.fundingSource,
+        requestId: const Uuid().v4(),
+        notes: batch.notes,
+      ),
+    );
+    if (paid && mounted) {
+      showGlassSnackBar(
+        context,
+        'Supplier payments recorded. Balances updated.',
+        icon: Icons.check_circle_rounded,
+        color: DesignColors.success,
+      );
+    }
+  }
+
   /// One payment from a customer, split across their open credits (oldest due first).
   Future<void> _showBulkCollectionSheet(
     FinanceSnapshot snapshot,
@@ -1721,8 +1751,10 @@ class _SupplierTab extends StatelessWidget {
       required this.canCreateInvoices,
       required this.onScan,
       required this.onManual,
-      required this.onOpenPayable});
+      required this.onOpenPayable,
+      this.onPaySeveral});
   final List<FinancePayable> payables;
+  final VoidCallback? onPaySeveral;
   final bool canCreateInvoices;
   final VoidCallback? onScan;
   final VoidCallback? onManual;
@@ -1750,6 +1782,18 @@ class _SupplierTab extends StatelessWidget {
                     child: const Text('Manual'))),
           ]),
           const SizedBox(height: DesignSpacing.lg),
+        ],
+        if (onPaySeveral != null &&
+            payables.any((item) => item.outstandingAmount > 0.005)) ...[
+          SizedBox(
+            height: DesignSpacing.huge,
+            child: FilledButton.icon(
+              onPressed: onPaySeveral,
+              icon: const Icon(Icons.payments_rounded),
+              label: const Text('Pay suppliers'),
+            ),
+          ),
+          const SizedBox(height: DesignSpacing.md),
         ],
         if (payables.isEmpty)
           const _EmptyLedger(message: 'No supplier payables yet.')

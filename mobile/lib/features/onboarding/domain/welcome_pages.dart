@@ -46,38 +46,48 @@ List<WelcomePage> welcomePagesFor({
         ],
       ),
     if (permissions.canSeeCustomers)
-      const WelcomePage(
+      WelcomePage(
         icon: Icons.people_outline,
         title: 'Customers who pay later',
         body: 'Keep track of who owes what.',
         points: [
           'Save each customer with their name and phone.',
-          'Sell on credit, then record what they pay back in cash, '
-              'M-Pesa or bank.',
-          'Send a statement as a PDF, a spreadsheet or a short message.',
+          if (permissions.canManageReceivables) ...[
+            'Sell on credit, then record what they pay back in cash, '
+                'M-Pesa or bank.',
+            'Send a statement as a PDF, a spreadsheet or a short message.',
+          ] else
+            'At Pay, choose Customer credit to let a saved customer pay later.',
         ],
       ),
     if (permissions.canSeeInventory)
-      const WelcomePage(
+      WelcomePage(
         icon: Icons.inventory_2_outlined,
         title: 'Stock that counts itself',
-        body: 'Each sale takes the items off your stock.',
+        body: 'Each sale takes the items off the shelf count.',
         points: [
-          'Sell by the piece or by the box.',
-          'Receive deliveries when they arrive.',
-          'Count the shelves to find what is missing.',
+          'Goods can sell by the piece or by the box.',
+          if (permissions.canManageStock)
+            'Receive deliveries in Products, under Stock.'
+          else
+            'See what is left in Products, under Stock.',
+          if (permissions.has('inventory.stocktake.count'))
+            'Count the shelves to find what is missing.',
         ],
       ),
     if (permissions.canViewFinance)
-      const WelcomePage(
+      WelcomePage(
         icon: Icons.account_balance_wallet_outlined,
         title: 'Know what you made today',
         body: 'Money in and money out, in one place.',
         points: [
           'Record what you pay from the till, like transport or rent.',
           'Expenses shows what is left from the day\'s sales.',
-          'At End of day, count the cash. The app tells you if any is '
-              'missing.',
+          if (permissions.canCloseEndOfDay)
+            'At End of day, count the cash. The app tells you if any is '
+                'missing.',
+          if (permissions.canRecordSupplierPayment)
+            'Pay several suppliers in one go from Finance.',
         ],
       ),
     isOwner
@@ -93,8 +103,9 @@ List<WelcomePage> welcomePagesFor({
           )
         : const WelcomePage(
             icon: Icons.pin_outlined,
-            title: 'Your PIN, your sales',
-            body: 'Every sale is recorded under the person who made it.',
+            title: 'Your PIN, your work',
+            body: 'Every sale and stock change is recorded under the person '
+                'who made it.',
             points: [
               'Sign in with your own PIN and keep it to yourself.',
               'Lock the app when you step away from the counter.',

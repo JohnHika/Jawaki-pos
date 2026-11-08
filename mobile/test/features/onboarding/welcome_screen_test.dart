@@ -86,7 +86,7 @@ void main() {
     }
 
     expect(find.text('Your records stay yours'), findsOneWidget);
-    expect(find.text('Skip'), findsNothing);
+    expect(find.text('Skip').hitTestable(), findsNothing);
     expect(find.text('I will set up later'), findsOneWidget);
 
     await tester.tap(find.text('Set up my shop'));
@@ -108,8 +108,7 @@ void main() {
     expect(find.text('home'), findsOneWidget);
   });
 
-  testWidgets('a cashier finishes the tour on their PIN page',
-      (tester) async {
+  testWidgets('a cashier finishes the tour on their PIN page', (tester) async {
     phoneSize(tester);
     await showWelcome(tester,
         owner: false, permissions: const ['sales.create']);
@@ -119,7 +118,7 @@ void main() {
     await tester.tap(find.text('Next'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Your PIN, your sales'), findsOneWidget);
+    expect(find.text('Your PIN, your work'), findsOneWidget);
     expect(find.text('I will set up later'), findsNothing);
     await tester.tap(find.text('Start working'));
     await tester.pumpAndSettle();

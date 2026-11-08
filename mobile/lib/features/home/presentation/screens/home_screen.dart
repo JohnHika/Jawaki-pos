@@ -172,7 +172,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               '/products', businessLayout.productsLabel),
           path: '/products'));
     }
-    if (perms.canSeeInventory) {
+    if (isLocalWorkspace) {
+      // A shop kept on the phone finds its stock in Products, under Stock.
+      // Only a role that cannot open Products still gets Inventory here.
+      // Stock requests need a connected shop, so they are not offered.
+      if (perms.canSeeInventory && !perms.canSeeProducts) {
+        items.add(_NavItem(
+            icon: Icons.warehouse_outlined,
+            activeIcon: Icons.warehouse_rounded,
+            label: businessLayout.actionLabel('/inventory', 'Inventory'),
+            path: '/inventory'));
+      }
+    } else if (perms.canSeeInventory) {
       items.add(_NavItem(
           icon: Icons.warehouse_outlined,
           activeIcon: Icons.warehouse_rounded,

@@ -684,6 +684,7 @@ class AppDatabase extends _$AppDatabase {
         },
         beforeOpen: (details) async {
           await _ensureLocalStockUniqueKey();
+          await _repairTextDates();
         },
       );
 
@@ -719,6 +720,45 @@ class AppDatabase extends _$AppDatabase {
       debugPrint('[DB] could not ensure the local stock unique key: $e');
     }
   }
+
+  /// Supplier bills used to save products, the Supplier Receipts category and
+  /// stock rows with ISO text dates. Drift reads those columns as numbers, so
+  /// one such row broke every product list. Turn any text date back into a
+  /// number on open; rows already right are left alone.
+  Future<void> _repairTextDates() async {
+    const columns = {
+      'products': ['created_at', 'updated_at'],
+      'categories': ['created_at', 'updated_at'],
+      'local_stock': ['updated_at', 'last_received_at'],
+    };
+    try {
+      for (final entry in columns.entries) {
+        for (final column in entry.value) {
+          final rows = await customSelect(
+            'SELECT rowid AS rid, $column AS value FROM ${entry.key} '
+            "WHERE typeof($column) = 'text'",
+          ).get();
+          for (final row in rows) {
+            final parsed = DateTime.tryParse(row.read<String>('value'));
+            await customStatement(
+              'UPDATE ${entry.key} SET $column = ? WHERE rowid = ?',
+              [
+                parsed == null
+                    ? Variable.withDateTime(DateTime.now())
+                    : Variable.withDateTime(parsed),
+                row.read<int>('rid'),
+              ],
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[DB] could not repair text dates: $e');
+    }
+  }
+
+  @visibleForTesting
+  Future<void> repairTextDatesForTesting() => _repairTextDates();
 
   Future<void> _ensureLocalAiMemoriesTable() async {
     await customStatement('''
@@ -3227,8 +3267,7 @@ class AppDatabase extends _$AppDatabase {
       }
     }
 
-    moves.sort(
-        (a, b) => (b['at'] as DateTime).compareTo(a['at'] as DateTime));
+    moves.sort((a, b) => (b['at'] as DateTime).compareTo(a['at'] as DateTime));
     return moves.take(safeLimit).toList(growable: false);
   }
 
@@ -3255,7 +3294,8 @@ class AppDatabase extends _$AppDatabase {
       throw StateError('This product is not available on this device.');
     }
     if (!product.trackInventory) {
-      throw StateError('This product is not counted, so it has no stock to correct.');
+      throw StateError(
+          'This product is not counted, so it has no stock to correct.');
     }
     await _ensureLocalStockCountTables();
     final title = _optionalReceiptText(reason);
@@ -5202,7 +5242,8 @@ class AppDatabase extends _$AppDatabase {
       ],
     ).get();
     return {
-      for (final row in rows) row.read<String>('item'): row.read<String>('status'),
+      for (final row in rows)
+        row.read<String>('item'): row.read<String>('status'),
     };
   }
 
@@ -7395,12 +7436,42 @@ class AppDatabase extends _$AppDatabase {
     required String fundingSource,
     required String requestId,
     String? notes,
+  }) =>
+      recordLocalSupplierPaymentsBatch(
+        payments: [(invoiceId: invoiceId, amount: amount)],
+        branchId: branchId,
+        fundingSource: fundingSource,
+        requestId: requestId,
+        notes: notes,
+        singleRequest: true,
+      );
+
+  /// Pays several supplier bills, from one supplier or many, in one go.
+  /// Either every bill is paid or none is: one bad line leaves all of them
+  /// unpaid. Each line keeps its own request id (`requestId:index`) so a
+  /// repeated tap does not pay twice.
+  Future<void> recordLocalSupplierPaymentsBatch({
+    required List<({String invoiceId, double amount})> payments,
+    required String branchId,
+    required String fundingSource,
+    required String requestId,
+    String? notes,
+    bool singleRequest = false,
   }) async {
     await _createSupplierFinanceTables();
     final tenantId = _requireCustomerTenantId();
     final normalizedRequest = requestId.trim();
-    if (!amount.isFinite || amount <= 0 || normalizedRequest.isEmpty) {
+    if (payments.isEmpty || normalizedRequest.isEmpty) {
       throw ArgumentError('Enter a valid supplier payment.');
+    }
+    if (payments.length > 50) {
+      throw ArgumentError('Pay at most 50 bills at a time.');
+    }
+    if (payments.any((p) => !p.amount.isFinite || p.amount <= 0)) {
+      throw ArgumentError('Enter a valid supplier payment.');
+    }
+    if (payments.map((p) => p.invoiceId).toSet().length != payments.length) {
+      throw ArgumentError('Each bill can appear only once.');
     }
     if (branchId.trim().isEmpty || !_activeBranchIds().contains(branchId)) {
       throw StateError('Select an active branch before recording payment.');
@@ -7410,68 +7481,92 @@ class AppDatabase extends _$AppDatabase {
         normalizedSource != 'BANK_OR_MPESA') {
       throw ArgumentError('Choose a valid payment source.');
     }
+    final cleanNotes = notes?.trim();
     await transaction(() async {
-      final duplicate = await customSelect(
-        'SELECT id, invoice_id, amount, branch_id, funding_source FROM supplier_payments WHERE request_id = ? LIMIT 1',
-        variables: [Variable.withString(normalizedRequest)],
-      ).getSingleOrNull();
-      if (duplicate != null) {
-        if (duplicate.readNullable<String>('invoice_id') == invoiceId &&
-            duplicate.readNullable<String>('branch_id') == branchId &&
-            duplicate.read<String>('funding_source') == normalizedSource &&
-            (duplicate.read<double>('amount') - amount).abs() < 0.005) {
-          return;
-        }
-        throw StateError('This payment request ID was already used.');
+      for (var index = 0; index < payments.length; index++) {
+        final payment = payments[index];
+        await _applyLocalSupplierInvoicePayment(
+          tenantId: tenantId,
+          invoiceId: payment.invoiceId,
+          branchId: branchId,
+          amount: payment.amount,
+          source: normalizedSource,
+          requestId:
+              singleRequest ? normalizedRequest : '$normalizedRequest:$index',
+          notes: cleanNotes == null || cleanNotes.isEmpty ? null : cleanNotes,
+        );
       }
-      final invoice = await customSelect(
-        'SELECT si.supplier_id, si.total_amount, si.paid_amount FROM supplier_invoices si JOIN suppliers s ON s.id = si.supplier_id WHERE si.id = ? AND s.tenant_id = ?',
-        variables: [
-          Variable.withString(invoiceId),
-          Variable.withString(tenantId),
-        ],
-      ).getSingleOrNull();
-      if (invoice == null) throw StateError('Supplier invoice not found.');
-      final total = invoice.read<double>('total_amount');
-      final paid = invoice.read<double>('paid_amount');
-      final outstanding = (total - paid).clamp(0, double.infinity).toDouble();
-      if (amount > outstanding + 0.005) {
-        throw StateError(
-            'Payment exceeds the invoice balance. Refresh and try again.');
-      }
-      final newPaid = (paid + amount).clamp(0, total).toDouble();
-      final newDue = (total - newPaid).clamp(0, double.infinity).toDouble();
-      final now = DateTime.now().toUtc().toIso8601String();
-      final updated = await customUpdate(
-        'UPDATE supplier_invoices SET paid_amount = ?, due_amount = ?, status = ?, updated_at = ? WHERE id = ? AND paid_amount = ?',
-        variables: [
-          Variable.withReal(newPaid),
-          Variable.withReal(newDue),
-          Variable.withString(newDue <= 0.005 ? 'paid' : 'partial'),
-          Variable.withString(now),
-          Variable.withString(invoiceId),
-          Variable.withReal(paid),
-        ],
-      );
-      if (updated != 1) {
-        throw StateError('Invoice balance changed. Refresh and try again.');
-      }
-      final cleanNotes = notes?.trim();
-      await customStatement(
-        'INSERT INTO supplier_payments (supplier_id, branch_id, amount, notes, payment_date, created_at, invoice_id, request_id, funding_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [
-          invoice.read<String>('supplier_id'),
-          branchId,
-          amount,
-          cleanNotes == null || cleanNotes.isEmpty ? null : cleanNotes,
-          now,
-          now,
-          invoiceId,
-          normalizedRequest,
-          normalizedSource,
-        ],
-      );
     });
+  }
+
+  Future<void> _applyLocalSupplierInvoicePayment({
+    required String tenantId,
+    required String invoiceId,
+    required String branchId,
+    required double amount,
+    required String source,
+    required String requestId,
+    String? notes,
+  }) async {
+    final duplicate = await customSelect(
+      'SELECT id, invoice_id, amount, branch_id, funding_source FROM supplier_payments WHERE request_id = ? LIMIT 1',
+      variables: [Variable.withString(requestId)],
+    ).getSingleOrNull();
+    if (duplicate != null) {
+      if (duplicate.readNullable<String>('invoice_id') == invoiceId &&
+          duplicate.readNullable<String>('branch_id') == branchId &&
+          duplicate.read<String>('funding_source') == source &&
+          (duplicate.read<double>('amount') - amount).abs() < 0.005) {
+        return;
+      }
+      throw StateError('This payment request ID was already used.');
+    }
+    final invoice = await customSelect(
+      'SELECT si.supplier_id, si.total_amount, si.paid_amount FROM supplier_invoices si JOIN suppliers s ON s.id = si.supplier_id WHERE si.id = ? AND s.tenant_id = ?',
+      variables: [
+        Variable.withString(invoiceId),
+        Variable.withString(tenantId),
+      ],
+    ).getSingleOrNull();
+    if (invoice == null) throw StateError('Supplier invoice not found.');
+    final total = invoice.read<double>('total_amount');
+    final paid = invoice.read<double>('paid_amount');
+    final outstanding = (total - paid).clamp(0, double.infinity).toDouble();
+    if (amount > outstanding + 0.005) {
+      throw StateError(
+          'Payment exceeds the invoice balance. Refresh and try again.');
+    }
+    final newPaid = (paid + amount).clamp(0, total).toDouble();
+    final newDue = (total - newPaid).clamp(0, double.infinity).toDouble();
+    final now = DateTime.now().toUtc().toIso8601String();
+    final updated = await customUpdate(
+      'UPDATE supplier_invoices SET paid_amount = ?, due_amount = ?, status = ?, updated_at = ? WHERE id = ? AND paid_amount = ?',
+      variables: [
+        Variable.withReal(newPaid),
+        Variable.withReal(newDue),
+        Variable.withString(newDue <= 0.005 ? 'paid' : 'partial'),
+        Variable.withString(now),
+        Variable.withString(invoiceId),
+        Variable.withReal(paid),
+      ],
+    );
+    if (updated != 1) {
+      throw StateError('Invoice balance changed. Refresh and try again.');
+    }
+    await customStatement(
+      'INSERT INTO supplier_payments (supplier_id, branch_id, amount, notes, payment_date, created_at, invoice_id, request_id, funding_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        invoice.read<String>('supplier_id'),
+        branchId,
+        amount,
+        notes,
+        now,
+        now,
+        invoiceId,
+        requestId,
+        source,
+      ],
+    );
   }
 
   /// Add or update a supplier record
@@ -7853,6 +7948,10 @@ class AppDatabase extends _$AppDatabase {
     final productId = existing?.read<String>('id') ??
         'product-${DateTime.now().microsecondsSinceEpoch}-${sku.hashCode.abs()}';
     final categoryId = await _ensureDefaultCategory(nowIso);
+    // Products, categories and stock are Drift tables: their dates must be
+    // written as DateTime values, not ISO text, or every product list that
+    // reads them fails ("Failed to load products").
+    final now = Variable.withDateTime(DateTime.parse(nowIso));
 
     if (existing == null) {
       await customStatement(
@@ -7870,29 +7969,31 @@ class AppDatabase extends _$AppDatabase {
           categoryId,
           unitCost,
           unitCost,
-          nowIso,
-          nowIso,
+          now,
+          now,
         ],
       );
     } else {
       await customStatement(
         'UPDATE products SET cost_price = ?, updated_at = ? WHERE id = ?',
-        [unitCost, nowIso, productId],
+        [unitCost, now, productId],
       );
     }
 
+    // One stock row per product and branch: a product first stocked from
+    // Products has a different row id, so match on the pair.
     await customStatement(
       '''
       INSERT INTO local_stock (id, product_id, branch_id, quantity, min_quantity, updated_at)
       VALUES (?, ?, ?, ?, 0, ?)
-      ON CONFLICT(id) DO UPDATE SET quantity = quantity + excluded.quantity, updated_at = excluded.updated_at
+      ON CONFLICT(product_id, branch_id) DO UPDATE SET quantity = local_stock.quantity + excluded.quantity, updated_at = excluded.updated_at
       ''',
       [
         'stock-$branchId-$productId',
         productId,
         branchId,
         quantity,
-        nowIso,
+        now,
       ],
     );
 
@@ -7906,7 +8007,11 @@ class AppDatabase extends _$AppDatabase {
       INSERT OR IGNORE INTO categories (id, name, description, parent_id, image_url, sort_order, is_active, created_at, updated_at)
       VALUES (?, 'Supplier Receipts', 'Products created from scanned supplier receipts', NULL, NULL, 999, 1, ?, ?)
       ''',
-      [id, nowIso, nowIso],
+      [
+        id,
+        Variable.withDateTime(DateTime.parse(nowIso)),
+        Variable.withDateTime(DateTime.parse(nowIso)),
+      ],
     );
     return id;
   }

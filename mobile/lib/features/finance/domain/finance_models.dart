@@ -17,6 +17,9 @@ String tidySupplierName(String name) {
       .join(' ');
 }
 
+/// One supplier bill and how much of it is being paid now.
+typedef SupplierBillPayment = ({String invoiceId, double amount});
+
 class FinanceSnapshot {
   FinanceSnapshot({
     required this.branchId,

@@ -357,6 +357,10 @@ class _FakeFinanceHubDataSource implements FinanceHubDataSource {
       String invoiceId, Map<String, dynamic> data) async {}
 
   @override
+  Future<void> recordSupplierPayments(
+      List<SupplierBillPayment> payments, Map<String, dynamic> data) async {}
+
+  @override
   Future<Map<String, dynamic>> startMerchantReceivablePayment(
           Map<String, dynamic> data) async =>
       <String, dynamic>{};

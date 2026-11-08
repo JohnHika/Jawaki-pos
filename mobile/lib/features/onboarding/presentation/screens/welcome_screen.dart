@@ -48,7 +48,9 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
     }
     if (!mounted) return;
     if (toSetup) {
-      context.pushReplacement('/setup');
+      // The checklist lives inside the shell, so go there rather than push
+      // a shell screen over this full-screen route.
+      context.go('/setup');
     } else if (context.canPop()) {
       context.pop();
     } else {
@@ -115,8 +117,14 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                             fontWeight: FontWeight.w700),
                       ),
                     ),
-                    if (!last)
-                      TextButton(
+                    // Keeps its space on the last page so the header does
+                    // not jump.
+                    Visibility(
+                      visible: !last,
+                      maintainSize: true,
+                      maintainAnimation: true,
+                      maintainState: true,
+                      child: TextButton(
                         style: TextButton.styleFrom(
                           minimumSize: const Size(64, 48),
                           foregroundColor: palette.soft,
@@ -124,6 +132,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                         onPressed: () => _close(toSetup: false),
                         child: const Text('Skip'),
                       ),
+                    ),
                   ],
                 ),
               ),
@@ -175,79 +184,84 @@ class _WelcomePageView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = SignInPalette.of(context);
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(28, 40, 28, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: DesignColors.accent.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Icon(page.icon, color: DesignColors.accentDark, size: 32),
-          ),
-          const SizedBox(height: 28),
-          Semantics(
-            header: true,
-            child: Text(
-              page.title,
-              style: DesignType.display.copyWith(
-                color: palette.ink,
-                fontSize: 30,
-                fontWeight: FontWeight.w800,
-                height: 1.15,
+    return ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(28, 40, 28, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: DesignColors.accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(18),
               ),
+              child: Icon(page.icon, color: DesignColors.accentDark, size: 32),
             ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            page.body,
-            style: TextStyle(color: palette.soft, fontSize: 16, height: 1.5),
-          ),
-          if (page.points.isNotEmpty) ...[
             const SizedBox(height: 28),
-            for (var i = 0; i < page.points.length; i++)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 18),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 28,
-                      height: 28,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: palette.card,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: palette.line),
-                      ),
-                      child: Text(
-                        '${i + 1}',
-                        style: TextStyle(
-                            color: palette.ink,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 3),
-                        child: Text(
-                          page.points[i],
-                          style: TextStyle(
-                              color: palette.ink, fontSize: 15.5, height: 1.45),
-                        ),
-                      ),
-                    ),
-                  ],
+            Semantics(
+              header: true,
+              child: Text(
+                page.title,
+                style: DesignType.display.copyWith(
+                  color: palette.ink,
+                  fontSize: 30,
+                  fontWeight: FontWeight.w800,
+                  height: 1.15,
                 ),
               ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              page.body,
+              style: TextStyle(color: palette.soft, fontSize: 16, height: 1.5),
+            ),
+            if (page.points.isNotEmpty) ...[
+              const SizedBox(height: 28),
+              for (var i = 0; i < page.points.length; i++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 28,
+                        height: 28,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: palette.card,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: palette.line),
+                        ),
+                        child: Text(
+                          '${i + 1}',
+                          style: TextStyle(
+                              color: palette.ink,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: Text(
+                            page.points[i],
+                            style: TextStyle(
+                                color: palette.ink,
+                                fontSize: 15.5,
+                                height: 1.45),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

@@ -137,6 +137,12 @@ abstract class FinanceHubDataSource {
   Future<void> recordSupplierPayment(
           String invoiceId, Map<String, dynamic> data) =>
       throw UnsupportedError('Supplier payments are not available');
+
+  /// Several supplier bills paid together. `data` carries the funding
+  /// source, request id, branch and note shared by every line.
+  Future<void> recordSupplierPayments(
+          List<SupplierBillPayment> payments, Map<String, dynamic> data) =>
+      throw UnsupportedError('Supplier payments are not available');
   Future<Map<String, dynamic>> startMerchantReceivablePayment(
           Map<String, dynamic> data) =>
       throw UnsupportedError('Merchant receivable payments are not available');
@@ -292,6 +298,32 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
     await refresh();
   }
 
+  /// Pays several supplier bills, from one supplier or many, in one go.
+  Future<void> recordSupplierPayments({
+    required List<SupplierBillPayment> payments,
+    required String fundingSource,
+    required String requestId,
+    String? notes,
+  }) async {
+    if (payments.isEmpty) {
+      throw const FinanceFormException('Tick at least one bill to pay');
+    }
+    if (payments.length > 50) {
+      throw const FinanceFormException('Pay at most 50 bills at a time');
+    }
+    if (payments.any((p) => !p.amount.isFinite || p.amount <= 0) ||
+        requestId.trim().isEmpty) {
+      throw const FinanceFormException('Enter an amount for every bill');
+    }
+    await _requireSource().recordSupplierPayments(payments, <String, dynamic>{
+      'fundingSource': fundingSource,
+      'requestId': requestId,
+      if (localWorkspace) 'branchId': _branchId,
+      if (_optional(notes) != null) 'notes': _optional(notes),
+    });
+    await refresh();
+  }
+
   Future<Map<String, dynamic>> startMerchantReceivablePayment(
           Map<String, dynamic> data) =>
       _requireSource().startMerchantReceivablePayment(data);
@@ -420,6 +452,18 @@ class _LiveFinanceHubDataSource implements FinanceHubDataSource {
               })
           .toList(),
     );
+  }
+
+  @override
+  Future<void> recordSupplierPayments(
+      List<SupplierBillPayment> payments, Map<String, dynamic> data) async {
+    for (var index = 0; index < payments.length; index++) {
+      await _apiClient.recordSupplierPayment(payments[index].invoiceId, {
+        ...data,
+        'amount': payments[index].amount,
+        'requestId': '${data['requestId']}:$index',
+      });
+    }
   }
 
   @override
@@ -607,6 +651,18 @@ class _LocalFinanceHubDataSource implements FinanceHubDataSource {
       invoiceId: invoiceId,
       branchId: data['branchId']?.toString() ?? '',
       amount: (data['amount'] as num).toDouble(),
+      fundingSource: data['fundingSource']?.toString() ?? 'CASH_TILL',
+      requestId: data['requestId']?.toString() ?? '',
+      notes: data['notes']?.toString(),
+    );
+  }
+
+  @override
+  Future<void> recordSupplierPayments(
+      List<SupplierBillPayment> payments, Map<String, dynamic> data) async {
+    await _database.recordLocalSupplierPaymentsBatch(
+      payments: payments,
+      branchId: data['branchId']?.toString() ?? '',
       fundingSource: data['fundingSource']?.toString() ?? 'CASH_TILL',
       requestId: data['requestId']?.toString() ?? '',
       notes: data['notes']?.toString(),
