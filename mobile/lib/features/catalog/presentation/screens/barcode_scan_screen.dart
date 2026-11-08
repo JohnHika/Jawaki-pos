@@ -44,6 +44,12 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        // The app's title style carries its own dark ink, which beats
+        // foregroundColor and left the title invisible on black.
+        titleTextStyle: Theme.of(context)
+            .appBarTheme
+            .titleTextStyle
+            ?.copyWith(color: Colors.white),
         title: Text(widget.title),
         leading: IconButton(
           tooltip: 'Close',

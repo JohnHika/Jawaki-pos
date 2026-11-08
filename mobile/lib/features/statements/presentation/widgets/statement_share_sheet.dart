@@ -19,6 +19,7 @@ import '../../../../core/widgets/form_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/statement_models.dart';
 import '../../domain/statement_sync_recovery.dart';
+import '../../../../core/widgets/modal_disposal.dart';
 
 /// Opens the "send a statement" sheet for a customer or a peer shop that owes.
 ///
@@ -402,7 +403,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
         ],
       ),
     );
-    controller.dispose();
+    disposeAfterModalCloses([controller]);
     if (saved == null) return;
     await _run(() async {
       await _api.updateStatementSettings({'payInstructions': saved});

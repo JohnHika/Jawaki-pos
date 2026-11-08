@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:axon_pos/core/di/injection.dart';
+import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
 import 'package:axon_pos/features/catalog/presentation/providers/catalog_categories_provider.dart';
@@ -104,4 +108,63 @@ void main() {
     final nameField = tester.widget<TextField>(find.byType(TextField).first);
     expect(nameField.controller?.text, 'Sugar');
   });
+
+  group('in a shop kept on this phone', () {
+    setUp(() {
+      getIt.pushNewScope();
+      getIt.registerSingleton<AuthService>(_LocalShopAuth());
+    });
+    tearDown(() async => getIt.popScope());
+
+    // The opening-count field only exists here. It once declared both a unit
+    // label and a "+" button as its suffix, which fails an assertion, so the
+    // whole Add product form was blank on the phone.
+    testWidgets('the form builds with the opening count and its steppers',
+        (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            categoriesProvider.overrideWith((ref) => Stream.value(const [])),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: SizedBox(height: 900, child: AddEditProductSheet())),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('On the shelf now'), findsOneWidget);
+
+      await tester.tap(find.bySemanticsLabel('One more'));
+      await tester.tap(find.bySemanticsLabel('One more'));
+      await tester.tap(find.bySemanticsLabel('One less'));
+      await tester.pump();
+
+      final count = tester.widget<TextField>(find.ancestor(
+          of: find.text('On the shelf now'), matching: find.byType(TextField)));
+      expect(count.controller?.text, '1');
+    });
+  });
+}
+
+/// A device-only shop: the cases the default cloud stub never reaches.
+class _LocalShopAuth implements AuthService {
+  final _statusController = StreamController<AuthStatus>.broadcast();
+
+  @override
+  noSuchMethod(Invocation invocation) => throw UnimplementedError(
+      '${invocation.memberName} is not stubbed in _LocalShopAuth');
+
+  @override
+  bool get isAuthenticated => true;
+  @override
+  bool get isLocked => false;
+  @override
+  bool get isLocalWorkspace => true;
+  @override
+  Map<String, dynamic>? get currentUser =>
+      {'role': 'ADMIN', 'authMode': 'local'};
+  @override
+  Stream<AuthStatus> get authStatusStream => _statusController.stream;
 }

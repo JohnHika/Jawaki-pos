@@ -12,6 +12,7 @@ import '../providers/cart_provider.dart';
 import '../widgets/cart_item_tile.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
+import '../../../../core/widgets/modal_disposal.dart';
 
 class CartScreen extends ConsumerWidget {
   const CartScreen({super.key});
@@ -590,7 +591,7 @@ class CartScreen extends ConsumerWidget {
         });
       },
     );
-    controller.dispose();
+    disposeAfterModalCloses([controller]);
   }
 
   void _showClearCartDialog(BuildContext context, WidgetRef ref) {

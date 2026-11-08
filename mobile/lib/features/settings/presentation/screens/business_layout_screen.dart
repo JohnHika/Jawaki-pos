@@ -10,6 +10,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/business_layout_preview.dart';
 import '../../../../core/widgets/business_layout_profile_picker.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../../core/widgets/modal_disposal.dart';
 
 class BusinessLayoutScreen extends ConsumerStatefulWidget {
   const BusinessLayoutScreen({super.key});
@@ -1594,8 +1595,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
         ],
       ),
     );
-    labelController.dispose();
-    hintController.dispose();
+    disposeAfterModalCloses([labelController, hintController]);
     if (result == null || !mounted) return;
 
     final label = result['label']!.trim();
@@ -1705,7 +1705,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
         ],
       ),
     );
-    controller.dispose();
+    disposeAfterModalCloses([controller]);
     if (result == null || !mounted) return;
     final label = result.trim();
     setState(() {

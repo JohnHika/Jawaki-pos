@@ -6,6 +6,7 @@ import '../../../../core/auth/local_staff_roles.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/modal_disposal.dart';
 
 class LocalStaffScreen extends ConsumerStatefulWidget {
   const LocalStaffScreen({super.key});
@@ -363,9 +364,7 @@ class _LocalStaffScreenState extends ConsumerState<LocalStaffScreen> {
         ),
       ),
     );
-    nameController.dispose();
-    pinController.dispose();
-    confirmController.dispose();
+    disposeAfterModalCloses([nameController, pinController, confirmController]);
     return result;
   }
 

@@ -9,6 +9,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
+import '../../../../core/utils/format.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
 import '../../../catalog/domain/stock_status.dart';
@@ -248,7 +249,9 @@ class _ReceiveStockScreenState extends ConsumerState<ReceiveStockScreen> {
         children: [
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+              // Room above the first field so its floating label clears the
+              // header line.
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               children: [
                 TextField(
@@ -350,12 +353,12 @@ class _ReceiveStockScreenState extends ConsumerState<ReceiveStockScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          '${stockNumber(_totalBase)} items in $products ${products == 1 ? 'product' : 'products'}',
+                          '${stockNumber(_totalBase)} ${_totalBase == 1 ? 'item' : 'items'} in $products ${products == 1 ? 'product' : 'products'}',
                           style: TextStyle(color: palette.soft, fontSize: 13),
                         ),
                       ),
                       if (paid != null)
-                        Text('KES ${kitNumber(paid.round())} paid',
+                        Text('${formatMoney(paid)} paid',
                             style: DesignType.numeric(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,

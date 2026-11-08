@@ -30,7 +30,7 @@ class StockCountsScreen extends ConsumerWidget {
       appBar: BrandedAppBar(
         title: ref
             .watch(businessLayoutProvider)
-            .actionLabel('/stock-counts', 'Stock Counts'),
+            .actionLabel('/stock-counts', 'Stock counts'),
         showBackButton: GoRouter.of(context).canPop(),
       ),
       floatingActionButton: perms.has('inventory.stocktake.create')
@@ -118,7 +118,7 @@ class _CountTile extends StatelessWidget {
         leading: Icon(Icons.fact_check_outlined, color: color),
         title: row.displayTitle,
         subtitle:
-            '${row.itemCount} items · ${timeAgo(row.createdAt)}${row.createdByName != null ? ' · ${row.createdByName}' : ''}'
+            '${row.itemCount} ${row.itemCount == 1 ? 'item' : 'items'} · ${timeAgo(row.createdAt)}${row.createdByName != null ? ' · ${row.createdByName}' : ''}'
             '${variance != null && variance != 0 ? '\n${variance < 0 ? 'Missing' : 'Extra'} ${kesWhole(variance.abs())}' : ''}',
         trailing: StatusBadge(label: label, color: color),
         onTap: onTap,

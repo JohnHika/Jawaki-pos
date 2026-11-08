@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../providers/business_layout_provider.dart';
 import '../theme/design_system.dart';
+import 'modal_disposal.dart';
 
 /// Lets a merchant add complementary shop types without changing the primary
 /// profile's terminology or core checkout defaults.
@@ -157,6 +158,6 @@ Future<List<String>?> showBusinessLayoutProfilePicker(
       ),
     );
   } finally {
-    searchController.dispose();
+    disposeAfterModalCloses([searchController]);
   }
 }

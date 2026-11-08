@@ -24,6 +24,7 @@ import '../../../sales/presentation/providers/catalog_provider.dart'
         syncCatalogCacheFromApi;
 import '../widgets/product_picker_dialog.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
+import '../../../../core/widgets/modal_disposal.dart';
 
 class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key});
@@ -1948,10 +1949,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         ),
       );
     } finally {
-      for (final controller in quantityControllers) {
-        controller.dispose();
-      }
-      notesController.dispose();
+      disposeAfterModalCloses([...quantityControllers, notesController]);
     }
   }
 

@@ -219,7 +219,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       items.add(_NavItem(
           icon: Icons.fact_check_outlined,
           activeIcon: Icons.fact_check_rounded,
-          label: 'Stock Counts',
+          label: 'Stock counts',
           path: '/stock-counts'));
     }
     if (perms.has('imports.view')) {
@@ -317,7 +317,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// stayed stuck on the first item (usually "Dashboard") after any other
   /// navigation, e.g. opening straight into POS or a deep link.
   int _resolveCurrentIndex(List<_NavItem> items) {
-    final location = GoRouterState.of(context).uri.toString();
+    var location = GoRouterState.of(context).uri.toString();
+    // In a device-only shop Stock lives inside Products, so receiving a
+    // delivery keeps Products lit instead of More (where /inventory sits).
+    if (getIt<AuthService>().isLocalWorkspace &&
+        location.startsWith('/inventory/receive')) {
+      location = '/products';
+    }
     var bestMatchIndex = -1;
     var bestMatchLength = -1;
     for (var i = 0; i < items.length; i++) {
@@ -541,72 +547,80 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           return true;
         },
         child: Scaffold(
-          body: Column(
-            children: [
-              // Always distinguish device-local workspaces from cloud
-              // workspaces. Internet connectivity does not enable syncing in
-              // the standalone edition.
-              StreamBuilder<ConnectionStatus>(
-                stream: connectivity.statusStream,
-                initialData: connectivity.currentStatus,
-                builder: (context, snapshot) {
-                  final isOffline = snapshot.data == ConnectionStatus.offline;
-                  if (!isLocalWorkspace && !isOffline) {
-                    return const SizedBox.shrink();
-                  }
-                  final statusColor = isLocalWorkspace
-                      ? DesignColors.info
-                      : DesignColors.warning;
-                  return Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.only(
-                        top: MediaQuery.of(context).padding.top,
-                        bottom: DesignSpacing.sm),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.12),
-                      border: Border(
-                          bottom: BorderSide(
-                              color: statusColor.withValues(alpha: 0.2))),
-                    ),
-                    child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                  color: statusColor, shape: BoxShape.circle)),
-                          const SizedBox(width: DesignSpacing.sm - 2),
-                          Text(isLocalWorkspace ? 'Local only' : 'Offline mode',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: statusColor)),
-                          const SizedBox(width: DesignSpacing.sm),
-                          Flexible(
-                            child: Text(
-                              isLocalWorkspace
-                                  ? 'Records stay on this device'
-                                  : 'Sales will sync when connected',
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: statusColor.withValues(alpha: 0.8),
+          // Always distinguish device-local workspaces from cloud
+          // workspaces. Internet connectivity does not enable syncing in
+          // the standalone edition.
+          body: StreamBuilder<ConnectionStatus>(
+            stream: connectivity.statusStream,
+            initialData: connectivity.currentStatus,
+            builder: (context, snapshot) {
+              final isOffline = snapshot.data == ConnectionStatus.offline;
+              final showStrip = isLocalWorkspace || isOffline;
+              final statusColor =
+                  isLocalWorkspace ? DesignColors.info : DesignColors.warning;
+              return Column(
+                children: [
+                  if (!showStrip)
+                    const SizedBox.shrink()
+                  else
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.only(
+                          top: MediaQuery.of(context).padding.top,
+                          bottom: DesignSpacing.sm),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.12),
+                        border: Border(
+                            bottom: BorderSide(
+                                color: statusColor.withValues(alpha: 0.2))),
+                      ),
+                      child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                    color: statusColor, shape: BoxShape.circle)),
+                            const SizedBox(width: DesignSpacing.sm - 2),
+                            Text(isLocalWorkspace ? 'Local only' : 'Offline mode',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: statusColor)),
+                            const SizedBox(width: DesignSpacing.sm),
+                            Flexible(
+                              child: Text(
+                                isLocalWorkspace
+                                    ? 'Records stay on this device'
+                                    : 'Sales will sync when connected',
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: statusColor.withValues(alpha: 0.8),
+                                ),
                               ),
                             ),
-                          ),
-                        ]),
-                  );
-                },
-              ),
-              // Subscription restricted-mode / expiry reminder banner (watches
-              // the entitlement provider; passive, never blocks navigation).
-              // The routed Scaffold/scroll views need a finite remaining height,
-              // whether the subscription host shows a banner or only the child.
-              Expanded(
-                child: SubscriptionEntitlementHost(child: widget.child),
-              ),
-            ],
+                          ]),
+                    ),
+                  // Subscription restricted-mode / expiry reminder banner
+                  // (watches the entitlement provider; passive, never blocks
+                  // navigation). The routed Scaffold/scroll views need a finite
+                  // remaining height, whether the subscription host shows a
+                  // banner or only the child.
+                  Expanded(
+                    // The strip already sits below the status bar; without this
+                    // every tab pads for the status bar a second time and opens
+                    // with an empty band under the strip.
+                    child: MediaQuery.removePadding(
+                      context: context,
+                      removeTop: showStrip,
+                      child: SubscriptionEntitlementHost(child: widget.child),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
           // Floating pill bar: the active tab is an orange chip that springs in,
           // the bar itself hovers above the page on a soft warm shadow.

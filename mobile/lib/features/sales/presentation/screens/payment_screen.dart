@@ -621,21 +621,21 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     }
     switch (_selectedMethod) {
       case PaymentMethod.cash:
-        return 'Confirm Cash Payment';
+        return 'Confirm cash payment';
       case PaymentMethod.mpesa:
         return paymentState.currentTransactionId == null
-            ? 'Send M-Pesa Request'
-            : 'Check M-Pesa Payment';
+            ? 'Send M-Pesa request'
+            : 'Check M-Pesa payment';
       case PaymentMethod.recordedMpesa:
         return 'Record M-Pesa payment';
       case PaymentMethod.recordedBank:
         return 'Record bank transfer';
       case PaymentMethod.debt:
-        return 'Record as Debt';
+        return 'Record as debt';
       case PaymentMethod.split:
-        return 'Enter Split Payment';
+        return 'Enter split payment';
       case null:
-        return 'Select Payment Method';
+        return 'Choose how they paid';
     }
   }
 

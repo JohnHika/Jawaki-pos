@@ -27,14 +27,24 @@ Color _stockInk(StockLevel level, bool isDark) {
 
 /// "48 in stock", "3 left", "Out" as a small pill.
 class StockChip extends StatelessWidget {
-  const StockChip({super.key, required this.level, required this.quantity});
+  const StockChip({
+    super.key,
+    required this.level,
+    required this.quantity,
+    this.onDark = false,
+  });
 
   final StockLevel level;
   final double? quantity;
 
+  /// Sits on an always-dark surface (the product page's shelf card), so it
+  /// needs the light ink whatever the app theme is.
+  final bool onDark;
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark =
+        onDark || Theme.of(context).brightness == Brightness.dark;
     final color = stockColor(level);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),

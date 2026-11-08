@@ -282,6 +282,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 lowOnly: lowOnly,
                 totalCount: allActive.length,
                 reorderCount: reorderCount,
+                uncategorizedCount:
+                    allActive.where((p) => p.categoryId.isEmpty).length,
                 onAll: () {
                   ref.read(_selectedCategoryFilterProvider.notifier).state =
                       null;
@@ -763,6 +765,7 @@ class _CategoryChips extends StatelessWidget {
     required this.lowOnly,
     required this.totalCount,
     required this.reorderCount,
+    required this.uncategorizedCount,
     required this.onAll,
     required this.onLow,
     required this.onCategory,
@@ -773,6 +776,7 @@ class _CategoryChips extends StatelessWidget {
   final bool lowOnly;
   final int totalCount;
   final int reorderCount;
+  final int uncategorizedCount;
   final VoidCallback onAll;
   final VoidCallback onLow;
   final ValueChanged<String> onCategory;
@@ -802,12 +806,15 @@ class _CategoryChips extends StatelessWidget {
               onTap: onLow,
             ),
           ],
-          gap(),
-          _FilterChip(
-            label: 'Uncategorized',
-            selected: selected == '',
-            onTap: () => onCategory(''),
-          ),
+          // Only when something is in it: an empty filter is a dead end.
+          if (uncategorizedCount > 0 || selected == '') ...[
+            gap(),
+            _FilterChip(
+              label: 'Uncategorized',
+              selected: selected == '',
+              onTap: () => onCategory(''),
+            ),
+          ],
           for (final cat in active) ...[
             gap(),
             _FilterChip(
@@ -1434,7 +1441,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
             ),
-            title: Text('Add Category',
+            title: Text('Add category',
                 style: Theme.of(context)
                     .textTheme
                     .titleMedium
@@ -1446,8 +1453,8 @@ class _CategoryManagementSheet extends ConsumerWidget {
                   controller: nameController,
                   style: TextStyle(color: titleColor),
                   decoration: InputDecoration(
-                    labelText: 'Category Name',
-                    hintText: 'e.g. Painkillers',
+                    labelText: 'Category name',
+                    hintText: 'For example, Drinks',
                     hintStyle: TextStyle(color: tertiaryColor),
                     labelStyle: TextStyle(
                       color: secondaryColor,
@@ -1595,7 +1602,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
             ),
-            title: Text('Edit Category',
+            title: Text('Edit category',
                 style: Theme.of(context)
                     .textTheme
                     .titleMedium
@@ -1607,7 +1614,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
                   controller: nameController,
                   style: TextStyle(color: titleColor),
                   decoration: InputDecoration(
-                    labelText: 'Category Name',
+                    labelText: 'Category name',
                     filled: true,
                     fillColor: isDark
                         ? DesignColors.darkSurfaceElevated
@@ -1732,17 +1739,17 @@ class _CategoryManagementSheet extends ConsumerWidget {
       context,
       title: isLocalWorkspace
           ? cat.isActive
-              ? 'Archive category'
+              ? 'Remove category'
               : 'Restore category'
-          : 'Delete Category',
+          : 'Delete category',
       message: isLocalWorkspace
           ? cat.isActive
-              ? 'Hide "${cat.name}" from the POS filters? Products, sales, and reports will keep their category history. You can restore it from category management.'
-              : 'Make "${cat.name}" available in the POS filters again?'
+              ? 'Hide "${cat.name}" from the filters on Sell and Products? Its products stay, and sales and reports keep the category. You can bring it back here.'
+              : 'Show "${cat.name}" in the filters on Sell and Products again?'
           : 'Delete "${cat.name}"? Products in this category will need reassigning.',
       confirmLabel: isLocalWorkspace
           ? cat.isActive
-              ? 'Archive'
+              ? 'Remove'
               : 'Restore'
           : 'Delete',
       confirmColor: isLocalWorkspace && !cat.isActive

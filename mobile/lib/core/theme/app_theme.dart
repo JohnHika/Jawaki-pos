@@ -13,7 +13,9 @@ class AppTheme {
       fontFamily: DesignType.body.fontFamily,
       colorScheme: const ColorScheme.light(
         primary: DesignColors.accent,
-        onPrimary: Colors.white,
+        // White on this orange is about 2.6:1; dark ink clears 4.5:1 and
+        // matches the redesigned screens' buttons (SignInPalette.onAccent).
+        onPrimary: DesignColors.textPrimary,
         primaryContainer: DesignColors.peach,
         secondary: DesignColors.brand,
         onSecondary: Colors.white,

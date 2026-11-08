@@ -14,10 +14,16 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../../core/widgets/modal_disposal.dart';
 
 final _currencyFmt =
     NumberFormat.currency(locale: 'en_KE', symbol: 'KES ', decimalDigits: 0);
 final _timeFmt = DateFormat('dd MMM, HH:mm');
+
+/// Money that left the till, shown with a minus only when there was some
+/// ("KES 0", never "-KES 0").
+String _outflow(double amount) =>
+    amount > 0 ? '-${_currencyFmt.format(amount)}' : _currencyFmt.format(0);
 const _eodRequestTimeout = Duration(seconds: 8);
 
 /// Combines today's sales summary, expected cash, and any existing close so
@@ -550,7 +556,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                 'Cash refunds from till',
                 summaryUnavailable
                     ? 'Unavailable'
-                    : '-${_currencyFmt.format(cashRefunds)}',
+                    : _outflow(cashRefunds),
                 isDark,
               ),
             if (localOnly)
@@ -558,7 +564,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                 'Supplier payments from till',
                 summaryUnavailable
                     ? 'Unavailable'
-                    : '-${_currencyFmt.format(cashPayouts)}',
+                    : _outflow(cashPayouts),
                 isDark,
               ),
             _summaryRow(
@@ -654,12 +660,12 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
               if (localOnly && asDouble(close['cashRefunds']) > 0)
                 _summaryRow(
                     'Cash refunds from till',
-                    '-${_currencyFmt.format(asDouble(close['cashRefunds']))}',
+                    _outflow(asDouble(close['cashRefunds'])),
                     isDark),
               if (localOnly)
                 _summaryRow(
                     'Supplier payments from till',
-                    '-${_currencyFmt.format(asDouble(close['cashPayouts']))}',
+                    _outflow(asDouble(close['cashPayouts'])),
                     isDark),
               if (localOnly)
                 _summaryRow(
@@ -835,6 +841,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     );
 
     bool? confirmed;
+    ModalRoute<dynamic>? sheetRoute;
     double? openingFloat;
     double? netCashMovement;
     double? countedCash;
@@ -844,8 +851,12 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
         useRootNavigator: true,
         context: context,
         isScrollControlled: true,
+        // Stop below the status bar instead of running under the clock.
+        useSafeArea: true,
         showDragHandle: true,
-        builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext) {
+          sheetRoute ??= ModalRoute.of(sheetContext);
+          return StatefulBuilder(
           builder: (ctx, setSheetState) {
             final opening = _parseCashCount(openingController.text);
             final movement = _parseSignedCash(movementController.text);
@@ -895,7 +906,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                               ?.copyWith(fontWeight: FontWeight.w800)),
                       const SizedBox(height: DesignSpacing.xs),
                       Text(
-                        'Business day $businessDate. Expected cash is opening float + cash sales + debt collections + cash received on voided sales − supplier payments − recorded cash refunds + other net cash movement.',
+                        "Business day $businessDate. Count the cash in the till and enter it below. Counterbase works out what should be there from your float and today's cash.",
                         style: TextStyle(
                           color: isDark
                               ? DesignColors.darkTextSecondary
@@ -912,7 +923,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                               BorderRadius.circular(DesignSpacing.radiusMd),
                         ),
                         child: Text(
-                          'Cash sales: ${_currencyFmt.format(cashSales)}. Debt collections: ${_currencyFmt.format(cashCollections)}. Cash received on voided sales: ${_currencyFmt.format(voidedCashReceived)}. Supplier payments: ${_currencyFmt.format(cashPayouts)}. Recorded cash refunds: ${_currencyFmt.format(cashRefunds)}. Use net movement for other cash added or removed and explain it in the notes.',
+                          'Cash sales ${_currencyFmt.format(cashSales)} · debts paid in cash ${_currencyFmt.format(cashCollections)} · cash kept from voided sales ${_currencyFmt.format(voidedCashReceived)} · paid to suppliers ${_currencyFmt.format(cashPayouts)} · cash refunds ${_currencyFmt.format(cashRefunds)}. Cash you put in or took out for anything else goes under net cash movement, with a note.',
                         ),
                       ),
                       const SizedBox(height: DesignSpacing.md),
@@ -1043,7 +1054,8 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
               ),
             );
           },
-        ),
+        );
+        },
       );
       if (confirmed == true) {
         openingFloat = _parseCashCount(openingController.text);
@@ -1053,10 +1065,12 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
         closeNotes = notes.isEmpty ? null : notes;
       }
     } finally {
-      openingController.dispose();
-      movementController.dispose();
-      countController.dispose();
-      notesController.dispose();
+      disposeAfterModalCloses([
+        openingController,
+        movementController,
+        countController,
+        notesController,
+      ], route: sheetRoute);
     }
 
     if (confirmed != true ||
@@ -1121,6 +1135,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     final notesController = TextEditingController();
 
     bool? confirmed;
+    ModalRoute<dynamic>? sheetRoute;
     double? countedCash;
     String? closeNotes;
     try {
@@ -1128,8 +1143,12 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
         useRootNavigator: true,
         context: context,
         isScrollControlled: true,
+        // Stop below the status bar instead of running under the clock.
+        useSafeArea: true,
         showDragHandle: true,
-        builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext) {
+          sheetRoute ??= ModalRoute.of(sheetContext);
+          return StatefulBuilder(
           builder: (ctx, setSheetState) {
             final isDark = Theme.of(ctx).brightness == Brightness.dark;
             final counted = _parseCashCount(countController.text);
@@ -1245,7 +1264,8 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
               ),
             );
           },
-        ),
+        );
+        },
       );
       if (confirmed == true) {
         countedCash = _parseCashCount(countController.text);
@@ -1253,8 +1273,8 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
         closeNotes = notes.isEmpty ? null : notes;
       }
     } finally {
-      countController.dispose();
-      notesController.dispose();
+      disposeAfterModalCloses([countController, notesController],
+          route: sheetRoute);
     }
 
     if (confirmed != true || !mounted || countedCash == null) return;

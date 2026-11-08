@@ -14,6 +14,7 @@ import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/core/widgets/motion.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
+import 'package:axon_pos/core/widgets/modal_disposal.dart';
 
 /// Lets the setup screen keep the person on it for the moment between the
 /// shop being created (which signs them in) and them opening it. Without it
@@ -314,7 +315,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
         ),
       );
     } finally {
-      searchController.dispose();
+      disposeAfterModalCloses([searchController]);
     }
     if (selectedId == null || !mounted || selectedId == _businessLayoutId) {
       return;
@@ -962,11 +963,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
         },
       ),
     );
-    // Let the sheet finish closing before its controllers go away.
-    Future.delayed(const Duration(milliseconds: 400), () {
-      nameController.dispose();
-      pinController.dispose();
-    });
+    disposeAfterModalCloses([nameController, pinController]);
     if (draft != null && mounted) setState(() => _team.add(draft));
   }
 

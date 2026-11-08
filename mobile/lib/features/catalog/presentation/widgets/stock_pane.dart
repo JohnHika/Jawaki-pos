@@ -152,8 +152,9 @@ class _StockPaneState extends State<StockPane> {
     final level = _levelOf(p);
     final qty = widget.quantities[p.id];
     final warn = p.minStock > 0 ? ' · warns below ${p.minStock}' : '';
+    // The chip already says "Not tracked"; the line says how to change that.
     final detail = level == StockLevel.notTracked
-        ? 'Not counted'
+        ? 'Edit it to start counting'
         : '${stockNumber(qty ?? 0)} left$warn';
     return InkWell(
       onTap: () => context.push('/products/${p.id}'),

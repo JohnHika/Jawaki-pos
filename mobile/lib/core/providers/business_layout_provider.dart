@@ -479,7 +479,7 @@ const businessLayoutActions = <BusinessLayoutAction>[
   BusinessLayoutAction(
       path: '/shop-alerts', label: 'Shop Alerts', icon: Icons.shield_rounded),
   BusinessLayoutAction(
-      path: '/stock-counts', label: 'Stock Counts', icon: Icons.fact_check),
+      path: '/stock-counts', label: 'Stock counts', icon: Icons.fact_check),
   BusinessLayoutAction(
       path: '/containers', label: 'Containers', icon: Icons.local_shipping),
   BusinessLayoutAction(

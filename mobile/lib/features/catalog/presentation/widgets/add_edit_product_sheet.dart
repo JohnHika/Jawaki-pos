@@ -666,7 +666,13 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           child: step(Icons.remove_rounded, 'One less', -1),
         ),
         prefixIconConstraints: const BoxConstraints(minWidth: 52),
-        suffix: step(Icons.add_rounded, 'One more', 1),
+        // An icon slot, not `suffix`: the field already has `suffixText` (the
+        // unit), and declaring both fails an assertion and blanks the form.
+        suffixIcon: Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: step(Icons.add_rounded, 'One more', 1),
+        ),
+        suffixIconConstraints: const BoxConstraints(minWidth: 52),
       ),
       validator: (v) => _validateNonNegativeNumber(v),
     );

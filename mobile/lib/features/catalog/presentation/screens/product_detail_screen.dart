@@ -16,6 +16,7 @@ import '../../../../core/services/storage_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/format.dart';
+import '../../../../core/utils/stock_quantity_display.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
@@ -580,7 +581,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                       color: soft,
                       letterSpacing: 1.1)),
               const Spacer(),
-              StockChip(level: level, quantity: qty),
+              StockChip(level: level, quantity: qty, onDark: true),
             ],
           ),
           const SizedBox(height: 8),
@@ -841,7 +842,7 @@ class _CorrectCountSheetState extends State<_CorrectCountSheet> {
                       color: palette.ink, fontSize: 18, fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
               Text(
-                'The count says ${stockNumber(widget.current)} $unit. Enter what you really see on the shelf. The change is kept in the history.',
+                'The count says ${stockNumber(widget.current)} ${pluralizeUnit(unit, widget.current)}. Enter what you really see on the shelf. The change is kept in the history.',
                 style: TextStyle(color: palette.soft, fontSize: 13.5, height: 1.4),
               ),
               const SizedBox(height: 16),

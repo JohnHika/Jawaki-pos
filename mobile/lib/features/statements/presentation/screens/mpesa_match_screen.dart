@@ -13,6 +13,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
 import '../../../sales/domain/recorded_payment.dart';
 import '../../domain/statement_match.dart';
+import '../../../../core/widgets/modal_disposal.dart';
 
 /// Checks the payments the shop recorded today against the owner's own M-Pesa
 /// or bank statement. Counterbase never reads texts: the owner pastes the
@@ -160,7 +161,7 @@ class _RecordedMatchViewState extends State<_RecordedMatchView> {
         );
       },
     );
-    controller.dispose();
+    disposeAfterModalCloses([controller]);
     if (note == null || !mounted) return;
     final by = getIt<AuthService>().currentUser?['name']?.toString() ?? '';
     setState(() {
