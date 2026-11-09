@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ForbiddenException,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
@@ -235,10 +234,35 @@ describe('DesktopLinkService', () => {
     expect((await service.status(start.linkId)).status).toBe('expired');
     await expect(
       service.preview(approver.userId, { code: start.code }, SHOP_WIFI),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    ).rejects.toThrow('No computer is waiting with that code');
+    await expect(
+      service.preview(approver.userId, { payload: start.qr }, SHOP_WIFI),
+    ).rejects.toThrow('This code has expired');
     await expect(
       service.decide(approver, { linkId: start.linkId }, SHOP_WIFI),
     ).rejects.toThrow('expired');
+  });
+
+  // A 404 on the phone's signed-in route reaches it as a 401 (dead session),
+  // so a request that is no longer waiting must answer with a plain message.
+  it('scanning again after approving says so, and is never a not-found', async () => {
+    const { service } = await build();
+    const start = await service.start({ claimChallenge: sha256(VERIFIER) }, SHOP_WIFI);
+    await service.decide(approver, { linkId: start.linkId }, SHOP_WIFI);
+
+    const again = service.preview(approver.userId, { payload: start.qr }, SHOP_WIFI);
+    await expect(again).rejects.toBeInstanceOf(BadRequestException);
+    await expect(again).rejects.toThrow('You approved this computer');
+
+    // Someone else typing the same code learns nothing about it.
+    await expect(
+      service.preview('someone-else', { code: start.code }, SHOP_WIFI),
+    ).rejects.toThrow('No computer is waiting with that code');
+
+    await service.claim({ linkId: start.linkId, verifier: VERIFIER });
+    await expect(
+      service.preview(approver.userId, { payload: start.qr }, SHOP_WIFI),
+    ).rejects.toThrow('already signed in');
   });
 
   it('rejects QR codes that are not a Counterbase sign-in', async () => {

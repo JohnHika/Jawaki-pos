@@ -161,7 +161,7 @@ export class DesktopLinkService {
     input: { payload?: string; code?: string },
     origin: RequestOrigin,
   ): Promise<DesktopLinkPreviewResponse> {
-    const row = await this.findPending(input);
+    const row = await this.findPending(userId, input);
     const sameNetwork = Boolean(origin.ip && row.ip && origin.ip === row.ip);
     const pinRequired = !sameNetwork && (await this.hasPin(userId));
     return {
@@ -288,7 +288,10 @@ export class DesktopLinkService {
 
   // ------------------------------------------------------------------
 
-  private async findPending(input: { payload?: string; code?: string }) {
+  private async findPending(
+    userId: string,
+    input: { payload?: string; code?: string },
+  ) {
     let where: { id: string } | { code: string };
     if (input.payload) {
       where = { id: parseQrPayload(input.payload) };
@@ -303,11 +306,39 @@ export class DesktopLinkService {
       where: { ...where, status: 'pending', expiresAt: { gt: new Date() } },
     });
     if (!row) {
-      throw new NotFoundException(
-        'No computer is waiting with that code. Check the computer screen or start again there.',
-      );
+      // Not NotFound: on this signed-in route TransformInterceptor turns a
+      // 404 into 401, and the phone takes that for an expired session.
+      throw new BadRequestException(await this.whyNotWaiting(userId, where));
     }
     return row;
+  }
+
+  /** Why a scanned or typed request can no longer be answered. */
+  private async whyNotWaiting(
+    userId: string,
+    where: { id: string } | { code: string },
+  ): Promise<string> {
+    const last = await this.prisma.desktopLinkChallenge.findFirst({
+      where,
+      orderBy: { createdAt: 'desc' },
+      select: { status: true, userId: true },
+    });
+    // Only the person who answered it hears how it was answered.
+    if (last?.userId === userId) {
+      if (last.status === 'approved') {
+        return 'You approved this computer. It opens by itself in a few seconds.';
+      }
+      if (last.status === 'claimed') {
+        return 'This computer is already signed in with your account.';
+      }
+      if (last.status === 'denied') {
+        return 'You refused this sign-in. Choose Show a new code on the computer to try again.';
+      }
+    }
+    if (last && 'id' in where) {
+      return 'This code has expired. Scan the new code on the computer.';
+    }
+    return 'No computer is waiting with that code. Check the computer screen or start again there.';
   }
 
   private async hasPin(userId: string): Promise<boolean> {

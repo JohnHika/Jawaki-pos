@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { SkipThrottle, Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { DesktopLinkService, originFromRequest } from './desktop-link.service';
 import {
@@ -20,9 +20,17 @@ import {
   StartDesktopLinkDto,
 } from './dto/desktop-link.dto';
 
-/** Signing in a computer by approving on a phone that is signed in. */
+/**
+ * Signing in a computer by approving on a phone that is signed in.
+ *
+ * ThrottlerGuard applies every limiter named in AppModule, and @Throttle
+ * below only sets `default`. Without the skip, the 5-a-minute `bug-report`
+ * limiter also caps these routes: the computer's third status poll was
+ * refused, so it never saw the phone's approval.
+ */
 @ApiTags('desktop-link')
 @Controller({ path: 'auth/desktop-link', version: '1' })
+@SkipThrottle({ 'bug-report': true })
 export class DesktopLinkController {
   constructor(private readonly desktopLinkService: DesktopLinkService) {}
 
@@ -36,10 +44,13 @@ export class DesktopLinkController {
     return this.desktopLinkService.start(dto, originFromRequest(req));
   }
 
-  /** Computer: poll while the QR is on screen. */
+  /**
+   * Computer: poll while the QR is on screen (every 2 seconds). Several
+   * computers in one shop share an address, and the id is unguessable.
+   */
   @Get('status')
   @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { ttl: 60_000, limit: 120 } })
+  @Throttle({ default: { ttl: 60_000, limit: 300 } })
   @ApiOperation({ summary: 'Poll a computer sign-in request' })
   status(@Query('linkId') linkId: string) {
     return this.desktopLinkService.status(linkId);
