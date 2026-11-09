@@ -6,494 +6,34 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import { createHash, randomBytes, randomInt } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { PermissionsService } from '../permissions/permissions.service';
+import { AuthService } from '../auth/auth.service';
+import { AuthResponseDto } from '../auth/dto/auth.dto';
 
-/** How long a pending desktop sign-in request stays redeemable. */
-const CHALLENGE_TTL_MS = 3 * 60 * 1000;
-/** Max wrong-secret claim tries before the challenge is burned. */
-const MAX_CLAIM_ATTEMPTS = 5;
+/**
+ * Signing in a computer by approving on a phone that is already signed in.
+ *
+ * Flow (see RFC 10027, cross-device session transfer):
+ * 1. The computer makes a random verifier, keeps it, and sends only its
+ *    SHA-256 (the claim challenge) to `start`. It shows the QR and the
+ *    6-digit code it gets back. Neither can finish the sign-in.
+ * 2. The phone scans the QR or types the code. `preview` tells it which
+ *    computer is asking, from where, and whether a PIN is required.
+ * 3. The phone approves (with the person's PIN when the two devices are not
+ *    on the same internet connection).
+ * 4. The computer polls `status`, then `claim`s with its verifier and gets
+ *    the same session a password sign-in would give that person.
+ */
+
+/** How long a request waits for the phone. */
+export const CHALLENGE_TTL_MS = 2 * 60 * 1000;
+/** Wrong verifiers or PINs before a request is burned. */
+const MAX_ATTEMPTS = 5;
 
 const TERMINAL_STATUSES = new Set(['denied', 'claimed', 'expired']);
-
-export interface DesktopLinkStartResponse {
-  linkId: string;
-  code: string;
-  /** String to encode into the QR image shown on the desktop screen. */
-  qr: string;
-  expiresAt: string;
-}
-
-export interface DesktopLinkStatusResponse {
-  status: 'pending' | 'approved' | 'denied' | 'claimed' | 'expired';
-  account?: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    role: string;
-  };
-  desktopName?: string | null;
-  expiresAt: string;
-}
-
-export interface DesktopLinkClaimResponse {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-  user: {
-    id: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-    role: string;
-    tenantId: string;
-    tenantSlug?: string | null;
-    branchId?: string;
-    branchName?: string;
-    hasPinSet: boolean;
-    permissions: string[];
-  };
-}
-
-export interface ScanApproveDto {
-  /** Full QR payload as scanned. */
-  payload: string;
-  /** approve (default) or deny the request. */
-  decision?: 'approve' | 'deny';
-  mode?: 'approval' | 'pin';
-  deviceName?: string;
-  pin?: string;
-}
-
-export interface CodeApproveDto {
-  code: string;
-  /** approve (default) or deny the request. */
-  decision?: 'approve' | 'deny';
-  mode?: 'approval' | 'pin';
-  deviceName?: string;
-  pin?: string;
-}
-
-@Injectable()
-export class DesktopLinkService {
-  private readonly logger = new Logger(DesktopLinkService.name);
-
-  constructor(
-    private prisma: PrismaService,
-    private jwtService: JwtService,
-    private config: { get(key: string, def?: string): string | undefined },
-    private notifications: NotificationsService,
-    private permissionsService: PermissionsService,
-  ) {}
-
-  /**
-   * Desktop calls this: creates the pending challenge whose QR + short code
-   * the desktop screen displays.
-   */
-  async start(desktopName?: string): Promise<DesktopLinkStartResponse> {
-    const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
-    const claimSecret = randomBytes(32).toString('base64url');
-    const id = randomBytes(16).toString('hex');
-    const expiresAt = new Date(Date.now() + CHALLENGE_TTL_MS);
-
-    await this.prisma.desktopLinkChallenge.create({
-      data: {
-        id,
-        code,
-        claimSecretHash: sha256(claimSecret),
-        mode: 'approval',
-        desktopName: desktopName?.slice(0, 80) || null,
-        expiresAt,
-      },
-    });
-
-    const qr = JSON.stringify({
-      v: 1,
-      id,
-      code,
-      s: claimSecret,
-      api: 'desktop-link',
-    });
-
-    return { linkId: id, code, qr, expiresAt: expiresAt.toISOString() };
-  }
-
-  /** Mobile scans the desktop QR and approves with the full payload. */
-  async scanApprove(
-    userId: string,
-    dto: ScanApproveDto,
-  ): Promise<DesktopLinkStatusResponse> {
-    const parsed = parseQrPayload(dto.payload);
-    return this.approve(userId, parsed.id, parsed.code, dto);
-  }
-
-  /** Mobile taps the push notification and approves by short code. */
-  async codeApprove(
-    userId: string,
-    dto: CodeApproveDto,
-  ): Promise<DesktopLinkStatusResponse> {
-    const code = (dto.code ?? '').trim();
-    if (!/^\d{6}$/.test(code)) {
-      throw new BadRequestException('Enter the 6-digit code from the desktop');
-    }
-    return this.approve(userId, null, code, dto);
-  }
-
-  /** Desktop polls while its QR screen is up. */
-  async status(linkId: string): Promise<DesktopLinkStatusResponse> {
-    const row = await this.prisma.desktopLinkChallenge.findUnique({
-      where: { id: linkId },
-      select: {
-        status: true,
-        desktopName: true,
-        expiresAt: true,
-        user: {
-          select: { firstName: true, lastName: true, email: true, role: true },
-        },
-      },
-    });
-    if (!row) throw new NotFoundException('Sign-in request not found');
-    const expired =
-      row.status === 'pending' && row.expiresAt.getTime() <= Date.now();
-    return {
-      status: expired ? 'expired' : castStatus(row.status),
-      account: row.user
-        ? {
-            firstName: row.user.firstName,
-            lastName: row.user.lastName,
-            email: row.user.email,
-            role: row.user.role,
-          }
-        : undefined,
-      desktopName: row.desktopName,
-      expiresAt: row.expiresAt.toISOString(),
-    };
-  }
-
-  /**
-   * Desktop redeems the approval for tokens by presenting the claim secret
-   * that only the original QR payload held.
-   */
-  async claim(
-    linkId: string,
-    claimSecret: string,
-  ): Promise<DesktopLinkClaimResponse> {
-    if (!claimSecret) throw new UnauthorizedException('Missing claim secret');
-    const row = await this.prisma.desktopLinkChallenge.findUnique({
-      where: { id: linkId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            role: true,
-            tenantId: true,
-            pin: true,
-            isActive: true,
-            tenant: { select: { slug: true } },
-            branches: { select: { branchId: true, isPrimary: true } },
-          },
-        },
-      },
-    });
-    if (!row) throw new NotFoundException('Sign-in request not found');
-    if (row.attempts >= MAX_CLAIM_ATTEMPTS) {
-      throw new ForbiddenException('Too many attempts — start a new sign-in');
-    }
-    if (!timingSafeEqualText(row.claimSecretHash, sha256(claimSecret))) {
-      await this.prisma.desktopLinkChallenge.update({
-        where: { id: row.id },
-        data: { attempts: { increment: 1 } },
-      });
-      throw new UnauthorizedException('Invalid claim secret');
-    }
-    if (row.status === 'claimed') {
-      throw new BadRequestException('This sign-in was already used');
-    }
-    if (row.status !== 'approved') {
-      throw new BadRequestException(
-        row.status === 'pending' && row.expiresAt.getTime() <= Date.now()
-          ? 'Request expired — start a new sign-in'
-          : `Sign-in was ${row.status}`,
-      );
-    }
-    if (row.expiresAt.getTime() <= Date.now()) {
-      throw new BadRequestException('Request expired — start a new sign-in');
-    }
-
-    const user = row.user;
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException('Account is disabled');
-    }
-
-    const tokens = await this.issueTokens(user, row.mode, row.desktopName);
-    try {
-      tokens.user.permissions =
-        await this.permissionsService.getEffectivePermissions(user.id);
-    } catch (error) {
-      this.logger.warn(
-        `Failed to resolve permissions for desktop link claim (user ${user.id}): ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-
-    // One challenge, one session: flip to claimed atomically so two claims
-    // in flight cannot both mint a session.
-    const claimResult = await this.prisma.desktopLinkChallenge.updateMany({
-      where: { id: row.id, status: 'approved' },
-      data: { status: 'claimed', claimedAt: new Date() },
-    });
-    if (claimResult.count === 0) {
-      throw new BadRequestException('This sign-in was already used');
-    }
-
-    this.pushToUser(user.id, {
-      title: 'New desktop sign-in',
-      body: `Counterbase was signed in on ${row.desktopName || 'a computer'}.`,
-      data: { type: 'desktop_link_claimed', linkId: row.id },
-    });
-
-    return tokens;
-  }
-
-  // ------------------------------------------------------------------
-
-  private async approve(
-    userId: string,
-    linkId: string | null,
-    code: string,
-    dto: {
-      decision?: 'approve' | 'deny';
-      mode?: 'approval' | 'pin';
-      deviceName?: string;
-      pin?: string;
-    },
-  ): Promise<DesktopLinkStatusResponse> {
-    const decision = dto.decision ?? 'approve';
-    const mode = decision === 'deny' ? 'approval' : (dto.mode ?? 'approval');
-
-    const row = await this.prisma.desktopLinkChallenge.findFirst({
-      where: linkId
-        ? { id: linkId }
-        : { code, status: 'pending', expiresAt: { gt: new Date() } },
-      include: {
-        user: { select: { id: true, pin: true } },
-      },
-    });
-    if (!row) {
-      throw new NotFoundException(
-        'No waiting sign-in request matches that code — check the desktop screen',
-      );
-    }
-    if (TERMINAL_STATUSES.has(row.status)) {
-      throw new BadRequestException(`This sign-in was already ${row.status}`);
-    }
-    if (row.expiresAt.getTime() <= Date.now()) {
-      await this.expire(row.id);
-      throw new BadRequestException('This sign-in request has expired');
-    }
-
-    if (decision === 'approve' && mode === 'pin') {
-      const err = await this.verifyPin(userId, dto.pin, row.id);
-      if (err) throw err;
-    }
-
-    const updated = await this.prisma.desktopLinkChallenge.update({
-      where: { id: row.id },
-      data: {
-        status: decision === 'deny' ? 'denied' : 'approved',
-        mode,
-        userId,
-        desktopName: dto.deviceName?.slice(0, 80) ?? row.desktopName,
-        approvedAt: new Date(),
-      },
-      include: {
-        user: {
-          select: { firstName: true, lastName: true, email: true, role: true },
-        },
-      },
-    });
-
-    if (decision === 'deny') {
-      this.pushToUser(userId, {
-        title: 'Desktop sign-in denied',
-        body: 'You blocked the desktop sign-in request.',
-        data: { type: 'desktop_link_denied', linkId: row.id },
-      });
-    }
-
-    return {
-      status: castStatus(updated.status),
-      account: updated.user
-        ? {
-            firstName: updated.user.firstName,
-            lastName: updated.user.lastName,
-            email: updated.user.email,
-            role: updated.user.role,
-          }
-        : undefined,
-      desktopName: updated.desktopName,
-      expiresAt: updated.expiresAt.toISOString(),
-    };
-  }
-
-  private async verifyPin(
-    userId: string,
-    pin: string | undefined,
-    linkId: string,
-  ): Promise<UnauthorizedException | null> {
-    if (!pin || !/^\d{4,8}$/.test(pin)) {
-      throw new BadRequestException('Enter your 4–8 digit PIN to approve');
-    }
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { pin: true, isActive: true },
-    });
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException('Account is disabled');
-    }
-    if (!user.pin) {
-      throw new BadRequestException(
-        'No PIN is set for this account — use approval mode or set a PIN first',
-      );
-    }
-    if (!(await bcrypt.compare(pin, user.pin))) {
-      // Reuse the attempts counter as an abuse brake for wrong PINs.
-      const row = await this.prisma.desktopLinkChallenge.update({
-        where: { id: linkId },
-        data: { attempts: { increment: 1 } },
-        select: { attempts: true },
-      });
-      if (row.attempts >= MAX_CLAIM_ATTEMPTS) {
-        await this.expire(linkId);
-        throw new UnauthorizedException(
-          'Too many wrong PIN attempts — start a new sign-in',
-        );
-      }
-      throw new UnauthorizedException('Incorrect PIN');
-    }
-    return null;
-  }
-
-  /**
-   * Mints the desktop's access/refresh tokens the same way password login
-   * does (same JWT shape, same RefreshToken row) so downstream middleware,
-   * guards and sync code can't tell the session apart.
-   */
-  private async issueTokens(
-    user: {
-      id: string;
-      email: string;
-      firstName: string;
-      lastName: string;
-      role: string;
-      tenantId: string;
-      tenant: { slug: string | null } | null;
-      branches: { branchId: string; isPrimary: boolean }[];
-    },
-    mode: string,
-    deviceName: string | null,
-  ): Promise<DesktopLinkClaimResponse> {
-    const branchId = user.branches.find((b) => b.isPrimary)?.branchId;
-
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      tenantId: user.tenantId,
-      branchId,
-      deviceId: deviceName ?? undefined,
-    };
-    const accessToken = this.jwtService.sign(payload);
-    const refreshToken = randomBytes(32).toString('base64url');
-    const refreshHash = sha256(refreshToken);
-
-    const expiresIn = parseExpiry(
-      this.config.get('JWT_EXPIRES_IN') ?? '15m',
-    );
-    const refreshExpiresIn = parseExpiry(
-      this.config.get('JWT_REFRESH_EXPIRES_IN') ?? '7d',
-    );
-
-    await this.prisma.refreshToken.create({
-      data: {
-        userId: user.id,
-        tokenHash: refreshHash,
-        deviceId: deviceName ?? undefined,
-        expiresAt: new Date(Date.now() + refreshExpiresIn * 1000),
-      },
-    });
-
-    return {
-      accessToken,
-      refreshToken,
-      expiresIn,
-      user: {
-        id: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        tenantId: user.tenantId,
-        tenantSlug: user.tenant?.slug ?? undefined,
-        branchId: branchId ?? undefined,
-        hasPinSet: false,
-        permissions: [],
-      },
-    };
-  }
-
-  private async expire(linkId: string) {
-    await this.prisma.desktopLinkChallenge
-      .update({
-        where: { id: linkId },
-        data: { status: 'expired' },
-      })
-      .catch(() => undefined);
-  }
-
-  private pushToUser(
-    userId: string,
-    payload: { title: string; body: string; data?: Record<string, string> },
-  ) {
-    this.notifications
-      .sendToUser(userId, payload)
-      .catch((e) => this.logger.warn(`desktop-link push failed: ${e}`));
-  }
-}
-
-function sha256(text: string): string {
-  return createHash('sha256').update(text).digest('hex');
-}
-
-/** Length-independent, early-exit-free comparison for hex digests. */
-function timingSafeEqualText(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-function parseQrPayload(raw: string): { id: string; code: string } {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new BadRequestException('Not a Counterbase desktop QR code');
-  }
-  const obj = parsed as { v?: number; id?: string; code?: string };
-  if (obj?.v !== 1 || typeof obj.id !== 'string' || typeof obj.code !== 'string') {
-    throw new BadRequestException('Not a Counterbase desktop QR code');
-  }
-  return { id: obj.id, code: obj.code };
-}
 
 const ALL_STATUSES = [
   'pending',
@@ -505,19 +45,376 @@ const ALL_STATUSES = [
 
 type LinkStatus = (typeof ALL_STATUSES)[number];
 
-function castStatus(status: string): LinkStatus {
-  return ALL_STATUSES.find((s) => s === status) ?? 'expired';
+/** Where a request came from, read from the proxy headers. */
+export interface RequestOrigin {
+  ip?: string;
+  city?: string;
+  country?: string;
 }
 
-function parseExpiry(value: string): number {
-  const match = /^(\d+)([smhd])$/.exec(value.trim());
-  if (!match) return 15 * 60;
-  const amount = Number(match[1]);
-  const unitSeconds: Record<string, number> = {
-    s: 1,
-    m: 60,
-    h: 3600,
-    d: 86400,
+export interface DesktopLinkStartResponse {
+  linkId: string;
+  code: string;
+  /** Text for the QR image on the computer. Holds no secret. */
+  qr: string;
+  expiresAt: string;
+}
+
+export interface DesktopLinkStatusResponse {
+  status: LinkStatus;
+  /** First name of the person who approved, once approved. */
+  approvedBy?: string;
+  expiresAt: string;
+}
+
+export interface DesktopLinkPreviewResponse {
+  linkId: string;
+  desktopName: string;
+  platform: string | null;
+  /** City and country the computer's request came from, if known. */
+  place: string | null;
+  /** The phone and the computer reach us from the same address. */
+  sameNetwork: boolean;
+  /** Approving needs the person's PIN. */
+  pinRequired: boolean;
+  expiresAt: string;
+}
+
+@Injectable()
+export class DesktopLinkService {
+  private readonly logger = new Logger(DesktopLinkService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private authService: AuthService,
+    private notifications: NotificationsService,
+  ) {}
+
+  /** Computer: open a request and get the QR and code to show. */
+  async start(
+    input: { desktopName?: string; platform?: string; claimChallenge?: string },
+    origin: RequestOrigin,
+  ): Promise<DesktopLinkStartResponse> {
+    const challenge = (input.claimChallenge ?? '').trim().toLowerCase();
+    if (!/^[a-f0-9]{64}$/.test(challenge)) {
+      throw new BadRequestException('Update Counterbase on this computer and try again');
+    }
+    const id = randomBytes(16).toString('hex');
+    const expiresAt = new Date(Date.now() + CHALLENGE_TTL_MS);
+
+    // Codes are unique among live requests; retry on the rare clash.
+    let code = '';
+    for (let tries = 0; tries < 5; tries++) {
+      code = randomInt(0, 1_000_000).toString().padStart(6, '0');
+      const clash = await this.prisma.desktopLinkChallenge.findFirst({
+        where: { code, status: 'pending', expiresAt: { gt: new Date() } },
+        select: { id: true },
+      });
+      if (!clash) break;
+    }
+
+    await this.prisma.desktopLinkChallenge.create({
+      data: {
+        id,
+        code,
+        claimSecretHash: challenge,
+        mode: 'approval',
+        desktopName: cleanLabel(input.desktopName) ?? 'A computer',
+        platform: cleanLabel(input.platform, 20),
+        ip: origin.ip?.slice(0, 64) ?? null,
+        place: placeLabel(origin),
+        expiresAt,
+      },
+    });
+
+    const qr = JSON.stringify({ v: 2, app: 'counterbase', id, code });
+    return { linkId: id, code, qr, expiresAt: expiresAt.toISOString() };
+  }
+
+  /** Computer: poll while the QR is on screen. */
+  async status(linkId: string): Promise<DesktopLinkStatusResponse> {
+    const row = await this.prisma.desktopLinkChallenge.findUnique({
+      where: { id: linkId ?? '' },
+      select: {
+        status: true,
+        expiresAt: true,
+        user: { select: { firstName: true } },
+      },
+    });
+    if (!row) throw new NotFoundException('Sign-in request not found');
+    const expired =
+      row.status === 'pending' && row.expiresAt.getTime() <= Date.now();
+    const status = expired ? 'expired' : castStatus(row.status);
+    return {
+      status,
+      approvedBy:
+        status === 'approved' || status === 'claimed'
+          ? row.user?.firstName ?? undefined
+          : undefined,
+      expiresAt: row.expiresAt.toISOString(),
+    };
+  }
+
+  /** Phone: what is asking, before the person decides. */
+  async preview(
+    userId: string,
+    input: { payload?: string; code?: string },
+    origin: RequestOrigin,
+  ): Promise<DesktopLinkPreviewResponse> {
+    const row = await this.findPending(input);
+    const sameNetwork = Boolean(origin.ip && row.ip && origin.ip === row.ip);
+    const pinRequired = !sameNetwork && (await this.hasPin(userId));
+    return {
+      linkId: row.id,
+      desktopName: row.desktopName ?? 'A computer',
+      platform: row.platform,
+      place: row.place,
+      sameNetwork,
+      pinRequired,
+      expiresAt: row.expiresAt.toISOString(),
+    };
+  }
+
+  /** Phone: approve or refuse. The computer gets this person's own account. */
+  async decide(
+    approver: { userId: string; branchId?: string },
+    input: { linkId: string; decision?: 'approve' | 'deny'; pin?: string },
+    origin: RequestOrigin,
+  ): Promise<DesktopLinkStatusResponse> {
+    const decision = input.decision ?? 'approve';
+    const row = await this.prisma.desktopLinkChallenge.findUnique({
+      where: { id: input.linkId ?? '' },
+    });
+    if (!row) throw new NotFoundException('Sign-in request not found');
+    if (TERMINAL_STATUSES.has(row.status) || row.status !== 'pending') {
+      throw new BadRequestException('This sign-in was already answered');
+    }
+    if (row.expiresAt.getTime() <= Date.now()) {
+      await this.expire(row.id);
+      throw new BadRequestException(
+        'This request has expired. Start again on the computer.',
+      );
+    }
+
+    if (decision === 'approve') {
+      const sameNetwork = Boolean(origin.ip && row.ip && origin.ip === row.ip);
+      if (!sameNetwork && (await this.hasPin(approver.userId))) {
+        await this.checkPin(approver.userId, input.pin, row.id);
+      }
+    }
+
+    // Only a still-pending request can be answered, once.
+    const answered = await this.prisma.desktopLinkChallenge.updateMany({
+      where: { id: row.id, status: 'pending' },
+      data: {
+        status: decision === 'deny' ? 'denied' : 'approved',
+        userId: approver.userId,
+        branchId: approver.branchId ?? null,
+        approverIp: origin.ip?.slice(0, 64) ?? null,
+        approvedAt: new Date(),
+      },
+    });
+    if (answered.count === 0) {
+      throw new BadRequestException('This sign-in was already answered');
+    }
+    return this.status(row.id);
+  }
+
+  /**
+   * Computer: trade the approved request for a session by proving it holds
+   * the verifier whose hash it sent to `start`.
+   */
+  async claim(input: {
+    linkId: string;
+    verifier: string;
+    deviceId?: string;
+  }): Promise<AuthResponseDto> {
+    const verifier = (input.verifier ?? '').trim();
+    if (verifier.length < 32) {
+      throw new UnauthorizedException('Missing sign-in proof');
+    }
+    const row = await this.prisma.desktopLinkChallenge.findUnique({
+      where: { id: input.linkId ?? '' },
+    });
+    if (!row) throw new NotFoundException('Sign-in request not found');
+    if (row.attempts >= MAX_ATTEMPTS) {
+      throw new ForbiddenException('Too many attempts. Start a new sign-in.');
+    }
+    if (!timingSafeEqualText(row.claimSecretHash, sha256(verifier))) {
+      await this.prisma.desktopLinkChallenge.update({
+        where: { id: row.id },
+        data: { attempts: { increment: 1 } },
+      });
+      throw new UnauthorizedException('This computer did not start that sign-in');
+    }
+    if (row.status === 'claimed') {
+      throw new BadRequestException('This sign-in was already used');
+    }
+    if (row.status !== 'approved' || !row.userId) {
+      throw new BadRequestException(
+        row.status === 'denied'
+          ? 'The sign-in was refused on the phone'
+          : 'The phone has not approved this sign-in yet',
+      );
+    }
+    if (row.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException('The sign-in expired. Start again.');
+    }
+
+    // One request, one session.
+    const claimed = await this.prisma.desktopLinkChallenge.updateMany({
+      where: { id: row.id, status: 'approved' },
+      data: { status: 'claimed', claimedAt: new Date() },
+    });
+    if (claimed.count === 0) {
+      throw new BadRequestException('This sign-in was already used');
+    }
+
+    const session = await this.authService.issueLinkedSession(row.userId, {
+      branchId: row.branchId ?? undefined,
+      deviceId: input.deviceId?.slice(0, 120) || undefined,
+    });
+
+    this.notifications
+      .sendToUser(row.userId, {
+        title: 'Computer signed in',
+        body: `Counterbase is now signed in on ${row.desktopName ?? 'a computer'} with your account.`,
+        data: { type: 'desktop_link_claimed', linkId: row.id },
+      })
+      .catch((e) => this.logger.warn(`desktop-link notice failed: ${e}`));
+
+    return session;
+  }
+
+  // ------------------------------------------------------------------
+
+  private async findPending(input: { payload?: string; code?: string }) {
+    let where: { id: string } | { code: string };
+    if (input.payload) {
+      where = { id: parseQrPayload(input.payload) };
+    } else {
+      const code = (input.code ?? '').replace(/\s+/g, '');
+      if (!/^\d{6}$/.test(code)) {
+        throw new BadRequestException('Enter the 6-digit code from the computer');
+      }
+      where = { code };
+    }
+    const row = await this.prisma.desktopLinkChallenge.findFirst({
+      where: { ...where, status: 'pending', expiresAt: { gt: new Date() } },
+    });
+    if (!row) {
+      throw new NotFoundException(
+        'No computer is waiting with that code. Check the computer screen or start again there.',
+      );
+    }
+    return row;
+  }
+
+  private async hasPin(userId: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { pin: true },
+    });
+    return Boolean(user?.pin);
+  }
+
+  private async checkPin(userId: string, pin: string | undefined, linkId: string) {
+    if (!pin || !/^\d{4,8}$/.test(pin)) {
+      throw new BadRequestException(
+        'This computer is on a different connection. Enter your PIN to approve.',
+      );
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { pin: true, isActive: true },
+    });
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Account is disabled');
+    }
+    if (user.pin && (await bcrypt.compare(pin, user.pin))) return;
+
+    const row = await this.prisma.desktopLinkChallenge.update({
+      where: { id: linkId },
+      data: { attempts: { increment: 1 } },
+      select: { attempts: true },
+    });
+    if (row.attempts >= MAX_ATTEMPTS) {
+      await this.expire(linkId);
+      throw new UnauthorizedException(
+        'Too many wrong PINs. Start a new sign-in on the computer.',
+      );
+    }
+    throw new UnauthorizedException('Wrong PIN');
+  }
+
+  private async expire(linkId: string) {
+    await this.prisma.desktopLinkChallenge
+      .updateMany({
+        where: { id: linkId, status: 'pending' },
+        data: { status: 'expired' },
+      })
+      .catch(() => undefined);
+  }
+}
+
+/** Reads the caller's address and Vercel's location headers. */
+export function originFromRequest(req: any): RequestOrigin {
+  const header = (name: string): string | undefined => {
+    const value = req?.headers?.[name];
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
   };
-  return amount * unitSeconds[match[2]];
+  const forwarded = header('x-forwarded-for')?.split(',')[0]?.trim();
+  const decode = (value?: string) => {
+    if (!value) return undefined;
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  };
+  return {
+    ip: forwarded || req?.ip || req?.socket?.remoteAddress || undefined,
+    city: decode(header('x-vercel-ip-city')),
+    country: header('x-vercel-ip-country'),
+  };
+}
+
+function placeLabel(origin: RequestOrigin): string | null {
+  const parts = [origin.city, origin.country].filter(Boolean);
+  return parts.length ? parts.join(', ').slice(0, 80) : null;
+}
+
+function cleanLabel(value: string | undefined, max = 60): string | null {
+  const text = (value ?? '').replace(/[\u0000-\u001f]/g, '').trim();
+  return text ? text.slice(0, max) : null;
+}
+
+function sha256(text: string): string {
+  return createHash('sha256').update(text).digest('hex');
+}
+
+/** Comparison that does not stop at the first different character. */
+function timingSafeEqualText(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+function parseQrPayload(raw: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new BadRequestException('That is not a Counterbase sign-in code');
+  }
+  const obj = parsed as { v?: number; app?: string; id?: string };
+  if (obj?.v !== 2 || obj.app !== 'counterbase' || typeof obj.id !== 'string') {
+    throw new BadRequestException('That is not a Counterbase sign-in code');
+  }
+  return obj.id;
+}
+
+function castStatus(status: string): LinkStatus {
+  return ALL_STATUSES.find((s) => s === status) ?? 'expired';
 }

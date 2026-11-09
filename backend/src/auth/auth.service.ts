@@ -135,6 +135,52 @@ export class AuthService {
     return this.generateTokens(user, branchId, loginDto.deviceId);
   }
 
+  /**
+   * Session for a computer that a signed-in phone approved (desktop link).
+   * The person proved who they are on the phone, so no password is checked
+   * here; the session is otherwise the same as a password sign-in.
+   */
+  async issueLinkedSession(
+    userId: string,
+    options: { branchId?: string; deviceId?: string } = {},
+  ): Promise<AuthResponseDto> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        tenant: true,
+        branches: {
+          include: {
+            branch: true,
+          },
+        },
+      },
+    });
+    if (!user || !user.isActive || !user.tenant?.isActive) {
+      throw new UnauthorizedException('Account is disabled');
+    }
+    // The phone's branch, unless the person was since moved off it.
+    const stillAssigned = user.branches.some(
+      (ub: any) => ub.branchId === options.branchId,
+    );
+    const branchId = this.resolveLoginBranchId(
+      user,
+      stillAssigned ? options.branchId : undefined,
+    );
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+    await this.auditService.record({
+      userId: user.id,
+      action: 'LOGIN',
+      entityType: 'session',
+      newValues: { method: 'desktop-link' },
+    });
+
+    return this.generateTokens(user, branchId, options.deviceId);
+  }
+
   async loginWithGoogle(dto: GoogleLoginDto): Promise<AuthResponseDto> {
     // Keep the existing login contract: server-verified Google identity must
     // match an existing active user in the requested active tenant.

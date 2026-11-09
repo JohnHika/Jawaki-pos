@@ -1,242 +1,266 @@
 import {
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
-import { JwtService } from '@nestjs/jwt';
-import { DesktopLinkService } from './desktop-link.service';
+import { createHash } from 'crypto';
+import {
+  CHALLENGE_TTL_MS,
+  DesktopLinkService,
+  originFromRequest,
+} from './desktop-link.service';
+
+const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
 
 /**
- * Unit tests for the desktop sign-in (QR / approval) challenge service.
- * An in-memory store stands in for Prisma so no database is needed.
+ * Computer sign-in approved on a phone. An in-memory store stands in for
+ * Prisma so no database is needed.
  */
 describe('DesktopLinkService', () => {
-  const buildService = () => {
+  const VERIFIER = 'v'.repeat(20) + '-computer-only-verifier-0123456789';
+  const SHOP_WIFI = { ip: '41.90.10.20', city: 'Nairobi', country: 'KE' };
+  const MOBILE_DATA = { ip: '105.160.1.2' };
+
+  const build = async (opts: { pin?: string } = {}) => {
     const store = new Map<string, any>();
+    const pinHash = opts.pin ? await bcrypt.hash(opts.pin, 4) : null;
+
+    const matches = (row: any, where: any): boolean =>
+      Object.entries(where).every(([key, cond]: [string, any]) => {
+        if (cond && typeof cond === 'object' && 'gt' in cond) {
+          return row[key] > cond.gt;
+        }
+        return row[key] === cond;
+      });
 
     const prisma: any = {
       desktopLinkChallenge: {
         create: jest.fn(async ({ data }: any) => {
           const row = {
-            id: data.id,
-            code: data.code,
-            claimSecretHash: data.claimSecretHash,
             status: 'pending',
-            mode: data.mode,
-            desktopName: data.desktopName,
             userId: null,
             branchId: null,
-            accessTokenHash: null,
-            refreshTokenHash: null,
+            approverIp: null,
             attempts: 0,
-            expiresAt: data.expiresAt,
             approvedAt: null,
             claimedAt: null,
             createdAt: new Date(),
-            user: null,
+            ...data,
           };
           store.set(data.id, row);
           return row;
         }),
-        findUnique: jest.fn(async ({ where }: any) => store.get(where.id) ?? null),
+        findUnique: jest.fn(async ({ where, select }: any) => {
+          const row = store.get(where.id);
+          if (!row) return null;
+          if (select?.user) {
+            return { ...row, user: row.userId ? { firstName: 'Ada' } : null };
+          }
+          return row;
+        }),
         findFirst: jest.fn(async ({ where }: any) => {
-          if (where.id) return store.get(where.id) ?? null;
           for (const row of store.values()) {
-            const statusOk = where.status ? row.status === where.status : true;
-            const expiryOk = where.expiresAt?.gt
-              ? row.expiresAt > where.expiresAt.gt
-              : true;
-            if (row.code === where.code && statusOk && expiryOk) return row;
+            if (matches(row, where)) return row;
           }
           return null;
         }),
-        update: jest.fn(async ({ where, data: patch }: any) => {
+        update: jest.fn(async ({ where, data }: any) => {
           const row = store.get(where.id);
-          if (!row) throw new Error('row missing');
-          const applied = { ...patch };
-          if (applied.attempts && typeof applied.attempts === 'object') {
-            row.attempts = (row.attempts ?? 0) + (applied.attempts.increment ?? 1);
-            delete applied.attempts;
-          }
-          Object.assign(row, applied);
-          // Emulate Prisma's relation include: populate the approver.
-          if (row.userId) {
-            row.user = {
-              id: row.userId,
-              email: 'owner@shop.com',
-              firstName: 'Ada',
-              lastName: 'Obi',
-              role: 'ADMIN',
-              tenantId: 'tenant-1',
-              pin: await bcrypt.hash('4321', 4),
-              isActive: true,
-              tenant: { slug: 'ada-shop' },
-              branches: [{ branchId: 'branch-1', isPrimary: true }],
-            };
+          if (data.attempts?.increment) {
+            row.attempts += data.attempts.increment;
           }
           return row;
         }),
         updateMany: jest.fn(async ({ where, data }: any) => {
-          const row = store.get(where.id);
-          if (!row || row.status !== where.status) return { count: 0 };
-          Object.assign(row, data);
-          return { count: 1 };
+          let count = 0;
+          for (const row of store.values()) {
+            if (matches(row, where)) {
+              Object.assign(row, data);
+              count++;
+            }
+          }
+          return { count };
         }),
       },
       user: {
-        findUnique: jest.fn(async ({ where }: any) => ({
-          id: where.id,
-          pin: await bcrypt.hash('4321', 4),
-          isActive: true,
-        })),
-      },
-      refreshToken: {
-        create: jest.fn(async ({ data }: any) => data),
+        findUnique: jest.fn(async () => ({ pin: pinHash, isActive: true })),
       },
     };
 
-    const jwtService = {
-      sign: jest.fn().mockReturnValue('access.jwt'),
-    } as unknown as JwtService;
-    const config = { get: jest.fn((_key: string, def?: string) => def) };
-    const notifications = { sendToUser: jest.fn().mockResolvedValue(undefined) };
-    const permissionsService = {
-      getEffectivePermissions: jest.fn().mockResolvedValue(['sales.view']),
+    const authService: any = {
+      issueLinkedSession: jest.fn(async (userId: string, options: any) => ({
+        accessToken: 'access',
+        refreshToken: 'refresh',
+        expiresIn: 900,
+        user: { id: userId, branchId: options.branchId },
+      })),
+    };
+    const notifications: any = {
+      sendToUser: jest.fn(async () => undefined),
     };
 
-    const service = new DesktopLinkService(
-      prisma,
-      jwtService,
-      config as any,
-      notifications as any,
-      permissionsService as any,
-    );
-    return { service, prisma, store, notifications };
+    const service = new DesktopLinkService(prisma, authService, notifications);
+    return { service, store, authService, notifications };
   };
 
-  it('start returns a 6-digit code and a QR payload holding the claim secret', async () => {
-    const { service } = buildService();
-    const s = await service.start('Shop PC');
-    expect(s.code).toMatch(/^\d{6}$/);
-    const parsed = JSON.parse(s.qr);
-    expect(parsed).toMatchObject({ v: 1, id: s.linkId, code: s.code });
-    expect(typeof parsed.s).toBe('string');
+  const approver = { userId: 'owner-1', branchId: 'branch-main' };
+
+  it('keeps the secret on the computer: the QR only names the request', async () => {
+    const { service } = await build();
+    const start = await service.start(
+      { desktopName: 'FRONT-DESK', platform: 'windows', claimChallenge: sha256(VERIFIER) },
+      SHOP_WIFI,
+    );
+
+    const qr = JSON.parse(start.qr);
+    expect(qr).toEqual({ v: 2, app: 'counterbase', id: start.linkId, code: start.code });
+    expect(start.qr).not.toContain(VERIFIER);
+    expect(start.code).toMatch(/^\d{6}$/);
+    expect(new Date(start.expiresAt).getTime() - Date.now()).toBeLessThanOrEqual(
+      CHALLENGE_TTL_MS,
+    );
   });
 
-  it('scanApprove then claim returns tokens and marks the challenge claimed', async () => {
-    const { service, prisma } = buildService();
-    const s = await service.start('Shop PC');
-
-    await service.scanApprove('user-1', {
-      payload: s.qr,
-      mode: 'approval',
-      deviceName: 'Pixel 8',
-    });
-
-    const status = await service.status(s.linkId);
-    expect(status.status).toBe('approved');
-
-    const secret = JSON.parse(s.qr).s;
-    const claimed = await service.claim(s.linkId, secret);
-    expect(claimed.accessToken).toBe('access.jwt');
-    expect(claimed.refreshToken).toBeTruthy();
-    expect(claimed.user.tenantId).toBe('tenant-1');
-    expect(claimed.user.permissions).toEqual(['sales.view']);
-    expect(prisma.refreshToken.create).toHaveBeenCalledTimes(1);
-
-    // One challenge, one session: re-claiming must fail.
-    await expect(service.claim(s.linkId, secret)).rejects.toBeInstanceOf(
+  it('refuses to start without a claim challenge', async () => {
+    const { service } = await build();
+    await expect(service.start({ desktopName: 'PC' }, SHOP_WIFI)).rejects.toBeInstanceOf(
       BadRequestException,
     );
-    expect((await service.status(s.linkId)).status).toBe('claimed');
   });
 
-  it('claim with the wrong secret is rejected and burns an attempt', async () => {
-    const { service, store } = buildService();
-    const s = await service.start('Shop PC');
-    await service.scanApprove('user-1', { payload: s.qr, mode: 'approval' });
-
-    await expect(service.claim(s.linkId, 'wrong-secret')).rejects.toBeInstanceOf(
-      UnauthorizedException,
+  it('on the same connection: scan, approve, and the computer gets the approver session', async () => {
+    const { service, authService, notifications } = await build({ pin: '2468' });
+    const start = await service.start(
+      { desktopName: 'FRONT-DESK', platform: 'windows', claimChallenge: sha256(VERIFIER) },
+      SHOP_WIFI,
     );
-    expect(store.get(s.linkId).attempts).toBe(1);
-    // The challenge is still redeemable with the true secret.
-    await expect(
-      service.claim(s.linkId, JSON.parse(s.qr).s),
-    ).resolves.toBeTruthy();
-  });
 
-  it('claim before approval fails with a clear error', async () => {
-    const { service } = buildService();
-    const s = await service.start('Shop PC');
+    const preview = await service.preview(approver.userId, { payload: start.qr }, SHOP_WIFI);
+    expect(preview).toMatchObject({
+      linkId: start.linkId,
+      desktopName: 'FRONT-DESK',
+      platform: 'windows',
+      place: 'Nairobi, KE',
+      sameNetwork: true,
+      pinRequired: false,
+    });
+
+    expect((await service.status(start.linkId)).status).toBe('pending');
+    const decided = await service.decide(approver, { linkId: start.linkId }, SHOP_WIFI);
+    expect(decided).toMatchObject({ status: 'approved', approvedBy: 'Ada' });
+
+    const session = await service.claim({
+      linkId: start.linkId,
+      verifier: VERIFIER,
+      deviceId: 'pc-device-1',
+    });
+    expect(session.accessToken).toBe('access');
+    expect(authService.issueLinkedSession).toHaveBeenCalledWith('owner-1', {
+      branchId: 'branch-main',
+      deviceId: 'pc-device-1',
+    });
+    expect(notifications.sendToUser).toHaveBeenCalledWith(
+      'owner-1',
+      expect.objectContaining({ title: 'Computer signed in' }),
+    );
+    expect((await service.status(start.linkId)).status).toBe('claimed');
+
     await expect(
-      service.claim(s.linkId, JSON.parse(s.qr).s),
+      service.claim({ linkId: start.linkId, verifier: VERIFIER }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('claim on an unknown link id is not found', async () => {
-    const { service } = buildService();
-    await expect(service.claim('nope', 'secret')).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
-  });
+  it('a photo of the QR is not enough to take the sign-in', async () => {
+    const { service, store } = await build();
+    const start = await service.start({ claimChallenge: sha256(VERIFIER) }, SHOP_WIFI);
+    await service.decide(approver, { linkId: start.linkId }, SHOP_WIFI);
 
-  it('codeApprove resolves a pending challenge by short code', async () => {
-    const { service } = buildService();
-    const s = await service.start('Shop PC');
-    await service.codeApprove('user-1', {
-      code: s.code,
-      mode: 'approval',
-      deviceName: 'Pixel 8',
-    });
-    expect((await service.status(s.linkId)).status).toBe('approved');
-  });
-
-  it('codeApprove with an unknown code is not found', async () => {
-    const { service } = buildService();
+    for (let i = 0; i < 5; i++) {
+      await expect(
+        service.claim({ linkId: start.linkId, verifier: `${start.qr}-guess-${i}-padding-padding` }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    }
+    expect(store.get(start.linkId).attempts).toBe(5);
     await expect(
-      service.codeApprove('user-1', { code: '000000', mode: 'approval' }),
-    ).rejects.toBeInstanceOf(NotFoundException);
+      service.claim({ linkId: start.linkId, verifier: VERIFIER }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('deny marks the challenge denied so the desktop poll sees it', async () => {
-    const { service } = buildService();
-    const s = await service.start('Shop PC');
-    await service.codeApprove('user-1', {
-      code: s.code,
-      decision: 'deny',
-    });
-    expect((await service.status(s.linkId)).status).toBe('denied');
-  });
+  it('asks for the PIN when the computer is on another connection', async () => {
+    const { service } = await build({ pin: '2468' });
+    const start = await service.start({ claimChallenge: sha256(VERIFIER) }, SHOP_WIFI);
 
-  it('pin mode requires the approver PIN and rejects a wrong one', async () => {
-    const { service } = buildService();
-    const s = await service.start('Shop PC');
+    const preview = await service.preview(approver.userId, { code: start.code }, MOBILE_DATA);
+    expect(preview).toMatchObject({ sameNetwork: false, pinRequired: true });
 
     await expect(
-      service.codeApprove('user-1', { code: s.code, mode: 'pin' }),
+      service.decide(approver, { linkId: start.linkId }, MOBILE_DATA),
     ).rejects.toBeInstanceOf(BadRequestException);
-
     await expect(
-      service.codeApprove('user-1', { code: s.code, mode: 'pin', pin: '0000' }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
-
-    // Challenge survives wrong-PIN attempts while it is still pending.
-    await service.codeApprove('user-1', { code: s.code, mode: 'pin', pin: '4321' });
-    expect((await service.status(s.linkId)).status).toBe('approved');
+      service.decide(approver, { linkId: start.linkId, pin: '1111' }, MOBILE_DATA),
+    ).rejects.toThrow('Wrong PIN');
+    const decided = await service.decide(
+      approver,
+      { linkId: start.linkId, pin: '2468' },
+      MOBILE_DATA,
+    );
+    expect(decided.status).toBe('approved');
   });
 
-  it('expired challenges cannot be approved', async () => {
-    const { service, store } = buildService();
-    const s = await service.start('Shop PC');
-    const row = store.get(s.linkId);
-    row.expiresAt = new Date(Date.now() - 1000);
-
-    // findFirst filters on expiresAt gt now, so a stale row reads as missing.
+  it('a refused request cannot be claimed', async () => {
+    const { service, authService } = await build();
+    const start = await service.start({ claimChallenge: sha256(VERIFIER) }, SHOP_WIFI);
     await expect(
-      service.codeApprove('user-1', { code: s.code, mode: 'approval' }),
+      service.claim({ linkId: start.linkId, verifier: VERIFIER }),
+    ).rejects.toThrow('The phone has not approved this sign-in yet');
+
+    await service.decide(approver, { linkId: start.linkId, decision: 'deny' }, SHOP_WIFI);
+    expect((await service.status(start.linkId)).status).toBe('denied');
+    await expect(
+      service.claim({ linkId: start.linkId, verifier: VERIFIER }),
+    ).rejects.toThrow('The sign-in was refused on the phone');
+    await expect(
+      service.decide(approver, { linkId: start.linkId }, SHOP_WIFI),
+    ).rejects.toThrow('already answered');
+    expect(authService.issueLinkedSession).not.toHaveBeenCalled();
+  });
+
+  it('an expired request is gone for the phone and the computer', async () => {
+    const { service, store } = await build();
+    const start = await service.start({ claimChallenge: sha256(VERIFIER) }, SHOP_WIFI);
+    store.get(start.linkId).expiresAt = new Date(Date.now() - 1000);
+
+    expect((await service.status(start.linkId)).status).toBe('expired');
+    await expect(
+      service.preview(approver.userId, { code: start.code }, SHOP_WIFI),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(row.status).toBe('pending');
+    await expect(
+      service.decide(approver, { linkId: start.linkId }, SHOP_WIFI),
+    ).rejects.toThrow('expired');
+  });
+
+  it('rejects QR codes that are not a Counterbase sign-in', async () => {
+    const { service } = await build();
+    const oldDraft = JSON.stringify({ v: 1, id: 'x', code: '123456', s: 'secret' });
+    await expect(
+      service.preview(approver.userId, { payload: oldDraft }, SHOP_WIFI),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.preview(approver.userId, { payload: 'https://example.com/pay' }, SHOP_WIFI),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('reads the caller address and place from the proxy headers', () => {
+    expect(
+      originFromRequest({
+        headers: {
+          'x-forwarded-for': '41.90.10.20, 10.0.0.1',
+          'x-vercel-ip-city': 'Nairobi%20West',
+          'x-vercel-ip-country': 'KE',
+        },
+      }),
+    ).toEqual({ ip: '41.90.10.20', city: 'Nairobi West', country: 'KE' });
   });
 });

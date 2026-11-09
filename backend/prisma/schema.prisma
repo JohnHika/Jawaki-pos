@@ -622,36 +622,34 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
-// One desktop sign-in request, QR-pairing or approval-mode. The desktop
-// device starts a challenge, a signed-in mobile user approves it (scanning
-// the QR or tapping the push), and the desktop claims the issued tokens.
+// A computer asking to be signed in by a phone that is already signed in.
+// The computer keeps a random verifier and stores only its SHA-256 here
+// (claimSecretHash); the QR and 6-digit code cannot finish the sign-in.
 model DesktopLinkChallenge {
-  id               String    @id @default(uuid())
-  // Short human code shown under the QR as a pairing fallback.
-  code             String    @unique
-  // Random secret the desktop must present to claim tokens — nobody who
-  // can read the challenge status (e.g. an attacker watching the network
-  // from the same IP) can redeem the login.
-  claimSecretHash  String
-  status           String    @default("pending") // pending | approved | denied | claimed | expired
-  // approval | pin. pin requires the approver to re-confirm their PIN.
-  mode             String    @default("approval")
-  desktopName      String?
-  // Filled when approved: which account/branch the desktop gets.
-  userId           String?
-  branchId         String?
-  // Hashed access+refresh tokens, so a DB read cannot steal the session.
-  accessTokenHash  String?
-  refreshTokenHash String?
-  attempts         Int       @default(0)
-  ip               String?
-  expiresAt        DateTime
-  approvedAt       DateTime?
-  claimedAt        DateTime?
-  createdAt        DateTime  @default(now())
+  id              String    @id @default(uuid())
+  // 6-digit code shown under the QR for typing on the phone.
+  code            String
+  claimSecretHash String
+  status          String    @default("pending") // pending | approved | denied | claimed | expired
+  mode            String    @default("approval")
+  desktopName     String?
+  platform        String?
+  // Address and rough place of the computer's request, shown on the phone.
+  ip              String?
+  place           String?
+  // Filled when the phone answers: whose account and which branch.
+  userId          String?
+  branchId        String?
+  approverIp      String?
+  attempts        Int       @default(0)
+  expiresAt       DateTime
+  approvedAt      DateTime?
+  claimedAt       DateTime?
+  createdAt       DateTime  @default(now())
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  @@index([code, status])
   @@index([status, expiresAt])
   @@index([userId, createdAt])
   @@map("desktop_link_challenges")
