@@ -76,7 +76,11 @@ class SecureDatabaseConnection {
   /// Open encrypted database connection
   static LazyDatabase openSecureConnection() {
     return LazyDatabase(() async {
-      final dbFolder = await getApplicationDocumentsDirectory();
+      // On a computer the documents folder is the person's own files, so the
+      // shop database goes in the app's support folder instead.
+      final dbFolder = Platform.isWindows || Platform.isLinux || Platform.isMacOS
+          ? await getApplicationSupportDirectory()
+          : await getApplicationDocumentsDirectory();
       final file = File(p.join(dbFolder.path, 'pos_database_encrypted.sqlite'));
 
       // Get encryption key

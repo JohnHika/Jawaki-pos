@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/device_features.dart';
 
 /// Opens the camera, reads one barcode and returns its text. Nothing is saved
 /// or sent anywhere: the caller decides what to do with the number.
+///
+/// On a computer there is no camera scanner. A USB barcode scanner types the
+/// code and presses Enter, so the same screen takes it from a text box.
 class BarcodeScanScreen extends StatefulWidget {
   const BarcodeScanScreen({super.key, this.title = 'Scan a barcode'});
 
@@ -15,14 +19,14 @@ class BarcodeScanScreen extends StatefulWidget {
 }
 
 class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
-  final MobileScannerController _controller = MobileScannerController(
-    detectionSpeed: DetectionSpeed.noDuplicates,
-  );
+  final MobileScannerController? _controller = DeviceFeatures.cameraScanner
+      ? MobileScannerController(detectionSpeed: DetectionSpeed.noDuplicates)
+      : null;
   bool _done = false;
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
@@ -39,6 +43,8 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final controller = _controller;
+    if (controller == null) return _TypedCodeScreen(title: widget.title);
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -60,7 +66,7 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
           IconButton(
             tooltip: 'Torch',
             icon: const Icon(Icons.flashlight_on_outlined),
-            onPressed: () => _controller.toggleTorch(),
+            onPressed: () => controller.toggleTorch(),
           ),
         ],
       ),
@@ -68,7 +74,7 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
         fit: StackFit.expand,
         children: [
           MobileScanner(
-            controller: _controller,
+            controller: controller,
             onDetect: _onDetect,
             errorBuilder: (context, error) => Center(
               child: Padding(
@@ -131,6 +137,93 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The computer's version: a box the USB scanner types into.
+class _TypedCodeScreen extends StatefulWidget {
+  const _TypedCodeScreen({required this.title});
+
+  final String title;
+
+  @override
+  State<_TypedCodeScreen> createState() => _TypedCodeScreenState();
+}
+
+class _TypedCodeScreenState extends State<_TypedCodeScreen> {
+  final _code = TextEditingController();
+
+  @override
+  void dispose() {
+    _code.dispose();
+    super.dispose();
+  }
+
+  void _use() {
+    final value = _code.text.trim();
+    if (value.isEmpty) return;
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+        leading: IconButton(
+          tooltip: 'Close',
+          icon: const Icon(Icons.close_rounded),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Padding(
+            padding: const EdgeInsets.all(DesignSpacing.xl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Icon(Icons.qr_code_scanner_rounded,
+                    size: 44, color: DesignColors.accent),
+                const SizedBox(height: DesignSpacing.md),
+                Text(
+                  'Scan it with the barcode scanner',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Or type the number under the barcode and press Enter.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: DesignSpacing.lg),
+                TextField(
+                  controller: _code,
+                  autofocus: true,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _use(),
+                  decoration: const InputDecoration(
+                    labelText: 'Barcode or code',
+                    prefixIcon: Icon(Icons.qr_code_2_rounded),
+                  ),
+                ),
+                const SizedBox(height: DesignSpacing.md),
+                FilledButton(
+                  onPressed: _use,
+                  style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+                  child: const Text('Use this code'),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -13,6 +13,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/utils/api_message.dart';
+import '../../../../core/utils/device_features.dart';
 
 /// Reusable image picker + uploader used by product, category, and logo
 /// forms. Handles camera/gallery selection, upload to the configured
@@ -64,7 +65,11 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
     final picker = ImagePicker();
     setState(() => _errorMessage = null);
 
-    final source = await showModalBottomSheet<ImageSource>(
+    // A computer has no camera to take a photo with, so it goes straight
+    // to choosing a picture file.
+    final source = !DeviceFeatures.cameraCapture
+        ? ImageSource.gallery
+        : await showModalBottomSheet<ImageSource>(
       context: context,
       useRootNavigator: true,
       showDragHandle: true,

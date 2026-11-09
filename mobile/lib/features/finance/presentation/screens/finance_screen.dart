@@ -30,6 +30,7 @@ import 'invoice_review_screen.dart';
 import 'shop_ledger_screen.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/widgets/modal_disposal.dart';
+import '../../../../core/utils/device_features.dart';
 
 class FinanceScreen extends ConsumerStatefulWidget {
   const FinanceScreen({super.key, this.prefill});
@@ -362,7 +363,9 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
       );
 
   Future<void> _pickAndScanReceipt() async {
-    final source = await showModalBottomSheet<ImageSource>(
+    final source = !DeviceFeatures.cameraCapture
+        ? ImageSource.gallery
+        : await showModalBottomSheet<ImageSource>(
       useRootNavigator: true,
       context: context,
       showDragHandle: true,
@@ -403,6 +406,10 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           return;
         } catch (_) {
           // AI unreachable / no AI plan / unreadable — read it on-device.
+          if (!DeviceFeatures.onDeviceTextReading) {
+            if (mounted) await _openManualForComputer();
+            return;
+          }
           scan = await _ocr.scan(file);
           if (mounted) {
             showGlassSnackBar(
@@ -414,6 +421,10 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           }
         }
       } else {
+        if (!DeviceFeatures.onDeviceTextReading) {
+          if (mounted) await _openManualForComputer();
+          return;
+        }
         scan = await _ocr.scan(file);
       }
       if (mounted) await _openInvoiceReview(scan);
@@ -434,6 +445,18 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         });
       }
     }
+  }
+
+  /// A computer cannot read a receipt without Axon AI, so the bill opens
+  /// empty for typing instead of failing.
+  Future<void> _openManualForComputer() async {
+    showGlassSnackBar(
+      context,
+      'This computer reads receipts with Axon AI, which is not available now. Enter the bill by hand.',
+      icon: Icons.info_outline_rounded,
+      color: DesignColors.warning,
+    );
+    await _showManualInvoiceDialog();
   }
 
   Future<void> _showNotAReceipt(String reason) async {

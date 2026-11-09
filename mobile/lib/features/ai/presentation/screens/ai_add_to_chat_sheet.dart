@@ -7,6 +7,7 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import '../../../../core/services/axon_gateway_client.dart';
 import '../../../../core/theme/design_system.dart';
 import 'ai_chat_prefs.dart';
+import '../../../../core/utils/device_features.dart';
 
 /// The "Add to chat" sheet (Camera / Photos / Files, Web search, Tool
 /// access) shown when the user taps the "+" in the AI chat input, mirroring
@@ -53,14 +54,18 @@ class _AddToChatBodyState extends State<_AddToChatBody> {
         return;
       }
 
-      final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
       String extracted = '';
-      try {
-        final input = InputImage.fromFilePath(picked.path);
-        final result = await recognizer.processImage(input);
-        extracted = result.text.trim();
-      } finally {
-        await recognizer.close();
+      // On-device reading is phone-only; a computer asks Axon AI directly.
+      if (DeviceFeatures.onDeviceTextReading) {
+        final recognizer =
+            TextRecognizer(script: TextRecognitionScript.latin);
+        try {
+          final input = InputImage.fromFilePath(picked.path);
+          final result = await recognizer.processImage(input);
+          extracted = result.text.trim();
+        } finally {
+          await recognizer.close();
+        }
       }
 
       if (extracted.isEmpty) {
@@ -116,14 +121,16 @@ class _AddToChatBodyState extends State<_AddToChatBody> {
           // Row of attach tiles.
           Row(
             children: [
-              Expanded(
-                child: _AttachTile(
-                  icon: Icons.photo_camera_rounded,
-                  label: 'Camera',
-                  onTap: () => _capture(ImageSource.camera, 'Camera'),
+              if (DeviceFeatures.cameraCapture) ...[
+                Expanded(
+                  child: _AttachTile(
+                    icon: Icons.photo_camera_rounded,
+                    label: 'Camera',
+                    onTap: () => _capture(ImageSource.camera, 'Camera'),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
+                const SizedBox(width: 10),
+              ],
               Expanded(
                 child: _AttachTile(
                   icon: Icons.image_rounded,

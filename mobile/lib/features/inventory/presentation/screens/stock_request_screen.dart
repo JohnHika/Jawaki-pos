@@ -13,6 +13,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../widgets/product_picker_dialog.dart';
+import '../../../../core/utils/device_features.dart';
 
 /// Stock Request Screen - For cashiers/sellers to request stock from managers
 class StockRequestScreen extends ConsumerStatefulWidget {
@@ -53,7 +54,9 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
   }
 
   Future<void> _addPhoto() async {
-    final source = await showModalBottomSheet<ImageSource>(
+    final source = !DeviceFeatures.cameraCapture
+        ? ImageSource.gallery
+        : await showModalBottomSheet<ImageSource>(
       useRootNavigator: true,
       context: context,
       builder: (ctx) => SafeArea(

@@ -9,6 +9,7 @@ import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/core/utils/device_features.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/password_reset_sheet.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
@@ -787,6 +788,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
         const SizedBox(height: DesignSpacing.xs),
         LegalConsent(palette: palette, action: 'signing in'),
+        if (DeviceFeatures.googleSignIn) ...[
         const SizedBox(height: DesignSpacing.sm),
         Row(
           children: [
@@ -812,6 +814,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
           onPressed: authState.isLoading ? null : _handleGoogleLogin,
         ),
+        ],
         const SizedBox(height: DesignSpacing.sm),
         Wrap(
           alignment: WrapAlignment.center,
