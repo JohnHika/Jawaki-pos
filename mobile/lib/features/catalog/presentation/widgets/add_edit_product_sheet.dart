@@ -1021,7 +1021,9 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   style: TextStyle(color: palette.ink, fontWeight: FontWeight.w700),
                   decoration: kitFieldDecoration(ctx,
-                      label: '${base.unit.endsWith('s') ? base.unit : '${base.unit}s'} in it', hint: '12'),
+                      label: '${base.unit[0].toUpperCase()}${base.unit.substring(1)}'
+                          '${base.unit.endsWith('s') ? '' : 's'} in it',
+                      hint: '12'),
                   onChanged: (_) => refresh(),
                   validator: _validatePositiveNumber,
                 ),
@@ -1581,9 +1583,14 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     return 'Could not save product: $reason';
   }
 
+  /// The button reads "Also sell it by the carton or pack", so offer the
+  /// bigger units first. Walking businessLayoutUnits in order offered
+  /// "copy" (a bookshop unit) to every shop selling by the piece.
+  static const _packUnitsFirst = ['carton', 'pack', 'box', 'crate', 'tray', 'bundle'];
+
   String _getNextUnit() {
     final used = _unitPriceTiers.map((t) => t.unit).toSet();
-    for (final u in businessLayoutUnits) {
+    for (final u in [..._packUnitsFirst, ...businessLayoutUnits]) {
       if (!used.contains(u)) return u;
     }
     // Every option in the dropdown is already used as a tier — fall back

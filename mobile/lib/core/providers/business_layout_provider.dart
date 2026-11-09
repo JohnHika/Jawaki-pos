@@ -646,7 +646,7 @@ const businessLayoutPresets = <BusinessLayoutPreset>[
     productsLabel: 'Products',
     productCodeLabel: 'SKU / barcode (optional)',
     productCodeHint: 'Leave blank to generate automatically',
-    productNameHint: 'e.g. Panadol Extra (10 tablets)',
+    productNameHint: 'e.g. Sugar 1kg',
     catalogSearchHint: 'Search products by name...',
     posSearchHint: 'Search products or scan a barcode',
     priorityPaths: ['/dashboard', '/', '/products', '/inventory'],

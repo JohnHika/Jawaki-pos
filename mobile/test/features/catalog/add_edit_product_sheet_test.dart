@@ -109,6 +109,34 @@ void main() {
     expect(nameField.controller?.text, 'Sugar');
   });
 
+  // The button names a carton or pack. It used to take the next unit on the
+  // shop's list, which offered "Copy" (a bookshop unit) to a grocery shop.
+  testWidgets('selling by the carton starts with a carton', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          categoriesProvider.overrideWith((ref) => Stream.value(const [])),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: SizedBox(height: 800, child: AddEditProductSheet())),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('More details'));
+    await tester.pumpAndSettle();
+    final carton = find.text('Also sell it by the carton or pack');
+    await tester.ensureVisible(carton);
+    await tester.pumpAndSettle();
+    await tester.tap(carton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Carton price'), findsOneWidget);
+    expect(find.text('Pieces in it'), findsOneWidget);
+    expect(find.text('Copy price'), findsNothing);
+  });
+
   group('in a shop kept on this phone', () {
     setUp(() {
       getIt.pushNewScope();
