@@ -7,6 +7,7 @@ import * as bcrypt from 'bcryptjs';
 import { createHash } from 'crypto';
 import {
   CHALLENGE_TTL_MS,
+  CLAIM_WINDOW_MS,
   DesktopLinkService,
   originFromRequest,
 } from './desktop-link.service';
@@ -263,6 +264,29 @@ describe('DesktopLinkService', () => {
     await expect(
       service.preview(approver.userId, { payload: start.qr }, SHOP_WIFI),
     ).rejects.toThrow('already signed in');
+  });
+
+  it('approving in the last seconds of a code still signs the computer in', async () => {
+    const { service, store } = await build();
+    const start = await service.start({ claimChallenge: sha256(VERIFIER) }, SHOP_WIFI);
+    const row = store.get(start.linkId);
+    row.expiresAt = new Date(Date.now() + 1000);
+
+    await service.decide(approver, { linkId: start.linkId }, SHOP_WIFI);
+    expect(row.expiresAt.getTime()).toBeGreaterThan(Date.now() + CLAIM_WINDOW_MS - 5000);
+    expect((await service.status(start.linkId)).status).toBe('approved');
+    await expect(
+      service.claim({ linkId: start.linkId, verifier: VERIFIER }),
+    ).resolves.toMatchObject({ accessToken: 'access' });
+  });
+
+  it('an approval the computer did not collect in time reads as expired', async () => {
+    const { service, store } = await build();
+    const start = await service.start({ claimChallenge: sha256(VERIFIER) }, SHOP_WIFI);
+    await service.decide(approver, { linkId: start.linkId }, SHOP_WIFI);
+    store.get(start.linkId).expiresAt = new Date(Date.now() - 1000);
+
+    expect((await service.status(start.linkId)).status).toBe('expired');
   });
 
   it('rejects QR codes that are not a Counterbase sign-in', async () => {

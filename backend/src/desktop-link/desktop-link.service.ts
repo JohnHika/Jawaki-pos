@@ -30,6 +30,11 @@ import { AuthResponseDto } from '../auth/dto/auth.dto';
 
 /** How long a request waits for the phone. */
 export const CHALLENGE_TTL_MS = 2 * 60 * 1000;
+/**
+ * Time the computer has to collect an approval. Counted from the approval,
+ * so approving in the last seconds of a code still signs the computer in.
+ */
+export const CLAIM_WINDOW_MS = 60 * 1000;
 /** Wrong verifiers or PINs before a request is burned. */
 const MAX_ATTEMPTS = 5;
 
@@ -58,6 +63,8 @@ export interface DesktopLinkStartResponse {
   /** Text for the QR image on the computer. Holds no secret. */
   qr: string;
   expiresAt: string;
+  /** Seconds the code lasts, so the computer's own clock need not be right. */
+  expiresIn: number;
 }
 
 export interface DesktopLinkStatusResponse {
@@ -128,7 +135,13 @@ export class DesktopLinkService {
     });
 
     const qr = JSON.stringify({ v: 2, app: 'counterbase', id, code });
-    return { linkId: id, code, qr, expiresAt: expiresAt.toISOString() };
+    return {
+      linkId: id,
+      code,
+      qr,
+      expiresAt: expiresAt.toISOString(),
+      expiresIn: CHALLENGE_TTL_MS / 1000,
+    };
   }
 
   /** Computer: poll while the QR is on screen. */
@@ -142,8 +155,11 @@ export class DesktopLinkService {
       },
     });
     if (!row) throw new NotFoundException('Sign-in request not found');
+    // An approval the computer did not collect in time is expired too, so
+    // the computer shows a new code instead of a claim that must fail.
     const expired =
-      row.status === 'pending' && row.expiresAt.getTime() <= Date.now();
+      (row.status === 'pending' || row.status === 'approved') &&
+      row.expiresAt.getTime() <= Date.now();
     const status = expired ? 'expired' : castStatus(row.status);
     return {
       status,
@@ -208,6 +224,9 @@ export class DesktopLinkService {
       where: { id: row.id, status: 'pending' },
       data: {
         status: decision === 'deny' ? 'denied' : 'approved',
+        ...(decision === 'deny'
+          ? {}
+          : { expiresAt: new Date(Date.now() + CLAIM_WINDOW_MS) }),
         userId: approver.userId,
         branchId: approver.branchId ?? null,
         approverIp: origin.ip?.slice(0, 64) ?? null,
