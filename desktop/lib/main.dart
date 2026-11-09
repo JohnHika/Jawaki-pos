@@ -314,6 +314,66 @@ class _LoginScreenState extends State<_LoginScreen> {
                                 : null,
                           ),
                           const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _pin,
+                            keyboardType: TextInputType.number,
+                            maxLength: 6,
+                            obscureText: _obscure,
+                            style: CbText.data.copyWith(
+                              fontSize: 20,
+                              letterSpacing: 8,
+                            ),
+                            onFieldSubmitted: (_) => _continue(),
+                            decoration: InputDecoration(
+                              labelText: 'Create a six-digit PIN',
+                              counterText: '',
+                              suffixIcon: IconButton(
+                                tooltip: _obscure ? 'Show PIN' : 'Hide PIN',
+                                onPressed: () =>
+                                    setState(() => _obscure = !_obscure),
+                                icon: Icon(
+                                  _obscure
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                  size: 20,
+                                ),
+                              ),
+                            ),
+                            validator: (value) =>
+                                value == null ||
+                                    !RegExp(r'^\d{6}$').hasMatch(value)
+                                ? 'Enter all six digits'
+                                : null,
+                          ),
+                          if (_error != null) ...[
+                            const SizedBox(height: 14),
+                            Text(
+                              _error!,
+                              style: const TextStyle(color: CbInk.error),
+                            ),
+                          ],
+                          const SizedBox(height: 24),
+                          SizedBox(
+                            height: 52,
+                            child: FilledButton(
+                              onPressed: _busy ? null : _continue,
+                              child: _busy
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text('Create local workspace'),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Text(
+                            'Shop records are encrypted on this computer.',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
                         ] else if (_usePhoneSignIn) ...[
                           DesktopQrSignIn(
                             session: widget.session,
