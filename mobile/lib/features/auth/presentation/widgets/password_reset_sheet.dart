@@ -5,6 +5,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
+import '../../../../core/utils/company_code.dart';
 
 Future<bool?> showPasswordResetSheet(
   BuildContext context, {
@@ -53,7 +54,7 @@ class _PasswordResetSheetState extends State<_PasswordResetSheet> {
   void initState() {
     super.initState();
     _email.text = widget.email.trim();
-    _companyCode.text = widget.companyCode.trim().toLowerCase();
+    _companyCode.text = CompanyCode.normalize(widget.companyCode);
   }
 
   @override
@@ -66,8 +67,7 @@ class _PasswordResetSheetState extends State<_PasswordResetSheet> {
     super.dispose();
   }
 
-  String get _normalizedCode =>
-      _companyCode.text.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '-');
+  String get _normalizedCode => CompanyCode.normalize(_companyCode.text);
 
   Future<void> _requestCode() async {
     if (!_formKey.currentState!.validate()) return;
@@ -180,16 +180,14 @@ class _PasswordResetSheetState extends State<_PasswordResetSheet> {
                   enabled: !_codeRequested && !_busy,
                   textCapitalization: TextCapitalization.none,
                   autocorrect: false,
+                  inputFormatters: const [CompanyCodeFormatter()],
                   decoration: const InputDecoration(
                     labelText: 'Company code',
                     prefixIcon: Icon(Icons.storefront_outlined),
                   ),
                   validator: (value) {
-                    final code = (value ?? '')
-                        .trim()
-                        .toLowerCase()
-                        .replaceAll(RegExp(r'\s+'), '-');
-                    if (!RegExp(r'^[a-z0-9]+(-[a-z0-9]+)*$').hasMatch(code)) {
+                    final code = CompanyCode.normalize(value ?? '');
+                    if (!CompanyCode.isValid(code)) {
                       return 'Enter the company code used on the sign-in screen.';
                     }
                     return null;

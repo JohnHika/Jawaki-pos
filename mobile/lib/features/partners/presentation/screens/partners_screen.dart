@@ -7,6 +7,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/company_code.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../domain/partner_models.dart';
@@ -553,7 +554,7 @@ class _ConnectSheetState extends State<_ConnectSheet> {
   }
 
   Future<void> _submit() async {
-    final code = _code.text.trim();
+    final code = CompanyCode.normalize(_code.text);
     if (code.isEmpty) {
       setState(() {
         _error = "Enter the other business's company code";
@@ -618,6 +619,7 @@ class _ConnectSheetState extends State<_ConnectSheet> {
                 controller: _code,
                 autofocus: true,
                 autocorrect: false,
+                inputFormatters: const [CompanyCodeFormatter()],
                 textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
                   labelText: 'Company code',

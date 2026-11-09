@@ -9,6 +9,7 @@ import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/core/utils/company_code.dart';
 import 'package:axon_pos/core/utils/device_features.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/password_reset_sheet.dart';
@@ -127,11 +128,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
   }
 
-  String _normalizeCompanyCode(String value) =>
-      value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '-');
+  String _normalizeCompanyCode(String value) => CompanyCode.normalize(value);
 
-  bool _isValidCompanyCode(String value) =>
-      RegExp(r'^[a-z0-9]+(-[a-z0-9]+)*$').hasMatch(value);
+  bool _isValidCompanyCode(String value) => CompanyCode.isValid(value);
 
   Future<void> _checkBiometric() async {
     debugPrint('[LoginScreen] Checking biometric availability...');
@@ -609,6 +608,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             onFieldSubmitted: (_) => _emailFocus.requestFocus(),
             textCapitalization: TextCapitalization.none,
             autocorrect: false,
+            inputFormatters: const [CompanyCodeFormatter()],
             isDark: isDark,
             onChanged: _onSlugChanged,
             suffixIcon: _isFetchingCompany
@@ -864,6 +864,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     String? helperText,
     TextCapitalization textCapitalization = TextCapitalization.none,
     bool autocorrect = true,
+    List<TextInputFormatter>? inputFormatters,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -888,6 +889,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           textInputAction: textInputAction,
           textCapitalization: textCapitalization,
           autocorrect: autocorrect,
+          inputFormatters: inputFormatters,
           onChanged: onChanged,
           onFieldSubmitted: onFieldSubmitted,
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
