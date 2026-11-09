@@ -1,8 +1,11 @@
 import 'dart:convert';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../../core/utils/device_features.dart';
 
 /// Lightweight, schemaless local cache for the staff invitation list.
 ///
@@ -23,7 +26,14 @@ class InvitationCacheService {
 
   /// Initializes Hive and opens the cache box. Safe to call repeatedly.
   Future<void> initialize() async {
-    await Hive.initFlutter();
+    if (DeviceFeatures.isComputer) {
+      // A computer's Documents folder is the person's own (and often synced
+      // to the cloud), so the cache lives in the app's private folder.
+      final support = await getApplicationSupportDirectory();
+      Hive.init(p.join(support.path, 'cache'));
+    } else {
+      await Hive.initFlutter();
+    }
     _box ??= await Hive.openBox<String>(_boxName);
   }
 

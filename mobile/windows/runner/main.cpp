@@ -5,8 +5,39 @@
 #include "flutter_window.h"
 #include "utils.h"
 
+namespace {
+
+// One Counterbase per Windows user: a second copy would find the shop's
+// files locked and open to a blank window. Opening it again brings the
+// running window to the front instead. Release builds only, so a
+// development run can sit beside an installed copy.
+bool FocusRunningCopy() {
+#ifdef NDEBUG
+  ::CreateMutexW(nullptr, TRUE, L"Local\\ArcheAxon.Counterbase");
+  if (::GetLastError() != ERROR_ALREADY_EXISTS) {
+    return false;
+  }
+  HWND running = ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", L"Counterbase");
+  if (running != nullptr) {
+    if (::IsIconic(running)) {
+      ::ShowWindow(running, SW_RESTORE);
+    }
+    ::SetForegroundWindow(running);
+  }
+  return true;
+#else
+  return false;
+#endif
+}
+
+}  // namespace
+
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
+  if (FocusRunningCopy()) {
+    return EXIT_SUCCESS;
+  }
+
   // Attach to console when present (e.g., 'flutter run') or create a
   // new console when running with a debugger.
   if (!::AttachConsole(ATTACH_PARENT_PROCESS) && ::IsDebuggerPresent()) {
