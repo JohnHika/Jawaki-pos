@@ -135,6 +135,33 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
+  /// A computer finishing a sign-in that a phone approved.
+  Future<bool> loginWithLinkedPhone({
+    required String linkId,
+    required String verifier,
+  }) async {
+    state = state.copyWith(isLoading: true, error: null);
+
+    try {
+      await _authService.loginWithLinkedPhone(
+        linkId: linkId,
+        verifier: verifier,
+      );
+      state = state.copyWith(
+        isLoading: false,
+        isAuthenticated: true,
+        user: _authService.currentUser,
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: _getErrorMessage(e),
+      );
+      return false;
+    }
+  }
+
   Future<bool> loginWithPin(String pin) async {
     state = state.copyWith(isLoading: true, error: null);
 

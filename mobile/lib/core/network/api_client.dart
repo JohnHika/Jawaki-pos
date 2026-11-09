@@ -2436,33 +2436,68 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> getMpesaHistory() async =>
       _payloadList(await _dio.get('/mpesa/history'));
 
-  // ── Desktop sign-in pairing (phone-server mode) ──
+  // ── Computer sign-in approved on a phone (auth/desktop-link) ──
 
-  /// Waiting desktop sign-in requests for the approvals screen.
-  Future<List<Map<String, dynamic>>> getPendingDesktopLinks() async {
-    final response = await _dio.get('/desktop-link/pending');
-    final data = response.data;
-    if (data is List) {
-      return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    }
-    final payload = data is Map ? data['payload'] : null;
-    if (payload is List) {
-      return payload.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    }
-    return const [];
+  /// Computer: opens a request. Sends only the SHA-256 of a verifier that
+  /// stays on this computer.
+  Future<Map<String, dynamic>> startDesktopLink({
+    required String desktopName,
+    required String platform,
+    required String claimChallenge,
+  }) async {
+    final response = await _dio.post('/auth/desktop-link/start', data: {
+      'desktopName': desktopName,
+      'platform': platform,
+      'claimChallenge': claimChallenge,
+    });
+    return Map<String, dynamic>.from(response.data as Map);
   }
 
-  /// Approves or denies a desktop sign-in by its 6-digit code.
-  Future<Map<String, dynamic>> decideDesktopLink({
-    required String code,
-    required bool approve,
+  /// Computer: current state of its request.
+  Future<Map<String, dynamic>> desktopLinkStatus(String linkId) async {
+    final response = await _dio.get('/auth/desktop-link/status',
+        queryParameters: {'linkId': linkId});
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  /// Computer: trades the approved request for a session, like a sign-in.
+  Future<Map<String, dynamic>> claimDesktopLink({
+    required String linkId,
+    required String verifier,
+    String? deviceId,
   }) async {
-    final response = await _dio.post('/desktop-link/approve', data: {
-      'code': code,
-      'decision': approve ? 'approve' : 'deny',
+    final response = await _dio.post('/auth/desktop-link/claim', data: {
+      'linkId': linkId,
+      'verifier': verifier,
+      if (deviceId != null) 'deviceId': deviceId,
     });
-    final data = response.data;
-    return data is Map ? Map<String, dynamic>.from(data) : const {};
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  /// Phone: which computer is asking, by scanned QR text or typed code.
+  Future<Map<String, dynamic>> previewDesktopLink({
+    String? payload,
+    String? code,
+  }) async {
+    final response = await _dio.post('/auth/desktop-link/preview', data: {
+      if (payload != null) 'payload': payload,
+      if (code != null) 'code': code,
+    });
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  /// Phone: approves or refuses the computer.
+  Future<Map<String, dynamic>> decideDesktopLink({
+    required String linkId,
+    required bool approve,
+    String? pin,
+  }) async {
+    final response = await _dio.post('/auth/desktop-link/decide', data: {
+      'linkId': linkId,
+      'decision': approve ? 'approve' : 'deny',
+      if (pin != null && pin.isNotEmpty) 'pin': pin,
+    });
+    return Map<String, dynamic>.from(response.data as Map);
   }
 
   String _mimeTypeForFile(String fileName) {

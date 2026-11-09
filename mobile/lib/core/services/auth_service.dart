@@ -357,6 +357,24 @@ class AuthService implements LifecycleLockAuth {
     await _handleAuthResponse(response);
   }
 
+  /// Signs this computer in with the account of the phone that approved it.
+  /// [verifier] never left this computer; the server checks it against the
+  /// hash sent when the request was opened.
+  Future<void> loginWithLinkedPhone({
+    required String linkId,
+    required String verifier,
+  }) async {
+    final deviceId = await _storage.ensureDeviceId();
+    final response = await _apiClient
+        .claimDesktopLink(
+          linkId: linkId,
+          verifier: verifier,
+          deviceId: deviceId,
+        )
+        .timeout(const Duration(seconds: 30));
+    await _handleAuthResponse(response);
+  }
+
   /// Creates a first-owner session only after Google verifies the identity.
   Future<void> createWorkspaceWithGoogle({
     required String idToken,

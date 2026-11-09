@@ -13,6 +13,7 @@ import 'package:axon_pos/core/utils/device_features.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/password_reset_sheet.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
+import 'package:axon_pos/features/auth/presentation/screens/phone_sign_in_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -788,7 +789,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
         const SizedBox(height: DesignSpacing.xs),
         LegalConsent(palette: palette, action: 'signing in'),
-        if (DeviceFeatures.googleSignIn) ...[
+        if (DeviceFeatures.googleSignIn || DeviceFeatures.isComputer) ...[
         const SizedBox(height: DesignSpacing.sm),
         Row(
           children: [
@@ -802,6 +803,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ],
         ),
         const SizedBox(height: DesignSpacing.lg),
+        if (DeviceFeatures.isComputer)
+          SignInOutlineButton(
+            label: 'Sign in with your phone',
+            leading: Icon(Icons.qr_code_2_rounded, color: palette.ink, size: 20),
+            onPressed: authState.isLoading
+                ? null
+                : () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const PhoneSignInScreen(),
+                      ),
+                    ),
+          )
+        else
         SignInOutlineButton(
           label: 'Continue with Google',
           leading: Text(
