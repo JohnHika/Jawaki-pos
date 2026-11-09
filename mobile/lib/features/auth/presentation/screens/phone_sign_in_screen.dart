@@ -49,7 +49,18 @@ class _PhoneSignInScreenState extends ConsumerState<PhoneSignInScreen> {
     super.initState();
     _start();
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted && _phase == _Phase.waiting) setState(() {});
+      if (!mounted || _phase != _Phase.waiting) return;
+      // Renew on this computer's own clock as well, so a code never stays
+      // on screen past its time when the status checks are not getting
+      // through. The grace lets a last-second approval arrive first.
+      final expiresAt = _expiresAt;
+      if (expiresAt != null &&
+          !_checking &&
+          DateTime.now().isAfter(expiresAt.add(const Duration(seconds: 4)))) {
+        _start();
+        return;
+      }
+      setState(() {});
     });
   }
 
@@ -91,7 +102,11 @@ class _PhoneSignInScreenState extends ConsumerState<PhoneSignInScreen> {
         _linkId = started['linkId']?.toString();
         _qr = started['qr']?.toString() ?? '';
         _code = started['code']?.toString() ?? '';
-        _expiresAt = DateTime.tryParse(started['expiresAt']?.toString() ?? '');
+        // Counted on this computer's clock, which may not match the service.
+        final lasts = num.tryParse(started['expiresIn']?.toString() ?? '');
+        _expiresAt = lasts != null
+            ? DateTime.now().add(Duration(seconds: lasts.round()))
+            : DateTime.tryParse(started['expiresAt']?.toString() ?? '')?.toLocal();
         _phase = _Phase.waiting;
       });
       _poll = Timer.periodic(const Duration(seconds: 2), (_) => _check());
