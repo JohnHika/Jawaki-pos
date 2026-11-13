@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/di/injection.dart';
+import '../../../../core/auth/app_roles.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
@@ -78,6 +79,8 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   int _loadGeneration = 0;
   int _historyGeneration = 0;
   String? _message;
+  String? _customerName;
+  String? _customerPhone;
   String _lang = 'en';
   int _days = 14;
 
@@ -91,6 +94,16 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
 
   static const _statementServiceUpdateMessage =
       'Statement sharing is temporarily unavailable. Your customer and their debt are safe. Try again shortly.';
+
+  bool _canAccess([RolePermissions? permissions]) {
+    final RolePermissions current =
+        permissions ?? ref.read(permissionsProvider);
+    return current.has('statements.share') &&
+        (widget.customerId == null || current.canSeeCustomers);
+  }
+
+  bool _canAccessPermissions(RolePermissions? permissions) =>
+      permissions != null && _canAccess(permissions);
 
   String _loadErrorMessage(
     Object error, {
@@ -108,6 +121,10 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   @override
   void initState() {
     super.initState();
+    if (_canAccess()) {
+      _customerName = widget.name;
+      _customerPhone = widget.phone;
+    }
     _load();
   }
 
@@ -119,6 +136,14 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
 
   Future<void> _load() async {
     final generation = ++_loadGeneration;
+    if (!_canAccess()) {
+      setState(() {
+        _loading = false;
+        _preview = null;
+        _sent = const [];
+      });
+      return;
+    }
     setState(() {
       _loading = true;
       _loadError = null;
@@ -129,9 +154,10 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
     // or the send actions hostage when that secondary request is unavailable.
     unawaited(_loadSentLinks());
     try {
+      if (!_canAccess()) return;
       final previewResult = await _api.previewStatement(
           customerId: widget.customerId, debtorId: widget.debtorId);
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || generation != _loadGeneration || !_canAccess()) return;
       setState(() {
         _preview = StatementPreview.fromJson(previewResult);
         _loading = false;
@@ -162,11 +188,14 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   }
 
   Future<void> _loadSentLinks() async {
+    if (!_canAccess()) return;
     final generation = ++_historyGeneration;
     try {
       final links = await _api.getStatementLinks(
           customerId: widget.customerId, debtorId: widget.debtorId);
-      if (!mounted || generation != _historyGeneration) return;
+      if (!mounted || generation != _historyGeneration || !_canAccess()) {
+        return;
+      }
       setState(() {
         _sent = links.map(SentStatementLink.fromJson).toList();
         _historyLoadError = null;
@@ -181,7 +210,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   }
 
   Future<void> _syncCustomerAndRetry() async {
-    if (_loading || widget.customerId == null) return;
+    if (_loading || widget.customerId == null || !_canAccess()) return;
     setState(() {
       _loading = true;
       _loadError = null;
@@ -192,10 +221,10 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
       // statement. This prevents local credit from appearing sendable before
       // the server has the customer and receivable.
       await sync.syncPendingEvents();
-      if (!mounted) return;
+      if (!mounted || !_canAccess()) return;
       final customerId = widget.customerId!;
       var customerStatus = await _api.getCustomerCredit(customerId);
-      if (!mounted) return;
+      if (!mounted || !_canAccess()) return;
 
       if (customerStatus['known'] != true) {
         final userId = getIt<AuthService>().userId;
@@ -206,6 +235,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
             deviceId.isEmpty) {
           throw StateError('Sign in again before syncing this customer.');
         }
+        if (!_canAccess()) return;
         await sync.queueSyncItem(
           tableName: 'customers',
           recordId: customerId,
@@ -220,20 +250,24 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
           deviceId: deviceId,
           userId: userId,
         );
-        if (!mounted) return;
+        if (!mounted || !_canAccess()) return;
         // A background sync may already be in progress. Give its queued work
         // a moment to finish, then retry the customer creation if needed.
         for (var attempt = 0; attempt < 4; attempt++) {
+          if (!_canAccess()) return;
           await sync.syncPendingEvents();
+          if (!mounted || !_canAccess()) return;
           customerStatus = await _api.getCustomerCredit(customerId);
-          if (!mounted || customerStatus['known'] == true) break;
+          if (!mounted || !_canAccess() || customerStatus['known'] == true) {
+            break;
+          }
           if (attempt < 3) {
             await Future<void>.delayed(const Duration(milliseconds: 500));
           }
         }
       }
 
-      if (!mounted) return;
+      if (!mounted || !_canAccess()) return;
       if (customerStatus['known'] != true) {
         throw StateError(
             'The customer is still waiting to sync. Check the connection and try again.');
@@ -261,6 +295,9 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   }
 
   Future<Map<String, dynamic>> _ensureLink() async {
+    if (!_canAccess()) {
+      throw StateError('Statement sharing permission was revoked.');
+    }
     final key = '${_note.text.trim()}|$_days';
     if (_link != null && _linkKey == key) return _link!;
     final link = await _api.createStatementLink(
@@ -269,6 +306,9 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
       message: _note.text,
       days: _days,
     );
+    if (!mounted || !_canAccess()) {
+      throw StateError('Statement sharing permission was revoked.');
+    }
     _link = link;
     _linkKey = key;
     return link;
@@ -287,7 +327,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   }
 
   Future<void> _run(Future<void> Function() action) async {
-    if (_busy) return;
+    if (_busy || !_canAccess()) return;
     setState(() {
       _busy = true;
       _message = null;
@@ -296,9 +336,9 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
     try {
       await action();
       // Refresh "sent before" so the new link shows up.
-      await _loadSentLinks();
+      if (_canAccess()) await _loadSentLinks();
     } catch (e) {
-      if (mounted) {
+      if (mounted && _canAccess()) {
         final serviceNeedsUpdate = statementServiceNeedsUpdate(e);
         setState(() {
           _statementServiceNeedsUpdate = serviceNeedsUpdate;
@@ -330,9 +370,11 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
 
   Future<void> _whatsapp() => _run(() async {
         final link = await _ensureLink();
+        if (!_canAccess()) return;
         final (_, text) = _shareParts(link);
-        final number = whatsappNumber(widget.phone);
+        final number = whatsappNumber(_customerPhone);
         if (number != null) {
+          if (!_canAccess()) return;
           final uri = Uri.parse(
               'https://wa.me/$number?text=${Uri.encodeComponent(text)}');
           if (await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -340,23 +382,31 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
           }
         }
         // No number on file, or WhatsApp is not installed: use the share sheet.
+        if (!_canAccess()) return;
         await Share.share(text, subject: 'Your statement');
       });
 
   Future<void> _sharePdf() => _run(() async {
         final link = await _ensureLink();
+        if (!_canAccess()) return;
         final (_, text) = _shareParts(link);
         final bytes =
             await _api.downloadStatementPdf('${link['path']}', lang: _lang);
+        if (!_canAccess()) return;
         if (bytes.isEmpty) throw StateError('empty pdf');
         final dir = await getTemporaryDirectory();
-        final safe = widget.name
+        if (!_canAccess()) return;
+        final safe = (_customerName ?? 'customer')
             .toLowerCase()
             .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
             .replaceAll(RegExp(r'^-+|-+$'), '');
         final file = File(
             '${dir.path}/statement-${safe.isEmpty ? 'customer' : safe}.pdf');
         await file.writeAsBytes(Uint8List.fromList(bytes));
+        if (!_canAccess()) {
+          await file.delete();
+          return;
+        }
         await Share.shareXFiles(
           [XFile(file.path, mimeType: 'application/pdf')],
           text: text,
@@ -366,12 +416,15 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
 
   Future<void> _copyLink() => _run(() async {
         final link = await _ensureLink();
+        if (!_canAccess()) return;
         final (url, _) = _shareParts(link);
+        if (!_canAccess()) return;
         await Clipboard.setData(ClipboardData(text: url));
         if (mounted) setState(() => _message = 'Link copied.');
       });
 
   Future<void> _revoke(SentStatementLink link) => _run(() async {
+        if (!_canAccess()) return;
         await _api.revokeStatementLink(link.id);
         if (_link != null && '${_link!['id']}' == link.id) {
           _link = null;
@@ -416,7 +469,41 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final secondary =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final canManage = ref.watch(permissionsProvider).has('statements.manage');
+    final permissions = ref.watch(permissionsProvider);
+    ref.listen(permissionsProvider, (previous, next) {
+      final hadAccess = _canAccessPermissions(previous);
+      final hasAccess = _canAccess(next);
+      if (hadAccess == hasAccess) return;
+      if (!hasAccess) {
+        _loadGeneration++;
+        _historyGeneration++;
+        setState(() {
+          _customerName = null;
+          _customerPhone = null;
+          _preview = null;
+          _sent = const [];
+          _loadError = null;
+          _historyLoadError = null;
+          _customerNeedsSync = false;
+          _statementServiceNeedsUpdate = false;
+          _loading = false;
+          _busy = false;
+          _message = null;
+          _link = null;
+          _linkKey = null;
+          _retryAction = null;
+        });
+      } else {
+        setState(() {
+          _customerName = widget.name;
+          _customerPhone = widget.phone;
+          _loading = true;
+        });
+        unawaited(_load());
+      }
+    });
+    final canAccess = _canAccess(permissions);
+    final canManage = permissions.has('statements.manage');
     final preview = _preview;
 
     return Padding(
@@ -433,9 +520,22 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
                     .titleLarge
                     ?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: DesignSpacing.xs),
-            Text(widget.name, style: TextStyle(color: secondary)),
+            Text(
+              canAccess
+                  ? _customerName ?? 'Customer'
+                  : 'Customer details hidden',
+              style: TextStyle(color: secondary),
+            ),
             const SizedBox(height: DesignSpacing.md),
-            if (_loading)
+            if (!canAccess)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: DesignSpacing.md),
+                child: Text(
+                  'Statement access is no longer available for this account.',
+                  style: TextStyle(color: secondary),
+                ),
+              )
+            else if (_loading)
               const Padding(
                 padding: EdgeInsets.all(DesignSpacing.xl),
                 child: Center(child: CircularProgressIndicator()),
@@ -623,7 +723,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
                       child: const Text('Change payment details')),
               ],
             ],
-            if (_message != null) ...[
+            if (canAccess && _message != null) ...[
               const SizedBox(height: DesignSpacing.sm),
               Text(_message!,
                   style: TextStyle(
@@ -637,14 +737,14 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
                   child: _buildStatementRetryButton(retryAction: true),
                 ),
             ],
-            if (_historyLoadError != null) ...[
+            if (canAccess && _historyLoadError != null) ...[
               const SizedBox(height: DesignSpacing.md),
               InlineRetryNotice(
                 message: _historyLoadError!,
                 onRetry: _loadSentLinks,
               ),
             ],
-            if (_sent.isNotEmpty) ...[
+            if (canAccess && _sent.isNotEmpty) ...[
               const SizedBox(height: DesignSpacing.lg),
               const FormLabel('Sent before'),
               const SizedBox(height: 6),

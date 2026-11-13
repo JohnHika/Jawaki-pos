@@ -1,7 +1,7 @@
 name: axon_pos
 description: Counterbase - Professional Point of Sale Platform by Arche Axon
 publish_to: 'none'
-version: 1.0.180+2223
+version: 1.0.181+2224
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -158,3 +158,7 @@ flutter:
     - assets/images/app_icons/
     - assets/icons/
     - assets/animations/
+    # Sora, Plus Jakarta Sans and JetBrains Mono (SIL OFL). Bundled so a computer
+    # that opens the app offline for the first time still shows the right type;
+    # google_fonts finds these by file name before it tries the network.
+    - assets/google_fonts/

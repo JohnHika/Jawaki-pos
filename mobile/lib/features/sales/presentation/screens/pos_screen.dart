@@ -12,6 +12,7 @@ import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/providers/local_workspace_capabilities.dart';
@@ -22,6 +23,8 @@ import '../widgets/category_chips.dart';
 import '../widgets/product_grid.dart';
 import '../widgets/search_bar_widget.dart';
 import '../widgets/cart_summary_bar.dart';
+import '../desktop/checkout_support.dart' show CheckoutResult;
+import '../desktop/sell_workspace.dart';
 import '../../../../core/utils/format.dart';
 import '../../../accountability/data/till_guard_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -96,15 +99,17 @@ class _POSScreenState extends ConsumerState<POSScreen> {
 
     var failed = false;
     try {
-      await syncCatalogCacheFromApi(onProductsCached: () {
-        if (!mounted) return;
-        // First catalog pages are committed with their prices and reconciled
-        // stock while later pages continue downloading. Refresh the visible
-        // POS query now so a new device can start selling before the full
-        // catalog sync has to finish.
-        ref.invalidate(filteredProductsProvider);
-        ref.invalidate(favoriteProductsProvider);
-      });
+      await syncCatalogCacheFromApi(
+        onProductsCached: () {
+          if (!mounted) return;
+          // First catalog pages are committed with their prices and reconciled
+          // stock while later pages continue downloading. Refresh the visible
+          // POS query now so a new device can start selling before the full
+          // catalog sync has to finish.
+          ref.invalidate(filteredProductsProvider);
+          ref.invalidate(favoriteProductsProvider);
+        },
+      );
     } catch (_) {
       failed = true;
     } finally {
@@ -126,12 +131,15 @@ class _POSScreenState extends ConsumerState<POSScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final desktop = context.inDesktopShell;
     final cart = ref.watch(cartProvider);
     final parkedSales = ref.watch(parkedSalesProvider);
-    final heldSalesRestoreWarning =
-        ref.watch(parkedSalesRestoreWarningProvider);
+    final heldSalesRestoreWarning = ref.watch(
+      parkedSalesRestoreWarningProvider,
+    );
     final heldSalesRestoring = ref.watch(parkedSalesIsRestoringProvider);
     final businessLayout = ref.watch(businessLayoutProvider);
+    final permissions = ref.watch(permissionsProvider);
     final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     ref.listen<BusinessLayoutConfig>(businessLayoutProvider, (_, next) {
       if (!next.effectiveShowPosCategories &&
@@ -142,8 +150,9 @@ class _POSScreenState extends ConsumerState<POSScreen> {
         setState(() => _showFavorites = false);
       }
       if (_selectedProductPageId != null &&
-          !next.posProductPages
-              .any((page) => page.id == _selectedProductPageId) &&
+          !next.posProductPages.any(
+            (page) => page.id == _selectedProductPageId,
+          ) &&
           mounted) {
         setState(() => _selectedProductPageId = null);
       }
@@ -172,19 +181,21 @@ class _POSScreenState extends ConsumerState<POSScreen> {
       availablePosActionIds.add('cart');
     }
     final configuredPosActions = availablePosActionIds
-        .map((id) => MapEntry(
+        .map(
+          (id) => MapEntry(
+            id,
+            _buildPosQuickAction(
+              context,
               id,
-              _buildPosQuickAction(
-                context,
-                id,
-                businessLayout: businessLayout,
-                cart: cart,
-                parkedSales: parkedSales,
-                showFavorites: showFavorites,
-                isDark: isDark,
-                isLocalWorkspace: isLocalWorkspace,
-              ),
-            ))
+              businessLayout: businessLayout,
+              cart: cart,
+              parkedSales: parkedSales,
+              showFavorites: showFavorites,
+              isDark: isDark,
+              isLocalWorkspace: isLocalWorkspace,
+            ),
+          ),
+        )
         .where((entry) => entry.value != null)
         .toList(growable: false);
     // Keep the toolbar calm on phones even when the owner enables many
@@ -192,237 +203,294 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     final visiblePosActions = configuredPosActions.take(3).toList();
     final overflowPosActions = configuredPosActions.skip(3).toList();
 
-    return Scaffold(
-      appBar: BrandedAppBar(
-        title: businessLayout.actionLabel('/', 'Sell'),
-        showBackButton: false,
-        actions: [
-          ...visiblePosActions.map((entry) => entry.value!),
-          if (overflowPosActions.isNotEmpty)
-            PopupMenuButton<String>(
-              tooltip: 'More POS actions',
-              icon: const Icon(Icons.more_horiz_rounded),
-              onSelected: (id) => _activatePosQuickAction(context, id),
-              itemBuilder: (menuContext) => overflowPosActions.map((entry) {
-                final action = businessLayoutPosAction(entry.key);
-                final label = entry.key == 'held_sales'
-                    ? heldSalesRestoring
-                        ? 'Held sales (loading…)'
-                        : 'Held sales (${parkedSales.length})'
-                    : action == null
-                        ? entry.key
-                        : businessLayout.actionLabel(
-                            action.path ?? '', action.label);
-                return PopupMenuItem<String>(
-                  value: entry.key,
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(action?.icon ?? Icons.bolt_rounded),
-                    title: Text(label),
-                  ),
-                );
-              }).toList(growable: false),
-            ),
-          const SizedBox(width: DesignSpacing.xs),
-        ],
-      ),
-      body: Column(
-        children: [
-          // ── Compact Top Bar ──
-          if (_isOffline)
-            Container(
-              width: double.infinity,
-              // Sits below the AppBar, which already consumes the top system
-              // inset, so no extra status-bar padding is needed.
-              padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
-              decoration: BoxDecoration(
-                color: DesignColors.warning.withValues(alpha: 0.12),
-                border: Border(
-                  bottom: BorderSide(
-                    color: DesignColors.warning.withValues(alpha: 0.2),
-                  ),
+    Widget productGrid() => showFavorites
+        ? Consumer(
+            builder: (context, ref, child) {
+              final favorites = ref.watch(favoriteProductsProvider);
+              return favorites.when(
+                data: (products) => products.isEmpty
+                    ? const EmptyState(
+                        icon: Icons.favorite_border_rounded,
+                        title: 'No favorites',
+                        subtitle: 'Tap heart on products to add',
+                      )
+                    : ProductGrid(
+                        productsOverride: products,
+                        isLocalWorkspace: isLocalWorkspace,
+                      ),
+                loading: () => const Center(
+                  child: CircularProgressIndicator(color: DesignColors.accent),
                 ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
+                error: (e, _) => EmptyState(
+                  icon: Icons.error_outline_rounded,
+                  title: 'Error loading favorites',
+                  subtitle: apiErrorMessage(e),
+                  iconColor: DesignColors.error,
+                  actionLabel: 'Retry',
+                  onAction: () => ref.refresh(favoriteProductsProvider),
+                ),
+              );
+            },
+          )
+        : ProductGrid(
+            productPageIds: selectedProductPage?.productIds,
+            catalogRefreshing: _catalogRefreshing,
+            catalogSyncFailed: _catalogSyncFailed,
+            isOffline: _isOffline,
+            isLocalWorkspace: isLocalWorkspace,
+            onRetryCatalog: _refreshCatalog,
+          );
+
+    return Scaffold(
+      appBar: desktop
+          ? null
+          : BrandedAppBar(
+              title: businessLayout.actionLabel('/', 'Sell'),
+              showBackButton: false,
+              actions: [
+                ...visiblePosActions.map((entry) => entry.value!),
+                if (overflowPosActions.isNotEmpty)
+                  PopupMenuButton<String>(
+                    tooltip: 'More POS actions',
+                    icon: const Icon(Icons.more_horiz_rounded),
+                    onSelected: (id) => _activatePosQuickAction(context, id),
+                    itemBuilder: (menuContext) =>
+                        overflowPosActions.map((entry) {
+                      final action = businessLayoutPosAction(entry.key);
+                      final label = entry.key == 'held_sales'
+                          ? heldSalesRestoring
+                              ? 'Held sales (loading…)'
+                              : 'Held sales (${parkedSales.length})'
+                          : action == null
+                              ? entry.key
+                              : businessLayout.actionLabel(
+                                  action.path ?? '',
+                                  action.label,
+                                );
+                      return PopupMenuItem<String>(
+                        value: entry.key,
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(action?.icon ?? Icons.bolt_rounded),
+                          title: Text(label),
+                        ),
+                      );
+                    }).toList(growable: false),
+                  ),
+                const SizedBox(width: DesignSpacing.xs),
+              ],
+            ),
+      body: desktop
+          ? SellWorkspace(
+              showFavorites: showFavorites,
+              onFavoritesChanged: (value) => setState(() {
+                _showFavorites = value;
+                if (value) {
+                  _selectedProductPageId = null;
+                  ref.read(selectedCategoryProvider.notifier).state = null;
+                }
+              }),
+              productPages: businessLayout.posProductPages,
+              selectedProductPageId: _selectedProductPageId,
+              onProductPageChanged: (id) => setState(() {
+                _selectedProductPageId = id;
+                if (id != null) {
+                  _showFavorites = false;
+                  ref.read(selectedCategoryProvider.notifier).state = null;
+                }
+              }),
+              catalogRefreshing: _catalogRefreshing,
+              catalogSyncFailed: _catalogSyncFailed,
+              isOffline: _isOffline,
+              isLocalWorkspace: isLocalWorkspace,
+              onRetryCatalog: _refreshCatalog,
+              onOpenProducts: () => context.push('/products'),
+              onAddUnknownProduct: (_) => context.push('/products'),
+              onOpenPayments: () => context.push('/payments'),
+              onOpenPayoutSetup: () => context.push('/payments/setup'),
+              heldSalesCount: parkedSales.length,
+              heldSalesRestoring: heldSalesRestoring,
+              heldSalesRestoreWarning: heldSalesRestoreWarning,
+              onHoldSale: () => _parkCurrentSale(context),
+              onOpenHeldSales: () => _showParkedSalesSheet(context),
+              onSaleComplete: _completeDesktopSale,
+            )
+          : Column(
+              children: [
+                // ── Compact Top Bar ──
+                if (_isOffline)
                   Container(
-                    width: DesignSpacing.xs,
-                    height: DesignSpacing.xs,
+                    width: double.infinity,
+                    // Sits below the AppBar, which already consumes the top system
+                    // inset, so no extra status-bar padding is needed.
+                    padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
                     decoration: BoxDecoration(
-                      color: DesignColors.warning,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: DesignColors.warning.withValues(alpha: 0.6),
-                          blurRadius: DesignSpacing.xs,
+                      color: DesignColors.warning.withValues(alpha: 0.12),
+                      border: Border(
+                        bottom: BorderSide(
+                          color: DesignColors.warning.withValues(alpha: 0.2),
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: DesignSpacing.xs,
+                          height: DesignSpacing.xs,
+                          decoration: BoxDecoration(
+                            color: DesignColors.warning,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: DesignColors.warning.withValues(
+                                  alpha: 0.6,
+                                ),
+                                blurRadius: DesignSpacing.xs,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: DesignSpacing.sm - 2),
+                        getIt<AuthService>().isLocalWorkspace
+                            ? const Text(
+                                'Offline Mode — sales are saved on this device',
+                                style: TextStyle(
+                                  fontSize: DesignType.chatMeta,
+                                  fontWeight: FontWeight.w600,
+                                  color: DesignColors.warning,
+                                ),
+                              )
+                            : const Text(
+                                'Offline Mode — sales will sync when reconnected',
+                                style: TextStyle(
+                                  fontSize: DesignType.chatMeta,
+                                  fontWeight: FontWeight.w600,
+                                  color: DesignColors.warning,
+                                ),
+                              ),
+                      ],
+                    ),
+                  ),
+                if (heldSalesRestoreWarning != null)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.fromLTRB(
+                      DesignSpacing.lg,
+                      DesignSpacing.sm,
+                      DesignSpacing.lg,
+                      0,
+                    ),
+                    padding: const EdgeInsets.all(DesignSpacing.md),
+                    decoration: BoxDecoration(
+                      color: DesignColors.warning.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(
+                        DesignSpacing.radiusMd,
+                      ),
+                      border: Border.all(
+                        color: DesignColors.warning.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.warning_amber_rounded,
+                          color: DesignColors.warning,
+                        ),
+                        const SizedBox(width: DesignSpacing.sm),
+                        Expanded(
+                          child: Text(
+                            heldSalesRestoreWarning,
+                            style: const TextStyle(
+                              color: DesignColors.warning,
+                              fontSize: DesignType.chatMeta,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => _showParkedSalesSheet(context),
+                          child: const Text('Details'),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: DesignSpacing.sm - 2),
-                  getIt<AuthService>().isLocalWorkspace
-                      ? const Text(
-                          'Offline Mode — sales are saved on this device',
-                          style: TextStyle(
-                            fontSize: DesignType.chatMeta,
-                            fontWeight: FontWeight.w600,
-                            color: DesignColors.warning,
-                          ),
-                        )
-                      : const Text(
-                          'Offline Mode — sales will sync when reconnected',
-                          style: TextStyle(
-                            fontSize: DesignType.chatMeta,
-                            fontWeight: FontWeight.w600,
-                            color: DesignColors.warning,
-                          ),
-                        ),
-                ],
-              ),
-            ),
-          if (heldSalesRestoreWarning != null)
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.fromLTRB(
-                DesignSpacing.lg,
-                DesignSpacing.sm,
-                DesignSpacing.lg,
-                0,
-              ),
-              padding: const EdgeInsets.all(DesignSpacing.md),
-              decoration: BoxDecoration(
-                color: DesignColors.warning.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                border: Border.all(
-                  color: DesignColors.warning.withValues(alpha: 0.35),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.warning_amber_rounded,
-                    color: DesignColors.warning,
-                  ),
-                  const SizedBox(width: DesignSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      heldSalesRestoreWarning,
-                      style: const TextStyle(
-                        color: DesignColors.warning,
-                        fontSize: DesignType.chatMeta,
-                      ),
+                // ── Main top bar (simplified) ──
+                if (permissions.canSeeCustomers && cart.customerName != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: DesignSpacing.lg,
+                      vertical: DesignSpacing.sm - 2,
                     ),
-                  ),
-                  TextButton(
-                    onPressed: () => _showParkedSalesSheet(context),
-                    child: const Text('Details'),
-                  ),
-                ],
-              ),
-            ),
-          // ── Main top bar (simplified) ──
-          if (cart.customerName != null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: DesignSpacing.lg, vertical: DesignSpacing.sm - 2),
-              color: DesignColors.success.withValues(alpha: 0.08),
-              child: Row(
-                children: [
-                  const Icon(Icons.person_outline_rounded,
-                      size: 15, color: DesignColors.success),
-                  const SizedBox(width: DesignSpacing.sm - 2),
-                  Expanded(
-                    child: Text(
-                      cart.customerName!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: DesignType.chatMeta,
-                        color: DesignColors.success,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  Text('${businessLayout.customerSingular} selected',
-                      style: const TextStyle(
-                          fontSize: 10,
+                    color: DesignColors.success.withValues(alpha: 0.08),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.person_outline_rounded,
+                          size: 15,
                           color: DesignColors.success,
-                          fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-          if (showFavorites || selectedProductPage != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  DesignSpacing.lg, DesignSpacing.sm, DesignSpacing.lg, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      showFavorites
-                          ? 'Saved ${businessLayout.productsLabel.toLowerCase()}'
-                          : '${selectedProductPage!.name} · ${selectedProductPage.productIds.length} quick items',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: isDark
-                            ? DesignColors.darkTextSecondary
-                            : DesignColors.textSecondary,
-                      ),
+                        ),
+                        const SizedBox(width: DesignSpacing.sm - 2),
+                        Expanded(
+                          child: Text(
+                            cart.customerName!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: DesignType.chatMeta,
+                              color: DesignColors.success,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '${businessLayout.customerSingular} selected',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: DesignColors.success,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
-          // ── Body ──
-          const SearchBarWidget(),
-          if (!showFavorites && businessLayout.effectiveShowPosCategories)
-            const CategoryChips(),
-          if (!showFavorites && businessLayout.posProductPages.isNotEmpty)
-            _productPagePicker(businessLayout),
-          Expanded(
-            child: showFavorites
-                ? Consumer(
-                    builder: (context, ref, child) {
-                      final favorites = ref.watch(favoriteProductsProvider);
-                      return favorites.when(
-                        data: (products) => products.isEmpty
-                            ? const EmptyState(
-                                icon: Icons.favorite_border_rounded,
-                                title: 'No favorites',
-                                subtitle: 'Tap heart on products to add')
-                            : ProductGrid(
-                                productsOverride: products,
-                                isLocalWorkspace: isLocalWorkspace,
-                              ),
-                        loading: () => const Center(
-                            child: CircularProgressIndicator(
-                                color: DesignColors.accent)),
-                        error: (e, _) => EmptyState(
-                          icon: Icons.error_outline_rounded,
-                          title: 'Error loading favorites',
-                          subtitle: apiErrorMessage(e),
-                          iconColor: DesignColors.error,
-                          actionLabel: 'Retry',
-                          onAction: () => ref.refresh(favoriteProductsProvider),
+                if (showFavorites || selectedProductPage != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      DesignSpacing.lg,
+                      DesignSpacing.sm,
+                      DesignSpacing.lg,
+                      0,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            showFavorites
+                                ? 'Saved ${businessLayout.productsLabel.toLowerCase()}'
+                                : '${selectedProductPage!.name} · ${selectedProductPage.productIds.length} quick items',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: isDark
+                                  ? DesignColors.darkTextSecondary
+                                  : DesignColors.textSecondary,
+                            ),
+                          ),
                         ),
-                      );
-                    },
-                  )
-                : ProductGrid(
-                    productPageIds: selectedProductPage?.productIds,
-                    catalogRefreshing: _catalogRefreshing,
-                    catalogSyncFailed: _catalogSyncFailed,
-                    isOffline: _isOffline,
-                    isLocalWorkspace: isLocalWorkspace,
-                    onRetryCatalog: _refreshCatalog,
+                      ],
+                    ),
                   ),
-          ),
-          if (cart.itemCount > 0) const CartSummaryBar(),
-        ],
-      ),
+                // ── Body ──
+                const SearchBarWidget(),
+                if (!showFavorites && businessLayout.effectiveShowPosCategories)
+                  const CategoryChips(),
+                if (!showFavorites && businessLayout.posProductPages.isNotEmpty)
+                  _productPagePicker(businessLayout),
+                Expanded(child: productGrid()),
+                if (cart.itemCount > 0) const CartSummaryBar(),
+              ],
+            ),
     );
   }
 
@@ -442,27 +510,34 @@ class _POSScreenState extends ConsumerState<POSScreen> {
               ref.read(selectedCategoryProvider.notifier).state = null;
             }),
           ),
-          ...layout.posProductPages.map((page) => Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: ChoiceChip(
-                  label: Text(page.name),
-                  selected: _selectedProductPageId == page.id,
-                  selectedColor:
-                      DesignColors.accent.withValues(alpha: isDark ? .22 : .14),
-                  onSelected: (_) => setState(() {
-                    _selectedProductPageId = page.id;
-                    ref.read(selectedCategoryProvider.notifier).state = null;
-                  }),
+          ...layout.posProductPages.map(
+            (page) => Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: ChoiceChip(
+                label: Text(page.name),
+                selected: _selectedProductPageId == page.id,
+                selectedColor: DesignColors.accent.withValues(
+                  alpha: isDark ? .22 : .14,
                 ),
-              )),
+                onSelected: (_) => setState(() {
+                  _selectedProductPageId = page.id;
+                  ref.read(selectedCategoryProvider.notifier).state = null;
+                }),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _topAction(
-      IconData icon, String tooltip, VoidCallback onTap, bool isDark,
-      {bool active = false}) {
+    IconData icon,
+    String tooltip,
+    VoidCallback onTap,
+    bool isDark, {
+    bool active = false,
+  }) {
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     return Padding(
@@ -482,8 +557,11 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 : DesignColors.accent.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
           ),
-          child: Icon(icon,
-              color: active ? DesignColors.error : secondaryColor, size: 20),
+          child: Icon(
+            icon,
+            color: active ? DesignColors.error : secondaryColor,
+            size: 20,
+          ),
         ),
       ),
     );
@@ -564,8 +642,12 @@ class _POSScreenState extends ConsumerState<POSScreen> {
       case 'cart':
         return Stack(
           children: [
-            _topAction(Icons.shopping_cart_outlined, 'Cart',
-                () => context.push('/cart'), isDark),
+            _topAction(
+              Icons.shopping_cart_outlined,
+              'Cart',
+              () => context.push('/cart'),
+              isDark,
+            ),
             if (cart.itemCount > 0)
               Positioned(
                 right: 2,
@@ -575,8 +657,10 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                   scale: 1.45,
                   child: Container(
                     padding: const EdgeInsets.all(2),
-                    constraints:
-                        const BoxConstraints(minWidth: 15, minHeight: 15),
+                    constraints: const BoxConstraints(
+                      minWidth: 15,
+                      minHeight: 15,
+                    ),
                     decoration: const BoxDecoration(
                       color: DesignColors.accent,
                       shape: BoxShape.circle,
@@ -633,18 +717,25 @@ class _POSScreenState extends ConsumerState<POSScreen> {
   void _showCustomerDialog(BuildContext context) {
     final cart = ref.read(cartProvider);
     final businessLayout = ref.read(businessLayoutProvider);
+    final permissions = ref.read(permissionsProvider);
+    var canViewCustomers = permissions.canSeeCustomers;
+    final canCreateCustomers = permissions.has('customers.create');
     final customerSingular = businessLayout.customerSingular;
-    final nameCtrl = TextEditingController(text: cart.customerName ?? '');
+    final nameCtrl = TextEditingController(
+      text: canViewCustomers ? cart.customerName ?? '' : '',
+    );
     final phoneCtrl = TextEditingController();
     final db = getIt<AppDatabase>();
     var customerQuery = nameCtrl.text.trim();
     var customerSearchGeneration = 0;
     var customerPickerClosed = false;
+    StateSetter? updateCustomerSheet;
+    void Function()? closePermissionSubscription;
     var customerPhoneEdited = false;
     var customerCreatePending = false;
     String? customerCreateError;
     Future<List<Map<String, dynamic>>> customerSearchFuture =
-        customerQuery.length >= 2
+        canViewCustomers && customerQuery.length >= 2
             ? db.searchCustomers(customerQuery)
             : Future.value(const <Map<String, dynamic>>[]);
 
@@ -652,19 +743,30 @@ class _POSScreenState extends ConsumerState<POSScreen> {
       String query,
       int generation,
     ) async {
+      if (!canViewCustomers || !ref.read(permissionsProvider).canSeeCustomers) {
+        return const <Map<String, dynamic>>[];
+      }
       await Future<void>.delayed(const Duration(milliseconds: 220));
-      if (generation != customerSearchGeneration) {
+      if (generation != customerSearchGeneration ||
+          !canViewCustomers ||
+          !ref.read(permissionsProvider).canSeeCustomers) {
         return const <Map<String, dynamic>>[];
       }
       final matches = await db.searchCustomers(query);
-      return generation == customerSearchGeneration
+      return generation == customerSearchGeneration &&
+              canViewCustomers &&
+              ref.read(permissionsProvider).canSeeCustomers
           ? matches
           : const <Map<String, dynamic>>[];
     }
 
-    if (cart.customerId != null) {
+    if (canViewCustomers && cart.customerId != null) {
       db.getCustomer(cart.customerId!).then((c) {
-        if (!customerPickerClosed && !customerPhoneEdited && c != null) {
+        if (!customerPickerClosed &&
+            !customerPhoneEdited &&
+            canViewCustomers &&
+            ref.read(permissionsProvider).canSeeCustomers &&
+            c != null) {
           phoneCtrl.text = c['phone'] as String? ?? '';
         }
       });
@@ -674,89 +776,110 @@ class _POSScreenState extends ConsumerState<POSScreen> {
       if (customerPickerClosed) return;
       customerPickerClosed = true;
       customerSearchGeneration++;
+      closePermissionSubscription?.call();
       disposeAfterModalCloses([nameCtrl, phoneCtrl]);
     }
 
-    final customerPickerFuture = GlassBottomSheet.show<void>(context,
-        title: customerSingular, scrollable: true, child: StatefulBuilder(
-      builder: (ctx, setSheet) {
-        final isDark = Theme.of(ctx).brightness == Brightness.dark;
-        final secondaryColor = isDark
-            ? DesignColors.darkTextSecondary
-            : DesignColors.textSecondary;
-        return Padding(
-          padding: EdgeInsets.fromLTRB(
-            DesignSpacing.xl,
-            0,
-            DesignSpacing.xl,
-            DesignSpacing.xl + MediaQuery.of(ctx).padding.bottom,
-          ),
-          child: Column(
+    final customerPickerFuture = GlassBottomSheet.show<void>(
+      context,
+      title: customerSingular,
+      scrollable: true,
+      child: StatefulBuilder(
+        builder: (ctx, setSheet) {
+          updateCustomerSheet = setSheet;
+          final isDark = Theme.of(ctx).brightness == Brightness.dark;
+          final secondaryColor = isDark
+              ? DesignColors.darkTextSecondary
+              : DesignColors.textSecondary;
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              DesignSpacing.xl,
+              0,
+              DesignSpacing.xl,
+              DesignSpacing.xl + MediaQuery.of(ctx).padding.bottom,
+            ),
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: DesignSpacing.sm),
                 Text(
-                  'Search ${businessLayout.customersLabel.toLowerCase()} or create a new ${customerSingular.toLowerCase()}',
+                  canViewCustomers
+                      ? 'Search ${businessLayout.customersLabel.toLowerCase()}${canCreateCustomers ? ' or create a new ${customerSingular.toLowerCase()}' : ''}'
+                      : canCreateCustomers
+                          ? 'Saved customer details are hidden. Create a new ${customerSingular.toLowerCase()} or choose walk-in.'
+                          : 'Saved customer details are hidden. Choose walk-in to continue.',
                   style: TextStyle(
-                      fontSize: DesignType.chatBody - 1, color: secondaryColor),
+                    fontSize: DesignType.chatBody - 1,
+                    color: secondaryColor,
+                  ),
                 ),
                 const SizedBox(height: DesignSpacing.md + 2),
-                TextField(
-                  controller: nameCtrl,
-                  autofocus: true,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: InputDecoration(
-                    labelText: '$customerSingular or shop name',
-                    hintText: 'Start typing a name',
-                    prefixIcon:
-                        const Icon(Icons.person_outline_rounded, size: 20),
-                    border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusMd),
+                if (canViewCustomers || canCreateCustomers)
+                  TextField(
+                    key: const ValueKey('pos-customer-name'),
+                    controller: nameCtrl,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: InputDecoration(
+                      labelText: canViewCustomers
+                          ? '$customerSingular or shop name'
+                          : 'New $customerSingular name',
+                      hintText: 'Start typing a name',
+                      prefixIcon: const Icon(
+                        Icons.person_outline_rounded,
+                        size: 20,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(
+                          DesignSpacing.radiusMd,
+                        ),
+                      ),
+                      filled: true,
                     ),
-                    filled: true,
+                    onChanged: (value) {
+                      customerQuery = value.trim();
+                      final generation = ++customerSearchGeneration;
+                      setSheet(() {
+                        customerSearchFuture = customerQuery.length < 2
+                            ? Future.value(const <Map<String, dynamic>>[])
+                            : searchCustomersAfterPause(
+                                customerQuery,
+                                generation,
+                              );
+                      });
+                    },
                   ),
-                  onChanged: (value) {
-                    customerQuery = value.trim();
-                    final generation = ++customerSearchGeneration;
-                    setSheet(() {
-                      customerSearchFuture = customerQuery.length < 2
-                          ? Future.value(const <Map<String, dynamic>>[])
-                          : searchCustomersAfterPause(
-                              customerQuery,
-                              generation,
-                            );
-                    });
-                  },
-                ),
-                const SizedBox(height: DesignSpacing.md - 2),
-                TextField(
-                  controller: phoneCtrl,
-                  keyboardType: TextInputType.phone,
-                  decoration: InputDecoration(
-                    labelText: 'Phone number (optional)',
-                    hintText: '07xx xxx xxx',
-                    prefixIcon: const Icon(Icons.phone_outlined, size: 20),
-                    border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusMd),
+                if (canCreateCustomers) ...[
+                  const SizedBox(height: DesignSpacing.md - 2),
+                  TextField(
+                    controller: phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: InputDecoration(
+                      labelText: 'Phone number (optional)',
+                      hintText: '07xx xxx xxx',
+                      prefixIcon: const Icon(Icons.phone_outlined, size: 20),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(
+                          DesignSpacing.radiusMd,
+                        ),
+                      ),
+                      filled: true,
                     ),
-                    filled: true,
+                    onChanged: (_) {
+                      customerPhoneEdited = true;
+                      setSheet(() {});
+                    },
                   ),
-                  onChanged: (_) {
-                    customerPhoneEdited = true;
-                    setSheet(() {});
-                  },
-                ),
-                if (customerCreateError != null) ...[
+                ],
+                if (canCreateCustomers && customerCreateError != null) ...[
                   const SizedBox(height: DesignSpacing.sm),
                   Text(
                     customerCreateError!,
                     style: const TextStyle(color: DesignColors.error),
                   ),
                 ],
-                if (customerQuery.length >= 2)
+                if (canViewCustomers && customerQuery.length >= 2)
                   FutureBuilder<List<Map<String, dynamic>>>(
                     future: customerSearchFuture,
                     builder: (_, snap) {
@@ -778,7 +901,9 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                         return Padding(
                           padding: const EdgeInsets.only(top: 10),
                           child: Text(
-                            'Could not search saved customers. You can still create this one.',
+                            canCreateCustomers
+                                ? 'Could not search saved customers. You can still create this one.'
+                                : 'Could not search saved customers.',
                             style: TextStyle(
                               color: secondaryColor,
                               fontSize: DesignType.chatMeta,
@@ -791,7 +916,9 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                         return Padding(
                           padding: const EdgeInsets.only(top: 10),
                           child: Text(
-                            'No matching customers. You can create this one.',
+                            canCreateCustomers
+                                ? 'No matching customers. You can create this one.'
+                                : 'No matching customers.',
                             style: TextStyle(
                               color: secondaryColor,
                               fontSize: DesignType.chatMeta,
@@ -802,13 +929,15 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       return Container(
                         margin: const EdgeInsets.only(top: DesignSpacing.sm),
                         padding: const EdgeInsets.symmetric(
-                            vertical: DesignSpacing.xs),
+                          vertical: DesignSpacing.xs,
+                        ),
                         decoration: BoxDecoration(
                           color: Theme.of(ctx).brightness == Brightness.dark
                               ? DesignColors.darkSurfaceElevated
                               : DesignColors.surfaceSubtle,
-                          borderRadius:
-                              BorderRadius.circular(DesignSpacing.radiusMd),
+                          borderRadius: BorderRadius.circular(
+                            DesignSpacing.radiusMd,
+                          ),
                           border: Border.all(
                             color: Theme.of(ctx).brightness == Brightness.dark
                                 ? DesignColors.darkBorder
@@ -827,19 +956,39 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                             itemBuilder: (_, i) => ListTile(
                               minTileHeight: 52,
                               leading: CircleAvatar(
-                                  backgroundColor: DesignColors.accent
-                                      .withValues(alpha: 0.12),
-                                  child: Text(
-                                      (customers[i]['name'] as String)[0]
-                                          .toUpperCase())),
+                                backgroundColor: DesignColors.accent.withValues(
+                                  alpha: 0.12,
+                                ),
+                                child: Text(
+                                  (customers[i]['name'] as String)[0]
+                                      .toUpperCase(),
+                                ),
+                              ),
                               title: Text(customers[i]['name'] as String),
                               subtitle: Text(
-                                  '${customers[i]['totalPurchases']} purchases'),
+                                '${customers[i]['totalPurchases']} purchases',
+                              ),
                               onTap: () {
+                                if (!canViewCustomers ||
+                                    !ref
+                                        .read(permissionsProvider)
+                                        .canSeeCustomers) {
+                                  canViewCustomers = false;
+                                  customerSearchGeneration++;
+                                  customerQuery = '';
+                                  customerSearchFuture = Future.value(
+                                    const <Map<String, dynamic>>[],
+                                  );
+                                  nameCtrl.clear();
+                                  phoneCtrl.clear();
+                                  setSheet(() {});
+                                  return;
+                                }
                                 ref.read(cartProvider.notifier).setCustomer(
-                                    customers[i]['id'] as String,
-                                    customerName:
-                                        customers[i]['name'] as String);
+                                      customers[i]['id'] as String,
+                                      customerName:
+                                          customers[i]['name'] as String,
+                                    );
                                 Navigator.pop(ctx);
                               },
                             ),
@@ -849,23 +998,31 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                     },
                   ),
                 const SizedBox(height: DesignSpacing.md + 2),
-                Row(children: [
-                  Expanded(
+                Row(
+                  children: [
+                    Expanded(
                       child: OutlinedButton(
-                          onPressed: () {
-                            ref
-                                .read(cartProvider.notifier)
-                                .setCustomer(null, customerName: null);
-                            Navigator.pop(ctx);
-                          },
-                          // Short enough for a third of a phone's width;
-                          // the sale goes back to Walk-in.
-                          child: const Text('Walk-in',
-                              maxLines: 1, overflow: TextOverflow.ellipsis))),
-                  const SizedBox(width: DesignSpacing.md - 2),
-                  Expanded(
-                      flex: 2,
-                      child: GradientButton(
+                        onPressed: () {
+                          ref
+                              .read(cartProvider.notifier)
+                              .setCustomer(null, customerName: null);
+                          Navigator.pop(ctx);
+                        },
+                        // Short enough for a third of a phone's width;
+                        // the sale goes back to Walk-in.
+                        child: const Text(
+                          'Walk-in',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    if (canCreateCustomers)
+                      const SizedBox(width: DesignSpacing.md - 2),
+                    if (canCreateCustomers)
+                      Expanded(
+                        flex: 2,
+                        child: GradientButton(
                           label: customerCreatePending
                               ? 'Saving…'
                               : 'Create & select',
@@ -935,16 +1092,63 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                   Navigator.pop(ctx);
                                 },
                           height: 44,
-                          borderRadius: 12)),
-                ]),
-              ]),
-        );
+                          borderRadius: 12,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    final permissionSubscription = ref.listenManual(
+      permissionsProvider,
+      (_, next) {
+        final nextCanViewCustomers = next.canSeeCustomers;
+        if (nextCanViewCustomers == canViewCustomers) return;
+        canViewCustomers = nextCanViewCustomers;
+        if (!nextCanViewCustomers) {
+          customerSearchGeneration++;
+          customerQuery = '';
+          customerSearchFuture = Future.value(const <Map<String, dynamic>>[]);
+          nameCtrl.clear();
+          phoneCtrl.clear();
+        }
+        if (!customerPickerClosed) updateCustomerSheet?.call(() {});
       },
-    ));
-    unawaited(customerPickerFuture.then<void>(
-      (_) => releaseCustomerPickerResources(),
-      onError: (Object _, StackTrace __) => releaseCustomerPickerResources(),
-    ));
+    );
+    closePermissionSubscription = permissionSubscription.close;
+
+    unawaited(
+      customerPickerFuture.then<void>(
+        (_) => releaseCustomerPickerResources(),
+        onError: (Object _, StackTrace __) => releaseCustomerPickerResources(),
+      ),
+    );
+  }
+
+  /// The sale was saved on the desktop till: show its receipt, like the phone.
+  void _completeDesktopSale(CheckoutResult result) {
+    context.go('/receipt/${result.saleId}?fresh=1');
+    if (result.customerHistoryFailed) {
+      showGlassSnackBar(
+        context,
+        'Sale completed. Customer purchase history could not be updated.',
+        icon: Icons.info_outline_rounded,
+        color: DesignColors.warning,
+      );
+    }
+    if (result.changeDue > 0) {
+      final change = result.changeDue;
+      showGlassSnackBar(
+        context,
+        'Give change: KES ${change.toStringAsFixed(change.truncateToDouble() == change ? 0 : 2)}',
+        icon: Icons.payments_rounded,
+        color: DesignColors.accent,
+      );
+    }
   }
 
   Future<void> _parkCurrentSale(BuildContext context) async {
@@ -976,28 +1180,37 @@ class _POSScreenState extends ConsumerState<POSScreen> {
       return;
     }
     ref.read(cartProvider.notifier).clear();
-    showGlassSnackBar(context, 'Sale held',
-        icon: Icons.pause_circle_filled_rounded, color: DesignColors.warning);
+    showGlassSnackBar(
+      context,
+      'Sale held',
+      icon: Icons.pause_circle_filled_rounded,
+      color: DesignColors.warning,
+    );
   }
 
   void _showParkedSalesSheet(BuildContext context) {
-    GlassBottomSheet.show(context,
-        title: 'Held sales',
-        initialSize: 0.55,
-        maxSize: 0.85,
-        scrollable: true, child: Consumer(
-      builder: (ctx, ref, _) {
-        final parked = ref.watch(parkedSalesProvider);
-        final restoreWarning = ref.watch(parkedSalesRestoreWarningProvider);
-        final restoring = ref.watch(parkedSalesIsRestoringProvider);
-        final isDark = Theme.of(ctx).brightness == Brightness.dark;
-        return Padding(
-          padding: EdgeInsets.fromLTRB(
+    GlassBottomSheet.show(
+      context,
+      title: 'Held sales',
+      initialSize: 0.55,
+      maxSize: 0.85,
+      scrollable: true,
+      child: Consumer(
+        builder: (ctx, ref, _) {
+          final parked = ref.watch(parkedSalesProvider);
+          final canViewCustomerDetails =
+              ref.watch(permissionsProvider).canSeeCustomers;
+          final restoreWarning = ref.watch(parkedSalesRestoreWarningProvider);
+          final restoring = ref.watch(parkedSalesIsRestoringProvider);
+          final isDark = Theme.of(ctx).brightness == Brightness.dark;
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
               DesignSpacing.xl,
               DesignSpacing.sm,
               DesignSpacing.xl,
-              DesignSpacing.lg + MediaQuery.of(ctx).padding.bottom),
-          child: Column(
+              DesignSpacing.lg + MediaQuery.of(ctx).padding.bottom,
+            ),
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1008,8 +1221,9 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                     padding: const EdgeInsets.all(DesignSpacing.md),
                     decoration: BoxDecoration(
                       color: DesignColors.warning.withValues(alpha: 0.12),
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusMd),
+                      borderRadius: BorderRadius.circular(
+                        DesignSpacing.radiusMd,
+                      ),
                       border: Border.all(
                         color: DesignColors.warning.withValues(alpha: 0.35),
                       ),
@@ -1025,7 +1239,8 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 if (parked.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(
-                        vertical: DesignSpacing.xxl + 16),
+                      vertical: DesignSpacing.xxl + 16,
+                    ),
                     child: Center(
                       child: restoring
                           ? const Column(
@@ -1057,81 +1272,100 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 else
                   ...parked.map((s) {
                     final elapsed = DateTime.now().difference(s.parkedAt);
+                    final heldSaleLabel =
+                        canViewCustomerDetails ? s.label : 'Held sale';
+                    const discardMessage =
+                        'Discard this held sale? This sale will be permanently removed.';
                     return Padding(
-                        padding: const EdgeInsets.only(top: DesignSpacing.sm),
-                        child: ListCard(
-                          leading: Container(
-                              width: DesignSpacing.md + 28,
-                              height: DesignSpacing.md + 28,
-                              decoration: BoxDecoration(
-                                  color: DesignColors.warning
-                                      .withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(
-                                      DesignSpacing.md - 2)),
-                              child: Center(
-                                  child: Text('${s.cart.itemCount}',
-                                      style: const TextStyle(
-                                          color: DesignColors.warning,
-                                          fontWeight: FontWeight.bold)))),
-                          title: s.label,
-                          subtitle:
-                              '${formatMoney(s.cart.total)} \u00b7 ${elapsed.inMinutes}m ago',
-                          trailing:
-                              Row(mainAxisSize: MainAxisSize.min, children: [
+                      padding: const EdgeInsets.only(top: DesignSpacing.sm),
+                      child: ListCard(
+                        leading: Container(
+                          width: DesignSpacing.md + 28,
+                          height: DesignSpacing.md + 28,
+                          decoration: BoxDecoration(
+                            color: DesignColors.warning.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(
+                              DesignSpacing.md - 2,
+                            ),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${s.cart.itemCount}',
+                              style: const TextStyle(
+                                color: DesignColors.warning,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        title: heldSaleLabel,
+                        subtitle:
+                            '${formatMoney(s.cart.total)} \u00b7 ${elapsed.inMinutes}m ago',
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
                             IconButton(
-                                tooltip: 'Resume held sale',
-                                icon: const Icon(Icons.play_arrow_rounded,
-                                    color: DesignColors.success),
-                                onPressed: restoreWarning != null || restoring
-                                    ? null
-                                    : () => _resumeHeldSale(ctx, ref, s)),
+                              tooltip: 'Resume held sale',
+                              icon: const Icon(
+                                Icons.play_arrow_rounded,
+                                color: DesignColors.success,
+                              ),
+                              onPressed: restoreWarning != null || restoring
+                                  ? null
+                                  : () => _resumeHeldSale(ctx, ref, s),
+                            ),
                             IconButton(
-                                tooltip: 'Delete held sale',
-                                icon: const Icon(Icons.delete_outline_rounded,
-                                    color: DesignColors.error),
-                                onPressed: restoring ||
-                                        restoreWarning != null ||
-                                        _resumingHeldSaleId != null
-                                    ? null
-                                    : () async {
-                                        final confirmed =
-                                            await showConfirmDialog(
-                                          ctx,
-                                          title: 'Discard Held Sale',
-                                          message:
-                                              'Discard "${s.label}"? This sale will be permanently removed.',
-                                          confirmLabel: 'Discard',
-                                          confirmColor: DesignColors.error,
-                                        );
-                                        if (confirmed == true && ctx.mounted) {
-                                          try {
-                                            await ref
-                                                .read(parkedSalesProvider
-                                                    .notifier)
-                                                .remove(s.id);
-                                          } catch (error) {
-                                            if (ctx.mounted) {
-                                              showGlassSnackBar(
-                                                ctx,
-                                                'Could not discard the held sale. It is still saved. ${apiErrorMessage(error)}',
-                                                icon:
-                                                    Icons.error_outline_rounded,
-                                                color: DesignColors.error,
-                                              );
-                                            }
+                              tooltip: 'Delete held sale',
+                              icon: const Icon(
+                                Icons.delete_outline_rounded,
+                                color: DesignColors.error,
+                              ),
+                              onPressed: restoring ||
+                                      restoreWarning != null ||
+                                      _resumingHeldSaleId != null
+                                  ? null
+                                  : () async {
+                                      final confirmed = await showConfirmDialog(
+                                        ctx,
+                                        title: 'Discard Held Sale',
+                                        message: discardMessage,
+                                        confirmLabel: 'Discard',
+                                        confirmColor: DesignColors.error,
+                                      );
+                                      if (confirmed == true && ctx.mounted) {
+                                        try {
+                                          await ref
+                                              .read(
+                                                parkedSalesProvider.notifier,
+                                              )
+                                              .remove(s.id);
+                                        } catch (error) {
+                                          if (ctx.mounted) {
+                                            showGlassSnackBar(
+                                              ctx,
+                                              'Could not discard the held sale. It is still saved. ${apiErrorMessage(error)}',
+                                              icon: Icons.error_outline_rounded,
+                                              color: DesignColors.error,
+                                            );
                                           }
                                         }
-                                      }),
-                          ]),
-                          onTap: restoring || restoreWarning != null
-                              ? null
-                              : () => _resumeHeldSale(ctx, ref, s),
-                        ));
+                                      }
+                                    },
+                            ),
+                          ],
+                        ),
+                        onTap: restoring || restoreWarning != null
+                            ? null
+                            : () => _resumeHeldSale(ctx, ref, s),
+                      ),
+                    );
                   }),
-              ]),
-        );
-      },
-    ));
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _resumeHeldSale(
@@ -1272,13 +1506,15 @@ class _POSScreenState extends ConsumerState<POSScreen> {
           ),
           if (canKeepSavedPrices)
             TextButton(
-              onPressed: () => Navigator.of(dialogContext)
-                  .pop(_HeldSalePriceDecision.keepSavedPrices),
+              onPressed: () => Navigator.of(
+                dialogContext,
+              ).pop(_HeldSalePriceDecision.keepSavedPrices),
               child: const Text('Keep held prices'),
             ),
           FilledButton(
-            onPressed: () => Navigator.of(dialogContext)
-                .pop(_HeldSalePriceDecision.useCurrentPrices),
+            onPressed: () => Navigator.of(
+              dialogContext,
+            ).pop(_HeldSalePriceDecision.useCurrentPrices),
             child: const Text('Use current prices'),
           ),
         ],

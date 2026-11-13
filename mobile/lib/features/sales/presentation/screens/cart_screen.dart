@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../coupons/presentation/widgets/coupon_row.dart';
 import '../../../../core/providers/business_layout_provider.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 import '../widgets/cart_item_tile.dart';
 import '../../../../core/utils/format.dart';
@@ -19,296 +22,375 @@ class CartScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final desktop = context.inDesktopShell;
+    if (desktop) {
+      // On a computer the ticket is always beside the products on Sell, so
+      // there is no separate cart page. Send old links and shortcuts there.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go('/');
+      });
+      return const SizedBox.shrink();
+    }
     final cart = ref.watch(cartProvider);
+    final permissions = ref.watch(permissionsProvider);
+    final visibleCustomerName =
+        permissions.canSeeCustomers ? cart.customerName : null;
+    final customerLabel = visibleCustomerName ??
+        (cart.customerId == null ? 'Walk-in' : 'Selected customer');
     final heldSalesCount = ref.watch(
       parkedSalesProvider.select((sales) => sales.length),
     );
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        leadingWidth: 68,
-        leading: AppBackButton(
-          color:
-              isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
-          isDark: isDark,
-          onPressed: () => context.pop(),
-        ),
-        title: Text(
-          'Review sale',
-          style: DesignType.display.copyWith(
-            fontWeight: FontWeight.w700,
-            fontSize: 19,
-            color: isDark
-                ? DesignColors.darkTextPrimary
-                : DesignColors.textPrimary,
-          ),
-        ),
-        centerTitle: false,
-        backgroundColor:
-            isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        actions: [
-          if (cart.items.isNotEmpty)
-            TextButton(
-              onPressed: () => _showClearCartDialog(context, ref),
-              style: TextButton.styleFrom(
-                foregroundColor: DesignColors.error,
-                minimumSize: const Size(56, 44),
+      appBar: desktop
+          ? null
+          : AppBar(
+              leadingWidth: 68,
+              leading: AppBackButton(
+                color: isDark
+                    ? DesignColors.darkTextPrimary
+                    : DesignColors.textPrimary,
+                isDark: isDark,
+                onPressed: () => context.pop(),
               ),
-              child: const Text('Clear',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
+              title: Text(
+                'Review sale',
+                style: DesignType.display.copyWith(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 19,
+                  color: isDark
+                      ? DesignColors.darkTextPrimary
+                      : DesignColors.textPrimary,
+                ),
+              ),
+              centerTitle: false,
+              backgroundColor:
+                  isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              actions: [
+                if (cart.items.isNotEmpty)
+                  TextButton(
+                    onPressed: () => _showClearCartDialog(context, ref),
+                    style: TextButton.styleFrom(
+                      foregroundColor: DesignColors.error,
+                      minimumSize: const Size(56, 44),
+                    ),
+                    child: const Text('Clear',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                const SizedBox(width: DesignSpacing.xs),
+              ],
             ),
-          const SizedBox(width: DesignSpacing.xs),
-        ],
-      ),
-      backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
-      body: cart.items.isEmpty
-          ? _buildEmptyCart(context)
-          : Column(
-              children: [
-                // Customer row: opens the picker back on Sell.
-                if (ref.watch(businessLayoutProvider).effectiveShowPosCustomer)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
-                        DesignSpacing.md, DesignSpacing.lg, 0),
-                    child: Material(
-                      color: isDark ? DesignColors.darkSurface : Colors.white,
-                      borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-                      child: InkWell(
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusLg),
-                        onTap: () {
-                          ref.read(customerPickerRequestProvider.notifier).state =
-                              true;
-                          context.pop();
-                        },
-                        child: Container(
-                          constraints: const BoxConstraints(minHeight: 56),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
+      backgroundColor: desktop
+          ? Colors.transparent
+          : isDark
+              ? DesignColors.darkBg
+              : DesignColors.surfaceMuted,
+      body: Column(
+        children: [
+          if (desktop)
+            DesktopPageHeader(
+              title: 'Review sale',
+              subtitle:
+                  '${cart.itemCount} ${cart.itemCount == 1 ? 'item' : 'items'} · $customerLabel sale',
+              leading: IconButton(
+                tooltip: 'Back to Sell',
+                onPressed: () => context.pop(),
+                icon: const Icon(Icons.arrow_back_rounded),
+              ),
+              actions: [
+                if (cart.items.isNotEmpty)
+                  TextButton.icon(
+                    onPressed: () => _showClearCartDialog(context, ref),
+                    icon: const Icon(Icons.delete_outline_rounded, size: 17),
+                    label: const Text('Clear sale'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: DesignColors.error,
+                    ),
+                  ),
+              ],
+            ),
+          Expanded(
+            child: cart.items.isEmpty
+                ? _buildEmptyCart(context)
+                : Column(
+                    children: [
+                      // Customer row: opens the picker back on Sell.
+                      if (ref
+                          .watch(businessLayoutProvider)
+                          .effectiveShowPosCustomer)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                              DesignSpacing.md, DesignSpacing.lg, 0),
+                          child: Material(
+                            color: isDark
+                                ? DesignColors.darkSurface
+                                : Colors.white,
                             borderRadius:
                                 BorderRadius.circular(DesignSpacing.radiusLg),
-                            border: Border.all(
-                              color: isDark
-                                  ? DesignColors.darkBorder
-                                  : DesignColors.surfaceBorder,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.person_outline_rounded,
-                                  size: 20,
-                                  color: isDark
-                                      ? DesignColors.darkTextSecondary
-                                      : DesignColors.textSecondary),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
+                            child: InkWell(
+                              borderRadius:
+                                  BorderRadius.circular(DesignSpacing.radiusLg),
+                              onTap: () {
+                                ref
+                                    .read(
+                                        customerPickerRequestProvider.notifier)
+                                    .state = true;
+                                context.pop();
+                              },
+                              child: Container(
+                                constraints:
+                                    const BoxConstraints(minHeight: 56),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(
+                                      DesignSpacing.radiusLg),
+                                  border: Border.all(
+                                    color: isDark
+                                        ? DesignColors.darkBorder
+                                        : DesignColors.surfaceBorder,
+                                  ),
+                                ),
+                                child: Row(
                                   children: [
-                                    Text(
-                                      ref
-                                          .watch(businessLayoutProvider)
-                                          .customerSingular,
-                                      style: TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: isDark
-                                            ? DesignColors.darkTextPrimary
-                                            : DesignColors.textPrimary,
-                                      ),
-                                    ),
-                                    Text(
-                                      cart.customerName ?? 'Walk-in',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 12,
+                                    Icon(Icons.person_outline_rounded,
+                                        size: 20,
                                         color: isDark
                                             ? DesignColors.darkTextSecondary
-                                            : DesignColors.textSecondary,
+                                            : DesignColors.textSecondary),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            ref
+                                                .watch(businessLayoutProvider)
+                                                .customerSingular,
+                                            style: TextStyle(
+                                              fontSize: 13.5,
+                                              fontWeight: FontWeight.w600,
+                                              color: isDark
+                                                  ? DesignColors.darkTextPrimary
+                                                  : DesignColors.textPrimary,
+                                            ),
+                                          ),
+                                          Text(
+                                            customerLabel,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: isDark
+                                                  ? DesignColors
+                                                      .darkTextSecondary
+                                                  : DesignColors.textSecondary,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
+                                    Icon(Icons.chevron_right_rounded,
+                                        color: isDark
+                                            ? DesignColors.darkTextTertiary
+                                            : DesignColors.textTertiary),
                                   ],
                                 ),
                               ),
-                              Icon(Icons.chevron_right_rounded,
-                                  color: isDark
-                                      ? DesignColors.darkTextTertiary
-                                      : DesignColors.textTertiary),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                  ),
 
-                // Discount row: the shop's discount limit is checked at payment.
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
-                      DesignSpacing.sm, DesignSpacing.lg, 0),
-                  child: Material(
-                    color: isDark ? DesignColors.darkSurface : Colors.white,
-                    borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-                      onTap: () => _showDiscountSheet(context, ref, cart),
-                      child: Container(
-                        constraints: const BoxConstraints(minHeight: 56),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          borderRadius:
-                              BorderRadius.circular(DesignSpacing.radiusLg),
-                          border: Border.all(
+                      // Discount row: the shop's discount limit is checked at payment.
+                      if (permissions.canApplyDiscount)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                              DesignSpacing.sm, DesignSpacing.lg, 0),
+                          child: Material(
                             color: isDark
-                                ? DesignColors.darkBorder
-                                : DesignColors.surfaceBorder,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.sell_outlined,
-                                size: 20,
-                                color: isDark
-                                    ? DesignColors.darkTextSecondary
-                                    : DesignColors.textSecondary),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'Discount',
-                                    style: TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.w600,
-                                      color: isDark
-                                          ? DesignColors.darkTextPrimary
-                                          : DesignColors.textPrimary,
-                                    ),
+                                ? DesignColors.darkSurface
+                                : Colors.white,
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusLg),
+                            child: InkWell(
+                              borderRadius:
+                                  BorderRadius.circular(DesignSpacing.radiusLg),
+                              onTap: () =>
+                                  _showDiscountSheet(context, ref, cart),
+                              child: Container(
+                                constraints:
+                                    const BoxConstraints(minHeight: 56),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(
+                                      DesignSpacing.radiusLg),
+                                  border: Border.all(
+                                    color: isDark
+                                        ? DesignColors.darkBorder
+                                        : DesignColors.surfaceBorder,
                                   ),
-                                  Text(
-                                    cart.manualDiscount > 0
-                                        ? (cart.discountPercent > 0
-                                            ? '${cart.discountPercent.toStringAsFixed(cart.discountPercent % 1 == 0 ? 0 : 1)}% off · ${formatMoney(cart.manualDiscount)}'
-                                            : formatMoney(cart.manualDiscount))
-                                        : 'None',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isDark
-                                          ? DesignColors.darkTextSecondary
-                                          : DesignColors.textSecondary,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.sell_outlined,
+                                        size: 20,
+                                        color: isDark
+                                            ? DesignColors.darkTextSecondary
+                                            : DesignColors.textSecondary),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            'Discount',
+                                            style: TextStyle(
+                                              fontSize: 13.5,
+                                              fontWeight: FontWeight.w600,
+                                              color: isDark
+                                                  ? DesignColors.darkTextPrimary
+                                                  : DesignColors.textPrimary,
+                                            ),
+                                          ),
+                                          Text(
+                                            cart.manualDiscount > 0
+                                                ? (cart.discountPercent > 0
+                                                    ? '${cart.discountPercent.toStringAsFixed(cart.discountPercent % 1 == 0 ? 0 : 1)}% off · ${formatMoney(cart.manualDiscount)}'
+                                                    : formatMoney(
+                                                        cart.manualDiscount))
+                                                : 'None',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: isDark
+                                                  ? DesignColors
+                                                      .darkTextSecondary
+                                                  : DesignColors.textSecondary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                    Icon(Icons.chevron_right_rounded,
+                                        color: isDark
+                                            ? DesignColors.darkTextTertiary
+                                            : DesignColors.textTertiary),
+                                  ],
+                                ),
                               ),
                             ),
-                            Icon(Icons.chevron_right_rounded,
-                                color: isDark
-                                    ? DesignColors.darkTextTertiary
-                                    : DesignColors.textTertiary),
-                          ],
+                          ),
+                        ),
+
+                      // Cart Items List — first-mount entrance stagger with stable
+                      // per-item keys (item identity, not index) so quantity edits
+                      // and removals never replay the choreography.
+                      Expanded(
+                        child: ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(
+                              DesignSpacing.lg,
+                              DesignSpacing.lg,
+                              DesignSpacing.lg,
+                              DesignSpacing.lg),
+                          itemCount: cart.items.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: DesignSpacing.sm),
+                          itemBuilder: (context, index) {
+                            final item = cart.items[index];
+                            return StaggeredItem(
+                              key: ValueKey('cart-item-${item.productId}'),
+                              itemKey: 'cart-${item.productId}',
+                              index: index,
+                              child: index == 0
+                                  ? SwipeNudge(child: CartItemTile(item: item))
+                                  : CartItemTile(item: item),
+                            );
+                          },
                         ),
                       ),
-                    ),
-                  ),
-                ),
 
-                // Cart Items List — first-mount entrance stagger with stable
-                // per-item keys (item identity, not index) so quantity edits
-                // and removals never replay the choreography.
-                Expanded(
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
-                        DesignSpacing.lg, DesignSpacing.lg, DesignSpacing.lg),
-                    itemCount: cart.items.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: DesignSpacing.sm),
-                    itemBuilder: (context, index) {
-                      final item = cart.items[index];
-                      return StaggeredItem(
-                        key: ValueKey('cart-item-${item.productId}'),
-                        itemKey: 'cart-${item.productId}',
-                        index: index,
-                        child: index == 0
-                            ? SwipeNudge(child: CartItemTile(item: item))
-                            : CartItemTile(item: item),
-                      );
-                    },
+                      // Order Summary
+                      _buildOrderSummary(context, cart),
+                    ],
                   ),
-                ),
-
-                // Order Summary
-                _buildOrderSummary(context, cart),
-              ],
-            ),
+          ),
+        ],
+      ),
       bottomNavigationBar: cart.items.isEmpty
           ? null
           : SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
-                    DesignSpacing.sm, DesignSpacing.lg, DesignSpacing.lg),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 10,
-                      child: SizedBox(
-                        height: 54,
-                        child: OutlinedButton(
-                          onPressed: () => _holdSale(context, ref, cart),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: isDark
-                                ? DesignColors.darkTextPrimary
-                                : DesignColors.textPrimary,
-                            side: BorderSide(
-                              color: isDark
-                                  ? DesignColors.darkBorder
-                                  : DesignColors.surfaceBorder,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: desktop ? 760 : double.infinity,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                        DesignSpacing.sm, DesignSpacing.lg, DesignSpacing.lg),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 10,
+                          child: SizedBox(
+                            height: 54,
+                            child: OutlinedButton(
+                              onPressed: () => _holdSale(context, ref, cart),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: isDark
+                                    ? DesignColors.darkTextPrimary
+                                    : DesignColors.textPrimary,
+                                side: BorderSide(
+                                  color: isDark
+                                      ? DesignColors.darkBorder
+                                      : DesignColors.surfaceBorder,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(
+                                      DesignSpacing.radiusLg),
+                                ),
+                                textStyle: const TextStyle(
+                                    fontSize: 15, fontWeight: FontWeight.w700),
+                              ),
+                              child: Badge(
+                                isLabelVisible: heldSalesCount > 0,
+                                label: Text('$heldSalesCount'),
+                                offset: const Offset(10, -8),
+                                child: const Text('Hold'),
+                              ),
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(DesignSpacing.radiusLg),
-                            ),
-                            textStyle: const TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w700),
-                          ),
-                          child: Badge(
-                            isLabelVisible: heldSalesCount > 0,
-                            label: Text('$heldSalesCount'),
-                            offset: const Offset(10, -8),
-                            child: const Text('Hold'),
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: DesignSpacing.md),
-                    Expanded(
-                      flex: 22,
-                      child: SizedBox(
-                        height: 54,
-                        child: FilledButton(
-                          onPressed: () => context.push('/payment'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: DesignColors.accent,
-                            foregroundColor: DesignColors.textPrimary,
-                            shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(DesignSpacing.radiusLg),
+                        const SizedBox(width: DesignSpacing.md),
+                        Expanded(
+                          flex: 22,
+                          child: SizedBox(
+                            height: 54,
+                            child: FilledButton(
+                              onPressed: () => context.push('/payment'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: DesignColors.accent,
+                                foregroundColor: DesignColors.textPrimary,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(
+                                      DesignSpacing.radiusLg),
+                                ),
+                                textStyle: const TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.w800),
+                              ),
+                              child: const Text('Take payment'),
                             ),
-                            textStyle: const TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w800),
                           ),
-                          child: const Text('Take payment'),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -462,11 +544,22 @@ class CartScreen extends ConsumerWidget {
 
   Future<void> _showDiscountSheet(
       BuildContext context, WidgetRef ref, CartState cart) async {
+    if (!ref.read(permissionsProvider).canApplyDiscount) {
+      showGlassSnackBar(
+        context,
+        'You do not have permission to apply discounts.',
+        icon: Icons.lock_outline_rounded,
+        color: DesignColors.error,
+      );
+      return;
+    }
     final controller = TextEditingController(
       text: cart.discountPercent > 0
-          ? cart.discountPercent.toStringAsFixed(cart.discountPercent % 1 == 0 ? 0 : 1)
+          ? cart.discountPercent
+              .toStringAsFixed(cart.discountPercent % 1 == 0 ? 0 : 1)
           : cart.discountAmount > 0
-              ? cart.discountAmount.toStringAsFixed(cart.discountAmount % 1 == 0 ? 0 : 2)
+              ? cart.discountAmount
+                  .toStringAsFixed(cart.discountAmount % 1 == 0 ? 0 : 2)
               : '',
     );
     var percent = cart.discountAmount <= 0;
@@ -548,7 +641,8 @@ class CartScreen extends ConsumerWidget {
                             return;
                           }
                           if (percent && value > 100) {
-                            setSheet(() => error = 'A percent cannot be over 100.');
+                            setSheet(
+                                () => error = 'A percent cannot be over 100.');
                             return;
                           }
                           final notifier = ref.read(cartProvider.notifier);

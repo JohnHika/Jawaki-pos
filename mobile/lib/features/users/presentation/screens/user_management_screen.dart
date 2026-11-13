@@ -6,6 +6,10 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../team/presentation/desktop/invite_staff_panel.dart';
+import '../desktop/team_desktop_widgets.dart';
+import '../desktop/users_desktop_page.dart';
 import '../providers/user_management_provider.dart';
 
 class UserManagementScreen extends ConsumerStatefulWidget {
@@ -35,6 +39,31 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
     }
 
     final usersAsync = ref.watch(managedUsersProvider);
+
+    if (context.inDesktopShell) {
+      final loaded = usersAsync.valueOrNull ?? const <Map<String, dynamic>>[];
+      return Scaffold(
+        body: DesktopUsersPage(
+          users: [for (final u in loaded) DesktopTeamUser.fromJson(u)],
+          loading: usersAsync.isLoading && loaded.isEmpty,
+          error: usersAsync.hasError ? loadErrorSubtitle(usersAsync.error) : null,
+          canInvite: permissions.canInviteStaff,
+          canManageRoles: permissions.canManageRoles,
+          onTab: (tab) => switch (tab) {
+            DesktopTeamTab.users => null,
+            DesktopTeamTab.roles => context.go('/users/roles'),
+            DesktopTeamTab.invitations => context.go('/users/invitations'),
+          },
+          onRefresh: () => ref.invalidate(managedUsersProvider),
+          onInvite: () async {
+            final sent = await showInviteStaffPanel(context);
+            if (sent == true) ref.invalidate(managedUsersProvider);
+          },
+          onEditPermissions: (user) =>
+              context.push('/users/${user.id}/permissions'),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: BrandedAppBar(

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/auth/app_roles.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
@@ -12,6 +14,8 @@ import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../finance/presentation/screens/finance_screen.dart'
     show RestockPrefill;
+import '../desktop/desktop_inventory_tabs.dart';
+import '../desktop/desktop_restock_view.dart';
 
 final _restockSuggestionsProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
@@ -26,10 +30,70 @@ final _currencyFmt =
 class RestockSuggestionsScreen extends ConsumerWidget {
   const RestockSuggestionsScreen({super.key});
 
+  Widget _buildDesktop(
+    BuildContext context,
+    WidgetRef ref,
+    RolePermissions permissions,
+    AsyncValue<Map<String, dynamic>> suggestions,
+  ) {
+    final tabs = DesktopInventoryTabs.forRole(
+      isLocalWorkspace: getIt<AuthService>().isLocalWorkspace,
+      canManageStock: permissions.canManageStock,
+      canRequestStock: permissions.canMakeSales,
+    );
+    final data = suggestions.valueOrNull;
+    final items = data == null || data.isEmpty
+        ? <DesktopRestockItem>[]
+        : [
+            for (final m in (data['items'] as List<dynamic>? ?? const []))
+              DesktopRestockItem.fromMap(Map<String, dynamic>.from(m as Map)),
+          ];
+    return Scaffold(
+      backgroundColor: context.desktop.panel,
+      body: DesktopRestockView(
+        items: items,
+        availableCash: (data?['availableCash'] as num? ?? 0).toDouble(),
+        trimmedCount: (data?['trimmedCount'] as num? ?? 0).toInt(),
+        aiRationale: data?['aiRationale'] as String?,
+        restricted: !permissions.canRecordRestock,
+        loading: suggestions.isLoading && data == null,
+        noBranch: data != null && data.isEmpty,
+        errorMessage: suggestions.hasError && data == null
+            ? loadErrorSubtitle(suggestions.error!)
+            : null,
+        onRetry: suggestions.hasError && isPermissionDenied(suggestions.error!)
+            ? null
+            : () => ref.invalidate(_restockSuggestionsProvider),
+        onRefresh: () => ref.invalidate(_restockSuggestionsProvider),
+        headerBottom: DesktopInventoryTabs(
+          tabs: tabs,
+          selectedLabel: 'Restock suggestions',
+          onSelect: (tab) {
+            if (tab.path != null && tab.label != 'Restock suggestions') {
+              context.go(tab.path!);
+            }
+          },
+        ),
+        onBuy: (item) => context.push(
+          '/finance',
+          extra: RestockPrefill(
+            productName: item.productName,
+            quantity: item.suggestedQty,
+            unitCost: item.unitCost,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final permissions = ref.watch(permissionsProvider);
     final suggestionsAsync = ref.watch(_restockSuggestionsProvider);
+
+    if (context.inDesktopShell) {
+      return _buildDesktop(context, ref, permissions, suggestionsAsync);
+    }
 
     if (!permissions.canRecordRestock) {
       return const Scaffold(

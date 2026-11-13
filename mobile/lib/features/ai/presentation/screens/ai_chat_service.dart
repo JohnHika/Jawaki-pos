@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:axon_pos/core/services/axon_gateway_client.dart';
@@ -149,6 +150,17 @@ class AiSendResult {
   AiSendResult({this.reply, this.pending, this.file, this.chart});
 }
 
+class _AiChatCancellation {
+  final Completer<void> _abort = Completer<void>();
+
+  bool get isCancelled => _abort.isCompleted;
+  Future<void> get abortTrigger => _abort.future;
+
+  void cancel() {
+    if (!_abort.isCompleted) _abort.complete();
+  }
+}
+
 class AiChatService {
   static const _maxMessageChars = 4000;
   static const _maxToolCallsPerTurn = 4;
@@ -221,6 +233,8 @@ class AiChatService {
   final List<Map<String, String>> _messages = [];
   final Map<String, dynamic> _storeInfo = {};
   final AxonGatewayClient _gateway = AxonGatewayClient();
+  _AiChatCancellation? _activeCancellation;
+  int _conversationRevision = 0;
 
   /// The current paused agent turn awaiting the user, if any. Cleared once
   /// resolved (answered/confirmed/declined) or when a new conversation
@@ -257,10 +271,17 @@ class AiChatService {
   }
 
   void clearHistory() {
+    _activeCancellation?.cancel();
+    _activeCancellation = null;
+    _conversationRevision++;
     _messages.clear();
     pendingTurn = null;
     todos = [];
   }
+
+  /// Stops the current streamed response without closing the shared HTTP
+  /// client or turning the abort into a user-visible assistant error.
+  void cancelGeneration() => _activeCancellation?.cancel();
 
   /// Conversations stay in memory on this install. Never fetch shared history
   /// from the retired POS service.
@@ -318,29 +339,60 @@ class AiChatService {
   }) async {
     final normalizedContent = content.trim();
     if (normalizedContent.isEmpty) return AiSendResult(reply: null);
+
+    _activeCancellation?.cancel();
+    final cancellation = _AiChatCancellation();
+    _activeCancellation = cancellation;
+    final conversationRevision = _conversationRevision;
+    bool isRelevant() =>
+        conversationRevision == _conversationRevision &&
+        identical(_activeCancellation, cancellation);
+    bool isCurrent() => isRelevant() && !cancellation.isCancelled;
+
     addUserMessage(normalizedContent);
     pendingTurn = null;
 
     try {
-      final reply =
-          await _runGatewayAgentTurn(onStreamingText: onStreamingText);
+      final reply = await _runGatewayAgentTurn(
+        onStreamingText: (text) {
+          if (isCurrent()) onStreamingText?.call(text);
+        },
+        cancellation: cancellation,
+      );
+      if (!isCurrent()) {
+        if (isRelevant()) onStreamingText?.call('');
+        return AiSendResult(reply: null);
+      }
       _addAssistantMessage(reply);
       return AiSendResult(reply: reply);
     } on AxonGatewayException catch (error) {
+      if (!isCurrent()) {
+        if (isRelevant()) onStreamingText?.call('');
+        return AiSendResult(reply: null);
+      }
       onStreamingText?.call('');
       _addAssistantMessage(error.message);
       return AiSendResult(reply: error.message);
     } catch (_) {
+      if (!isCurrent()) {
+        if (isRelevant()) onStreamingText?.call('');
+        return AiSendResult(reply: null);
+      }
       onStreamingText?.call('');
       const message =
           'Axon AI could not read the local records. Nothing was changed.';
       _addAssistantMessage(message);
       return AiSendResult(reply: message);
+    } finally {
+      if (identical(_activeCancellation, cancellation)) {
+        _activeCancellation = null;
+      }
     }
   }
 
   Future<String> _runGatewayAgentTurn({
     void Function(String accumulatedText)? onStreamingText,
+    required _AiChatCancellation cancellation,
   }) async {
     final history = _messages
         .where((message) =>
@@ -368,13 +420,16 @@ class AiChatService {
 
     var localToolCalls = 0;
     for (var round = 0; round < 4; round++) {
+      if (cancellation.isCancelled) return '';
       final turn = await _gateway.chatTurnStream(
         system: system,
         messages: history,
         tools: _localReadOnlyTools,
         maxTokens: 1024,
         onText: onStreamingText,
+        abortTrigger: cancellation.abortTrigger,
       );
+      if (cancellation.isCancelled) return '';
       final rawContent = turn['content'];
       final blocks = rawContent is List
           ? rawContent
@@ -408,6 +463,7 @@ class AiChatService {
       history.add({'role': 'assistant', 'content': blocks});
       final toolResults = <Map<String, dynamic>>[];
       for (var index = 0; index < toolCalls.length; index++) {
+        if (cancellation.isCancelled) return '';
         final call = toolCalls[index];
         final id = (call['id'] ?? '').toString();
         if (id.isEmpty) {

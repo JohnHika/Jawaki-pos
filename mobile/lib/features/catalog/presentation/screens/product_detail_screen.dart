@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/desktop/adaptive_overlays.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
@@ -25,18 +27,36 @@ import '../../../sales/presentation/providers/catalog_provider.dart'
 import '../../domain/stock_status.dart';
 import '../widgets/add_edit_product_sheet.dart';
 import '../widgets/stock_kit.dart';
+import 'products_screen.dart';
 
-class ProductDetailScreen extends ConsumerStatefulWidget {
+/// The route for one product. On a phone it is the full product page; inside
+/// the desktop shell the Products table opens that product in its inspector
+/// instead, so a deep link still lands on the right row.
+class ProductDetailScreen extends StatelessWidget {
   final String productId;
 
   const ProductDetailScreen({super.key, required this.productId});
 
   @override
-  ConsumerState<ProductDetailScreen> createState() =>
+  Widget build(BuildContext context) {
+    if (context.inDesktopShell) {
+      return ProductsScreen(initialProductId: productId);
+    }
+    return _ProductDetailPhone(productId: productId);
+  }
+}
+
+class _ProductDetailPhone extends ConsumerStatefulWidget {
+  final String productId;
+
+  const _ProductDetailPhone({required this.productId});
+
+  @override
+  ConsumerState<_ProductDetailPhone> createState() =>
       _ProductDetailScreenState();
 }
 
-class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
+class _ProductDetailScreenState extends ConsumerState<_ProductDetailPhone> {
   Product? _product;
   List<ProductPricingTier> _pricingTiers = [];
   LocalStockData? _stock;
@@ -238,18 +258,27 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   Future<void> _correctCount() async {
     final product = _product;
     if (product == null) return;
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: SignInPalette.of(context).card,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (sheet) => _CorrectCountSheet(
-        product: product,
-        current: _stock?.quantity.toDouble() ?? 0,
-      ),
-    );
+    final saved = DesktopLayout.wantsShell(context)
+        ? await showAdaptiveSheet<bool>(
+            context: context,
+            builder: (sheet) => CorrectCountSheet(
+              product: product,
+              current: _stock?.quantity.toDouble() ?? 0,
+              showHandle: false,
+            ),
+          )
+        : await showModalBottomSheet<bool>(
+            context: context,
+            useRootNavigator: true,
+            isScrollControlled: true,
+            backgroundColor: SignInPalette.of(context).card,
+            shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+            builder: (sheet) => CorrectCountSheet(
+              product: product,
+              current: _stock?.quantity.toDouble() ?? 0,
+            ),
+          );
     if (saved == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Count corrected. It is in the history.')),
@@ -733,17 +762,25 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 }
 
 /// Sets the count to what is really on the shelf, and keeps a record of why.
-class _CorrectCountSheet extends StatefulWidget {
-  const _CorrectCountSheet({required this.product, required this.current});
+class CorrectCountSheet extends StatefulWidget {
+  const CorrectCountSheet({
+    super.key,
+    required this.product,
+    required this.current,
+    this.showHandle = true,
+  });
 
   final Product product;
   final double current;
 
+  /// The grab bar of a bottom sheet. Off when shown as a desktop dialog.
+  final bool showHandle;
+
   @override
-  State<_CorrectCountSheet> createState() => _CorrectCountSheetState();
+  State<CorrectCountSheet> createState() => _CorrectCountSheetState();
 }
 
-class _CorrectCountSheetState extends State<_CorrectCountSheet> {
+class _CorrectCountSheetState extends State<CorrectCountSheet> {
   late final TextEditingController _count;
   final TextEditingController _note = TextEditingController();
   String? _reason;
@@ -828,15 +865,18 @@ class _CorrectCountSheetState extends State<_CorrectCountSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: palette.line, borderRadius: BorderRadius.circular(3)),
+              if (widget.showHandle) ...[
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: palette.line,
+                        borderRadius: BorderRadius.circular(3)),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 16),
+              ],
               Text('Correct the count',
                   style: DesignType.display.copyWith(
                       color: palette.ink, fontSize: 18, fontWeight: FontWeight.w700)),

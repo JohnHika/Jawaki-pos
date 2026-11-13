@@ -1,7 +1,11 @@
+import 'dart:typed_data';
+
 import '../../domain/recorded_payment.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pdf/pdf.dart';
+import 'package:printing/printing.dart';
 import 'package:dio/dio.dart';
 import '../../../../core/services/haptic_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,7 +26,27 @@ import '../../../../core/widgets/workspace_image.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../providers/sales_provider.dart';
+import '../receipts_desktop/desktop_receipt_page.dart';
+import '../receipts_desktop/receipt_thermal_text.dart';
+
+typedef ReceiptPdfBuilder = Future<Uint8List> Function(
+  WidgetRef ref,
+  String saleId,
+  Map<String, dynamic> receipt,
+);
+typedef ReceiptPdfShareDispatcher = Future<void> Function(
+  Uint8List bytes,
+  String fileName,
+);
+
+final receiptPdfBuilderProvider = Provider<ReceiptPdfBuilder>((ref) =>
+    (widgetRef, saleId, receipt) =>
+        ReceiptScreen(saleId: saleId)._buildReceiptPdf(widgetRef, receipt));
+final receiptPdfShareDispatcherProvider = Provider<ReceiptPdfShareDispatcher>(
+  (ref) => ExportDocumentService.sharePdf,
+);
 
 class ReceiptScreen extends ConsumerWidget {
   final String saleId;
@@ -38,6 +62,13 @@ class ReceiptScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final receiptAsync = ref.watch(receiptProvider(saleId));
     final permissions = ref.watch(permissionsProvider);
+    final canViewCustomerDetails = permissions.canSeeCustomers;
+    final visibleReceiptAsync = receiptAsync.whenData(
+      (receipt) => receiptForCustomerVisibility(
+        receipt,
+        canViewCustomerDetails: canViewCustomerDetails,
+      ),
+    );
     final canMakeSales = permissions.canMakeSales;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -46,39 +77,53 @@ class ReceiptScreen extends ConsumerWidget {
     // stateless ConsumerWidget and the receipt arrives asynchronously via
     // the provider, not at build time.
     ref.listen(receiptProvider(saleId), (previous, next) {
-      if (previous?.value == null && next.value != null) {
+      final receipt = next.valueOrNull;
+      if (previous?.valueOrNull == null && receipt != null) {
         if (celebrate) HapticService().medium();
-        _autoPrintIfEnabled(next.value!);
+        _autoPrintIfEnabled(receiptForCustomerVisibility(
+          receipt,
+          canViewCustomerDetails: canViewCustomerDetails,
+        ));
       }
     });
 
-    Future<void> shareReceipt() async {
-      final receipt = receiptAsync.valueOrNull;
-      if (receipt == null) {
-        showGlassSnackBar(
-          context,
-          'Receipt is still loading — try again in a moment.',
-          icon: Icons.hourglass_empty_rounded,
-          color: DesignColors.warning,
-        );
-        return;
-      }
-      final format = await showShareFormatSheet(
-        context,
-        title: 'Share Receipt',
-        formats: const [
-          ShareFormatOption.pdf,
-          ShareFormatOption.plainText,
-        ],
+    // On a computer the receipt is a centred document, not a phone page.
+    if (context.inDesktopShell) {
+      final receipt = visibleReceiptAsync.valueOrNull;
+      final error = receipt == null ? visibleReceiptAsync.error : null;
+      final missingHere = error is StateError &&
+          getIt<AuthService>().isLocalWorkspace &&
+          error.message == 'This receipt is not saved on this device.';
+      return DesktopReceiptPage(
+        receipt: receipt,
+        fallbackNumber: saleId.substring(0, 8).toUpperCase(),
+        showTax: getIt<AuthService>().showTaxOnReceipt,
+        onClose: () =>
+            context.go(celebrate && canMakeSales ? '/' : '/receipts'),
+        errorTitle: missingHere ? 'Receipt not found on this computer' : null,
+        errorMessage: error == null
+            ? null
+            : error is StateError
+                ? error.message.toString()
+                : loadErrorSubtitle(error),
+        onRetry:
+            error == null || isPermissionDenied(error) || error is StateError
+                ? null
+                : () => ref.refresh(receiptProvider(saleId)),
+        waitingToSync: receipt != null &&
+            !getIt<AuthService>().isLocalWorkspace &&
+            receipt['isSynced'] == false,
+        canVoid: permissions.canVoidSales,
+        onPrint: () => printReceipt(context, ref, receipt),
+        onPrintOnComputer: () => _printReceiptOnComputer(context, ref, receipt),
+        onShare: () => shareReceipt(context, ref, receipt),
+        onVoid: receipt == null ? null : () => voidSale(context, ref, receipt),
+        onNewSale: canMakeSales ? () => context.go('/') : null,
       );
-      if (format == null || !context.mounted) return;
-
-      if (format == ShareFormat.plainText) {
-        await ExportDocumentService.sharePlainText(_buildShareText(receipt));
-        return;
-      }
-      await _shareReceiptPdf(ref, receipt);
     }
+
+    Future<void> onShare() =>
+        shareReceipt(context, ref, visibleReceiptAsync.valueOrNull);
 
     return Scaffold(
       appBar: AppBar(
@@ -117,8 +162,8 @@ class ReceiptScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         actions: [
           if (permissions.canVoidSales &&
-              receiptAsync.hasValue &&
-              (receiptAsync.valueOrNull?['status'] ?? '')
+              visibleReceiptAsync.hasValue &&
+              (visibleReceiptAsync.valueOrNull?['status'] ?? '')
                       .toString()
                       .toUpperCase() !=
                   'VOIDED')
@@ -133,17 +178,17 @@ class ReceiptScreen extends ConsumerWidget {
                 child: const Icon(Icons.block_rounded,
                     size: 20, color: DesignColors.error),
               ),
-              onPressed: () => _voidSale(
+              onPressed: () => voidSale(
                 context,
                 ref,
-                receiptAsync.valueOrNull!,
+                visibleReceiptAsync.valueOrNull!,
               ),
             ),
           const SizedBox(width: DesignSpacing.xs),
         ],
       ),
       backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
-      body: receiptAsync.when(
+      body: visibleReceiptAsync.when(
         data: (receipt) => Column(
           children: [
             if (!getIt<AuthService>().isLocalWorkspace &&
@@ -227,8 +272,11 @@ class ReceiptScreen extends ConsumerWidget {
                     child: _ReceiptActionButton(
                       icon: Icons.print_outlined,
                       label: 'Print',
-                      onPressed: () =>
-                          _printReceipt(context, receiptAsync.valueOrNull),
+                      onPressed: () => printReceipt(
+                        context,
+                        ref,
+                        visibleReceiptAsync.valueOrNull,
+                      ),
                     ),
                   ),
                   const SizedBox(width: DesignSpacing.md),
@@ -236,7 +284,7 @@ class ReceiptScreen extends ConsumerWidget {
                     child: _ReceiptActionButton(
                       icon: Icons.ios_share_rounded,
                       label: 'Share',
-                      onPressed: shareReceipt,
+                      onPressed: onShare,
                     ),
                   ),
                 ],
@@ -267,6 +315,44 @@ class ReceiptScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// Asks PDF or plain text, then shares the receipt. Used by the phone
+  /// receipt page and the desktop receipts page.
+  Future<void> shareReceipt(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic>? receipt,
+  ) async {
+    if (receipt == null) {
+      showGlassSnackBar(
+        context,
+        'Receipt is still loading — try again in a moment.',
+        icon: Icons.hourglass_empty_rounded,
+        color: DesignColors.warning,
+      );
+      return;
+    }
+    final format = await showShareFormatSheet(
+      context,
+      title: 'Share Receipt',
+      formats: const [
+        ShareFormatOption.pdf,
+        ShareFormatOption.plainText,
+      ],
+    );
+    if (format == null || !context.mounted) return;
+    final visibleReceipt = receiptForCustomerVisibility(
+      receipt,
+      canViewCustomerDetails: ref.read(permissionsProvider).canSeeCustomers,
+    );
+
+    if (format == ShareFormat.plainText) {
+      await ExportDocumentService.sharePlainText(
+          _buildShareText(visibleReceipt));
+      return;
+    }
+    await _shareReceiptPdf(ref, visibleReceipt);
   }
 
   // Character width of the physical 58mm thermal roll (esc_pos_utils
@@ -337,213 +423,15 @@ class ReceiptScreen extends ConsumerWidget {
     );
   }
 
-  /// Builds the exact monospace text block the receipt would print as, so
-  /// the on-screen preview matches the 58mm thermal output line for line.
-  /// Detailed by design: per-tier item lines (e.g. "1 box @ 1,200 —
-  /// 12 pcs @ 100"), a payment breakdown (split tenders + balance owed on
-  /// credit), a VOIDED banner when applicable, and a warm footer.
-  String _renderReceiptLines(Map<String, dynamic> receipt, List items) {
-    final b = StringBuffer();
-    const w = _receiptCols;
-
-    String center(String s) {
-      if (s.length >= w) return s.substring(0, w);
-      final pad = (w - s.length) ~/ 2;
-      return '${' ' * pad}$s';
-    }
-
-    // A left label and a right value on the same line, right-justified.
-    String lr(String left, String right) {
-      final maxLeft = w - right.length - 1;
-      var l = left;
-      if (l.length > maxLeft) l = l.substring(0, maxLeft);
-      final gap = w - l.length - right.length;
-      return '$l${' ' * (gap < 1 ? 1 : gap)}$right';
-    }
-
-    // Wrap a long product name across lines at the column width, indenting
-    // continuation lines so it reads as one item.
-    List<String> wrapName(String name, {int indent = 0}) {
-      final avail = w - indent;
-      if (name.length <= avail) return [' ' * indent + name];
-      final out = <String>[];
-      var rest = name;
-      var first = true;
-      while (rest.isNotEmpty) {
-        final take = (first ? avail : w - 2);
-        final pad = first ? indent : 2;
-        if (rest.length <= take) {
-          out.add(' ' * pad + rest);
-          break;
-        }
-        // Break on the last space within the window if there is one.
-        var cut = rest.substring(0, take);
-        final sp = cut.lastIndexOf(' ');
-        if (sp > take ~/ 2) cut = cut.substring(0, sp);
-        out.add(' ' * pad + cut.trimRight());
-        rest = rest.substring(cut.length).trimLeft();
-        first = false;
-      }
-      return out;
-    }
-
-    String money(num v) => v.toStringAsFixed(2);
-    final rule = '-' * w;
-    final dblRule = '=' * w;
-
-    // Header — store name + address, centered. (Logo is drawn as an image on
-    // the thermal print + PDF; the text preview keeps the name prominent.)
-    b.writeln(center(
-        (receipt['branchName'] ?? 'POS Store').toString().toUpperCase()));
-    final addr = (receipt['branchAddress'] ?? '').toString();
-    if (addr.isNotEmpty) {
-      for (final l in wrapName(addr)) {
-        b.writeln(center(l.trim()));
-      }
-    }
-    final phone = (receipt['branchPhone'] ?? '').toString();
-    if (phone.isNotEmpty) b.writeln(center('Tel: $phone'));
-    b.writeln(rule);
-
-    // VOIDED banner — impossible to miss.
-    final isVoided =
-        (receipt['status'] ?? '').toString().toUpperCase() == 'VOIDED';
-    if (isVoided) {
-      b.writeln(center('*** VOIDED SALE ***'));
-      final vr = (receipt['voidReason'] ?? '').toString();
-      if (vr.isNotEmpty) {
-        for (final l in wrapName('Reason: $vr')) {
-          b.writeln(l);
-        }
-      }
-      b.writeln(rule);
-    }
-
-    // Receipt meta.
-    final rcp =
-        receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase();
-    b.writeln('Receipt #$rcp');
-    b.writeln(_formatDateTime(receipt['createdAt']));
-    if (receipt['cashierName'] != null) {
-      b.writeln('Served by: ${receipt['cashierName']}');
-    }
-    if (receipt['customerName'] != null) {
-      b.writeln('Customer: ${receipt['customerName']}');
-    }
-    if (receipt['customerPhone'] != null) {
-      b.writeln('Phone: ${receipt['customerPhone']}');
-    }
-    b.writeln(rule);
-
-    // Items. Each line: the product name (wrapped), then an indented detail
-    // line showing how it was sold. When sold as a multi-unit tier (box/pack
-    // with quantityPerUnit > 1), also show the per-base-unit price.
-    for (final item in items) {
-      final qty = (item['quantity'] as num?)?.toDouble() ?? 0;
-      final name = (item['productName'] ?? item['name'] ?? '').toString();
-      final unitPrice = (item['unitPrice'] as num?)?.toDouble() ?? 0;
-      final total = (item['total'] as num?)?.toDouble() ?? 0;
-      final unit = (item['unit'] ?? '').toString().trim();
-      final perUnit = (item['quantityPerUnit'] as num?)?.toDouble() ?? 0;
-
-      for (final l in wrapName(name)) {
-        b.writeln(l);
-      }
-
-      // "  2 box @ 1,200.00" (unit label if known, else plain qty).
-      final unitLabel = unit.isNotEmpty ? ' $unit' : '';
-      b.writeln(lr('  ${_formatQuantity(qty)}$unitLabel @ ${money(unitPrice)}',
-          money(total)));
-
-      // When a tier bundles base units, show the effective per-piece price:
-      // "    (12 pcs @ 100.00 each)".
-      if (unit.isNotEmpty && perUnit > 1) {
-        final perPiece = unitPrice / perUnit;
-        final pieces = perUnit * qty;
-        b.writeln(
-            '    (${_formatQuantity(pieces)} pcs @ ${money(perPiece)} each)');
-      }
-    }
-    b.writeln(rule);
-
-    // Totals.
-    final subtotal = (receipt['subtotal'] as num?)?.toDouble() ?? 0;
-    b.writeln(lr('Subtotal', money(subtotal)));
-    final discount = (receipt['discount'] as num?)?.toDouble() ?? 0;
-    if (discount > 0) {
-      b.writeln(lr('Discount', '-${money(discount)}'));
-    }
-    final tax = (receipt['tax'] as num?)?.toDouble() ?? 0;
-    if (getIt<AuthService>().showTaxOnReceipt && tax > 0) {
-      b.writeln(lr('Tax', money(tax)));
-    }
-    final grand = (receipt['total'] as num?)?.toDouble() ?? 0;
-    b.writeln(dblRule);
-    b.writeln(lr('TOTAL  KES', money(grand)));
-    b.writeln(dblRule);
-
-    // Payment detail — how it was paid, in full.
-    final method =
-        (receipt['paymentMethod'] ?? 'CASH').toString().toUpperCase();
-    final tenders = receipt['paymentTenders'] as List?;
-    if (method == 'SPLIT' && tenders != null && tenders.isNotEmpty) {
-      b.writeln('Paid by (split):');
-      for (final t in tenders) {
-        final m = (t['method'] ?? '').toString();
-        final amt = (t['amount'] as num?)?.toDouble() ?? 0;
-        b.writeln(lr('  $m', money(amt)));
-      }
-    } else if (RecordedPaymentMethod.isRecorded(method)) {
-      final recorded =
-          RecordedPaymentDetails.tryParse(receipt['paymentReference']?.toString());
-      b.writeln(lr('Paid by', RecordedPaymentMethod.label(method)));
-      if (recorded != null) {
-        b.writeln(lr('  Ref', recorded.code));
-        if (recorded.recordedByName.isNotEmpty) {
-          b.writeln(lr('  Recorded by', recorded.recordedByName));
-        }
-        if (recorded.approvedByName != null) {
-          b.writeln(lr('  Approved by', recorded.approvedByName!));
-        }
-      }
-      b.writeln('  Recorded by the shop.');
-      b.writeln('  Not verified by Counterbase.');
-    } else {
-      b.writeln(lr('Paid by', _methodLabel(method)));
-      final cash = _cashTender(receipt, method);
-      if (cash != null) {
-        b.writeln(lr('  Cash given', money(cash.given)));
-        b.writeln(lr('  Change', money(cash.change)));
-      }
-    }
-    final ref = (receipt['paymentReference'] ?? '').toString();
-    if (ref.isNotEmpty &&
-        method != 'SPLIT' &&
-        !RecordedPaymentMethod.isRecorded(method)) {
-      b.writeln(lr('  Ref', ref.length > 20 ? ref.substring(0, 20) : ref));
-    }
-
-    // Record the amount added at checkout; local collections are account-level
-    // and cannot be allocated back to this individual receipt.
-    final creditAdded =
-        (receipt['creditAmountAtSale'] as num?)?.toDouble() ?? 0;
-    if (creditAdded > 0.01) {
-      b.writeln(rule);
-      b.writeln(lr('CREDIT ADDED', money(creditAdded)));
-      if (receipt['customerName'] != null) {
-        b.writeln('  on ${receipt['customerName']}\'s account');
-      }
-    }
-
-    b.writeln(rule);
-    // Warm footer.
-    b.writeln(center('Thank you for your purchase!'));
-    b.writeln(center('We look forward to'));
-    b.writeln(center('serving you again.'));
-    b.writeln(center('All the best!'));
-
-    return b.toString().trimRight();
-  }
+  /// The exact monospace text block the receipt prints as (see
+  /// [renderThermalReceiptText]).
+  String _renderReceiptLines(Map<String, dynamic> receipt, List items) =>
+      renderThermalReceiptText(
+        receipt,
+        fallbackNumber: saleId.substring(0, 8).toUpperCase(),
+        showTax: getIt<AuthService>().showTaxOnReceipt,
+        columns: _receiptCols,
+      );
 
   /// "Cash given" and "Change" for a cash sale, when the amount handed over
   /// was saved with it (sales from this version on).
@@ -672,6 +560,26 @@ class ReceiptScreen extends ConsumerWidget {
 
   Future<void> _shareReceiptPdf(
       WidgetRef ref, Map<String, dynamic> receipt) async {
+    final canViewCustomerDetails =
+        ref.read(permissionsProvider).canSeeCustomers;
+    final safeReceipt = receiptForCustomerVisibility(
+      receipt,
+      canViewCustomerDetails: canViewCustomerDetails,
+    );
+    final bytes =
+        await ref.read(receiptPdfBuilderProvider)(ref, saleId, safeReceipt);
+    if (canViewCustomerDetails &&
+        !ref.read(permissionsProvider).canSeeCustomers) {
+      return;
+    }
+    await ref.read(receiptPdfShareDispatcherProvider)(
+      bytes,
+      'receipt_${safeReceipt['receiptNumber'] ?? saleId}',
+    );
+  }
+
+  Future<Uint8List> _buildReceiptPdf(
+      WidgetRef ref, Map<String, dynamic> receipt) async {
     final items = receipt['items'] as List? ?? [];
     final identity = ref.read(tenantIdentityProvider);
     final logoBytes = await ExportDocumentService.fetchLogoBytes(
@@ -705,8 +613,8 @@ class ReceiptScreen extends ConsumerWidget {
         ]);
       }
     } else if (RecordedPaymentMethod.isRecorded(method)) {
-      final recorded =
-          RecordedPaymentDetails.tryParse(receipt['paymentReference']?.toString());
+      final recorded = RecordedPaymentDetails.tryParse(
+          receipt['paymentReference']?.toString());
       summaryRows.add(['Payment', RecordedPaymentMethod.label(method)]);
       if (recorded != null) {
         summaryRows.add(['Reference', recorded.code]);
@@ -717,7 +625,8 @@ class ReceiptScreen extends ConsumerWidget {
           summaryRows.add(['Approved by', recorded.approvedByName!]);
         }
       }
-      summaryRows.add(['Note', 'Recorded by the shop. Not verified by Counterbase.']);
+      summaryRows
+          .add(['Note', 'Recorded by the shop. Not verified by Counterbase.']);
     } else {
       summaryRows.add(['Payment', _methodLabel(method)]);
       final cash = _cashTender(receipt, method);
@@ -751,7 +660,7 @@ class ReceiptScreen extends ConsumerWidget {
 
     final voided =
         (receipt['status'] ?? '').toString().toUpperCase() == 'VOIDED';
-    final bytes = await ExportDocumentService.buildPdfReport(
+    return ExportDocumentService.buildPdfReport(
       title:
           'Receipt #${receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase()}'
           '${voided ? '  —  VOIDED' : ''}',
@@ -791,11 +700,62 @@ class ReceiptScreen extends ConsumerWidget {
         ),
       ],
     );
-    await ExportDocumentService.sharePdf(
-        bytes, 'receipt_${receipt['receiptNumber'] ?? saleId}');
   }
 
-  /// Silent counterpart to [_printReceipt] for the "auto-print after each
+  /// Opens the operating system's print dialog with the same A4 PDF used by
+  /// Share. This is deliberately separate from the thermal Bluetooth queue.
+  Future<void> _printReceiptOnComputer(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic>? receipt,
+  ) async {
+    if (receipt == null) {
+      showGlassSnackBar(
+        context,
+        'Receipt is still loading — try again in a moment.',
+        icon: Icons.hourglass_empty_rounded,
+        color: DesignColors.warning,
+      );
+      return;
+    }
+
+    try {
+      final canViewCustomerDetails =
+          ref.read(permissionsProvider).canSeeCustomers;
+      final bytes = await ref.read(receiptPdfBuilderProvider)(
+        ref,
+        saleId,
+        receiptForCustomerVisibility(
+          receipt,
+          canViewCustomerDetails: canViewCustomerDetails,
+        ),
+      );
+      if (!context.mounted) return;
+      if (canViewCustomerDetails &&
+          !ref.read(permissionsProvider).canSeeCustomers) {
+        return;
+      }
+      final number =
+          (receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase())
+              .toString();
+      await Printing.layoutPdf(
+        onLayout: (_) async => bytes,
+        name: 'Receipt $number',
+        format: PdfPageFormat.a4,
+        dynamicLayout: false,
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      showGlassSnackBar(
+        context,
+        'Could not print receipt. ${apiErrorMessage(e)}',
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
+      );
+    }
+  }
+
+  /// Silent counterpart to [printReceipt] for the "auto-print after each
   /// sale" setting — no snackbars on success (a printed receipt is
   /// self-evident), and failures don't interrupt the flow since the user
   /// never explicitly asked for a print in this moment. Manual retry via
@@ -829,8 +789,11 @@ class ReceiptScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _printReceipt(
-      BuildContext context, Map<String, dynamic>? receipt) async {
+  Future<void> printReceipt(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic>? receipt,
+  ) async {
     if (receipt == null) {
       showGlassSnackBar(
         context,
@@ -866,10 +829,14 @@ class ReceiptScreen extends ConsumerWidget {
 
     final paperWidth =
         prefs.getString(PrinterSettingsKeys.paperWidth) ?? '58mm';
+    final visibleReceipt = receiptForCustomerVisibility(
+      receipt,
+      canViewCustomerDetails: ref.read(permissionsProvider).canSeeCustomers,
+    );
 
     try {
       final printedHere = await queue.requestPrint(
-        receipt: receipt,
+        receipt: visibleReceipt,
         saleId: saleId,
         paperWidth: paperWidth,
         showTax: getIt<AuthService>().showTaxOnReceipt,
@@ -900,7 +867,7 @@ class ReceiptScreen extends ConsumerWidget {
   /// not deleted). Prompts for the reason, voids on the backend (restores
   /// stock server-side) when online, and marks the local sale VOIDED so the
   /// receipt immediately shows the VOIDED banner + reason.
-  Future<void> _voidSale(
+  Future<void> voidSale(
     BuildContext context,
     WidgetRef ref,
     Map<String, dynamic> receipt,
@@ -1183,7 +1150,8 @@ class _ReceiptActionButton extends StatelessWidget {
           foregroundColor:
               isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
           side: BorderSide(
-            color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+            color:
+                isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),

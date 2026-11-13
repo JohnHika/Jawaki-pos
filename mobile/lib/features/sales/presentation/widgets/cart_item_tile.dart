@@ -6,6 +6,7 @@ import '../../../../core/widgets/motion_kit.dart';
 import '../providers/cart_provider.dart';
 import 'price_adjustment_widget.dart';
 import '../../../../core/utils/format.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 class CartItemTile extends ConsumerWidget {
   final CartItem item;
@@ -14,6 +15,7 @@ class CartItemTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final canApplyDiscount = ref.watch(permissionsProvider).canApplyDiscount;
     return Dismissible(
       key: Key(item.productId),
       direction: DismissDirection.endToStart,
@@ -119,7 +121,9 @@ class CartItemTile extends ConsumerWidget {
                       InkWell(
                         borderRadius:
                             BorderRadius.circular(DesignSpacing.radiusSm),
-                        onTap: () => _showPriceAdjustment(context, item),
+                        onTap: canApplyDiscount
+                            ? () => _showPriceAdjustment(context, item)
+                            : null,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 4,

@@ -13,6 +13,7 @@ import '../../../../core/utils/business_layout_search.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/catalog_provider.dart';
 import '../providers/cart_provider.dart';
+import 'product_quick_add.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../accountability/data/till_guard_service.dart';
@@ -866,37 +867,11 @@ class _ProductCard extends ConsumerWidget {
   /// Adds one base unit straight to the cart, no sheet.
   Future<void> _quickAdd(BuildContext context, WidgetRef ref) async {
     HapticFeedback.selectionClick();
-    final productId = product['id'] as String;
-    final productName = product['name'] as String;
-    final stock = (product['stock'] as num?)?.toDouble() ?? 0;
-    final trackInventory = product['trackInventory'] as bool? ?? true;
-    if (trackInventory && stock <= 0) {
-      _showStockBlocked(
-        context,
-        productName,
-        stock,
-        unitLabel: product['unit']?.toString(),
-      );
-      return;
-    }
-    final base = PricingService.getAllPricingTiers(product).first;
-    final result = await ref.read(cartProvider.notifier).addItem(
-          productId: productId,
-          productName: productName,
-          sku: product['sku'] as String? ?? '',
-          unitPrice: base.price,
-          catalogUnitPrice: base.price,
-          quantity: 1,
-          notes: base.unitTypeLabel,
-          saleUnit: base.unit,
-          saleQuantity: 1,
-          unitConversionFactor: 1,
-          allowFractions: product['allowFractions'] == true,
-        );
+    final result = await quickAddToCart(ref, product);
     if (!context.mounted || result.success) return;
     _showCartMutationError(
       context,
-      productName,
+      product['name'] as String,
       result,
       unitLabel: product['unit']?.toString(),
     );
@@ -1041,13 +1016,10 @@ class _ProductCard extends ConsumerWidget {
     double currentStock, {
     String? unitLabel,
   }) {
-    final unit = unitLabel?.trim();
     ScaffoldMessenger.of(context).clearSnackBars();
     showGlassSnackBar(
       context,
-      currentStock <= 0
-          ? '$productName is out of stock. Receive inventory before selling.'
-          : 'Only ${_ProductCard._formatCount(currentStock)} ${unit?.isNotEmpty == true ? unit : 'units'} available for $productName.',
+      stockBlockedMessage(productName, currentStock, unitLabel: unitLabel),
       icon: Icons.inventory_2_outlined,
       color: DesignColors.error,
     );

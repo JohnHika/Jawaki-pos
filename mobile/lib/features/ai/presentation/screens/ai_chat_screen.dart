@@ -19,6 +19,9 @@ import 'ai_chart_widget.dart';
 import 'ai_chat_service.dart';
 import 'ai_add_to_chat_sheet.dart';
 import 'ai_skill_picker.dart';
+import '../../../../core/desktop/desktop_chat_composer.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../desktop/desktop_ai_chat.dart';
 
 class AiChatScreen extends ConsumerStatefulWidget {
   const AiChatScreen({super.key});
@@ -33,6 +36,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   final AiChatService _aiService = AiChatService();
   final VoiceInputService _voiceService = VoiceInputService();
   bool _isLoading = false;
+  int _turnSequence = 0;
   String _streamingReply = '';
   bool _isListening = false;
   bool _gatewayKeyChecking = true;
@@ -219,6 +223,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   Future<void> _sendMessage(String rawText) async {
     if (rawText.trim().isEmpty || _isLoading) return;
 
+    final turnSequence = ++_turnSequence;
     final message = _resolveSlashCommand(rawText).trim();
     _controller.clear();
     setState(() => _skillSuggestions = null);
@@ -234,17 +239,18 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
       final result = await _aiService.sendMessage(
         content: message,
         onStreamingText: (text) {
-          if (!mounted) return;
+          if (!mounted || turnSequence != _turnSequence) return;
           setState(() => _streamingReply = text);
           streamedReply = streamedReply || text.isNotEmpty;
           _scrollToBottom();
         },
       );
+      if (turnSequence != _turnSequence) return;
       if (!streamedReply) _markJustArrived();
       await _maybeShareGeneratedFile(result);
       _maybeStoreChart(result);
     } finally {
-      if (mounted) {
+      if (mounted && turnSequence == _turnSequence) {
         setState(() {
           _isLoading = false;
           _streamingReply = '';
@@ -252,6 +258,18 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
         _scrollToBottom();
       }
     }
+  }
+
+  void _stopGeneration() {
+    if (!_isLoading) return;
+    _aiService.cancelGeneration();
+    _turnSequence++;
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+      _streamingReply = '';
+    });
+    _scrollToBottom();
   }
 
   /// Marks the assistant message that was just appended as the one that
@@ -312,6 +330,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     bool? toolConfirmed,
   }) async {
     if (_isLoading) return;
+    final turnSequence = ++_turnSequence;
     setState(() => _isLoading = true);
     _scrollToBottom();
 
@@ -320,11 +339,12 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
         questionAnswers: questionAnswers,
         toolConfirmed: toolConfirmed,
       );
+      if (turnSequence != _turnSequence) return;
       _markJustArrived();
       await _maybeShareGeneratedFile(result);
       _maybeStoreChart(result);
     } finally {
-      if (mounted) {
+      if (mounted && turnSequence == _turnSequence) {
         setState(() => _isLoading = false);
         _scrollToBottom();
       }
@@ -369,10 +389,12 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   }
 
   Future<void> _newConversation() async {
+    _turnSequence++;
     await _aiService.startNewSharedConversation();
     if (mounted) {
       setState(() {
         _isLoading = false;
+        _streamingReply = '';
         // A fresh thread: its opening messages form a NEW initial batch, so
         // the stagger snapshot is re-taken here rather than reusing the old
         // thread's count.
@@ -409,13 +431,14 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   /// Re-runs the last AI response with a fresh answer to the same question.
   Future<void> _regenerate() async {
     if (_isLoading) return;
+    final turnSequence = ++_turnSequence;
     setState(() => _isLoading = true);
     _scrollToBottom();
 
     try {
       await _aiService.regenerateLast();
     } finally {
-      if (mounted) {
+      if (mounted && turnSequence == _turnSequence) {
         setState(() => _isLoading = false);
         _scrollToBottom();
       }
@@ -474,6 +497,10 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
         : pending != null
             ? 1
             : 0;
+
+    if (context.inDesktopShell) {
+      return _buildDesktop(messages, pending, trailingCount);
+    }
 
     return Scaffold(
       appBar: BrandedAppBar(
@@ -563,103 +590,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
           Expanded(
             child: messages.isEmpty && pending == null
                 ? _buildWelcomeScreen()
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: DesignSpacing.lg,
-                        vertical: DesignSpacing.md),
-                    itemCount: messages.length + trailingCount,
-                    itemBuilder: (context, index) {
-                      if (index == messages.length) {
-                        if (_isLoading) {
-                          return _streamingReply.isEmpty
-                              ? _buildTypingIndicator()
-                              : _ChatBubble(
-                                  message: _streamingReply,
-                                  isUser: false,
-                                );
-                        }
-                        return _PendingTurnCard(
-                          pending: pending!,
-                          onAnswerQuestions: (answers) =>
-                              _resumePendingTurn(questionAnswers: answers),
-                          onConfirmMutation: (confirmed) =>
-                              _resumePendingTurn(toolConfirmed: confirmed),
-                        ).animateEntrance(
-                          context,
-                          effects: () => [
-                            const FadeEffect(
-                              duration: DesignAnimation.fast,
-                              curve: DesignAnimation.smooth,
-                            ),
-                            const SlideEffect(
-                              begin: Offset(0, 0.1),
-                              end: Offset.zero,
-                              duration: DesignAnimation.fast,
-                              curve: DesignAnimation.smooth,
-                            ),
-                          ],
-                        );
-                      }
-                      final msg = messages[index];
-                      final isUser = msg['role'] == 'user';
-                      final content = msg['content']!;
-                      final isLastAssistant = !isUser &&
-                          index == messages.length - 1 &&
-                          pending == null;
-                      final chart = _charts[msg['id']];
-                      final shouldAnimateIn = !isUser &&
-                          msg['id'] != null &&
-                          msg['id'] == _justArrivedMessageId;
-                      if (shouldAnimateIn) {
-                        // One-shot: clear right after reading so a later
-                        // rebuild (e.g. a chart arriving, a scroll) never
-                        // replays the reveal for the same message.
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted && _justArrivedMessageId == msg['id']) {
-                            setState(() => _justArrivedMessageId = null);
-                          }
-                        });
-                      }
-                      // Staggered entrance ONLY for the initial batch of
-                      // messages present on first mount (history loaded at
-                      // open). Messages appended afterwards — every live
-                      // reply — skip it entirely so the chat never animates
-                      // on each frame of a conversation.
-                      // No unconditional entrance here: history rows render
-                      // as plain widgets (a ListView recycles children, so a
-                      // fresh [Animate] state would replay on every scroll
-                      // remount — the "animates every frame" bug). Only the
-                      // initial batch is wrapped (below), and only the reply
-                      // that just arrived gets its one-shot typewriter.
-                      final staggerThis =
-                          _initialMessagesMounted && _messageIsInitial(index);
-                      Widget row = Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _ChatBubble(
-                            message: content,
-                            isUser: isUser,
-                            onCopy: isUser ? null : () => _copyMessage(content),
-                            onEdit: isUser
-                                ? () => _editMessage(index, content)
-                                : null,
-                            onRegenerate: isLastAssistant ? _regenerate : null,
-                            onRewind: () =>
-                                _rewindTo(index, msg['role']!, content),
-                            animateIn: shouldAnimateIn,
-                          ),
-                          if (chart != null) AiChartCard(chart: chart),
-                        ],
-                      );
-                      if (!staggerThis) return row;
-                      return StaggeredItem(
-                        itemKey: 'chat-${msg['id'] ?? index}',
-                        index: index,
-                        child: row,
-                      );
-                    },
-                  ),
+                : _buildMessageList(messages, pending, trailingCount),
           ),
           // Input bar
           if (_skillSuggestions != null)
@@ -676,7 +607,273 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     );
   }
 
+  /// The Axon AI page on a computer: a centred column, the message box
+  /// docked at the bottom, quick questions as chips above it. Uses the same
+  /// service, state and handlers as the phone page.
+  Widget _buildDesktop(
+    List<Map<String, String>> messages,
+    AiPendingTurn? pending,
+    int trailingCount,
+  ) {
+    final title =
+        ref.watch(businessLayoutProvider).actionLabel('/ai', 'Axon AI');
+    final identity = ref.watch(tenantIdentityProvider);
+    final hour = DateTime.now().hour;
+    final period =
+        hour < 12 ? 'morning' : (hour < 17 ? 'afternoon' : 'evening');
+    AiSkillCommand skill(String command) =>
+        aiSkillCommands.firstWhere((c) => c.command == command);
+
+    final actions = <DesktopAiAction>[
+      DesktopAiAction(
+        icon: Icons.wb_sunny_outlined,
+        title: "Today's brief",
+        subtitle: 'How the shop is doing',
+        onTap: () => _sendMessage(skill('brief').prompt),
+      ),
+      DesktopAiAction(
+        icon: Icons.inventory_2_outlined,
+        title: 'What to restock',
+        subtitle: 'Reorder list within budget',
+        onTap: () => _sendMessage(skill('reorder').prompt),
+      ),
+      DesktopAiAction(
+        icon: Icons.payments_outlined,
+        title: 'Who owes me',
+        subtitle: 'Debts to collect first',
+        onTap: () => _sendMessage(skill('debtors').prompt),
+      ),
+      DesktopAiAction(
+        icon: Icons.star_outline_rounded,
+        title: 'Best sellers',
+        subtitle: "What's moving right now",
+        onTap: () => _sendMessage(skill('bestsellers').prompt),
+      ),
+      DesktopAiAction(
+        icon: Icons.document_scanner_rounded,
+        title: 'Scan a receipt',
+        subtitle: 'Reads supplier invoices',
+        badge: 'Photo',
+        onTap: () => context.push('/finance'),
+      ),
+      DesktopAiAction(
+        icon: Icons.photo_camera_rounded,
+        title: 'Add a photo',
+        subtitle: 'Product, shelf or receipt',
+        badge: 'Photo',
+        onTap: _openAddToChat,
+      ),
+    ];
+    final chips = <DesktopAiChip>[
+      for (final c in [
+        skill('profit'),
+        skill('weekly'),
+        skill('cashup'),
+        skill('topcustomers'),
+        skill('expenses'),
+      ])
+        DesktopAiChip(
+          icon: c.icon,
+          label: c.label,
+          onTap: () => _sendMessage(c.prompt),
+        ),
+    ];
+
+    final conversation = messages.isEmpty && pending == null
+        ? DesktopAiWelcome(
+            greeting: identity.userFirstName.isNotEmpty
+                ? 'Good $period, ${identity.userFirstName}'
+                : 'Good $period',
+            icon: AxonAiIcon(tenantLogoUrl: identity.logoUrl, size: 24),
+            actions: actions,
+          )
+        : _buildMessageList(messages, pending, trailingCount, desktop: true);
+
+    return Scaffold(
+      body: DesktopAiPage(
+        title: title,
+        subtitle:
+            'Chats go to Axon Gateway, with read-only shop details when needed.',
+        onMemory: () => context.pushNamed('ai-memory'),
+        onExport: messages.isEmpty ? null : _exportConversation,
+        onNewConversation: messages.isEmpty ? null : _newConversation,
+        isGenerating: _isLoading,
+        onStop: _stopGeneration,
+        todos: _aiService.todos.isEmpty ? null : _buildTodoChecklist(),
+        conversation: conversation,
+        chips: chips,
+        chipsEnabled: !_isLoading,
+        slashSuggestions: _skillSuggestions == null
+            ? null
+            : AiSkillSuggestionList(
+                commands: _skillSuggestions!,
+                onSelect: _selectSkill,
+              ),
+        composer: DesktopChatComposer(
+          controller: _controller,
+          hint: 'Message Axon AI',
+          enabled: !_isLoading,
+          busy: _isLoading,
+          footnote: 'Enter to send, Shift+Enter for a new line, / for skills',
+          onChanged: (text) {
+            setState(() {});
+            _onInputChanged(text);
+          },
+          onSend: () => _sendMessage(_controller.text),
+          onEscape: _skillSuggestions == null
+              ? null
+              : () => setState(() => _skillSuggestions = null),
+          leading: [
+            IconButton(
+              tooltip: 'Add a photo or file',
+              onPressed: _isLoading ? null : _openAddToChat,
+              icon: const Icon(Icons.add_rounded, size: 20),
+            ),
+          ],
+          trailing: [
+            if (_controller.text.trim().isEmpty && !_isLoading)
+              IconButton(
+                tooltip: _isListening ? 'Stop listening' : 'Dictate',
+                onPressed: _toggleListening,
+                icon: Icon(
+                  _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                  size: 20,
+                  color: _isListening ? DesignColors.accent : null,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopSetup() {
+    return Scaffold(
+      body: DesktopAiSetupNeeded(
+        title: ref.watch(businessLayoutProvider).actionLabel('/ai', 'Axon AI'),
+        checking: _gatewayKeyChecking,
+        canManage: ref.watch(permissionsProvider).isAdmin,
+        onOpenSettings: () async {
+          await context.push('/settings/ai-gateway');
+          await _refreshGatewayStatus();
+        },
+        onOpenMemory: () => context.pushNamed('ai-memory'),
+      ),
+    );
+  }
+
+  /// The scrolling conversation: every message plus the typing indicator or
+  /// the paused-turn card. Shared by the phone page and the desktop column.
+  Widget _buildMessageList(
+    List<Map<String, String>> messages,
+    AiPendingTurn? pending,
+    int trailingCount, {
+    bool desktop = false,
+  }) {
+    return ListView.builder(
+      controller: _scrollController,
+      padding: desktop
+          ? const EdgeInsets.symmetric(vertical: 16)
+          : const EdgeInsets.symmetric(
+              horizontal: DesignSpacing.lg, vertical: DesignSpacing.md),
+      itemCount: messages.length + trailingCount,
+      itemBuilder: (context, index) {
+        if (index == messages.length) {
+          if (_isLoading) {
+            return _streamingReply.isEmpty
+                ? _buildTypingIndicator(desktop: desktop)
+                : AiChatBubble(
+                    message: _streamingReply,
+                    isUser: false,
+                      desktop: desktop,
+                  );
+          }
+          return _PendingTurnCard(
+            pending: pending!,
+            onAnswerQuestions: (answers) =>
+                _resumePendingTurn(questionAnswers: answers),
+            onConfirmMutation: (confirmed) =>
+                _resumePendingTurn(toolConfirmed: confirmed),
+          ).animateEntrance(
+            context,
+            effects: () => [
+              const FadeEffect(
+                duration: DesignAnimation.fast,
+                curve: DesignAnimation.smooth,
+              ),
+              const SlideEffect(
+                begin: Offset(0, 0.1),
+                end: Offset.zero,
+                duration: DesignAnimation.fast,
+                curve: DesignAnimation.smooth,
+              ),
+            ],
+          );
+        }
+        final msg = messages[index];
+        final isUser = msg['role'] == 'user';
+        final content = msg['content']!;
+        final isLastAssistant = !isUser &&
+            index == messages.length - 1 &&
+            pending == null;
+        final chart = _charts[msg['id']];
+        final shouldAnimateIn = !isUser &&
+            msg['id'] != null &&
+            msg['id'] == _justArrivedMessageId;
+        if (shouldAnimateIn) {
+          // One-shot: clear right after reading so a later
+          // rebuild (e.g. a chart arriving, a scroll) never
+          // replays the reveal for the same message.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _justArrivedMessageId == msg['id']) {
+              setState(() => _justArrivedMessageId = null);
+            }
+          });
+        }
+        // Staggered entrance ONLY for the initial batch of
+        // messages present on first mount (history loaded at
+        // open). Messages appended afterwards — every live
+        // reply — skip it entirely so the chat never animates
+        // on each frame of a conversation.
+        // No unconditional entrance here: history rows render
+        // as plain widgets (a ListView recycles children, so a
+        // fresh [Animate] state would replay on every scroll
+        // remount — the "animates every frame" bug). Only the
+        // initial batch is wrapped (below), and only the reply
+        // that just arrived gets its one-shot typewriter.
+        final staggerThis =
+            _initialMessagesMounted && _messageIsInitial(index);
+        Widget row = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AiChatBubble(
+              message: content,
+              isUser: isUser,
+              onCopy: isUser ? null : () => _copyMessage(content),
+              onEdit: isUser
+                  ? () => _editMessage(index, content)
+                  : null,
+              onRegenerate: isLastAssistant ? _regenerate : null,
+              onRewind: () =>
+                  _rewindTo(index, msg['role']!, content),
+              animateIn: shouldAnimateIn,
+                desktop: desktop,
+            ),
+            if (chart != null) AiChartCard(chart: chart),
+          ],
+        );
+        if (!staggerThis) return row;
+        return StaggeredItem(
+          itemKey: 'chat-${msg['id'] ?? index}',
+          index: index,
+          child: row,
+        );
+      },
+    );
+  }
+
   Widget _buildGatewayUnavailableScreen() {
+    if (context.inDesktopShell) return _buildDesktopSetup();
     final theme = Theme.of(context);
     final title =
         ref.watch(businessLayoutProvider).actionLabel('/ai', 'Axon AI');
@@ -1074,10 +1271,11 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     );
   }
 
-  Widget _buildTypingIndicator() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: DesignSpacing.sm),
-      child: Align(
+  Widget _buildTypingIndicator({bool desktop = false}) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          desktop ? 38 : 0, DesignSpacing.sm, 0, DesignSpacing.sm),
+      child: const Align(
         alignment: Alignment.centerLeft,
         child: _TypingIndicator(),
       ),
@@ -1801,7 +1999,9 @@ class _PendingTurnCardState extends State<_PendingTurnCard> {
   }
 }
 
-class _ChatBubble extends ConsumerWidget {
+/// One message in the Axon AI conversation. Public so the desktop layout can
+/// be rendered in a widget test.
+class AiChatBubble extends ConsumerWidget {
   final String message;
   final bool isUser;
   final VoidCallback? onCopy;
@@ -1815,7 +2015,13 @@ class _ChatBubble extends ConsumerWidget {
   /// non-streaming JSON responses.
   final bool animateIn;
 
-  const _ChatBubble({
+  /// Drawn for the desktop column: replies as plain text beside a small
+  /// avatar, the person's own messages as a bubble capped well below the
+  /// column width, icon actions with tooltips.
+  final bool desktop;
+
+  const AiChatBubble({
+    super.key,
     required this.message,
     required this.isUser,
     this.onCopy,
@@ -1823,10 +2029,12 @@ class _ChatBubble extends ConsumerWidget {
     this.onRegenerate,
     this.onRewind,
     this.animateIn = false,
+    this.desktop = false,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (desktop) return _buildDesktop(context, ref);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
@@ -1894,6 +2102,105 @@ class _ChatBubble extends ConsumerWidget {
             ),
           ),
           if (isUser) const SizedBox(width: DesignSpacing.sm),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktop(BuildContext context, WidgetRef ref) {
+    final p = context.desktop;
+    final textStyle = (Theme.of(context).textTheme.bodyMedium ??
+            const TextStyle())
+        .copyWith(color: p.text, fontSize: 14, height: 1.55);
+    Widget action(IconData icon, String tooltip, VoidCallback onTap) =>
+        Tooltip(
+          message: tooltip,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(6),
+            hoverColor: p.hover,
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: Icon(icon, size: 15, color: p.textFaint),
+            ),
+          ),
+        );
+    final actions = <Widget>[
+      if (!isUser && onCopy != null)
+        action(Icons.copy_rounded, 'Copy', onCopy!),
+      if (isUser && onEdit != null)
+        action(Icons.edit_rounded, 'Edit', onEdit!),
+      if (onRegenerate != null)
+        action(Icons.refresh_rounded, 'Regenerate', onRegenerate!),
+      if (onRewind != null)
+        action(Icons.history_rounded, 'Rewind here', onRewind!),
+    ];
+    final actionRow = actions.isEmpty
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Row(mainAxisSize: MainAxisSize.min, children: actions),
+          );
+
+    if (isUser) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: p.selected,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: SelectableText(message, style: textStyle),
+                ),
+                actionRow,
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: p.selected,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            alignment: Alignment.center,
+            child: AxonAiIcon(
+              tenantLogoUrl: ref.watch(tenantIdentityProvider).logoUrl,
+              size: 16,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (animateIn)
+                  _TypewriterMarkdown(text: message, style: textStyle)
+                else
+                  AppMarkdown(message, style: textStyle),
+                actionRow,
+              ],
+            ),
+          ),
         ],
       ),
     );

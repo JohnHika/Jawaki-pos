@@ -55,6 +55,12 @@ class Win32Window {
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();
 
+  // Colours the native title bar and frame to match the app's theme. |dark|
+  // selects the dark frame; the colours are COLORREF values, or 0xFFFFFFFF to
+  // return one to the system default. Colour attributes need Windows 11.
+  void ApplyTitleBarTheme(bool dark, COLORREF caption, COLORREF text,
+                          COLORREF border);
+
  protected:
   // Processes and route salient window messages for mouse handling,
   // size change and DPI. Delegates handling of these to member overloads that
@@ -90,7 +96,23 @@ class Win32Window {
   // Update the window frame's theme to match the system theme.
   static void UpdateTheme(HWND const window);
 
+  // Window size and position are remembered between launches.
+  void ApplyInitialPlacement(HWND hwnd);
+  void RememberNormalBounds(HWND hwnd);
+  void SavePlacement(HWND hwnd);
+
   bool quit_on_close_ = false;
+
+  // The window's restored (not maximised, not minimised) rectangle in screen
+  // coordinates, and the DPI it was measured at.
+  RECT normal_rect_{};
+  UINT normal_dpi_ = 96;
+  bool maximized_ = false;
+  bool start_maximized_ = false;
+
+  // Once the app has chosen a title bar theme, system colour changes must not
+  // reset it.
+  bool title_bar_themed_ = false;
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;

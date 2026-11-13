@@ -70,8 +70,8 @@ void main() {
 
     test('counts the line discount when judging the price', () {
       // 2 x 500 less a 450 discount is 275 each: under the 300 cost.
-      final issues = assessPricing(
-          rules(canDiscount: true), [line(discount: 450)]);
+      final issues =
+          assessPricing(rules(canDiscount: true), [line(discount: 450)]);
       expect(issues.single.code, 'BELOW_COST');
     });
 
@@ -79,8 +79,7 @@ void main() {
       // 150 off 1000 is 15%.
       expect(assessPricing(rules(), [line(discount: 150)]).single.code,
           'DISCOUNT_LIMIT');
-      expect(
-          assessPricing(rules(canDiscount: true), [line(discount: 150)]),
+      expect(assessPricing(rules(canDiscount: true), [line(discount: 150)]),
           isEmpty);
     });
 
@@ -90,7 +89,8 @@ void main() {
       expect(issues.single.code, 'DISCOUNT_LIMIT');
     });
 
-    test('a coupon share can push a sale below cost without tripping the discount limit',
+    test(
+        'a coupon share can push a sale below cost without tripping the discount limit',
         () {
       // 2 x 500 = 1000. A 450 coupon share leaves 275 each, under the 300 cost.
       const l = GuardLine(
@@ -118,8 +118,7 @@ void main() {
     });
 
     test('does nothing when the guard is off or the product has no floor', () {
-      expect(
-          assessPricing(rules(priceMode: GuardMode.off), [line(price: 1)]),
+      expect(assessPricing(rules(priceMode: GuardMode.off), [line(price: 1)]),
           isEmpty);
       expect(assessPricing(rules(floors: {}), [line(price: 1)]), isEmpty);
     });
@@ -127,15 +126,13 @@ void main() {
 
   group('assessCreditSale', () {
     test('is silent for a sale that is not on credit', () {
-      expect(
-          assessCreditSale(rules(),
-              creditAmount: 0, hasCustomer: false),
+      expect(assessCreditSale(rules(), creditAmount: 0, hasCustomer: false),
           isEmpty);
     });
 
     test('flags credit with no customer', () {
-      final issues = assessCreditSale(rules(),
-          creditAmount: 1000, hasCustomer: false);
+      final issues =
+          assessCreditSale(rules(), creditAmount: 1000, hasCustomer: false);
       expect(issues.single.code, 'CREDIT_NO_CUSTOMER');
       expect(issues.single.blocking, isTrue);
     });
@@ -148,6 +145,7 @@ void main() {
         customerName: 'Mama Njeri',
         standing: const CreditStanding(
             limit: 5000, outstanding: 4500, oldestOverdueDays: 0),
+        canViewCustomerDetails: true,
       );
       expect(issues.single.code, 'CREDIT_LIMIT_EXCEEDED');
       expect(issues.single.message, contains('Mama Njeri'));
@@ -165,9 +163,7 @@ void main() {
     });
 
     test('lets credit through when offline (no standing known)', () {
-      expect(
-          assessCreditSale(rules(),
-              creditAmount: 1000, hasCustomer: true),
+      expect(assessCreditSale(rules(), creditAmount: 1000, hasCustomer: true),
           isEmpty);
     });
 
@@ -180,6 +176,31 @@ void main() {
             limit: null, outstanding: 0, oldestOverdueDays: 45),
       );
       expect(issues.single.code, 'CREDIT_OVERDUE');
+      expect(issues.single.severity, GuardSeverity.high);
+      expect(issues.single.blocking, isTrue);
+      expect(
+        issues.single.message,
+        'This sale does not meet the account’s credit policy.',
+      );
+      expect(issues.single.message, isNot(contains('45')));
+    });
+
+    test('shows overdue details only when customer visibility is granted', () {
+      final issues = assessCreditSale(
+        rules(overdueDays: 30),
+        creditAmount: 100,
+        hasCustomer: true,
+        customerName: 'Private Customer',
+        standing: const CreditStanding(
+          limit: null,
+          outstanding: 0,
+          oldestOverdueDays: 45,
+        ),
+        canViewCustomerDetails: true,
+      );
+      expect(issues.single.code, 'CREDIT_OVERDUE');
+      expect(issues.single.message, contains('Private Customer'));
+      expect(issues.single.message, contains('45 days overdue'));
     });
 
     test('a credit override lifts the block but keeps the flag', () {

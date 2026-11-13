@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
@@ -16,6 +18,7 @@ import '../../../sales/presentation/providers/catalog_provider.dart'
         filteredProductsProvider,
         syncCatalogCacheFromApi;
 import '../../domain/stocktake_models.dart';
+import '../desktop/desktop_stock_count_views.dart';
 import '../providers/stocktake_provider.dart';
 
 /// One stock count: counting it, handing it in, and (for a manager) reviewing
@@ -28,11 +31,15 @@ class StockCountScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(stockCountProvider(countId));
+    final desktop = context.inDesktopShell;
     return Scaffold(
-      appBar: BrandedAppBar(
-        title: detail.valueOrNull?.displayTitle ?? 'Stock count',
-        showBackButton: true,
-      ),
+      // On a computer the count draws its own page header.
+      appBar: desktop
+          ? null
+          : BrandedAppBar(
+              title: detail.valueOrNull?.displayTitle ?? 'Stock count',
+              showBackButton: true,
+            ),
       body: detail.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Padding(
@@ -220,8 +227,48 @@ class _CountingViewState extends ConsumerState<_CountingView> {
     }
   }
 
+  Widget _buildDesktop(BuildContext context) {
+    final d = widget.detail;
+    return DesktopCountingView(
+      title: d.displayTitle,
+      lines: [
+        for (final l in _visible())
+          DesktopCountLine(
+            id: l.productId,
+            name: l.productName,
+            unit: l.unit,
+            sku: l.sku,
+            expected: l.expectedQty,
+            controller: _controllers[l.productId]!,
+          ),
+      ],
+      counted: _countedNow,
+      total: d.totalLines,
+      show: switch (_show) {
+        _Show.toCount => DesktopCountShow.toCount,
+        _Show.counted => DesktopCountShow.counted,
+        _Show.all => DesktopCountShow.all,
+      },
+      onShow: (s) => setState(() => _show = switch (s) {
+            DesktopCountShow.toCount => _Show.toCount,
+            DesktopCountShow.counted => _Show.counted,
+            DesktopCountShow.all => _Show.all,
+          }),
+      search: _search,
+      onSearch: () => setState(() {}),
+      onChanged: (id) => setState(() => _dirty.add(id)),
+      expectedHidden: d.expectedHidden,
+      busy: _busy,
+      onBack: () =>
+          context.canPop() ? context.pop() : context.go('/stock-counts'),
+      onSave: () => _saveProgress(),
+      onHandIn: _handIn,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) return _buildDesktop(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final secondary =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
@@ -521,6 +568,18 @@ class _ReviewViewState extends ConsumerState<_ReviewView> {
   Widget build(BuildContext context) {
     final d = widget.detail;
     final perms = ref.watch(permissionsProvider);
+    if (context.inDesktopShell) {
+      return DesktopCountReviewView(
+        title: d.displayTitle,
+        detail: d,
+        canApprove: perms.has('inventory.stocktake.approve'),
+        busy: _busy,
+        onBack: () =>
+            context.canPop() ? context.pop() : context.go('/stock-counts'),
+        onApprove: _approve,
+        onCancel: _cancel,
+      );
+    }
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final secondary =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;

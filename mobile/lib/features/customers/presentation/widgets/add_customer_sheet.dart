@@ -1,3 +1,6 @@
+import '../../../../core/desktop/adaptive_overlays.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../catalog/presentation/desktop/desktop_panel_shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -32,6 +35,21 @@ Future<AddedCustomer?> showAddCustomerSheet(
   bool allowInitialCredit = false,
   String customerSingular = 'Customer',
 }) {
+  // On a computer the form slides in from the right and keeps the list visible.
+  if (DesktopLayout.wantsShell(context)) {
+    return showAdaptiveSheet<AddedCustomer>(
+      context: context,
+      desktopStyle: DesktopSheetStyle.sidePanel,
+      desktopWidth: 460,
+      builder: (panelContext) => DesktopPanelShell(
+        title: 'Add $customerSingular',
+        child: AddCustomerForm(
+          allowInitialCredit: allowInitialCredit,
+          customerSingular: customerSingular,
+        ),
+      ),
+    );
+  }
   return GlassBottomSheet.show<AddedCustomer>(
     context,
     title: 'Add $customerSingular',

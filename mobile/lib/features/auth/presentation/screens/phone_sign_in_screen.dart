@@ -9,10 +9,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import 'package:axon_pos/core/desktop/desktop_layout.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/core/utils/api_message.dart';
+import 'package:axon_pos/features/auth/presentation/desktop/auth_desktop_kit.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
 
@@ -166,6 +168,7 @@ class _PhoneSignInScreenState extends ConsumerState<PhoneSignInScreen> {
   @override
   Widget build(BuildContext context) {
     final palette = SignInPalette.of(context);
+    if (DesktopLayout.wantsShell(context)) return _buildDesktop(palette);
     return Scaffold(
       backgroundColor: palette.page,
       appBar: AppBar(
@@ -192,6 +195,28 @@ class _PhoneSignInScreenState extends ConsumerState<PhoneSignInScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Computer window: the same code and steps in the split sign-in layout.
+  /// Esc and Back return to the sign-in form.
+  Widget _buildDesktop(SignInPalette palette) {
+    void back() => Navigator.of(context).maybePop();
+    return AuthDesktopShell(
+      formMaxWidth: 760,
+      onEscape: back,
+      brand: const AuthBrandPanel(),
+      header: AuthBackLink(onPressed: back),
+      child: Wrap(
+        spacing: 40,
+        runSpacing: 28,
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(width: 300, child: _codePanel(palette)),
+          SizedBox(width: 340, child: _steps(palette)),
+        ],
       ),
     );
   }

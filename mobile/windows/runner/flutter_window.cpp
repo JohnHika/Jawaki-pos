@@ -1,8 +1,39 @@
 #include "flutter_window.h"
 
+#include <flutter/standard_method_codec.h>
+
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
+
+namespace {
+
+// A Dart int arrives as int32 when it fits and int64 otherwise; an opaque
+// 0xFFRRGGBB colour does not fit in int32.
+std::optional<int64_t> ReadInt(const flutter::EncodableMap& map,
+                               const char* key) {
+  auto it = map.find(flutter::EncodableValue(key));
+  if (it == map.end()) {
+    return std::nullopt;
+  }
+  if (const auto* value = std::get_if<int32_t>(&it->second)) {
+    return *value;
+  }
+  if (const auto* value = std::get_if<int64_t>(&it->second)) {
+    return *value;
+  }
+  return std::nullopt;
+}
+
+// 0xAARRGGBB -> COLORREF; alpha 0 or a missing value means "system default".
+COLORREF ToColorRef(std::optional<int64_t> argb) {
+  if (!argb || ((*argb >> 24) & 0xFF) == 0) {
+    return 0xFFFFFFFF;
+  }
+  return RGB((*argb >> 16) & 0xFF, (*argb >> 8) & 0xFF, *argb & 0xFF);
+}
+
+}  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -25,6 +56,38 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+
+  window_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(),
+          "com.archeaxon.counterbase/window",
+          &flutter::StandardMethodCodec::GetInstance());
+  window_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() != "setTitleBarTheme") {
+          result->NotImplemented();
+          return;
+        }
+        const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+        if (!args) {
+          result->Error("bad-args", "Expected a map");
+          return;
+        }
+        bool dark = false;
+        auto it = args->find(flutter::EncodableValue("dark"));
+        if (it != args->end()) {
+          if (const auto* value = std::get_if<bool>(&it->second)) {
+            dark = *value;
+          }
+        }
+        ApplyTitleBarTheme(dark, ToColorRef(ReadInt(*args, "caption")),
+                           ToColorRef(ReadInt(*args, "text")),
+                           ToColorRef(ReadInt(*args, "border")));
+        result->Success();
+      });
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -40,6 +103,8 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  // The channel must go before the engine it talks through.
+  window_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

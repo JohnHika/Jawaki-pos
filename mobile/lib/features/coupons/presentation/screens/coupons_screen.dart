@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/adaptive_overlays.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
@@ -13,6 +15,7 @@ import '../../../../core/utils/shop_name.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/coupon_models.dart';
+import '../desktop/desktop_coupons_view.dart';
 import '../providers/coupon_provider.dart';
 
 /// Discount codes the shop gives its customers. Each use is recorded against
@@ -27,17 +30,46 @@ class CouponsScreen extends ConsumerWidget {
     final report = ref.watch(couponReportProvider);
     final canManage = ref.watch(permissionsProvider).has('coupons.manage');
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final title =
+        ref.watch(businessLayoutProvider).actionLabel('/coupons', 'Coupons');
 
     Future<void> refresh() async {
       ref.invalidate(couponsProvider);
       ref.invalidate(couponReportProvider);
     }
 
+    if (context.inDesktopShell) {
+      return Scaffold(
+        appBar: null,
+        body: DesktopCouponsView(
+          title: title,
+          coupons: coupons.valueOrNull ?? const [],
+          report: report.valueOrNull,
+          loading: coupons.isLoading,
+          errorMessage:
+              coupons.hasError ? apiErrorMessage(coupons.error!) : null,
+          reportLoading: report.isLoading,
+          reportErrorMessage:
+              report.hasError ? apiErrorMessage(report.error!) : null,
+          canCreate: canManage,
+          onCreate: canManage
+              ? () async {
+                  await _openEditor(context);
+                  await refresh();
+                }
+              : null,
+          onEdit: (coupon) async {
+            await _openEditor(context, existing: coupon);
+            await refresh();
+          },
+          onRefresh: refresh,
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: BrandedAppBar(
-        title: ref
-            .watch(businessLayoutProvider)
-            .actionLabel('/coupons', 'Coupons'),
+        title: title,
         showBackButton: GoRouter.of(context).canPop(),
       ),
       floatingActionButton: canManage
@@ -100,6 +132,18 @@ class CouponsScreen extends ConsumerWidget {
   }
 
   Future<void> _openEditor(BuildContext context, {ShopCoupon? existing}) {
+    if (context.inDesktopShell) {
+      return showAdaptiveSheet<void>(
+        context: context,
+        desktopStyle: DesktopSheetStyle.sidePanel,
+        desktopWidth: 520,
+        builder: (_) => DesktopScope(
+          sidebarCollapsed:
+              DesktopScope.maybeOf(context)?.sidebarCollapsed ?? false,
+          child: _CouponEditor(existing: existing),
+        ),
+      );
+    }
     return showModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,

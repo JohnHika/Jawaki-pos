@@ -241,6 +241,7 @@ class RetailReceivable {
     required this.receiptNumber,
     required this.customerId,
     required this.customerName,
+    this.collectionGroupRef,
     required this.originalAmount,
     required this.outstandingAmount,
     required this.dueDate,
@@ -254,6 +255,10 @@ class RetailReceivable {
   final String? receiptNumber;
   final String? customerId;
   final String? customerName;
+
+  /// Opaque grouping reference used only when customer identity is hidden.
+  /// Presentation code must never render this value.
+  final String? collectionGroupRef;
   final double originalAmount;
   final double outstandingAmount;
   final DateTime? dueDate;
@@ -269,6 +274,7 @@ class RetailReceivable {
       receiptNumber: _string(json['receiptNumber']),
       customerId: customer == null ? null : _string(customer['id']),
       customerName: customer == null ? null : _string(customer['name']),
+      collectionGroupRef: _string(json['collectionGroupRef']),
       originalAmount: _number(json['originalAmount']),
       outstandingAmount: _number(json['outstandingAmount']),
       dueDate: _date(json['dueDate']),
@@ -286,6 +292,8 @@ class RetailReceivable {
         'customer': customerId == null && customerName == null
             ? null
             : <String, dynamic>{'id': customerId, 'name': customerName},
+        if (collectionGroupRef != null)
+          'collectionGroupRef': collectionGroupRef,
         'originalAmount': originalAmount,
         'outstandingAmount': outstandingAmount,
         'dueDate': _dateJson(dueDate),

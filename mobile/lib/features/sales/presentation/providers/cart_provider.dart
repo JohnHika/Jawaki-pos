@@ -205,6 +205,7 @@ class CartState {
     String? customerId,
     String? customerName,
     bool clearCustomer = false,
+    bool clearCustomerName = false,
     String? notes,
     Coupon? coupon,
     bool clearCoupon = false,
@@ -214,7 +215,9 @@ class CartState {
       discountPercent: discountPercent ?? this.discountPercent,
       discountAmount: discountAmount ?? this.discountAmount,
       customerId: clearCustomer ? null : (customerId ?? this.customerId),
-      customerName: clearCustomer ? null : (customerName ?? this.customerName),
+      customerName: clearCustomer || clearCustomerName
+          ? null
+          : (customerName ?? this.customerName),
       notes: notes ?? this.notes,
       coupon: clearCoupon ? null : (coupon ?? this.coupon),
     );
@@ -283,31 +286,59 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
     required String? tenantId,
     required String? branchId,
     required bool isLocalWorkspace,
+    bool canViewCustomerDetails = true,
   })  : _storage = storage,
         _tenantId = tenantId,
         _branchId = branchId,
         _isLocalWorkspace = isLocalWorkspace,
+        _canViewCustomerDetails = canViewCustomerDetails,
         // Local workspaces restore held carts from the OS-protected store
         // asynchronously. Do not expose a legacy plaintext backup in the UI
         // while that migration is still running.
         super(isLocalWorkspace
             ? const []
             : _restore(storage, tenantId, branchId,
-                isLocalWorkspace: isLocalWorkspace)) {
+                isLocalWorkspace: isLocalWorkspace,
+                canViewCustomerDetails: canViewCustomerDetails)) {
     _isRestoring = isLocalWorkspace;
     _ready = isLocalWorkspace ? _restoreSecureSnapshot() : Future<void>.value();
+    if (!isLocalWorkspace && !canViewCustomerDetails && state.isNotEmpty) {
+      unawaited(_persist());
+    }
   }
 
   final StorageService _storage;
   final String? _tenantId;
   final String? _branchId;
   final bool _isLocalWorkspace;
+  bool _canViewCustomerDetails;
   late final Future<void> _ready;
   bool _isRestoring = false;
   bool _disposed = false;
   String? _restoreWarning;
   String? get restoreWarning => _restoreWarning;
   bool get isRestoring => _isRestoring;
+
+  void setCanViewCustomerDetails(bool canViewCustomerDetails) {
+    if (_canViewCustomerDetails == canViewCustomerDetails) return;
+    _canViewCustomerDetails = canViewCustomerDetails;
+    if (canViewCustomerDetails) return;
+    state = [
+      for (var index = 0; index < state.length; index++)
+        ParkedSale(
+          id: state[index].id,
+          label: 'Sale #${index + 1}',
+          parkedAt: state[index].parkedAt,
+          cart: state[index].cart.copyWith(clearCustomerName: true),
+        ),
+    ];
+    if (!_isRestoring) {
+      unawaited(_serializeMutation(() async {
+        await _ready;
+        await _persist();
+      }));
+    }
+  }
 
   @override
   void dispose() {
@@ -330,6 +361,7 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
     String? tenantId,
     String? branchId, {
     required bool isLocalWorkspace,
+    required bool canViewCustomerDetails,
   }) {
     if (tenantId == null ||
         tenantId.isEmpty ||
@@ -339,13 +371,18 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
     }
     final raw =
         storage.getHeldSalesSnapshot(tenantId: tenantId, branchId: branchId);
-    return _decodeSnapshot(raw, tenantId, branchId,
-        allowCoupons: !isLocalWorkspace);
+    return _decodeSnapshot(
+      raw,
+      tenantId,
+      branchId,
+      allowCoupons: !isLocalWorkspace,
+      canViewCustomerDetails: canViewCustomerDetails,
+    );
   }
 
   static List<ParkedSale> _decodeSnapshot(
       String? raw, String? tenantId, String? branchId,
-      {bool allowCoupons = true}) {
+      {bool allowCoupons = true, bool canViewCustomerDetails = true}) {
     if (tenantId == null ||
         tenantId.isEmpty ||
         branchId == null ||
@@ -423,14 +460,18 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
           }
           restored.add(ParkedSale(
             id: id,
-            label: row['label']?.toString() ?? 'Held sale',
+            label: canViewCustomerDetails
+                ? row['label']?.toString() ?? 'Held sale'
+                : 'Sale #${restored.length + 1}',
             parkedAt: parkedAt,
             cart: CartState(
               items: items,
               discountPercent: _amount(cartJson['discountPercent']) ?? 0,
               discountAmount: _amount(cartJson['discountAmount']) ?? 0,
               customerId: cartJson['customerId']?.toString(),
-              customerName: cartJson['customerName']?.toString(),
+              customerName: canViewCustomerDetails
+                  ? cartJson['customerName']?.toString()
+                  : null,
               notes: cartJson['notes']?.toString(),
               coupon: coupon,
             ),
@@ -461,6 +502,30 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
     } catch (_) {
       return false;
     }
+  }
+
+  static String _snapshotWithoutCustomerNames(String raw) {
+    final source = jsonDecode(raw);
+    if (source is! Map || source['sales'] is! List) {
+      throw const FormatException('Invalid held-sales snapshot.');
+    }
+    final snapshot = Map<String, dynamic>.from(source);
+    final rows = source['sales'] as List;
+    final sanitizedRows = <Map<String, dynamic>>[];
+    for (var index = 0; index < rows.length; index++) {
+      final sourceRow = rows[index];
+      if (sourceRow is! Map || sourceRow['cart'] is! Map) {
+        throw const FormatException('Invalid held-sales row.');
+      }
+      final row = Map<String, dynamic>.from(sourceRow);
+      final cart = Map<String, dynamic>.from(row['cart'] as Map)
+        ..['customerName'] = null;
+      row['label'] = 'Sale #${index + 1}';
+      row['cart'] = cart;
+      sanitizedRows.add(row);
+    }
+    snapshot['sales'] = sanitizedRows;
+    return jsonEncode(snapshot);
   }
 
   static bool _isCompletelyRestorableSnapshot(
@@ -592,6 +657,18 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
       await _loadSecureSnapshot();
     } finally {
       _isRestoring = false;
+      if (!_disposed &&
+          !_canViewCustomerDetails &&
+          state.isNotEmpty &&
+          _restoreWarning == null) {
+        try {
+          await _persist();
+        } catch (_) {
+          _markRestoreWarning(
+            'Held sales were restored without customer names, but the saved copy could not be updated. Do not clear app data; ask the workspace owner for help.',
+          );
+        }
+      }
       if (!_disposed) state = [...state];
     }
   }
@@ -643,6 +720,7 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
         tenantId,
         branchId,
         allowCoupons: false,
+        canViewCustomerDetails: _canViewCustomerDetails,
       );
       if (legacySnapshot != null) {
         if (legacySnapshotIsComplete &&
@@ -678,7 +756,9 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
         await _storage.saveSecureHeldSalesSnapshot(
           tenantId: tenantId,
           branchId: branchId,
-          snapshot: legacySnapshot!,
+          snapshot: _canViewCustomerDetails
+              ? legacySnapshot!
+              : _snapshotWithoutCustomerNames(legacySnapshot!),
         );
         if (_disposed) return;
         state = _decodeSnapshot(
@@ -686,6 +766,7 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
           tenantId,
           branchId,
           allowCoupons: false,
+          canViewCustomerDetails: _canViewCustomerDetails,
         );
         await _storage.clearLegacyHeldSalesSnapshot(
           tenantId: tenantId,
@@ -714,6 +795,24 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
     return operation;
   }
 
+  Map<String, dynamic> _persistedSale(ParkedSale sale, int index) => {
+        'id': sale.id,
+        'label': _canViewCustomerDetails ? sale.label : 'Sale #${index + 1}',
+        'parkedAt': sale.parkedAt.toUtc().toIso8601String(),
+        'cart': {
+          'items': [for (final item in sale.cart.items) item.toJson()],
+          'discountPercent': sale.cart.discountPercent,
+          'discountAmount': sale.cart.discountAmount,
+          // Checkout needs this transaction reference even when the display
+          // name is hidden; it is never rendered as a label.
+          'customerId': sale.cart.customerId,
+          'customerName':
+              _canViewCustomerDetails ? sale.cart.customerName : null,
+          'notes': sale.cart.notes,
+          'coupon': sale.cart.coupon?.toJson(),
+        },
+      };
+
   Future<void> _persist() async {
     _ensureSnapshotWritable();
     final tenantId = _tenantId;
@@ -729,21 +828,8 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
       'tenantId': tenantId,
       'branchId': branchId,
       'sales': [
-        for (final sale in state)
-          {
-            'id': sale.id,
-            'label': sale.label,
-            'parkedAt': sale.parkedAt.toUtc().toIso8601String(),
-            'cart': {
-              'items': [for (final item in sale.cart.items) item.toJson()],
-              'discountPercent': sale.cart.discountPercent,
-              'discountAmount': sale.cart.discountAmount,
-              'customerId': sale.cart.customerId,
-              'customerName': sale.cart.customerName,
-              'notes': sale.cart.notes,
-              'coupon': sale.cart.coupon?.toJson(),
-            },
-          },
+        for (var index = 0; index < state.length; index++)
+          _persistedSale(state[index], index),
       ],
     });
     if (_isLocalWorkspace) {
@@ -771,11 +857,15 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
       _ensureSnapshotWritable();
       if (cart.items.isEmpty) return;
       final previous = state;
-      final name = label ?? cart.customerName ?? 'Sale #${state.length + 1}';
+      final name = _canViewCustomerDetails
+          ? label ?? 'Sale #${state.length + 1}'
+          : 'Sale #${state.length + 1}';
       final sale = ParkedSale(
         id: _uuid.v4(),
         label: name,
-        cart: cart,
+        cart: _canViewCustomerDetails
+            ? cart
+            : cart.copyWith(clearCustomerName: true),
         parkedAt: DateTime.now(),
       );
       state = [...state, sale];
@@ -836,7 +926,7 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
         if (current.items.isNotEmpty) {
           next.add(ParkedSale(
             id: _uuid.v4(),
-            label: current.customerName ?? 'Sale #${next.length + 1}',
+            label: 'Sale #${next.length + 1}',
             cart: current,
             parkedAt: DateTime.now(),
           ));
@@ -870,6 +960,7 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
 
 final parkedSalesProvider =
     StateNotifierProvider<ParkedSalesNotifier, List<ParkedSale>>((ref) {
+  final canViewCustomerDetails = ref.read(permissionsProvider).canSeeCustomers;
   final scope =
       ref.watch(authControllerProvider.select((auth) => auth.isAuthenticated
           ? (
@@ -878,12 +969,17 @@ final parkedSalesProvider =
               auth.user?['branchId']?.toString()
             )
           : (false, null, null)));
-  return ParkedSalesNotifier(
+  final notifier = ParkedSalesNotifier(
     storage: getIt<StorageService>(),
     tenantId: scope.$2,
     branchId: scope.$3,
     isLocalWorkspace: scope.$1,
+    canViewCustomerDetails: canViewCustomerDetails,
   );
+  ref.listen(permissionsProvider, (previous, next) {
+    notifier.setCanViewCustomerDetails(next.canSeeCustomers);
+  });
+  return notifier;
 });
 
 final parkedSalesRestoreWarningProvider = Provider<String?>((ref) {
@@ -1595,6 +1691,11 @@ class CartNotifier extends StateNotifier<CartState> {
     );
   }
 
+  void clearCustomerDisplayName() {
+    if (state.customerName == null) return;
+    state = state.copyWith(clearCustomerName: true);
+  }
+
   void setNotes(String? notes) {
     state = state.copyWith(notes: notes);
   }
@@ -1797,6 +1898,11 @@ class CartNotifier extends StateNotifier<CartState> {
 // Provider
 final cartProvider = StateNotifierProvider<CartNotifier, CartState>((ref) {
   final notifier = CartNotifier();
+  ref.listen(permissionsProvider, (previous, next) {
+    if (previous?.canSeeCustomers == true && !next.canSeeCustomers) {
+      notifier.clearCustomerDisplayName();
+    }
+  });
   // A cart belongs to one cashier in one branch. Clear it on logout, staff
   // switch, or branch switch. Keep the notifier alive so an in-flight stock
   // check can be discarded by its session generation instead of writing into

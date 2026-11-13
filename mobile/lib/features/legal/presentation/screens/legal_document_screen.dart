@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_theme.dart';
 import '../../../../core/legal/policy_catalog.dart';
 import '../../../../core/widgets/legal_link.dart';
 
@@ -14,13 +17,36 @@ class LegalDocumentScreen extends StatelessWidget {
     final document = documentSlug == null
         ? null
         : policyDocument(documentSlug!, standalone: true);
-    return Scaffold(
+    final body = document == null
+        ? documentSlug == null
+            ? const _PolicyIndex()
+            : const _UnavailablePolicy()
+        : _PolicyBody(document: document);
+    final desktop = DesktopLayout.wantsShell(context);
+    final page = Scaffold(
       appBar: AppBar(title: Text(document?.title ?? 'Policies & data')),
-      body: document == null
-          ? documentSlug == null
-              ? const _PolicyIndex()
-              : const _UnavailablePolicy()
-          : _PolicyBody(document: document),
+      // A document is read like a page, so the line length stops at a
+      // comfortable width instead of running across a wide window.
+      body: desktop
+          ? Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: body,
+              ),
+            )
+          : body,
+    );
+    if (!desktop) return page;
+    return Theme(
+      data: DesktopTheme.of(Theme.of(context)),
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.escape): () =>
+              Navigator.of(context).maybePop(),
+        },
+        child: FocusScope(autofocus: true, child: page),
+      ),
     );
   }
 }

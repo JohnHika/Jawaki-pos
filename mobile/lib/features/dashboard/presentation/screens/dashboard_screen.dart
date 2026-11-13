@@ -11,6 +11,8 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/theme/share_format_sheet.dart';
 import '../../../../core/services/export_document_service.dart';
@@ -22,6 +24,11 @@ import '../../../finance/presentation/end_of_day_prompt.dart';
 import '../widgets/staff_invite_nudge.dart';
 import '../../../onboarding/presentation/widgets/setup_progress_card.dart';
 import '../widgets/home_cards.dart';
+import '../desktop/desktop_home_models.dart';
+import '../desktop/desktop_home_providers.dart';
+import '../desktop/desktop_home_view.dart';
+import '../../../accountability/presentation/providers/accountability_provider.dart';
+import '../../../onboarding/presentation/setup_providers.dart';
 import '../../../licence/domain/licence_standing.dart';
 import '../../../licence/presentation/licence_providers.dart';
 import '../../../home/domain/shop_guidance.dart';
@@ -50,9 +57,11 @@ final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((ref) {
       final local = await db.getDashboardSummary();
       if (disposed || revision != localRevision) return;
       localSnapshot = local;
-      updates.add(serverSalesSnapshot == null
-          ? local
-          : mergeDashboardSummary(local, serverSalesSnapshot!));
+      updates.add(
+        serverSalesSnapshot == null
+            ? local
+            : mergeDashboardSummary(local, serverSalesSnapshot!),
+      );
     } catch (error, stackTrace) {
       if (!disposed) updates.addError(error, stackTrace);
     }
@@ -77,12 +86,15 @@ final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((ref) {
     }
   }
 
-  final salesSub = db.watchTodaysSales().listen((_) {
-    unawaited(refreshLocal());
-    unawaited(refreshServer());
-  }, onError: (Object error, StackTrace stackTrace) {
-    if (!disposed) updates.addError(error, stackTrace);
-  });
+  final salesSub = db.watchTodaysSales().listen(
+    (_) {
+      unawaited(refreshLocal());
+      unawaited(refreshServer());
+    },
+    onError: (Object error, StackTrace stackTrace) {
+      if (!disposed) updates.addError(error, stackTrace);
+    },
+  );
   final timer = localWorkspace
       ? null
       : Timer.periodic(
@@ -159,8 +171,9 @@ final _todaysCostProvider = FutureProvider.autoDispose<double>((ref) async {
 /// Today's end-of-day close status for the dashboard's admin-only card —
 /// null result means "not closed yet"; the underlying getDailyClose(...)
 /// already distinguishes that from a load failure via its own exception.
-final _eodStatusProvider =
-    FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+final _eodStatusProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((
+  ref,
+) async {
   final auth = getIt<AuthService>();
   final branchId = auth.branchId;
   if (branchId == null || branchId.isEmpty) return null;
@@ -252,6 +265,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   // against the new day instead of keeping yesterday's totals on screen.
   late DateTime _shownDay;
 
+  // Desktop Home only: which period is showing and when it was last read.
+  HomeRange _homeRange = HomeRange.today;
+  DateTime _updatedAt = DateTime.now();
+
   @override
   void initState() {
     super.initState();
@@ -342,10 +359,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       ref.read(_eodStatusProvider.future),
       ref.read(_aiDailyBriefProvider.future),
     ].map((future) => future.then<void>((_) {}).catchError((_) {}));
-    await Future.wait(refreshes).timeout(
-      const Duration(seconds: 12),
-      onTimeout: () => const <void>[],
-    );
+    await Future.wait(
+      refreshes,
+    ).timeout(const Duration(seconds: 12), onTimeout: () => const <void>[]);
   }
 
   /// The time of today's first sale, as "7:42", or null before the first one.
@@ -353,8 +369,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final now = DateTime.now();
     DateTime? first;
     for (final sale in sales) {
-      if (const {'VOIDED', 'REFUNDED', 'FAILED', 'CANCELLED'}
-          .contains(sale.status)) {
+      if (const {
+        'VOIDED',
+        'REFUNDED',
+        'FAILED',
+        'CANCELLED',
+      }.contains(sale.status)) {
         continue;
       }
       final at = sale.createdAt.toLocal();
@@ -368,32 +388,41 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
   @override
   Widget build(BuildContext context) {
+    final desktop = context.inDesktopShell;
+    if (desktop) return _buildDesktop(context);
     final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final summaryAsync = ref.watch(_dashboardSummaryProvider);
     final salesAsync = ref.watch(_recentSalesProvider);
     final identity = ref.watch(tenantIdentityProvider);
     final businessLayout = ref.watch(businessLayoutProvider);
-    final showDailyFigures =
-        businessLayout.showsDashboardSection('summary_metrics');
+    final showDailyFigures = businessLayout.showsDashboardSection(
+      'summary_metrics',
+    );
     final showEndOfDay = businessLayout.showsDashboardSection('end_of_day');
     // The templated snapshot only repeats generic advice; in a device-only
     // shop the "up to date" card below takes its place.
     final showBusinessBrief =
         !isLocalWorkspace && businessLayout.showsDashboardSection('ai_brief');
-    final showCostAndProfit =
-        businessLayout.showsDashboardSection('cost_profit');
-    final showRecentSales =
-        businessLayout.showsDashboardSection('recent_sales');
+    final showCostAndProfit = businessLayout.showsDashboardSection(
+      'cost_profit',
+    );
+    final showRecentSales = businessLayout.showsDashboardSection(
+      'recent_sales',
+    );
     final needsSummary =
         showDailyFigures || showBusinessBrief || showCostAndProfit;
     final todaysSales = salesAsync.asData?.value ?? const <PendingSale>[];
     Widget takingsBlock(Map<String, dynamic> summary) {
-      final split = splitTakings(todaysSales.map((sale) => (
+      final split = splitTakings(
+        todaysSales.map(
+          (sale) => (
             method: sale.paymentMethod,
             reference: sale.paymentReference,
             total: sale.total,
             status: sale.status,
-          )));
+          ),
+        ),
+      );
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -468,95 +497,123 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           : const [],
     );
     return Scaffold(
-      appBar: BrandedAppBar(
-        title: identity.companyName.isNotEmpty ? identity.companyName : 'Home',
-        showBackButton: false,
-        showLogo: false,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 16, top: 10, bottom: 10),
-          child: TenantBrandMark(logoUrl: identity.logoUrl, size: 34),
-        ),
-        actions: [
-          if (!getIt<AuthService>().isLocalWorkspace) const NotificationBell(),
-          IconButton(
-            tooltip: 'Browse a previous day',
-            icon: const Icon(Icons.calendar_month_rounded),
-            onPressed: () => _openDayPicker(context),
-          ),
-          // Refresh / share / log out live in one menu so the title keeps
-          // its room on narrow phones and large font sizes.
-          PopupMenuButton<String>(
-            tooltip: 'More',
-            icon: const Icon(Icons.more_vert_rounded),
-            onSelected: (value) {
-              switch (value) {
-                case 'refresh':
-                  unawaited(_refreshDashboard(ref));
-                case 'share':
-                  _shareDashboardReport(context, ref);
-                case 'logout':
-                  _showDashboardLogoutDialog(context, ref);
-              }
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(
-                value: 'refresh',
-                child: ListTile(
-                  leading: Icon(Icons.refresh_rounded),
-                  title: Text('Refresh'),
-                  contentPadding: EdgeInsets.zero,
-                ),
+      appBar: desktop
+          ? null
+          : BrandedAppBar(
+              title: identity.companyName.isNotEmpty
+                  ? identity.companyName
+                  : 'Home',
+              showBackButton: false,
+              showLogo: false,
+              leading: Padding(
+                padding: const EdgeInsets.only(left: 16, top: 10, bottom: 10),
+                child: TenantBrandMark(logoUrl: identity.logoUrl, size: 34),
               ),
-              PopupMenuItem(
-                value: 'share',
-                child: ListTile(
-                  leading: Icon(Icons.share_rounded),
-                  title: Text('Share report'),
-                  contentPadding: EdgeInsets.zero,
+              actions: [
+                if (!getIt<AuthService>().isLocalWorkspace)
+                  const NotificationBell(),
+                IconButton(
+                  tooltip: 'Browse a previous day',
+                  icon: const Icon(Icons.calendar_month_rounded),
+                  onPressed: () => _openDayPicker(context),
                 ),
-              ),
-              PopupMenuItem(
-                value: 'logout',
-                child: ListTile(
-                  leading: Icon(Icons.logout_rounded),
-                  title: Text('Log out'),
-                  contentPadding: EdgeInsets.zero,
+                // Refresh / share / log out live in one menu so the title keeps
+                // its room on narrow phones and large font sizes.
+                PopupMenuButton<String>(
+                  tooltip: 'More',
+                  icon: const Icon(Icons.more_vert_rounded),
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'refresh':
+                        unawaited(_refreshDashboard(ref));
+                      case 'share':
+                        _shareDashboardReport(context, ref);
+                      case 'logout':
+                        _showDashboardLogoutDialog(context, ref);
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'refresh',
+                      child: ListTile(
+                        leading: Icon(Icons.refresh_rounded),
+                        title: Text('Refresh'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'share',
+                      child: ListTile(
+                        leading: Icon(Icons.share_rounded),
+                        title: Text('Share report'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'logout',
+                      child: ListTile(
+                        leading: Icon(Icons.logout_rounded),
+                        title: Text('Log out'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-        ],
-      ),
+              ],
+            ),
       body: RefreshIndicator(
         onRefresh: () => _refreshDashboard(ref),
         child: PageContainer(
           withScroll: true,
+          maxWidth: desktop ? 1280 : 960,
+          backgroundColor: desktop ? context.desktop.panel : null,
+          padding: desktop ? const EdgeInsets.fromLTRB(24, 8, 24, 28) : null,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Builder(builder: (context) {
-                final licence = ref.watch(licenceViewProvider).valueOrNull;
-                if (licence == null) return const SizedBox.shrink();
-                final standing = licence.standing;
-                final kind = switch (standing.status) {
-                  LicenceStatus.salesPaused => LicenceStatusKind.paused,
-                  LicenceStatus.grace => LicenceStatusKind.late,
-                  LicenceStatus.trial when standing.daysLeft <= 3 =>
-                    LicenceStatusKind.trial,
-                  LicenceStatus.active when standing.daysLeft <= 3 =>
-                    LicenceStatusKind.due,
-                  _ => null,
-                };
-                if (kind == null) return const SizedBox.shrink();
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: DesignSpacing.lg),
-                  child: HomeLicenceBanner(
-                    status: kind,
-                    daysLeft: standing.daysLeft,
-                    onTap: () => context.push('/settings/plan'),
-                  ),
-                );
-              }),
+              if (desktop)
+                DesktopPageHeader(
+                  title: 'Dashboard',
+                  subtitle: 'Today at your shop',
+                  padding: const EdgeInsets.fromLTRB(0, 12, 0, 20),
+                  actions: [
+                    OutlinedButton.icon(
+                      onPressed: () => _openDayPicker(context),
+                      icon: const Icon(Icons.calendar_month_rounded, size: 17),
+                      label: const Text('Choose day'),
+                    ),
+                    IconButton(
+                      tooltip: 'Refresh dashboard',
+                      onPressed: () => unawaited(_refreshDashboard(ref)),
+                      icon: const Icon(Icons.refresh_rounded),
+                    ),
+                  ],
+                ),
+              Builder(
+                builder: (context) {
+                  final licence = ref.watch(licenceViewProvider).valueOrNull;
+                  if (licence == null) return const SizedBox.shrink();
+                  final standing = licence.standing;
+                  final kind = switch (standing.status) {
+                    LicenceStatus.salesPaused => LicenceStatusKind.paused,
+                    LicenceStatus.grace => LicenceStatusKind.late,
+                    LicenceStatus.trial when standing.daysLeft <= 3 =>
+                      LicenceStatusKind.trial,
+                    LicenceStatus.active when standing.daysLeft <= 3 =>
+                      LicenceStatusKind.due,
+                    _ => null,
+                  };
+                  if (kind == null) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: DesignSpacing.lg),
+                    child: HomeLicenceBanner(
+                      status: kind,
+                      daysLeft: standing.daysLeft,
+                      onTap: () => context.push('/settings/plan'),
+                    ),
+                  );
+                },
+              ),
 
               if (showDailyFigures) ...[
                 summaryAsync.when(
@@ -646,16 +703,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     return Container(
                       decoration: BoxDecoration(
                         border: Border.all(color: divider),
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusXl),
+                        borderRadius: BorderRadius.circular(
+                          DesignSpacing.radiusXl,
+                        ),
                       ),
                       child: Column(
-                        children: sales
-                            .take(10)
-                            .toList()
-                            .asMap()
-                            .entries
-                            .map((entry) {
+                        children: sales.take(10).toList().asMap().entries.map((
+                          entry,
+                        ) {
                           final isLast = entry.key == sales.take(10).length - 1;
                           final sale = entry.value;
                           return Material(
@@ -671,27 +726,36 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                   border: isLast
                                       ? null
                                       : Border(
-                                          bottom: BorderSide(color: divider)),
+                                          bottom: BorderSide(color: divider),
+                                        ),
                                 ),
                                 child: Row(
                                   children: [
-                                    Builder(builder: (context) {
-                                      final look =
-                                          _saleLook(sale.paymentMethod);
-                                      return Container(
-                                        width: 38,
-                                        height: 38,
-                                        alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          color: look.color
-                                              .withValues(alpha: 0.16),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                        child: Icon(look.icon,
-                                            size: 18, color: look.color),
-                                      );
-                                    }),
+                                    Builder(
+                                      builder: (context) {
+                                        final look = _saleLook(
+                                          sale.paymentMethod,
+                                        );
+                                        return Container(
+                                          width: 38,
+                                          height: 38,
+                                          alignment: Alignment.center,
+                                          decoration: BoxDecoration(
+                                            color: look.color.withValues(
+                                              alpha: 0.16,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          child: Icon(
+                                            look.icon,
+                                            size: 18,
+                                            color: look.color,
+                                          ),
+                                        );
+                                      },
+                                    ),
                                     const SizedBox(width: DesignSpacing.md),
                                     Expanded(
                                       child: Column(
@@ -716,7 +780,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                                 ),
                                           ),
                                           const SizedBox(
-                                              height: DesignSpacing.xs - 1),
+                                            height: DesignSpacing.xs - 1,
+                                          ),
                                           Text(
                                             '${_timeFmt.format(sale.createdAt)}  ·  ${paymentMethodLabel(sale.paymentMethod)}',
                                             style: Theme.of(context)
@@ -738,8 +803,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                     // children split the row in half, which left the
                                     // amount floating mid-row on wide screens.
                                     ConstrainedBox(
-                                      constraints:
-                                          const BoxConstraints(maxWidth: 130),
+                                      constraints: const BoxConstraints(
+                                        maxWidth: 130,
+                                      ),
                                       child: FittedBox(
                                         alignment: Alignment.centerRight,
                                         fit: BoxFit.scaleDown,
@@ -790,6 +856,335 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
   }
 
+  // ── Desktop shell ──────────────────────────────────────────────────
+  //
+  // Inside the desktop shell Home is a different layout over the same data:
+  // the providers above feed DesktopHomeView, which only draws.
+
+  static const _desktopGoPaths = {
+    '/',
+    '/receipts',
+    '/products',
+    '/customers',
+    '/reports',
+    '/cash-flow',
+    '/payments',
+  };
+
+  Future<void> _openFromDesktop(String path) async {
+    if (!mounted) return;
+    if (_desktopGoPaths.contains(path)) {
+      context.go(path);
+      return;
+    }
+    await context.push<Object?>(path);
+    if (mounted && path == '/cash-flow/end-of-day') {
+      ref.invalidate(_eodStatusProvider);
+    }
+  }
+
+  Future<void> _refreshDesktop() async {
+    ref.invalidate(desktopHomeRangeProvider);
+    ref.invalidate(desktopTopProductsProvider);
+    ref.invalidate(alertsProvider);
+    await _refreshDashboard(ref);
+    if (mounted) setState(() => _updatedAt = DateTime.now());
+  }
+
+  /// The end-of-day row for Needs attention, or null when the close is done.
+  HomeAttentionItem? _eodAttention(AsyncValue<Map<String, dynamic>?> async) {
+    final isLocal = getIt<AuthService>().isLocalWorkspace;
+    const open = HomeAttentionItem(
+      id: 'end-of-day',
+      level: HomeAttentionLevel.info,
+      title: "Close today's till",
+      detail: 'Review the sales and count the till when you finish selling.',
+      path: '/cash-flow/end-of-day',
+    );
+    return async.when(
+      loading: () => null,
+      error: (_, __) => const HomeAttentionItem(
+        id: 'end-of-day',
+        level: HomeAttentionLevel.warning,
+        title: 'End of day needs a look',
+        detail: "Review today's sales and count the till.",
+        path: '/cash-flow/end-of-day',
+      ),
+      data: (close) {
+        if (isLocal) {
+          if (close?['close'] == null) return open;
+          if (close?['closeNeedsReconciliation'] == true) {
+            return const HomeAttentionItem(
+              id: 'end-of-day',
+              level: HomeAttentionLevel.warning,
+              title: 'Till changed after closing',
+              detail: 'Review the day and count the till again.',
+              path: '/cash-flow/end-of-day',
+            );
+          }
+          return null;
+        }
+        return close == null ? open : null;
+      },
+    );
+  }
+
+  Widget _buildDesktop(BuildContext context) {
+    final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
+    final businessLayout = ref.watch(businessLayoutProvider);
+    final permissions = ref.watch(permissionsProvider);
+    final range = _homeRange;
+    final showFigures = businessLayout.showsDashboardSection('summary_metrics');
+    final showCost = businessLayout.showsDashboardSection('cost_profit');
+    final showRecent = businessLayout.showsDashboardSection('recent_sales');
+    final showEndOfDay = businessLayout.showsDashboardSection('end_of_day');
+    final showBrief =
+        !isLocalWorkspace && businessLayout.showsDashboardSection('ai_brief');
+
+    ref.listen<AsyncValue<Map<String, dynamic>>>(_dashboardSummaryProvider, (
+      previous,
+      next,
+    ) {
+      if (next.hasValue && mounted) setState(() => _updatedAt = DateTime.now());
+    });
+
+    // Figures for the chosen period, in the shape the view draws.
+    final DesktopHomeData base;
+    if (range == HomeRange.today) {
+      final summaryAsync = ref.watch(_dashboardSummaryProvider);
+      final salesAsync = ref.watch(_recentSalesProvider);
+      final sales = (salesAsync.asData?.value ?? const <PendingSale>[])
+          .map(homeSaleRowFromSale)
+          .toList(growable: false);
+      final summary = summaryAsync.asData?.value;
+      final costAsync = showCost ? ref.watch(_todaysCostProvider) : null;
+      final top = ref
+              .watch(
+                desktopTopProductsProvider((days: 1, stamp: sales.length)),
+              )
+              .asData
+              ?.value ??
+          const <HomeProductRow>[];
+      final waiting = (!summaryAsync.hasValue && !summaryAsync.hasError) ||
+          (!salesAsync.hasValue && !salesAsync.hasError);
+      base = DesktopHomeData(
+        range: range,
+        loading: waiting,
+        error: !summaryAsync.hasValue && summaryAsync.hasError
+            ? loadErrorSubtitle(summaryAsync.error)
+            : null,
+        revenue: _amountForDashboard(summary?['totalRevenue']),
+        transactions: (summary?['transactionCount'] as num?)?.toInt() ?? 0,
+        avgTicket: _amountForDashboard(summary?['avgTicket']),
+        itemsSold: _amountForDashboard(summary?['itemsSold']),
+        split: splitOfSales(sales),
+        cost: costAsync == null
+            ? null
+            : (costAsync.asData?.value ?? (costAsync.hasError ? 0.0 : null)),
+        costLoading: costAsync != null && costAsync.isLoading,
+        canAdjustCost: permissions.canRecordRestock,
+        bars: hourlyBarsFromSales(sales),
+        sales: sales,
+        salesCount: sales.length,
+        topProducts: top,
+      );
+    } else {
+      final rangeAsync = ref.watch(desktopHomeRangeProvider(range.days));
+      final loaded = rangeAsync.asData?.value;
+      base = DesktopHomeData(
+        range: range,
+        loading: !rangeAsync.hasValue && !rangeAsync.hasError,
+        error: !rangeAsync.hasValue && rangeAsync.hasError
+            ? loadErrorSubtitle(rangeAsync.error)
+            : null,
+        revenue: loaded?.revenue ?? 0,
+        transactions: loaded?.transactions ?? 0,
+        avgTicket: loaded?.avgTicket ?? 0,
+        itemsSold: loaded?.itemsSold ?? 0,
+        split: loaded?.split ?? const TakingsSplit(),
+        bars: loaded?.bars ?? const [],
+        sales: loaded?.sales ?? const [],
+        salesCount: loaded?.salesCount ?? 0,
+        topProducts: loaded?.topProducts ?? const [],
+        deviceOnly: loaded?.deviceOnly ?? false,
+      );
+    }
+
+    // Needs attention: only what the phone Home already raises.
+    final attention = <HomeAttentionItem>[];
+    var attentionLoaded = true;
+    if (!isLocalWorkspace &&
+        permissions.has('accountability.view') &&
+        businessLayout.isActionVisible('/shop-alerts')) {
+      final alerts = ref.watch(alertsProvider);
+      attentionLoaded = alerts.loadedOnce;
+      final open = alerts.page.openCount;
+      final high = alerts.page.openHigh;
+      if (alerts.loadedOnce && open > 0) {
+        attention.add(
+          HomeAttentionItem(
+            id: 'alerts',
+            level: high > 0
+                ? HomeAttentionLevel.serious
+                : HomeAttentionLevel.warning,
+            title: high > 0
+                ? '$high serious ${high == 1 ? 'alert' : 'alerts'} to check'
+                : '$open ${open == 1 ? 'thing' : 'things'} to look at',
+            detail:
+                'Sales below cost, voids, stock written off, credit and more.',
+            path: '/shop-alerts',
+          ),
+        );
+      }
+    }
+    final recorded = base.split.recordedCount;
+    if (recorded > 0) {
+      attention.add(
+        HomeAttentionItem(
+          id: 'recorded',
+          level: HomeAttentionLevel.warning,
+          title: recorded == 1
+              ? '1 recorded payment to match'
+              : '$recorded recorded payments to match',
+          detail: 'Check them against your M-Pesa or bank statement.',
+          path: '/mpesa-match',
+        ),
+      );
+    }
+    final licence = ref.watch(licenceViewProvider).valueOrNull;
+    if (licence != null) {
+      final standing = licence.standing;
+      final days =
+          standing.daysLeft == 1 ? '1 day' : '${standing.daysLeft} days';
+      final licenceItem = switch (standing.status) {
+        LicenceStatus.salesPaused => const HomeAttentionItem(
+            id: 'licence',
+            level: HomeAttentionLevel.serious,
+            title: 'New sales are paused',
+            detail:
+                'Your records are safe. Open Plan and licence to pay and unlock.',
+            path: '/settings/plan',
+          ),
+        LicenceStatus.grace => HomeAttentionItem(
+            id: 'licence',
+            level: HomeAttentionLevel.warning,
+            title: 'Your payment is late',
+            detail: 'New sales pause in $days.',
+            path: '/settings/plan',
+          ),
+        LicenceStatus.trial when standing.daysLeft <= 3 => HomeAttentionItem(
+            id: 'licence',
+            level: HomeAttentionLevel.warning,
+            title: 'Your free trial ends in $days',
+            detail: 'Open Plan and licence to keep selling.',
+            path: '/settings/plan',
+          ),
+        LicenceStatus.active when standing.daysLeft <= 3 => HomeAttentionItem(
+            id: 'licence',
+            level: HomeAttentionLevel.info,
+            title: 'Your payment is due in $days',
+            path: '/settings/plan',
+          ),
+        _ => null,
+      };
+      if (licenceItem != null) attention.add(licenceItem);
+    }
+    if (permissions.isAdmin && showEndOfDay) {
+      final item = _eodAttention(ref.watch(_eodStatusProvider));
+      if (item != null) attention.add(item);
+    }
+    if (isLocalWorkspace && getIt<AuthService>().isLocalWorkspaceOwner) {
+      final checklist = ref.watch(setupChecklistProvider).valueOrNull;
+      final next = checklist?.next;
+      if (checklist != null && next != null) {
+        attention.add(
+          HomeAttentionItem(
+            id: 'setup',
+            level: HomeAttentionLevel.info,
+            title:
+                'Finish setting up (${checklist.doneCount} of ${checklist.steps.length})',
+            detail:
+                'Next: ${next.title[0].toLowerCase()}${next.title.substring(1)}',
+            path: '/setup',
+          ),
+        );
+      }
+    }
+
+    // Lower-priority extras under the grid: the daily brief and the nudge to
+    // invite staff. Both stay quiet when they have nothing to say.
+    final briefAsync = showBrief ? ref.watch(_aiDailyBriefProvider) : null;
+    final brief = briefAsync?.asData?.value?.trim();
+    final footerChildren = <Widget>[
+      if (brief != null && brief.isNotEmpty)
+        DesktopPanel(
+          title: 'Daily brief',
+          subtitle: 'Written for you by the assistant',
+          child: AppMarkdown(
+            brief,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  height: 1.45,
+                  color: context.desktop.textMuted,
+                ),
+          ),
+        ),
+      if (!isLocalWorkspace) const StaffInviteNudge(),
+    ];
+
+    final data = DesktopHomeData(
+      range: base.range,
+      loading: base.loading,
+      error: base.error,
+      revenue: base.revenue,
+      transactions: base.transactions,
+      avgTicket: base.avgTicket,
+      itemsSold: base.itemsSold,
+      split: base.split,
+      cost: base.cost,
+      costLoading: base.costLoading,
+      canAdjustCost: base.canAdjustCost,
+      bars: base.bars,
+      sales: base.sales,
+      salesCount: base.salesCount,
+      topProducts: base.topProducts,
+      attention: attention,
+      attentionLoaded: attentionLoaded,
+      showFigures: showFigures,
+      showProfit: showCost,
+      showRecentSales: showRecent,
+      deviceOnly: base.deviceOnly,
+    );
+
+    return Scaffold(
+      backgroundColor: context.desktop.panel,
+      body: DesktopHomeView(
+        data: data,
+        updatedAt: _updatedAt,
+        onRangeChanged: (next) => setState(() => _homeRange = next),
+        onRefresh: () => unawaited(_refreshDesktop()),
+        onOpen: (path) => unawaited(_openFromDesktop(path)),
+        onAdjustProfit: () => unawaited(
+          _openProfitAdjustment(context, ref, data.revenue, data.cost ?? 0),
+        ),
+        onRetry: () {
+          ref.invalidate(_dashboardSummaryProvider);
+          ref.invalidate(desktopHomeRangeProvider);
+        },
+        footer: footerChildren.isEmpty
+            ? null
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var i = 0; i < footerChildren.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 16),
+                    footerChildren[i],
+                  ],
+                ],
+              ),
+      ),
+    );
+  }
+
   /// Icon and colour for a sale's money group, matching the Sold today card.
   ({IconData icon, Color color}) _saleLook(String method) {
     switch (method.toUpperCase()) {
@@ -826,7 +1221,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   Widget _buildAiBrief(
-      BuildContext context, WidgetRef ref, Map<String, dynamic> summary) {
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> summary,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final briefAsync = ref.watch(_aiDailyBriefProvider);
@@ -834,37 +1232,86 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final cardBorder =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     return BorderDraw(
-        radius: 18,
-        color: DesignColors.accent.withValues(alpha: 0.55),
-        delay: const Duration(milliseconds: 300),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: Stack(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(DesignSpacing.lg),
-                decoration: BoxDecoration(
-                  color:
-                      isDark ? DesignColors.darkSurfaceElevated : Colors.white,
-                  border: Border.all(color: cardBorder),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+      radius: 18,
+      color: DesignColors.accent.withValues(alpha: 0.55),
+      delay: const Duration(milliseconds: 300),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: Stack(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(DesignSpacing.lg),
+              decoration: BoxDecoration(
+                color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
+                border: Border.all(color: cardBorder),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      AxonAiIcon(
+                        tenantLogoUrl:
+                            ref.watch(tenantIdentityProvider).logoUrl,
+                        size: 18,
+                      ),
+                      const SizedBox(width: DesignSpacing.sm),
+                      Text(
+                        isLocalWorkspace ? 'BUSINESS SNAPSHOT' : 'AI BRIEF',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1,
+                              color: isDark
+                                  ? DesignColors.darkTextTertiary
+                                  : DesignColors.textTertiary,
+                            ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: DesignSpacing.md),
+                  briefAsync.when(
+                    data: (brief) {
+                      // A real AI-generated brief was returned — show it as-is
+                      // instead of the templated fallback snippets.
+                      if (brief != null && brief.trim().isNotEmpty) {
+                        // Real markdown rendering (bold, tables, lists) — the AI's
+                        // reply can include a markdown table of restock priorities,
+                        // which a plain Text widget would show as literal
+                        // "**bold**" and "| pipe | text |" instead of formatting.
+                        return AppMarkdown(
+                          brief.trim(),
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    height: 1.45,
+                                    color: isDark
+                                        ? DesignColors.darkTextSecondary
+                                        : DesignColors.textSecondary,
+                                  ),
+                        );
+                      }
+                      return _buildBriefSnippets(
+                        _fallbackBriefSnippets(summary),
+                        isDark,
+                      );
+                    },
+                    loading: () => Row(
                       children: [
-                        AxonAiIcon(
-                          tenantLogoUrl:
-                              ref.watch(tenantIdentityProvider).logoUrl,
-                          size: 18,
+                        SizedBox(
+                          width: 13,
+                          height: 13,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.8,
+                            color: isDark
+                                ? DesignColors.darkTextTertiary
+                                : DesignColors.textTertiary,
+                          ),
                         ),
                         const SizedBox(width: DesignSpacing.sm),
                         Text(
-                          isLocalWorkspace ? 'BUSINESS SNAPSHOT' : 'AI BRIEF',
+                          'Thinking about today\'s numbers...',
                           style:
-                              Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1,
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    fontStyle: FontStyle.italic,
                                     color: isDark
                                         ? DesignColors.darkTextTertiary
                                         : DesignColors.textTertiary,
@@ -872,75 +1319,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                         ),
                       ],
                     ),
-                    const SizedBox(height: DesignSpacing.md),
-                    briefAsync.when(
-                      data: (brief) {
-                        // A real AI-generated brief was returned — show it as-is
-                        // instead of the templated fallback snippets.
-                        if (brief != null && brief.trim().isNotEmpty) {
-                          // Real markdown rendering (bold, tables, lists) — the AI's
-                          // reply can include a markdown table of restock priorities,
-                          // which a plain Text widget would show as literal
-                          // "**bold**" and "| pipe | text |" instead of formatting.
-                          return AppMarkdown(
-                            brief.trim(),
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(
-                                  height: 1.45,
-                                  color: isDark
-                                      ? DesignColors.darkTextSecondary
-                                      : DesignColors.textSecondary,
-                                ),
-                          );
-                        }
-                        return _buildBriefSnippets(
-                            _fallbackBriefSnippets(summary), isDark);
-                      },
-                      loading: () => Row(
-                        children: [
-                          SizedBox(
-                            width: 13,
-                            height: 13,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 1.8,
-                              color: isDark
-                                  ? DesignColors.darkTextTertiary
-                                  : DesignColors.textTertiary,
-                            ),
-                          ),
-                          const SizedBox(width: DesignSpacing.sm),
-                          Text(
-                            'Thinking about today\'s numbers...',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      fontStyle: FontStyle.italic,
-                                      color: isDark
-                                          ? DesignColors.darkTextTertiary
-                                          : DesignColors.textTertiary,
-                                    ),
-                          ),
-                        ],
-                      ),
-                      // Offline / AI unreachable — degrade to the templated snippets
-                      // instead of showing an error where a business insight was
-                      // expected.
-                      error: (_, __) => _buildBriefSnippets(
-                          _fallbackBriefSnippets(summary), isDark),
+                    // Offline / AI unreachable — degrade to the templated snippets
+                    // instead of showing an error where a business insight was
+                    // expected.
+                    error: (_, __) => _buildBriefSnippets(
+                      _fallbackBriefSnippets(summary),
+                      isDark,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                child: Container(width: 3, color: DesignColors.accent),
-              ),
-            ],
-          ),
-        ));
+            ),
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: Container(width: 3, color: DesignColors.accent),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildBriefSnippets(List<String> snippets, bool isDark) {
@@ -1184,15 +1583,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     if (canAdjustCost)
                       Material(
                         color: Colors.transparent,
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusFull),
+                        borderRadius: BorderRadius.circular(
+                          DesignSpacing.radiusFull,
+                        ),
                         child: InkWell(
                           onTap: isLoading
                               ? null
                               : () => _openProfitAdjustment(
-                                  context, ref, revenue, cost),
-                          borderRadius:
-                              BorderRadius.circular(DesignSpacing.radiusFull),
+                                    context,
+                                    ref,
+                                    revenue,
+                                    cost,
+                                  ),
+                          borderRadius: BorderRadius.circular(
+                            DesignSpacing.radiusFull,
+                          ),
                           child: Container(
                             constraints: const BoxConstraints(
                               minWidth: DesignSpacing.huge,
@@ -1205,18 +1610,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.tune_rounded,
-                                    size: 14, color: DesignColors.accent),
+                                const Icon(
+                                  Icons.tune_rounded,
+                                  size: 14,
+                                  color: DesignColors.accent,
+                                ),
                                 const SizedBox(width: DesignSpacing.xs),
-                                Text('ADJUST',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelSmall
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 0.5,
-                                          color: DesignColors.accent,
-                                        )),
+                                Text(
+                                  'ADJUST',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 0.5,
+                                        color: DesignColors.accent,
+                                      ),
+                                ),
                               ],
                             ),
                           ),
@@ -1294,10 +1704,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               ),
         ),
         const SizedBox(height: DesignSpacing.xs - 1),
-        Text(
-          value,
-          style: DesignType.numeric(fontSize: 17, color: color),
-        ),
+        Text(value, style: DesignType.numeric(fontSize: 17, color: color)),
       ],
     );
   }
@@ -1322,7 +1729,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   Future<void> _showDashboardLogoutDialog(
-      BuildContext context, WidgetRef ref) async {
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     final confirmed = await showConfirmDialog(
       context,
       title: 'Log out',
@@ -1380,8 +1789,10 @@ Items Sold:  ${summary['itemsSold'] ?? 0}
 
 Sent from your POS workspace
 ''';
-      await ExportDocumentService.sharePlainText(report,
-          subject: 'Daily Sales Report');
+      await ExportDocumentService.sharePlainText(
+        report,
+        subject: 'Daily Sales Report',
+      );
       return;
     }
 

@@ -7,6 +7,8 @@ import 'package:drift/drift.dart' show Value;
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/desktop/adaptive_overlays.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
@@ -27,6 +29,11 @@ import '../widgets/add_edit_product_sheet.dart';
 import '../widgets/image_picker_section.dart';
 import '../widgets/stock_kit.dart';
 import '../widgets/stock_pane.dart';
+import '../desktop/desktop_panel_shell.dart';
+import '../desktop/desktop_product_inspector.dart';
+import '../desktop/desktop_products_view.dart';
+import '../desktop/product_actions.dart';
+import '../providers/product_history_provider.dart';
 import '../../../../core/utils/format.dart';
 
 // Providers for the products screen
@@ -57,11 +64,13 @@ final _allActiveProductsProvider = StreamProvider<List<Product>>((ref) {
 /// How many are on the shelf for every product in this branch, kept live.
 final _stockQuantitiesProvider = StreamProvider<Map<String, double>>((ref) {
   final branchId = getIt<StorageService>().getBranchId();
-  return getIt<AppDatabase>().watchAllStock().map((rows) => {
-        for (final row in rows)
-          if (branchId == null || row.branchId == branchId)
-            row.productId: row.quantity.toDouble(),
-      });
+  return getIt<AppDatabase>().watchAllStock().map(
+        (rows) => {
+          for (final row in rows)
+            if (branchId == null || row.branchId == branchId)
+              row.productId: row.quantity.toDouble(),
+        },
+      );
 });
 
 // Search and category filters belong to one shop/branch. Without this scope,
@@ -70,10 +79,8 @@ final _stockQuantitiesProvider = StreamProvider<Map<String, double>>((ref) {
 final _catalogScopeProvider = Provider<String>((ref) {
   final user = ref.watch(currentUserProvider);
   final storage = getIt<StorageService>();
-  final tenantId =
-      user?['tenantId']?.toString() ?? storage.getTenantId() ?? '';
-  final branchId =
-      user?['branchId']?.toString() ?? storage.getBranchId() ?? '';
+  final tenantId = user?['tenantId']?.toString() ?? storage.getTenantId() ?? '';
+  final branchId = user?['branchId']?.toString() ?? storage.getBranchId() ?? '';
   final workspaceKind =
       getIt<AuthService>().isLocalWorkspace ? 'local' : 'connected';
   return [
@@ -86,8 +93,10 @@ final _catalogScopeProvider = Provider<String>((ref) {
 
 // Keyed by the user, tenant, branch, and workspace type so switching shop
 // scope always gets a fresh provider instance and re-runs the sync.
-final _catalogSyncProvider =
-    FutureProvider.family<void, String>((ref, catalogScope) async {
+final _catalogSyncProvider = FutureProvider.family<void, String>((
+  ref,
+  catalogScope,
+) async {
   await catalog_cache.syncCatalogCacheFromApi();
   ref.invalidate(catalog_cache.filteredProductsProvider);
   ref.invalidate(catalog_cache.favoriteProductsProvider);
@@ -95,7 +104,11 @@ final _catalogSyncProvider =
 });
 
 class ProductsScreen extends ConsumerStatefulWidget {
-  const ProductsScreen({super.key});
+  const ProductsScreen({super.key, this.initialProductId});
+
+  /// On a computer, the product to open in the inspector (a deep link to
+  /// `/products/:id`). A phone ignores it.
+  final String? initialProductId;
 
   @override
   ConsumerState<ProductsScreen> createState() => _ProductsScreenState();
@@ -105,9 +118,14 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   late final TextEditingController _searchController;
   Timer? _searchDebounce;
 
+  // Desktop only: the row shown in the inspector and the stock chip picked.
+  String? _selectedProductId;
+  DesktopStockFilter _stockFilter = DesktopStockFilter.all;
+
   @override
   void initState() {
     super.initState();
+    _selectedProductId = widget.initialProductId;
     final scope = ref.read(_catalogScopeProvider);
     final previousScope = ref.read(_lastCatalogScopeProvider);
     final scopeChanged = previousScope != null && previousScope != scope;
@@ -125,7 +143,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     _searchController = TextEditingController(
       text: scopeChanged ? '' : ref.read(_searchQueryProvider),
     );
-
   }
 
   @override
@@ -158,6 +175,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final desktop = context.inDesktopShell;
     final catalogScope = ref.watch(_catalogScopeProvider);
     final currentUserId =
         ref.watch(currentUserProvider)?['id'] as String? ?? 'logged-out';
@@ -178,6 +196,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         selection: TextSelection.collapsed(offset: next.length),
       );
     });
+
+    if (desktop) return _buildDesktop(context);
 
     final syncAsync = ref.watch(_catalogSyncProvider(catalogScope));
     final categoriesAsync = ref.watch(categoriesProvider);
@@ -223,28 +243,38 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       return BottomActionBar(
         label: 'Add ${productSingular.toLowerCase()}',
         icon: Icons.add_rounded,
-        onTap: () => _showAddEditProduct(context, ref,
-            entityLabel: productSingular),
+        onTap: () =>
+            _showAddEditProduct(context, ref, entityLabel: productSingular),
       );
     }
 
     return Scaffold(
       appBar: BrandedAppBar(
         title: businessLayout.actionLabel(
-            '/products', businessLayout.productsLabel),
+          '/products',
+          businessLayout.productsLabel,
+        ),
         showBackButton: false,
         actions: [
           IconButton(
             tooltip: 'View, removed items and categories',
-            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            constraints: const BoxConstraints(
+              minWidth: 48,
+              minHeight: 48,
+            ),
             icon: const Icon(Icons.tune_rounded),
-            onPressed: () => _showOptions(context, ref,
-                canEdit: perms.canEditProducts, isLocal: isLocalWorkspace),
+            onPressed: () => _showOptions(
+              context,
+              ref,
+              canEdit: perms.canEditProducts,
+              isLocal: isLocalWorkspace,
+            ),
           ),
         ],
       ),
       body: PageContainer(
         padding: EdgeInsets.zero,
+        maxWidth: 960,
         child: Column(
           children: [
             Padding(
@@ -289,8 +319,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                       null;
                   ref.read(_lowStockOnlyProvider.notifier).state = false;
                 },
-                onLow: () => ref.read(_lowStockOnlyProvider.notifier).state =
-                    !lowOnly,
+                onLow: () =>
+                    ref.read(_lowStockOnlyProvider.notifier).state = !lowOnly,
                 onCategory: (id) {
                   ref.read(_selectedCategoryFilterProvider.notifier).state =
                       selectedCategory == id ? null : id;
@@ -333,39 +363,43 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                         category.id: category.name,
                     };
                     final results = gridView
-                        ? GridView.builder(
-                            padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
-                            gridDelegate:
-                                SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: productGridColumns(
-                                  MediaQuery.sizeOf(context).width),
-                              crossAxisSpacing: 10,
-                              mainAxisSpacing: 10,
-                              mainAxisExtent: 176,
-                            ),
-                            itemCount: filtered.length,
-                            itemBuilder: (context, index) {
-                              final product = filtered[index];
-                              return _ProductGridCard(
-                                product: product,
-                                categoryName: categoryMap[product.categoryId] ??
-                                    'Uncategorized',
-                                quantity: quantities[product.id],
+                            ? GridView.builder(
+                                padding:
+                                    const EdgeInsets.fromLTRB(20, 4, 20, 16),
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: productGridColumns(
+                                    MediaQuery.sizeOf(context).width,
+                                  ),
+                                  crossAxisSpacing: 10,
+                                  mainAxisSpacing: 10,
+                                  mainAxisExtent: 176,
+                                ),
+                                itemCount: filtered.length,
+                                itemBuilder: (context, index) {
+                                  final product = filtered[index];
+                                  return _ProductGridCard(
+                                    product: product,
+                                    categoryName:
+                                        categoryMap[product.categoryId] ??
+                                            'Uncategorized',
+                                    quantity: quantities[product.id],
+                                  );
+                                },
+                              )
+                            : _ProductList(
+                                products: filtered,
+                                categoryMap: categoryMap,
+                                quantities: quantities,
                               );
-                            },
-                          )
-                        : _ProductList(
-                            products: filtered,
-                            categoryMap: categoryMap,
-                            quantities: quantities,
-                          );
 
                     return RefreshIndicator(
                       onRefresh: () async {
                         try {
                           ref.invalidate(_catalogSyncProvider(currentUserId));
-                          await ref
-                              .read(_catalogSyncProvider(currentUserId).future);
+                          await ref.read(
+                            _catalogSyncProvider(currentUserId).future,
+                          );
                         } catch (_) {
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -391,19 +425,23 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                 onRetry: isPermissionDenied(syncAsync.error)
                                     ? null
                                     : () => ref.invalidate(
-                                        _catalogSyncProvider(currentUserId)),
+                                          _catalogSyncProvider(currentUserId),
+                                        ),
                               ),
                             ),
                           if (categoriesAsync.hasError)
                             Padding(
                               padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
                               child: InlineRetryNotice(
-                                message: isPermissionDenied(categoriesAsync.error)
+                                message: isPermissionDenied(
+                                        categoriesAsync.error)
                                     ? 'Your role cannot view product categories. You can still browse and sell your saved products.'
                                     : 'Product categories are unavailable. ${loadErrorSubtitle(categoriesAsync.error)} You can still browse and sell your saved products.',
-                                onRetry: isPermissionDenied(categoriesAsync.error)
-                                    ? null
-                                    : () => ref.invalidate(categoriesProvider),
+                                onRetry:
+                                    isPermissionDenied(categoriesAsync.error)
+                                        ? null
+                                        : () =>
+                                            ref.invalidate(categoriesProvider),
                               ),
                             ),
                           Expanded(child: results),
@@ -431,6 +469,254 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         ),
       ),
     );
+  }
+
+  // ─── Desktop ──────────────────────────────────────────────────────────
+
+  /// The computer layout: toolbar, table and inspector. The providers and the
+  /// filters are the same ones the phone uses; only the layout differs.
+  Widget _buildDesktop(BuildContext context) {
+    final catalogScope = ref.watch(_catalogScopeProvider);
+    final syncAsync = ref.watch(_catalogSyncProvider(catalogScope));
+    final categoriesAsync = ref.watch(categoriesProvider);
+    final productsAsync = ref.watch(_productsProvider);
+    final selectedCategory = ref.watch(_selectedCategoryFilterProvider);
+    final searchQuery = ref.watch(_searchQueryProvider);
+    final quantities = ref.watch(_stockQuantitiesProvider).valueOrNull ??
+        const <String, double>{};
+    final allActive =
+        ref.watch(_allActiveProductsProvider).valueOrNull ?? const <Product>[];
+    final isLocal = getIt<AuthService>().isLocalWorkspace;
+    final showRemoved = isLocal && ref.watch(_showArchivedProductsProvider);
+    final perms = ref.watch(permissionsProvider);
+    final layout = ref.watch(businessLayoutProvider);
+    final singular = layout.productSingular;
+
+    StockLevel levelOf(Product p) => _levelOf(p, quantities);
+    final lowCount =
+        allActive.where((p) => levelOf(p) == StockLevel.low).length;
+    final outCount =
+        allActive.where((p) => levelOf(p) == StockLevel.out).length;
+
+    final loaded = productsAsync.valueOrNull ?? const <Product>[];
+    var rows = _filterProducts(
+      loaded,
+      selectedCategory,
+      searchQuery,
+      layout,
+      showArchived: showRemoved,
+    );
+    if (_stockFilter == DesktopStockFilter.low) {
+      rows = rows.where((p) => levelOf(p) == StockLevel.low).toList();
+    } else if (_stockFilter == DesktopStockFilter.out) {
+      rows = rows.where((p) => levelOf(p) == StockLevel.out).toList();
+    }
+
+    final categories = [
+      for (final c in categoriesAsync.valueOrNull ?? const <Category>[])
+        if (c.isActive) c,
+    ]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final categoryNames = {
+      for (final c in categoriesAsync.valueOrNull ?? const <Category>[])
+        c.id: c.name,
+    };
+
+    Product? selected;
+    final selectedId = _selectedProductId;
+    if (selectedId != null) {
+      for (final p in [...loaded, ...allActive]) {
+        if (p.id == selectedId) {
+          selected = p;
+          break;
+        }
+      }
+    }
+
+    final syncFailed = syncAsync.hasError;
+    final permissionDenied = isPermissionDenied(syncAsync.error);
+    final firstLoadFailed = loaded.isEmpty &&
+        searchQuery.isEmpty &&
+        (syncFailed || productsAsync.hasError);
+    final loadError = productsAsync.hasError
+        ? productsAsync.error
+        : syncFailed
+            ? syncAsync.error
+            : null;
+
+    Widget? inspector;
+    if (selected != null) {
+      final product = selected;
+      inspector = Consumer(
+        builder: (context, ref, _) {
+          final history = ref.watch(productMovementsProvider(product.id));
+          return DesktopProductInspector(
+            key: ValueKey(product.id),
+            product: product,
+            categoryName: categoryNames[product.categoryId] ?? 'Uncategorized',
+            quantity: quantities[product.id],
+            history: history.valueOrNull ?? const [],
+            historyAvailable: isLocal,
+            showCost: perms.canEditProducts || perms.canSeeFinancialReports,
+            canEdit: perms.canEditProducts,
+            canReceive: perms.canManageStock,
+            onClose: () => setState(() => _selectedProductId = null),
+            onEdit: () => _showAddEditProduct(
+              context,
+              ref,
+              product: product,
+              entityLabel: singular,
+            ),
+            onReceive: () => _receiveStock(product),
+            onCorrectCount: () => showCorrectCountDialog(
+              context,
+              product: product,
+              current: quantities[product.id] ?? 0,
+            ),
+            onToggleRemoved: () => _toggleRemoved(product),
+          );
+        },
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: context.desktop.panel,
+      body: DesktopProductsView(
+        title: layout.actionLabel('/products', layout.productsLabel),
+        singular: singular,
+        searchHint: layout.catalogSearchHint,
+        products: rows,
+        quantities: quantities,
+        categoryNames: categoryNames,
+        categories: [
+          for (final c in categories) DesktopCategoryOption(c.id, c.name),
+        ],
+        totalCount: allActive.length,
+        lowCount: lowCount,
+        outCount: outCount,
+        stockFilter: _stockFilter,
+        onStockFilter: (filter) => setState(() => _stockFilter = filter),
+        categoryId: selectedCategory,
+        onCategory: (id) =>
+            ref.read(_selectedCategoryFilterProvider.notifier).state = id,
+        searchController: _searchController,
+        searchQuery: searchQuery,
+        onSearchChanged: _scheduleSearch,
+        onSearchSubmitted: _scanOrSearch,
+        selectedId: selected?.id,
+        onSelect: (product) =>
+            setState(() => _selectedProductId = product?.id),
+        showRemoved: showRemoved,
+        onShowRemoved: isLocal
+            ? (value) {
+                ref.read(_showArchivedProductsProvider.notifier).state = value;
+                ref.read(_selectedCategoryFilterProvider.notifier).state = null;
+                setState(() {
+                  _stockFilter = DesktopStockFilter.all;
+                  _selectedProductId = null;
+                });
+              }
+            : null,
+        canEdit: perms.canEditProducts,
+        canReceive: perms.canManageStock,
+        showCost: perms.canEditProducts || perms.canSeeFinancialReports,
+        loading: productsAsync.isLoading && loaded.isEmpty,
+        errorMessage: firstLoadFailed && loadError != null
+            ? loadErrorSubtitle(loadError)
+            : null,
+        onRetry: permissionDenied
+            ? null
+            : () {
+                ref.invalidate(_catalogSyncProvider(catalogScope));
+                ref.invalidate(_productsProvider);
+              },
+        onRefresh: isLocal
+            ? null
+            : () {
+                ref.invalidate(_catalogSyncProvider(catalogScope));
+              },
+        inspector: inspector,
+        notices: [
+          if (syncFailed && loaded.isNotEmpty)
+            DesktopNotice(
+              message: permissionDenied
+                  ? 'Saved products are shown, but your role cannot refresh the catalog. Ask an administrator to check product access.'
+                  : 'Catalog refresh failed. Saved products are still available, but prices and stock may be out of date.',
+              onRetry: permissionDenied
+                  ? null
+                  : () => ref.invalidate(_catalogSyncProvider(catalogScope)),
+            ),
+          if (categoriesAsync.hasError)
+            DesktopNotice(
+              message: isPermissionDenied(categoriesAsync.error)
+                  ? 'Your role cannot view product categories. You can still browse and sell your saved products.'
+                  : 'Product categories are unavailable. You can still browse and sell your saved products.',
+              onRetry: isPermissionDenied(categoriesAsync.error)
+                  ? null
+                  : () => ref.invalidate(categoriesProvider),
+            ),
+        ],
+        starterNames: starterProductsFor(layout.preset.id),
+        onAdd: () => _showAddEditProduct(context, ref, entityLabel: singular),
+        onAddNamed: (name) => _showAddEditProduct(
+          context,
+          ref,
+          entityLabel: singular,
+          initialName: name,
+        ),
+        onManageCategories: () => _showCategoryManagement(context, ref),
+        onEdit: (product) => _showAddEditProduct(
+          context,
+          ref,
+          product: product,
+          entityLabel: singular,
+        ),
+        onReceive: _receiveStock,
+        onCorrectCount: (product) => showCorrectCountDialog(
+          context,
+          product: product,
+          current: quantities[product.id] ?? 0,
+        ),
+        onToggleRemoved: _toggleRemoved,
+      ),
+    );
+  }
+
+  /// Enter in the search box. A barcode scanner types the code then presses
+  /// Enter, so when the text is exactly one product's code that product opens.
+  void _scanOrSearch(String value) {
+    _commitSearch(value);
+    final code = value.trim().toLowerCase();
+    if (code.isEmpty) return;
+    final all =
+        ref.read(_allActiveProductsProvider).valueOrNull ?? const <Product>[];
+    final matches =
+        all.where((p) => p.sku.trim().toLowerCase() == code).toList();
+    if (matches.length != 1) return;
+    setState(() => _selectedProductId = matches.first.id);
+    // Select the text so the next scan replaces it.
+    _searchController.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _searchController.text.length,
+    );
+  }
+
+  void _receiveStock(Product product) {
+    context.push('/inventory/receive?productId=${product.id}');
+  }
+
+  Future<void> _toggleRemoved(Product product) async {
+    final error = await confirmAndToggleRemoved(context, ref, product);
+    if (!mounted) return;
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: DesignColors.error),
+      );
+      return;
+    }
+    // A removed (or restored) product leaves this list either way.
+    if (_selectedProductId == product.id) {
+      setState(() => _selectedProductId = null);
+    }
   }
 
   StockLevel _levelOf(Product p, Map<String, double> quantities) =>
@@ -478,11 +764,16 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       return _EmptyCard(
         icon: Icons.search_rounded,
         title: 'No ${productSingular.toLowerCase()} called "$searchQuery"',
-        body: 'Check the spelling, or add it as a new ${productSingular.toLowerCase()}.',
+        body:
+            'Check the spelling, or add it as a new ${productSingular.toLowerCase()}.',
         actionLabel: canEdit ? 'Add "$searchQuery"' : null,
         onAction: canEdit
-            ? () => _showAddEditProduct(context, ref,
-                entityLabel: productSingular, initialName: searchQuery)
+            ? () => _showAddEditProduct(
+                  context,
+                  ref,
+                  entityLabel: productSingular,
+                  initialName: searchQuery,
+                )
             : null,
       );
     }
@@ -513,12 +804,15 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         ),
         if (canEdit) ...[
           const SizedBox(height: 18),
-          Text('SHOPS LIKE YOURS START WITH',
-              style: DesignType.numeric(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: palette.soft,
-                  letterSpacing: 1.1)),
+          Text(
+            'SHOPS LIKE YOURS START WITH',
+            style: DesignType.numeric(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: palette.soft,
+              letterSpacing: 1.1,
+            ),
+          ),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
@@ -527,34 +821,46 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               for (final name in suggestions)
                 ActionChip(
                   label: Text(name),
-                  onPressed: () => _showAddEditProduct(context, ref,
-                      entityLabel: productSingular, initialName: name),
+                  onPressed: () => _showAddEditProduct(
+                    context,
+                    ref,
+                    entityLabel: productSingular,
+                    initialName: name,
+                  ),
                   backgroundColor: palette.card,
                   side: BorderSide(color: palette.line),
                   labelStyle: TextStyle(
-                      color: palette.ink,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13),
+                    color: palette.ink,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
                 ),
             ],
           ),
           const SizedBox(height: 8),
-          Text('Tap one to start a ${productSingular.toLowerCase()} with that name.',
-              style: TextStyle(color: palette.soft, fontSize: 12.5)),
+          Text(
+            'Tap one to start a ${productSingular.toLowerCase()} with that name.',
+            style: TextStyle(color: palette.soft, fontSize: 12.5),
+          ),
         ],
       ],
     );
   }
 
-  void _showOptions(BuildContext context, WidgetRef ref,
-      {required bool canEdit, required bool isLocal}) {
+  void _showOptions(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool canEdit,
+    required bool isLocal,
+  }) {
     final palette = SignInPalette.of(context);
     showModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
       backgroundColor: palette.card,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
       builder: (sheetContext) => Consumer(
         builder: (context, ref, _) {
           final grid = ref.watch(_catalogGridViewProvider);
@@ -571,16 +877,20 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                       width: 36,
                       height: 4,
                       decoration: BoxDecoration(
-                          color: palette.line,
-                          borderRadius: BorderRadius.circular(3)),
+                        color: palette.line,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Text('Show products as',
-                      style: TextStyle(
-                          color: palette.soft,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600)),
+                  Text(
+                    'Show products as',
+                    style: TextStyle(
+                      color: palette.soft,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -613,16 +923,23 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: removed,
                       activeTrackColor: DesignColors.accent,
-                      title: Text('Show removed products',
-                          style: TextStyle(
-                              color: palette.ink, fontWeight: FontWeight.w600)),
-                      subtitle: Text('Bring one back from here.',
-                          style: TextStyle(color: palette.soft, fontSize: 12.5)),
+                      title: Text(
+                        'Show removed products',
+                        style: TextStyle(
+                          color: palette.ink,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Bring one back from here.',
+                        style: TextStyle(color: palette.soft, fontSize: 12.5),
+                      ),
                       onChanged: (value) {
                         ref.read(_showArchivedProductsProvider.notifier).state =
                             value;
-                        ref.read(_selectedCategoryFilterProvider.notifier).state =
-                            null;
+                        ref
+                            .read(_selectedCategoryFilterProvider.notifier)
+                            .state = null;
                         ref.read(_lowStockOnlyProvider.notifier).state = false;
                       },
                     ),
@@ -630,14 +947,25 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                   if (canEdit)
                     ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.category_outlined, color: palette.ink),
-                      title: Text('Categories',
-                          style: TextStyle(
-                              color: palette.ink, fontWeight: FontWeight.w600)),
-                      subtitle: Text('Add, rename and put them in order',
-                          style: TextStyle(color: palette.soft, fontSize: 12.5)),
-                      trailing: Icon(Icons.chevron_right_rounded,
-                          color: palette.soft),
+                      leading: Icon(
+                        Icons.category_outlined,
+                        color: palette.ink,
+                      ),
+                      title: Text(
+                        'Categories',
+                        style: TextStyle(
+                          color: palette.ink,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Add, rename and put them in order',
+                        style: TextStyle(color: palette.soft, fontSize: 12.5),
+                      ),
+                      trailing: Icon(
+                        Icons.chevron_right_rounded,
+                        color: palette.soft,
+                      ),
                       onTap: () {
                         Navigator.of(sheetContext).pop();
                         _showCategoryManagement(context, ref);
@@ -666,13 +994,15 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     if (query.isNotEmpty) {
       final q = query.toLowerCase();
       filtered = filtered
-          .where((product) => businessLayoutProductMatchesSearch(
-                name: product.name,
-                code: product.sku,
-                metadata: product.metadata,
-                layout: businessLayout,
-                query: q,
-              ))
+          .where(
+            (product) => businessLayoutProductMatchesSearch(
+              name: product.name,
+              code: product.sku,
+              metadata: product.metadata,
+              layout: businessLayout,
+              query: q,
+            ),
+          )
           .toList();
     }
     filtered.sort((a, b) => a.name.compareTo(b.name));
@@ -680,6 +1010,19 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   }
 
   void _showCategoryManagement(BuildContext context, WidgetRef ref) {
+    if (DesktopLayout.wantsShell(context)) {
+      showAdaptiveSheet<void>(
+        context: context,
+        builder: (dialogContext) => SizedBox(
+          height: DesktopPanelShell.dialogHeight(dialogContext),
+          child: DesktopPanelShell(
+            title: 'Categories',
+            child: _CategoryManagementSheet(),
+          ),
+        ),
+      );
+      return;
+    }
     GlassBottomSheet.show(
       context,
       title: 'Categories',
@@ -689,8 +1032,13 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     );
   }
 
-  void _showAddEditProduct(BuildContext context, WidgetRef ref,
-      {Product? product, String? entityLabel, String? initialName}) {
+  void _showAddEditProduct(
+    BuildContext context,
+    WidgetRef ref, {
+    Product? product,
+    String? entityLabel,
+    String? initialName,
+  }) {
     final resolvedLabel =
         entityLabel ?? ref.read(businessLayoutProvider).productSingular;
     openProductForm(
@@ -748,8 +1096,10 @@ class _SearchField extends StatelessWidget {
         border: outline(palette.line),
         enabledBorder: outline(palette.line),
         focusedBorder: outline(DesignColors.brand, 1.5),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 13,
+        ),
       ),
       onChanged: onChanged,
       onSubmitted: onSubmitted,
@@ -845,7 +1195,9 @@ class _FilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = SignInPalette.of(context);
-    final dark = palette.isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final dark = palette.isDark
+        ? DesignColors.darkTextPrimary
+        : DesignColors.textPrimary;
     final onDark = palette.isDark ? DesignColors.darkBg : Colors.white;
     final Color bg;
     final Color border;
@@ -884,7 +1236,10 @@ class _FilterChip extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                  color: text, fontSize: 12.5, fontWeight: FontWeight.w600),
+                color: text,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ),
@@ -922,20 +1277,26 @@ class _OptionPill extends StatelessWidget {
             color: selected ? DesignColors.peach : palette.field,
             borderRadius: BorderRadius.circular(13),
             border: Border.all(
-                color: selected ? DesignColors.accent : palette.line,
-                width: selected ? 1.5 : 1),
+              color: selected ? DesignColors.accent : palette.line,
+              width: selected ? 1.5 : 1,
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon,
-                  size: 19,
-                  color: selected ? const Color(0xFFA8430F) : palette.soft),
+              Icon(
+                icon,
+                size: 19,
+                color: selected ? const Color(0xFFA8430F) : palette.soft,
+              ),
               const SizedBox(width: 8),
-              Text(label,
-                  style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: selected ? const Color(0xFF6B2A08) : palette.ink)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: selected ? const Color(0xFF6B2A08) : palette.ink,
+                ),
+              ),
             ],
           ),
         ),
@@ -978,14 +1339,25 @@ class _EmptyCard extends StatelessWidget {
               child: Icon(icon, color: const Color(0xFFC4521A), size: 28),
             ),
             const SizedBox(height: 14),
-            Text(title,
-                textAlign: TextAlign.center,
-                style: DesignType.display.copyWith(
-                    color: palette.ink, fontSize: 17, fontWeight: FontWeight.w700)),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: DesignType.display.copyWith(
+                color: palette.ink,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             const SizedBox(height: 6),
-            Text(body,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: palette.soft, fontSize: 13.5, height: 1.4)),
+            Text(
+              body,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: palette.soft,
+                fontSize: 13.5,
+                height: 1.4,
+              ),
+            ),
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: 16),
               OutlinedButton(
@@ -996,10 +1368,13 @@ class _EmptyCard extends StatelessWidget {
                   foregroundColor: palette.ink,
                   side: BorderSide(color: palette.line),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(13)),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
                 ),
-                child: Text(actionLabel!,
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                child: Text(
+                  actionLabel!,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
             ],
           ],
@@ -1106,9 +1481,7 @@ class _ProductListTile extends StatelessWidget {
               ProductAvatar(
                 name: product.name,
                 imageUrl: product.imageUrl,
-                tint: product.isActive
-                    ? null
-                    : DesignColors.textTertiary,
+                tint: product.isActive ? null : DesignColors.textTertiary,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1116,17 +1489,22 @@ class _ProductListTile extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(product.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            color: palette.ink,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600)),
-                    Text('$categoryName · per ${product.unit}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: palette.soft, fontSize: 12)),
+                    Text(
+                      product.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: palette.ink,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      '$categoryName · per ${product.unit}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: palette.soft, fontSize: 12),
+                    ),
                   ],
                 ),
               ),
@@ -1135,11 +1513,14 @@ class _ProductListTile extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(formatMoney(product.price),
-                      style: DesignType.numeric(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: palette.ink)),
+                  Text(
+                    formatMoney(product.price),
+                    style: DesignType.numeric(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: palette.ink,
+                    ),
+                  ),
                   const SizedBox(height: 3),
                   product.isActive
                       ? StockChip(level: level, quantity: quantity)
@@ -1166,9 +1547,14 @@ class _RemovedChip extends StatelessWidget {
         color: palette.field,
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text('Removed',
-          style: TextStyle(
-              color: palette.soft, fontSize: 11, fontWeight: FontWeight.w700)),
+      child: Text(
+        'Removed',
+        style: TextStyle(
+          color: palette.soft,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }
@@ -1210,25 +1596,36 @@ class _ProductGridCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ProductAvatar(
-                  name: product.name, imageUrl: product.imageUrl, size: 48),
+                name: product.name,
+                imageUrl: product.imageUrl,
+                size: 48,
+              ),
               const SizedBox(height: 8),
-              Text(product.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: palette.ink,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700)),
-              Text(categoryName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: palette.soft, fontSize: 11.5)),
+              Text(
+                product.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: palette.ink,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                categoryName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: palette.soft, fontSize: 11.5),
+              ),
               const Spacer(),
-              Text(formatMoney(product.price),
-                  style: DesignType.numeric(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
-                      color: palette.ink)),
+              Text(
+                formatMoney(product.price),
+                style: DesignType.numeric(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: palette.ink,
+                ),
+              ),
               const SizedBox(height: 4),
               product.isActive
                   ? StockChip(level: level, quantity: quantity)
@@ -1294,8 +1691,9 @@ class _CategoryManagementSheet extends ConsumerWidget {
                     child: Container(
                       decoration: BoxDecoration(
                         color: palette.card,
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusLg),
+                        borderRadius: BorderRadius.circular(
+                          DesignSpacing.radiusLg,
+                        ),
                         border: Border.all(color: palette.line),
                       ),
                       child: Row(
@@ -1304,29 +1702,40 @@ class _CategoryManagementSheet extends ConsumerWidget {
                             index: index,
                             child: Padding(
                               padding: const EdgeInsets.all(14),
-                              child: Icon(Icons.drag_indicator_rounded,
-                                  color: palette.faint, semanticLabel: 'Drag to reorder'),
+                              child: Icon(
+                                Icons.drag_indicator_rounded,
+                                color: palette.faint,
+                                semanticLabel: 'Drag to reorder',
+                              ),
                             ),
                           ),
                           Expanded(
                             child: InkWell(
-                              onTap: () => _showEditCategoryDialog(context, cat),
+                              onTap: () =>
+                                  _showEditCategoryDialog(context, cat),
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      cat.isActive ? cat.name : '${cat.name} · Removed',
+                                      cat.isActive
+                                          ? cat.name
+                                          : '${cat.name} · Removed',
                                       style: TextStyle(
-                                          color: palette.ink,
-                                          fontSize: 14.5,
-                                          fontWeight: FontWeight.w600),
+                                        color: palette.ink,
+                                        fontSize: 14.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                     Text(
                                       '$count ${count == 1 ? 'product' : 'products'}',
                                       style: TextStyle(
-                                          color: palette.soft, fontSize: 12),
+                                        color: palette.soft,
+                                        fontSize: 12,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -1343,7 +1752,8 @@ class _CategoryManagementSheet extends ConsumerWidget {
                                         : 'Delete category',
                             onPressed: isProtectedDefaultCategory
                                 ? null
-                                : () => _confirmDeleteCategory(context, ref, cat),
+                                : () =>
+                                    _confirmDeleteCategory(context, ref, cat),
                             icon: Icon(
                               isProtectedDefaultCategory
                                   ? Icons.lock_outline_rounded
@@ -1364,7 +1774,8 @@ class _CategoryManagementSheet extends ConsumerWidget {
               );
             },
             loading: () => const Center(
-                child: CircularProgressIndicator(color: DesignColors.brand)),
+              child: CircularProgressIndicator(color: DesignColors.brand),
+            ),
             error: (e, _) => EmptyState(
               icon: Icons.category_outlined,
               title: 'Couldn\'t load categories',
@@ -1394,8 +1805,14 @@ class _CategoryManagementSheet extends ConsumerWidget {
   }
 
   /// Saves the new order. Only a shop on this device can reorder.
-  Future<void> _reorder(BuildContext context, WidgetRef ref,
-      List<Category> sorted, int from, int to, bool isLocal) async {
+  Future<void> _reorder(
+    BuildContext context,
+    WidgetRef ref,
+    List<Category> sorted,
+    int from,
+    int to,
+    bool isLocal,
+  ) async {
     if (!isLocal) return;
     final moved = [...sorted];
     moved.insert(to, moved.removeAt(from));
@@ -1413,7 +1830,9 @@ class _CategoryManagementSheet extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not save the order. ${apiErrorMessage(e)}')),
+        SnackBar(
+          content: Text('Could not save the order. ${apiErrorMessage(e)}'),
+        ),
       );
     }
   }
@@ -1441,11 +1860,13 @@ class _CategoryManagementSheet extends ConsumerWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
             ),
-            title: Text('Add category',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700, color: titleColor)),
+            title: Text(
+              'Add category',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: titleColor,
+                  ),
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1465,13 +1886,15 @@ class _CategoryManagementSheet extends ConsumerWidget {
                         ? DesignColors.darkSurfaceElevated
                         : DesignColors.surfaceSubtle,
                     border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusMd),
+                      borderRadius: BorderRadius.circular(
+                        DesignSpacing.radiusMd,
+                      ),
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: DesignSpacing.lg,
-                        vertical: DesignSpacing.xl - 6),
+                      horizontal: DesignSpacing.lg,
+                      vertical: DesignSpacing.xl - 6,
+                    ),
                   ),
                   textCapitalization: TextCapitalization.words,
                   autofocus: true,
@@ -1492,13 +1915,15 @@ class _CategoryManagementSheet extends ConsumerWidget {
                         ? DesignColors.darkSurfaceElevated
                         : DesignColors.surfaceSubtle,
                     border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusMd),
+                      borderRadius: BorderRadius.circular(
+                        DesignSpacing.radiusMd,
+                      ),
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: DesignSpacing.lg,
-                        vertical: DesignSpacing.xl - 6),
+                      horizontal: DesignSpacing.lg,
+                      vertical: DesignSpacing.xl - 6,
+                    ),
                   ),
                   textCapitalization: TextCapitalization.sentences,
                 ),
@@ -1530,9 +1955,11 @@ class _CategoryManagementSheet extends ConsumerWidget {
                         CategoriesCompanion.insert(
                           id: const Uuid().v4(),
                           name: nameController.text.trim(),
-                          description: Value(descController.text.trim().isEmpty
-                              ? null
-                              : descController.text.trim()),
+                          description: Value(
+                            descController.text.trim().isEmpty
+                                ? null
+                                : descController.text.trim(),
+                          ),
                           imageUrl: Value(categoryImageUrl),
                           createdAt: now,
                           updatedAt: now,
@@ -1556,7 +1983,8 @@ class _CategoryManagementSheet extends ConsumerWidget {
                       ScaffoldMessenger.of(ctx).showSnackBar(
                         SnackBar(
                           content: Text(
-                              'Could not add category. ${apiErrorMessage(e)}'),
+                            'Could not add category. ${apiErrorMessage(e)}',
+                          ),
                           backgroundColor: DesignColors.error,
                         ),
                       );
@@ -1570,8 +1998,9 @@ class _CategoryManagementSheet extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   ),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: DesignSpacing.xxl,
-                      vertical: DesignSpacing.md),
+                    horizontal: DesignSpacing.xxl,
+                    vertical: DesignSpacing.md,
+                  ),
                 ),
                 child: const Text('Add'),
               ),
@@ -1602,11 +2031,13 @@ class _CategoryManagementSheet extends ConsumerWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
             ),
-            title: Text('Edit category',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700, color: titleColor)),
+            title: Text(
+              'Edit category',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: titleColor,
+                  ),
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1620,13 +2051,15 @@ class _CategoryManagementSheet extends ConsumerWidget {
                         ? DesignColors.darkSurfaceElevated
                         : DesignColors.surfaceSubtle,
                     border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusMd),
+                      borderRadius: BorderRadius.circular(
+                        DesignSpacing.radiusMd,
+                      ),
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: DesignSpacing.lg,
-                        vertical: DesignSpacing.xl - 6),
+                      horizontal: DesignSpacing.lg,
+                      vertical: DesignSpacing.xl - 6,
+                    ),
                   ),
                   textCapitalization: TextCapitalization.words,
                 ),
@@ -1641,13 +2074,15 @@ class _CategoryManagementSheet extends ConsumerWidget {
                         ? DesignColors.darkSurfaceElevated
                         : DesignColors.surfaceSubtle,
                     border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusMd),
+                      borderRadius: BorderRadius.circular(
+                        DesignSpacing.radiusMd,
+                      ),
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: DesignSpacing.lg,
-                        vertical: DesignSpacing.xl - 6),
+                      horizontal: DesignSpacing.lg,
+                      vertical: DesignSpacing.xl - 6,
+                    ),
                   ),
                   textCapitalization: TextCapitalization.sentences,
                 ),
@@ -1678,9 +2113,11 @@ class _CategoryManagementSheet extends ConsumerWidget {
                         cat.id,
                         CategoriesCompanion(
                           name: Value(nameController.text.trim()),
-                          description: Value(descController.text.trim().isEmpty
-                              ? null
-                              : descController.text.trim()),
+                          description: Value(
+                            descController.text.trim().isEmpty
+                                ? null
+                                : descController.text.trim(),
+                          ),
                           imageUrl: Value(categoryImageUrl),
                           updatedAt: Value(DateTime.now()),
                         ),
@@ -1706,7 +2143,8 @@ class _CategoryManagementSheet extends ConsumerWidget {
                       ScaffoldMessenger.of(ctx).showSnackBar(
                         SnackBar(
                           content: Text(
-                              'Could not update category. ${apiErrorMessage(e)}'),
+                            'Could not update category. ${apiErrorMessage(e)}',
+                          ),
                           backgroundColor: DesignColors.error,
                         ),
                       );
@@ -1720,8 +2158,9 @@ class _CategoryManagementSheet extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   ),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: DesignSpacing.xxl,
-                      vertical: DesignSpacing.md),
+                    horizontal: DesignSpacing.xxl,
+                    vertical: DesignSpacing.md,
+                  ),
                 ),
                 child: const Text('Save'),
               ),
@@ -1733,7 +2172,10 @@ class _CategoryManagementSheet extends ConsumerWidget {
   }
 
   void _confirmDeleteCategory(
-      BuildContext context, WidgetRef ref, Category cat) async {
+    BuildContext context,
+    WidgetRef ref,
+    Category cat,
+  ) async {
     final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final confirmed = await showConfirmDialog(
       context,

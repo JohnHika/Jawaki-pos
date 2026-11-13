@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
@@ -19,6 +21,46 @@ class AccountabilityRulesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rules = ref.watch(accountabilityRulesProvider);
+    if (context.inDesktopShell) {
+      // A form reads like a document: a header, then a column that stops growing.
+      return Scaffold(
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DesktopPageHeader(
+              title: 'Shop rules',
+              subtitle: 'How strict the till is, and what is worth an alert',
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+              leading: GoRouter.of(context).canPop()
+                  ? IconButton(
+                      tooltip: 'Back',
+                      onPressed: () => GoRouter.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                    )
+                  : null,
+            ),
+            Expanded(
+              child: DesktopContent(
+                maxWidth: 680,
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: rules.when(
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => Padding(
+                    padding: const EdgeInsets.all(DesignSpacing.lg),
+                    child: InlineRetryNotice(
+                      message: apiErrorMessage(e),
+                      onRetry: () => ref.invalidate(accountabilityRulesProvider),
+                    ),
+                  ),
+                  data: (r) => _RulesForm(initial: r),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'Shop Rules',
@@ -293,14 +335,27 @@ class _RulesFormState extends ConsumerState<_RulesForm> {
             ],
           ),
         ),
-        PinnedActionBar(
-          child: GradientButton(
-            label: 'Save rules',
-            icon: Icons.check_rounded,
-            isLoading: _saving,
-            onPressed: _saving ? null : _save,
+        if (context.inDesktopShell)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: _saving ? null : _save,
+                icon: const Icon(Icons.check_rounded, size: 18),
+                label: Text(_saving ? 'Saving' : 'Save rules'),
+              ),
+            ),
+          )
+        else
+          PinnedActionBar(
+            child: GradientButton(
+              label: 'Save rules',
+              icon: Icons.check_rounded,
+              isLoading: _saving,
+              onPressed: _saving ? null : _save,
+            ),
           ),
-        ),
       ],
     );
   }

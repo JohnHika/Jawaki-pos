@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/auth/app_roles.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
@@ -13,7 +14,9 @@ import '../../../../core/utils/format.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
+import '../../../finance/presentation/desktop/desktop_finance_tabs.dart';
 import '../../domain/expenses.dart';
+import '../desktop/desktop_expenses_view.dart';
 import '../widgets/add_expense_sheet.dart';
 
 typedef _ExpenseData = ({
@@ -95,6 +98,64 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
     }
   }
 
+  /// Saves an entry typed into the desktop add row. Returns null when it
+  /// worked, or what to tell the person.
+  Future<String?> _addFromDesktop(NewExpense entry) async {
+    final auth = getIt<AuthService>();
+    try {
+      await getIt<AppDatabase>().addLocalExpense(
+        branchId: auth.branchId!,
+        amount: entry.amount,
+        category: entry.category,
+        paymentMethod: entry.method,
+        note: entry.note,
+        recordedBy: auth.currentUser?['name']?.toString() ?? 'Owner',
+      );
+      if (mounted) _reload();
+      return null;
+    } catch (error) {
+      return apiErrorMessage(error);
+    }
+  }
+
+  Widget _buildDesktop() {
+    final permissions = ref.watch(permissionsProvider);
+    return Scaffold(
+      body: FutureBuilder<_ExpenseData>(
+        future: _data,
+        builder: (context, snapshot) {
+          final data = snapshot.data ?? _emptyData;
+          return DesktopExpensesView(
+            period: _period,
+            onPeriod: (period) {
+              if (_period == period) return;
+              _period = period;
+              _reload();
+            },
+            summary: data.summary,
+            saleCount: data.saleCount,
+            expenses: data.expenses,
+            loading: !snapshot.hasData && !snapshot.hasError,
+            errorMessage: snapshot.hasError
+                ? 'Could not read expenses. ${apiErrorMessage(snapshot.error!)}'
+                : null,
+            onRetry: _reload,
+            onRefresh: _reload,
+            onAdd: _addFromDesktop,
+            onRemove: _canRemove ? _remove : null,
+            headerBottom: DesktopFinanceTabs(
+              current: FinanceSection.expenses,
+              available: DesktopFinanceTabs.forRole(
+                canViewFinance: permissions.canViewFinance,
+                canViewCashFlow: permissions.canViewCashFlow,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _remove(Map<String, dynamic> expense) async {
     final ok = await showConfirmDialog(
       context,
@@ -121,6 +182,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) return _buildDesktop();
     final palette = SignInPalette.of(context);
     return Scaffold(
       backgroundColor: palette.page,

@@ -5,6 +5,7 @@ import '../../../../core/theme/design_system.dart';
 
 import '../providers/cart_provider.dart';
 import '../../../../core/utils/format.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 /// Allows sellers to manually adjust a single cart line's price during
 /// checkout. [productId] identifies the cart line (matches
@@ -56,6 +57,20 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
 
   @override
   Widget build(BuildContext context) {
+    if (!ref.watch(permissionsProvider).canApplyDiscount) {
+      return AlertDialog(
+        title: const Text('Discount access required'),
+        content: const Text(
+          'You do not have permission to adjust item prices.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: widget.onCancel ?? () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      );
+    }
     final cartState = ref.watch(cartProvider);
     final cartIndex = cartState.items
         .indexWhere((item) => item.productId == widget.productId);

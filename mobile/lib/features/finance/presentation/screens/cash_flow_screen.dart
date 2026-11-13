@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/auth/app_roles.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
@@ -13,6 +15,9 @@ import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../desktop/desktop_cash_flow_view.dart';
+import '../desktop/desktop_figures_row.dart';
+import '../desktop/desktop_finance_tabs.dart';
 import 'finance_screen.dart' show FinanceScreen;
 
 enum CashFlowMode { cashOnly, allRevenue, runningBalance }
@@ -84,9 +89,218 @@ class CashFlowScreen extends ConsumerStatefulWidget {
 class _CashFlowScreenState extends ConsumerState<CashFlowScreen> {
   bool _isChangingMode = false;
 
+  Widget _financeTabs(RolePermissions permissions) => DesktopFinanceTabs(
+        current: FinanceSection.cashFlow,
+        available: DesktopFinanceTabs.forRole(
+          canViewFinance: permissions.canViewFinance,
+          canViewCashFlow: permissions.canViewCashFlow,
+        ),
+      );
+
+  /// The Cash flow page inside the desktop shell, for both kinds of shop.
+  Widget _buildDesktop(RolePermissions permissions) {
+    if (!permissions.canViewCashFlow) {
+      return const Scaffold(
+        body: DesktopEmptyState(
+          icon: Icons.lock_outline_rounded,
+          title: 'Cash flow is restricted',
+          message: 'Only store managers and admins can view cash flow.',
+        ),
+      );
+    }
+    final local = getIt<AuthService>().isLocalWorkspace;
+    final async =
+        ref.watch(local ? _localCashActivityProvider : _availableCashProvider);
+    void refresh() => ref.invalidate(
+        local ? _localCashActivityProvider : _availableCashProvider);
+    final currency = FinanceScreen.currencyFmt;
+
+    DesktopCashFlowView view({
+      List<DesktopFigure> figures = const [],
+      List<CashLedgerLine> lines = const [],
+      String totalLabel = '',
+      double total = 0,
+      String? dateLabel,
+      Widget? side,
+      String? footnote,
+      bool loading = false,
+      String? errorMessage,
+      String? emptyTitle,
+      String? emptyMessage,
+      VoidCallback? onRetry,
+    }) =>
+        DesktopCashFlowView(
+          title: 'Cash flow',
+          figures: figures,
+          lines: lines,
+          totalLabel: totalLabel,
+          total: total,
+          dateLabel: dateLabel,
+          headerBottom: _financeTabs(permissions),
+          onRefresh: refresh,
+          side: side,
+          footnote: footnote,
+          loading: loading,
+          errorMessage: errorMessage,
+          onRetry: onRetry,
+          emptyTitle: emptyTitle,
+          emptyMessage: emptyMessage,
+        );
+
+    return Scaffold(
+      body: async.when(
+        loading: () => view(loading: true),
+        error: (e, _) => view(
+          errorMessage: loadErrorSubtitle(e),
+          onRetry: isPermissionDenied(e) ? null : refresh,
+        ),
+        data: (data) {
+          if (data.isEmpty) {
+            return view(
+              emptyTitle: local ? 'No shop selected' : 'No branch selected',
+              emptyMessage: local
+                  ? 'Choose or create a local shop to view cash activity.'
+                  : 'Select a branch to view cash flow.',
+            );
+          }
+          if (local) {
+            final summary = Map<String, dynamic>.from(data['summary'] as Map);
+            double n(String k) => (summary[k] as num? ?? 0).toDouble();
+            final sales = n('cashSales');
+            final collections = n('cashCollections');
+            final voided = n('voidedCashReceived');
+            final refunds = n('cashRefunds');
+            final payouts = n('cashPayouts');
+            final transactions = (summary['totalTransactions'] as num? ?? 0).toInt();
+            final close = data['latestClose'] as Map<String, dynamic>?;
+            final date = DateTime.tryParse(data['businessDate'] as String);
+            final closedAt = DateTime.tryParse(
+                    close?['closedAt']?.toString() ?? '')
+                ?.toLocal();
+            final net = sales + collections + voided - refunds - payouts;
+            return view(
+              dateLabel:
+                  date == null ? 'Today' : DateFormat('EEEE, d MMMM').format(date),
+              figures: [
+                DesktopFigure(
+                  label: 'Cash sales',
+                  value: currency.format(sales),
+                  hint: '$transactions ${transactions == 1 ? 'sale' : 'sales'}',
+                ),
+                DesktopFigure(
+                  label: 'Debt collected',
+                  value: currency.format(collections),
+                ),
+                DesktopFigure(
+                  label: 'Paid out of the till',
+                  value: payouts + refunds > 0
+                      ? '-${currency.format(payouts + refunds)}'
+                      : currency.format(0),
+                  hint: 'Suppliers and refunds',
+                ),
+                DesktopFigure(
+                  label: 'Net cash movement',
+                  value: net < 0
+                      ? '-${currency.format(-net)}'
+                      : currency.format(net),
+                  hint: 'Before the opening float',
+                  valueColor: net < 0 ? negativeAmountColor(context.desktop) : null,
+                ),
+              ],
+              lines: [
+                CashLedgerLine('Cash sales', sales),
+                CashLedgerLine('Debt collected', collections),
+                if (voided > 0)
+                  CashLedgerLine('Cash received on voided sales', voided),
+                if (refunds > 0) CashLedgerLine('Cash refunded', -refunds),
+                CashLedgerLine('Supplier payments from the till', -payouts),
+              ],
+              totalLabel: 'Net cash movement',
+              total: net,
+              side: DesktopTillCountPanel(
+                counted: close != null,
+                expected: (close?['expectedCash'] as num? ?? 0).toDouble(),
+                countedCash: (close?['countedCash'] as num? ?? 0).toDouble(),
+                difference: (close?['cashDiscrepancy'] as num? ?? 0).toDouble(),
+                closedAtLabel:
+                    closedAt == null ? null : DateFormat('h:mm a').format(closedAt),
+                onClose: () async {
+                  await context.push<void>('/cash-flow/end-of-day');
+                  if (mounted) ref.invalidate(_localCashActivityProvider);
+                },
+                onHistory: () async {
+                  await context.push<void>('/cash-flow/reconciliation');
+                  if (mounted) ref.invalidate(_localCashActivityProvider);
+                },
+              ),
+              footnote: 'These figures include completed cash sales, cash '
+                  'received on voided sales, debt collections, recorded cash '
+                  'refunds and supplier payments from this branch’s till. They '
+                  'do not include the opening float, unrecorded expenses, a '
+                  'bank balance or payment-provider confirmations.',
+            );
+          }
+
+          final mode = CashFlowModeWireFormat.fromWire(data['mode'] as String);
+          final available = (data['availableCash'] as num).toDouble();
+          final cashIn = (data['todaysCashIn'] as num).toDouble();
+          final cashOut = (data['todaysCashOut'] as num).toDouble();
+          final breakdown = Map<String, dynamic>.from(data['breakdown'] as Map);
+          double? b(String k) => (breakdown[k] as num?)?.toDouble();
+          return view(
+            dateLabel: 'Today',
+            figures: [
+              DesktopFigure(
+                label: 'Available to restock',
+                value: available < 0
+                    ? '-${currency.format(-available)}'
+                    : currency.format(available),
+                hint: mode.label,
+                valueColor:
+                    available <= 0 ? negativeAmountColor(context.desktop) : null,
+              ),
+              DesktopFigure(label: 'Cash in today', value: currency.format(cashIn)),
+              DesktopFigure(
+                label: 'Cash out today',
+                value: cashOut > 0
+                    ? '-${currency.format(cashOut)}'
+                    : currency.format(0),
+              ),
+            ],
+            lines: [
+              if (b('salesCashIn') != null)
+                CashLedgerLine('Cash sales', b('salesCashIn')!),
+              if (b('allRevenue') != null)
+                CashLedgerLine('Total revenue', b('allRevenue')!),
+              if (b('runningBalance') != null)
+                CashLedgerLine('Running balance', b('runningBalance')!),
+              CashLedgerLine('Restock purchases', -(b('restockOut') ?? 0)),
+              CashLedgerLine('Expenses', -(b('expenseOut') ?? 0)),
+            ],
+            totalLabel: 'Available to restock',
+            total: available,
+            side: DesktopCashModePanel(
+              options: [
+                for (final m in CashFlowMode.values)
+                  (id: m.name, label: m.label, description: m.description),
+              ],
+              selectedId: mode.name,
+              changing: _isChangingMode,
+              onChanged: (id) =>
+                  _changeMode(CashFlowMode.values.firstWhere((m) => m.name == id)),
+              onReconcile: () => context.push('/cash-flow/reconciliation'),
+              onEndOfDay: () => context.push('/cash-flow/end-of-day'),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final permissions = ref.watch(permissionsProvider);
+    if (context.inDesktopShell) return _buildDesktop(permissions);
     if (getIt<AuthService>().isLocalWorkspace) {
       return _buildLocalCashFlow(context, permissions);
     }

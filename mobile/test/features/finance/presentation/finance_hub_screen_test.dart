@@ -182,15 +182,19 @@ class _StubSource implements FinanceHubDataSource {
       <String, dynamic>{};
 }
 
-Widget _host(FinanceHubController controller) => ProviderScope(
+Widget _host(
+  FinanceHubController controller, {
+  List<String> permissions = const <String>[
+    'finance.view',
+    'cash_flow.settings_view',
+    'suppliers.invoices_create',
+    'finance.manage_receivables',
+  ],
+}) =>
+    ProviderScope(
       overrides: [
         financeHubProvider.overrideWith((ref) => controller),
-        permissionsProvider.overrideWithValue(RolePermissions(const <String>[
-          'finance.view',
-          'cash_flow.settings_view',
-          'suppliers.invoices_create',
-          'finance.manage_receivables',
-        ])),
+        permissionsProvider.overrideWithValue(RolePermissions(permissions)),
       ],
       child: MaterialApp.router(
         routerConfig: GoRouter(
@@ -316,6 +320,180 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('1,250'), findsWidgets);
   });
+
+  testWidgets(
+    'mobile finance masks customer names and identifiers without customers.view while retaining collection controls',
+    (tester) async {
+      final source = _StubSource();
+      final controller = FinanceHubController(
+        source: source,
+        tenantId: 'tenant-1',
+        branchId: 'branch-1',
+      );
+      await tester.pumpWidget(_host(controller));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Customers'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ada'), findsNothing);
+      expect(find.text('customer-1'), findsNothing);
+      expect(find.text('R-100'), findsOneWidget);
+      expect(find.text('Collect'), findsOneWidget);
+      expect(find.textContaining('KES 320'), findsWidgets);
+
+      await tester.tap(find.text('Collect'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Ada'), findsNothing);
+      expect(find.text('Collect from customer'), findsOneWidget);
+      expect(find.text('Record cash received'), findsOneWidget);
+
+      await tester.tap(find.text('Record cash received'));
+      await tester.pumpAndSettle();
+      expect(find.text('Record payment from customer'), findsOneWidget);
+      expect(find.textContaining('Ada'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'single collection dialogs use generic customer labels throughout',
+    (tester) async {
+      final controller = FinanceHubController(
+        source: _StubSource(),
+        tenantId: 'tenant-1',
+        branchId: 'branch-1',
+      );
+      await tester.pumpWidget(_host(
+        controller,
+        permissions: const [
+          'finance.view',
+          'cash_flow.settings_view',
+          'suppliers.invoices_create',
+          'finance.manage_receivables',
+          'customers.view',
+        ],
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Customers'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Collect'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Collect from customer'), findsOneWidget);
+      expect(find.text('Collect from Ada'), findsNothing);
+      await tester.tap(find.text('Record cash received'));
+      await tester.pumpAndSettle();
+      expect(find.text('Record payment from customer'), findsOneWidget);
+      expect(find.text('Record payment from Ada'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'bulk collection dialog masks customer names without customers.view while preserving collection controls',
+    (tester) async {
+      final controller = FinanceHubController(
+        source: _StubSource(),
+        tenantId: 'tenant-1',
+        branchId: 'branch-1',
+      );
+      await tester.pumpWidget(_host(controller));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Customers'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Collect for a customer'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Ada'), findsNothing);
+      expect(find.text('customer-1'), findsNothing);
+      expect(find.textContaining('Customer details hidden'), findsWidgets);
+      expect(find.text('Record collection'), findsOneWidget);
+      expect(find.textContaining('KES 320'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+      'bulk collection dialog uses generic customer labels with view access',
+      (tester) async {
+    final controller = FinanceHubController(
+      source: _StubSource(),
+      tenantId: 'tenant-1',
+      branchId: 'branch-1',
+    );
+    await tester.pumpWidget(_host(
+      controller,
+      permissions: const [
+        'finance.view',
+        'cash_flow.settings_view',
+        'suppliers.invoices_create',
+        'finance.manage_receivables',
+        'customers.view',
+      ],
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Customers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Collect for a customer'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ada · KES 320'), findsNothing);
+    expect(find.textContaining('Customer details hidden'), findsWidgets);
+    expect(find.text('Record collection'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'mobile finance masks customer collection names in overview without customers.view',
+    (tester) async {
+      final now = DateTime(2026, 9, 10, 12);
+      final receivable = RetailReceivable(
+        id: 'retail-1',
+        saleId: 'sale-1',
+        receiptNumber: 'R-100',
+        customerId: 'customer-1',
+        customerName: 'Ada',
+        originalAmount: 400,
+        outstandingAmount: 320,
+        dueDate: DateTime(2026, 9, 20),
+        status: 'PARTIAL',
+        createdAt: now,
+        payments: [
+          ReceivablePayment(
+            id: 'payment-1',
+            receivableId: 'retail-1',
+            amount: 80,
+            method: 'CASH',
+            reference: null,
+            notes: null,
+            paidAt: now,
+            createdAt: now,
+          ),
+        ],
+      );
+      final source = _StubSource(
+        cached: _snapshot(retail: 320, retailReceivables: [receivable]),
+        refreshCompleter: Completer<FinanceSnapshot>(),
+      );
+      final controller = FinanceHubController(
+        source: source,
+        tenantId: 'tenant-1',
+        branchId: 'branch-1',
+      );
+
+      await tester.pumpWidget(_host(controller));
+      await tester.pump();
+
+      expect(find.text('Recent collections'), findsOneWidget);
+      expect(find.text('Ada'), findsNothing);
+      expect(find.text('customer-1'), findsNothing);
+      expect(find.text('Customer details hidden'), findsOneWidget);
+      expect(find.textContaining('KES 80'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('bulk collection settles a customer credit in one request',
       (tester) async {

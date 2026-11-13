@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_table.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
@@ -23,6 +26,11 @@ import '../../../sales/presentation/providers/catalog_provider.dart'
         filteredProductsProvider,
         syncCatalogCacheFromApi;
 import '../widgets/product_picker_dialog.dart';
+import '../../../catalog/presentation/desktop/desktop_button_styles.dart';
+import '../../../catalog/presentation/desktop/desktop_products_view.dart'
+    show DesktopStockFilter;
+import '../desktop/desktop_inventory_tabs.dart';
+import '../desktop/desktop_stock_view.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../../core/widgets/modal_disposal.dart';
 
@@ -59,6 +67,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   final TextEditingController _transferQtyController = TextEditingController(
     text: '1',
   );
+  // Desktop only: which tab is open, the row in the inspector, the stock chip.
+  String _desktopTab = 'Stock levels';
+  String? _selectedStockId;
+  DesktopStockFilter _stockFilter = DesktopStockFilter.all;
+  final TextEditingController _stockSearchController = TextEditingController();
   StreamSubscription<List<LocalStockData>>? _stockSubscription;
   Timer? _stockRefreshDebounce;
 
@@ -102,6 +115,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     _stockSubscription?.cancel();
     _stockRefreshDebounce?.cancel();
     _transferQtyController.dispose();
+    _stockSearchController.dispose();
     super.dispose();
   }
 
@@ -356,6 +370,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final desktop = context.inDesktopShell;
+    if (desktop) return _buildDesktop(context);
     final authService = getIt<AuthService>();
     final permissions = RolePermissions(
       authService.currentUser?['permissions'] as List<dynamic>?,
@@ -371,101 +387,159 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         permissions.has('inventory.transfers.view') && !isLocalWorkspace;
     final canViewLocalReceipts =
         isLocalWorkspace && permissions.canSeeInventory;
-    final hasThirdTab = canViewTransfers || canViewLocalReceipts;
+    final tabCount =
+        2 + (canViewTransfers ? 1 : 0) + (canViewLocalReceipts ? 1 : 0);
+    final pageTitle = businessLayout.actionLabel('/inventory', 'Inventory');
 
     return Scaffold(
-      appBar: BrandedAppBar(
-        title: businessLayout.actionLabel('/inventory', 'Inventory'),
-        showBackButton: false,
-        actions: [
-          if (!isLocalWorkspace &&
-              (permissions.canMakeSales || permissions.canManageStock))
-            IconButton(
-              icon: const Icon(Icons.add_shopping_cart_rounded, size: 20),
-              tooltip: 'Request Stock',
-              onPressed: () => context.push('/inventory/request-stock'),
+      appBar: desktop
+          ? null
+          : BrandedAppBar(
+              title: pageTitle,
+              showBackButton: false,
+              actions: [
+                if (!isLocalWorkspace &&
+                    (permissions.canMakeSales || permissions.canManageStock))
+                  IconButton(
+                    icon: const Icon(Icons.add_shopping_cart_rounded, size: 20),
+                    tooltip: 'Request Stock',
+                    onPressed: () => context.push('/inventory/request-stock'),
+                  ),
+                if (permissions.canManageStock)
+                  IconButton(
+                    icon: const Icon(Icons.inventory_rounded, size: 20),
+                    tooltip: 'Receive Stock',
+                    onPressed: () => _startReceiveStock(context),
+                  ),
+                if (!isLocalWorkspace && permissions.canManageStock)
+                  IconButton(
+                    icon: const Icon(Icons.assignment_outlined, size: 20),
+                    tooltip: 'Stock Requests',
+                    onPressed: () => context.push('/inventory/stock-requests'),
+                  ),
+                IconButton(
+                  tooltip: 'Refresh',
+                  icon: const Icon(Icons.refresh_rounded, size: 20),
+                  onPressed: _retryInventoryLoad,
+                ),
+              ],
             ),
-          if (permissions.canManageStock)
-            IconButton(
-              icon: const Icon(Icons.inventory_rounded, size: 20),
-              tooltip: 'Receive Stock',
-              onPressed: () => _startReceiveStock(context),
-            ),
-          if (!isLocalWorkspace && permissions.canManageStock)
-            IconButton(
-              icon: const Icon(Icons.assignment_outlined, size: 20),
-              tooltip: 'Stock Requests',
-              onPressed: () => context.push('/inventory/stock-requests'),
-            ),
-          IconButton(
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh_rounded, size: 20),
-            onPressed: _retryInventoryLoad,
-          ),
-        ],
-      ),
       body: PageContainer(
         padding: EdgeInsets.zero,
+        maxWidth: desktop ? 1440 : 960,
         child: DefaultTabController(
-          length: hasThirdTab ? 3 : 2,
+          length: tabCount,
           child: Column(
             children: [
-              // Compact overview keeps the stock work area visible above the fold.
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  DesignSpacing.lg,
-                  DesignSpacing.sm + 2,
-                  DesignSpacing.lg,
-                  0,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _InventoryMiniStat(
-                        title: 'Items',
-                        value: _isLoading
-                            ? '...'
-                            : _inventoryDataError != null &&
-                                    _inventoryItems.isEmpty
-                                ? '—'
-                                : '$_totalItems',
-                        icon: Icons.inventory_2_rounded,
-                        color: DesignColors.brand,
+              if (desktop)
+                DesktopPageHeader(
+                  title: pageTitle,
+                  subtitle: 'Stock levels, deliveries and reorder alerts',
+                  actions: [
+                    if (!isLocalWorkspace &&
+                        (permissions.canMakeSales ||
+                            permissions.canManageStock))
+                      OutlinedButton.icon(
+                        onPressed: () =>
+                            context.push('/inventory/request-stock'),
+                        icon: const Icon(Icons.add_shopping_cart_rounded,
+                            size: 17),
+                        label: const Text('Request stock'),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _InventoryMiniStat(
-                        title: 'Low Stock',
-                        value: _isLoading
-                            ? '...'
-                            : _inventoryDataError != null &&
-                                    _inventoryItems.isEmpty &&
-                                    _lowStockItems.isEmpty
-                                ? '—'
-                                : '$_lowStockCount',
-                        icon: Icons.warning_amber_rounded,
-                        color: DesignColors.warning,
-                        trend: _lowStockCount > 0 ? 'Alerts' : null,
+                    if (permissions.canManageStock)
+                      FilledButton.icon(
+                        onPressed: () => _startReceiveStock(context),
+                        icon: const Icon(Icons.inventory_rounded, size: 17),
+                        label: const Text('Receive stock'),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _InventoryMiniStat(
-                        title: 'Value',
-                        value: _isLoading
-                            ? '...'
-                            : _inventoryDataError != null &&
-                                    _inventoryItems.isEmpty
-                                ? '—'
-                                : _formatCurrency(_totalValue),
-                        icon: Icons.account_balance_wallet_rounded,
-                        color: DesignColors.info,
-                      ),
+                    IconButton(
+                      tooltip: 'Refresh inventory',
+                      onPressed: _retryInventoryLoad,
+                      icon: const Icon(Icons.refresh_rounded),
                     ),
                   ],
                 ),
-              ),
+              // Compact overview keeps the stock work area visible above the fold.
+              if (desktop)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DesktopTokens.gutter,
+                  ),
+                  child: DesktopMetricStrip(
+                    metrics: [
+                      DesktopMetric(label: 'ITEMS', value: '$_totalItems'),
+                      DesktopMetric(
+                        label: 'LOW STOCK',
+                        value: '$_lowStockCount',
+                        hint:
+                            _lowStockCount > 0 ? 'Needs attention' : 'On track',
+                        hintColor: _lowStockCount > 0
+                            ? DesignColors.warning
+                            : DesignColors.success,
+                      ),
+                      DesktopMetric(
+                        label: 'INVENTORY VALUE',
+                        value: _formatCurrency(_totalValue),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    DesignSpacing.lg,
+                    DesignSpacing.sm + 2,
+                    DesignSpacing.lg,
+                    0,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _InventoryMiniStat(
+                          title: 'Items',
+                          value: _isLoading
+                              ? '...'
+                              : _inventoryDataError != null &&
+                                      _inventoryItems.isEmpty
+                                  ? '—'
+                                  : '$_totalItems',
+                          icon: Icons.inventory_2_rounded,
+                          color: DesignColors.brand,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _InventoryMiniStat(
+                          title: 'Low Stock',
+                          value: _isLoading
+                              ? '...'
+                              : _inventoryDataError != null &&
+                                      _inventoryItems.isEmpty &&
+                                      _lowStockItems.isEmpty
+                                  ? '—'
+                                  : '$_lowStockCount',
+                          icon: Icons.warning_amber_rounded,
+                          color: DesignColors.warning,
+                          trend: _lowStockCount > 0 ? 'Alerts' : null,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _InventoryMiniStat(
+                          title: 'Value',
+                          value: _isLoading
+                              ? '...'
+                              : _inventoryDataError != null &&
+                                      _inventoryItems.isEmpty
+                                  ? '—'
+                                  : _formatCurrency(_totalValue),
+                          icon: Icons.account_balance_wallet_rounded,
+                          color: DesignColors.info,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 10),
               Container(
                 margin: const EdgeInsets.symmetric(
@@ -521,6 +595,141 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       ),
     );
   }
+
+  // ─── Desktop ──────────────────────────────────────────────────────────
+
+  /// The computer layout: a tab strip for the sub-areas under the title, and
+  /// the stock table with an inspector as the first tab.
+  Widget _buildDesktop(BuildContext context) {
+    final authService = getIt<AuthService>();
+    final permissions = RolePermissions(
+      authService.currentUser?['permissions'] as List<dynamic>?,
+    );
+    final isLocal = authService.isLocalWorkspace;
+    final layout = ref.watch(businessLayoutProvider);
+    final canViewTransfers =
+        permissions.has('inventory.transfers.view') && !isLocal;
+    final canViewLocalReceipts = isLocal && permissions.canSeeInventory;
+    final pageTitle = layout.actionLabel('/inventory', 'Inventory');
+
+    final routeTabs = DesktopInventoryTabs.forRole(
+      isLocalWorkspace: isLocal,
+      canManageStock: permissions.canManageStock,
+      canRequestStock: permissions.canMakeSales,
+      lowCount: _lowStockCount,
+    );
+    final tabs = [
+      routeTabs.first,
+      if (canViewTransfers)
+        const DesktopInventoryTab(label: 'Transfers', path: null),
+      if (canViewLocalReceipts)
+        const DesktopInventoryTab(label: 'Receipts', path: null),
+      ...routeTabs.skip(1),
+    ];
+    final current = tabs.any((t) => t.label == _desktopTab && t.path == null) ||
+            _desktopTab == 'Stock levels'
+        ? _desktopTab
+        : 'Stock levels';
+
+    final Widget body;
+    if (current == 'Transfers') {
+      body = DesktopContent(
+        maxWidth: 860,
+        child: _buildTransfersTab(context, permissions),
+      );
+    } else if (current == 'Receipts') {
+      body = DesktopContent(
+        maxWidth: 860,
+        child: _buildLocalReceiptsTab(context),
+      );
+    } else {
+      final items = _filteredInventoryItemsFor(layout);
+      body = DesktopStockView(
+        items: items,
+        productsLabel: layout.productsLabel.toLowerCase(),
+        searchHint: layout.catalogSearchHint,
+        searchController: _stockSearchController,
+        searchQuery: _stockSearchQuery,
+        onSearchChanged: (value) => setState(() => _stockSearchQuery = value),
+        onSearchSubmitted: (value) {
+          final code = value.trim().toLowerCase();
+          if (code.isEmpty) return;
+          final matches = _inventoryItems
+              .where(
+                (i) => (i['sku']?.toString() ?? '').trim().toLowerCase() == code,
+              )
+              .toList();
+          if (matches.length == 1) {
+            setState(() => _selectedStockId = matches.first['id']?.toString());
+          }
+        },
+        selectedId: _selectedStockId,
+        onSelect: (id) => setState(() => _selectedStockId = id),
+        filter: _stockFilter,
+        onFilter: (filter) => setState(() => _stockFilter = filter),
+        canReceive: permissions.canManageStock,
+        showCost: permissions.canEditProducts || permissions.canSeeFinancialReports,
+        loading: _isLoading,
+        errorMessage: _inventoryDataError,
+        notice: _inventoryItems.isNotEmpty ? _inventoryDataError : null,
+        onRetry: _retryInventoryLoad,
+        totalWorth: _inventoryItems.isEmpty ? null : _totalValue,
+        onReceive: (item) => _receiveDesktopItem(context, item),
+        onOpenProduct: (item) => context.push(
+          '/products/${Uri.encodeComponent(item['id'] as String)}',
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: context.desktop.panel,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DesktopPageHeader(
+            title: pageTitle,
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+            actions: [
+              IconButton(
+                tooltip: 'Refresh',
+                onPressed: _retryInventoryLoad,
+                icon: const Icon(Icons.refresh_rounded, size: 20),
+              ),
+              if (!isLocal &&
+                  (permissions.canMakeSales || permissions.canManageStock))
+                OutlinedButton.icon(
+                  style: desktopSecondaryButton(context),
+                  onPressed: () => context.push('/inventory/request-stock'),
+                  icon: const Icon(Icons.add_shopping_cart_rounded, size: 17),
+                  label: const Text('Request stock'),
+                ),
+              if (permissions.canManageStock)
+                FilledButton.icon(
+                  style: desktopPrimaryButton(context),
+                  onPressed: () => context.go('/inventory/receive'),
+                  icon: const Icon(Icons.inventory_rounded, size: 17),
+                  label: const Text('Receive stock'),
+                ),
+            ],
+            bottom: DesktopInventoryTabs(
+              tabs: tabs,
+              selectedLabel: current,
+              onSelect: (tab) {
+                if (tab.path == null || tab.path == '/inventory') {
+                  setState(() => _desktopTab = tab.label);
+                } else {
+                  context.go(tab.path!);
+                }
+              },
+            ),
+          ),
+          Divider(height: 1, color: context.desktop.border),
+          Expanded(child: body),
+        ],
+      ),
+    );
+  }
+
 
   Future<void> _startReceiveStock(BuildContext context) async {
     final selected = await showProductPicker(context);
@@ -705,6 +914,22 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _receiveDesktopItem(
+    BuildContext context,
+    Map<String, dynamic> item,
+  ) async {
+    final productId = item['id']?.toString() ?? '';
+    final productName = item['name']?.toString() ?? '';
+    if (productId.isEmpty) return;
+    final updated = await context.push<bool>(
+      '/inventory/batch-receive?productId=${Uri.encodeComponent(productId)}&productName=${Uri.encodeComponent(productName)}',
+    );
+    if (updated == true && mounted) {
+      await _loadData(showLoading: false);
+      _refreshLocalReceiptHistory();
+    }
   }
 
   Widget _buildStockItemCard(
@@ -976,6 +1201,197 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       final isWarning = minStock > 0 && qty <= minStock * 0.5;
       return qty > 0 && !isWarning;
     }).toList();
+
+    if (context.inDesktopShell) {
+      final searched = _stockSearchQuery.trim().isEmpty
+          ? _lowStockItems
+          : _lowStockItems.where((item) {
+              final query = _stockSearchQuery.toLowerCase().trim();
+              return (item['name']?.toString().toLowerCase().contains(query) ??
+                      false) ||
+                  (item['sku']?.toString().toLowerCase().contains(query) ??
+                      false);
+            }).toList();
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 4, 24, 8),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 360,
+                  child: DesktopSearchField(
+                    hint: 'Search low stock items',
+                    onChanged: (value) =>
+                        setState(() => _stockSearchQuery = value),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Text(
+                  '${searched.length} items need attention',
+                  style: TextStyle(
+                    color: context.desktop.textMuted,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                if (permissions.canRecordRestock &&
+                    !getIt<AuthService>().isLocalWorkspace &&
+                    searched.isNotEmpty)
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        context.push('/inventory/restock-suggestions'),
+                    icon: const Icon(Icons.auto_awesome_rounded, size: 17),
+                    label: const Text('Reorder suggestions'),
+                  ),
+              ],
+            ),
+          ),
+          if (_inventoryDataError != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+              child: _buildStaleDataNotice(),
+            ),
+          Expanded(
+            child: searched.isEmpty
+                ? DesktopEmptyState(
+                    icon: _lowStockItems.isEmpty
+                        ? Icons.check_circle_outline_rounded
+                        : Icons.search_off_rounded,
+                    title: _lowStockItems.isEmpty
+                        ? 'Stock levels look good'
+                        : 'No matching stock alerts',
+                    message: _lowStockItems.isEmpty
+                        ? 'There are no items below their reorder levels.'
+                        : 'Try another product name or SKU.',
+                  )
+                : Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 18),
+                    child: DesktopDataTable<Map<String, dynamic>>(
+                      columns: [
+                        DesktopColumn<Map<String, dynamic>>(
+                          label: 'PRODUCT',
+                          flex: 3,
+                          minWidth: 220,
+                          cell: (context, item) => Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              DesktopCellText(
+                                item['name']?.toString() ?? 'Unknown',
+                                strong: true,
+                              ),
+                              DesktopCellText(
+                                item['sku']?.toString() ?? '',
+                                muted: true,
+                              ),
+                            ],
+                          ),
+                          sortBy: (item) =>
+                              (item['name']?.toString() ?? '').toLowerCase(),
+                        ),
+                        DesktopColumn<Map<String, dynamic>>(
+                          label: 'CATEGORY',
+                          flex: 2,
+                          minWidth: 145,
+                          cell: (context, item) => DesktopCellText(
+                            item['categoryName']?.toString() ?? 'Uncategorised',
+                            muted: true,
+                          ),
+                          sortBy: (item) =>
+                              item['categoryName']?.toString() ?? '',
+                        ),
+                        DesktopColumn<Map<String, dynamic>>(
+                          label: 'ON HAND',
+                          flex: 1,
+                          minWidth: 130,
+                          numeric: true,
+                          cell: (context, item) => DesktopCellText(
+                            '${_formatUnitQty((item['quantity'] as num?)?.toDouble() ?? 0)} ${item['unit']?.toString() ?? 'piece'}',
+                            strong: true,
+                          ),
+                          sortBy: (item) => (item['quantity'] as num?) ?? 0,
+                        ),
+                        DesktopColumn<Map<String, dynamic>>(
+                          label: 'REORDER AT',
+                          flex: 1,
+                          minWidth: 120,
+                          numeric: true,
+                          cell: (context, item) => DesktopCellText(
+                            '${item['minStock'] ?? 0} ${item['unit']?.toString() ?? 'piece'}',
+                            muted: true,
+                          ),
+                          sortBy: (item) => (item['minStock'] as num?) ?? 0,
+                        ),
+                        DesktopColumn<Map<String, dynamic>>(
+                          label: 'STATUS',
+                          flex: 1,
+                          minWidth: 125,
+                          cell: (context, item) {
+                            final quantity =
+                                (item['quantity'] as num?)?.toDouble() ?? 0;
+                            final minimum =
+                                (item['minStock'] as num?)?.toDouble() ?? 0;
+                            final color = context.readable(
+                              _stockColor(quantity, minimum.toInt()),
+                            );
+                            return Text(
+                              quantity <= 0
+                                  ? 'Out of stock'
+                                  : quantity <= minimum * 0.5
+                                      ? 'Critical low'
+                                      : 'Running low',
+                              style: TextStyle(
+                                color: color,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            );
+                          },
+                          sortBy: (item) => (item['quantity'] as num?) ?? 0,
+                        ),
+                        if (permissions.canManageStock &&
+                            !getIt<AuthService>().isLocalWorkspace)
+                          DesktopColumn<Map<String, dynamic>>(
+                            label: '',
+                            width: 88,
+                            minWidth: 88,
+                            cell: (rowContext, item) => TextButton(
+                              onPressed: () => rowContext.push(
+                                '/inventory/request-stock?productId=${Uri.encodeComponent(item['id']?.toString() ?? '')}',
+                              ),
+                              child: const Text('Request'),
+                            ),
+                          ),
+                      ],
+                      rows: searched,
+                      rowId: (item) => item['id']?.toString() ?? '',
+                      onRowActivated: (item) => context.push(
+                        '/products/${Uri.encodeComponent(item['id']?.toString() ?? '')}',
+                      ),
+                      initialSortColumn: 4,
+                      initialSortAscending: true,
+                      minWidth: 790,
+                      footer: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        child: Text(
+                          'Select a row and press Enter to open product details.',
+                          style: TextStyle(
+                            color: context.desktop.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+          ),
+        ],
+      );
+    }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(

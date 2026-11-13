@@ -114,6 +114,7 @@ class AxonGatewayClient {
     List<Map<String, dynamic>> tools = const [],
     int maxTokens = 1024,
     void Function(String accumulatedText)? onText,
+    Future<void>? abortTrigger,
   }) =>
       _streamChat(
         {
@@ -124,6 +125,7 @@ class AxonGatewayClient {
           'stream': true,
         },
         onText: onText,
+        abortTrigger: abortTrigger,
       );
 
   Future<String> vision({
@@ -237,6 +239,7 @@ class AxonGatewayClient {
   Future<Map<String, dynamic>> _streamChat(
     Map<String, dynamic> body, {
     void Function(String accumulatedText)? onText,
+    Future<void>? abortTrigger,
   }) async {
     String? apiKey;
     try {
@@ -253,7 +256,11 @@ class AxonGatewayClient {
     }
 
     try {
-      final request = http.Request('POST', _streamChatUri)
+      final request = http.AbortableRequest(
+        'POST',
+        _streamChatUri,
+        abortTrigger: abortTrigger,
+      )
         ..followRedirects = false
         ..maxRedirects = 0
         ..headers.addAll({

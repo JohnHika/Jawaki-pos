@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../users/presentation/desktop/team_desktop_widgets.dart';
 import '../../data/services/invitation_cache_service.dart';
+import '../desktop/invitations_desktop_page.dart';
+import '../desktop/invite_staff_panel.dart';
 
 /// Displays all staff invitations with their status (PENDING / ACCEPTED /
 /// EXPIRED) and who created them.  Lets the admin track who has accepted
@@ -73,6 +79,7 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) return _buildDesktop(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? DesignColors.darkBg : DesignColors.surface;
     final textPrimary =
@@ -93,6 +100,37 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
         ],
         ),
       body: _buildBody(isDark, textPrimary, textSecondary),
+    );
+  }
+
+  /// The computer layout: a table under the Team tabs. Same data, same
+  /// refresh, same invitation form (in a side panel).
+  Widget _buildDesktop(BuildContext context) {
+    final canManageRoles =
+        ProviderScope.containerOf(context).read(permissionsProvider).canManageRoles;
+    return Scaffold(
+      body: DesktopInvitationsPage(
+        invitations: [
+          for (var i = 0; i < _invitations.length; i++)
+            DesktopInvitationRow.fromJson(_invitations[i], i),
+        ],
+        loading: _isLoading,
+        failed: _loadError != null,
+        canManageRoles: canManageRoles,
+        onTab: (tab) => switch (tab) {
+          DesktopTeamTab.users => context.go('/users'),
+          DesktopTeamTab.roles => context.go('/users/roles'),
+          DesktopTeamTab.invitations => null,
+        },
+        onRefresh: () => _load(showCacheFirst: false),
+        onInvite: () async {
+          final sent = await showInviteStaffPanel(context);
+          if (sent == true) {
+            await _cache.invalidate();
+            if (mounted) _load(showCacheFirst: false);
+          }
+        },
+      ),
     );
   }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/auth/app_roles.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/network/api_client.dart';
@@ -121,12 +122,16 @@ class TillGuardService {
           }
         }
       }
+      final canViewCustomerDetails = RolePermissions(
+        getIt<AuthService>().currentUser?['permissions'] as List<dynamic>?,
+      ).canSeeCustomers;
       issues.addAll(assessCreditSale(
         rules,
         creditAmount: creditAmount,
         hasCustomer: customerId != null,
         customerName: customerName,
         standing: standing,
+        canViewCustomerDetails: canViewCustomerDetails,
       ));
     }
 

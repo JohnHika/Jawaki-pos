@@ -15,6 +15,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/theme/theme_provider.dart';
 import '../../../../core/theme/share_format_sheet.dart';
 import '../../../../core/di/injection.dart';
@@ -22,6 +23,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
+import '../../../../core/services/desktop_update_service.dart';
 import '../../../../core/services/update_check_service.dart';
 import '../../../../core/services/receipt_printer_service.dart';
 import '../../../../core/services/print_queue_service.dart';
@@ -40,6 +42,10 @@ import '../../../../core/utils/format.dart';
 import '../widgets/settings_layout.dart';
 import '../widgets/receipt_details_sheet.dart';
 import '../widgets/living_icon_card.dart';
+import '../desktop/settings_desktop_page.dart';
+import '../desktop/settings_desktop_panes.dart';
+import '../desktop/settings_desktop_sheets.dart';
+import '../desktop/settings_desktop_widgets.dart';
 import '../../../../core/widgets/modal_disposal.dart';
 
 // Package metadata is immutable for the life of the installed build. Cache it
@@ -96,6 +102,7 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final desktop = context.inDesktopShell;
     final user = ref.watch(currentUserProvider);
     final perms = ref.watch(permissionsProvider);
     final identity = ref.watch(tenantIdentityProvider);
@@ -165,7 +172,7 @@ class SettingsScreen extends ConsumerWidget {
                 'onboarding',
                 'checklist',
                 'setup',
-                'first sale'
+                'first sale',
               ],
               onTap: () =>
                   context.push('/owner-welcome', extra: identity.companyName),
@@ -181,7 +188,7 @@ class SettingsScreen extends ConsumerWidget {
                 'checklist',
                 'setup',
                 'getting started',
-                'first sale'
+                'first sale',
               ],
               onTap: () => context.push('/setup'),
             ),
@@ -284,7 +291,7 @@ class SettingsScreen extends ConsumerWidget {
                 'plan',
                 'pay',
                 'subscription',
-                'trial'
+                'trial',
               ],
               onTap: () => context.push('/settings/plan'),
             ),
@@ -319,7 +326,7 @@ class SettingsScreen extends ConsumerWidget {
                 'payout',
                 'settlement',
                 'paystack',
-                'mpesa'
+                'mpesa',
               ],
               onTap: () => context.push('/payments/setup'),
             ),
@@ -351,7 +358,9 @@ class SettingsScreen extends ConsumerWidget {
               title: entry.title,
               subtitle: 'Encrypted on this device',
               trailing: const SettingsStatusChip(
-                  text: 'Local', color: DesignColors.info),
+                text: 'Local',
+                color: DesignColors.info,
+              ),
               onTap: entry.onTap,
             ),
           ),
@@ -441,6 +450,15 @@ class SettingsScreen extends ConsumerWidget {
               keywords: const ['axon', 'gateway', 'ai key', 'api key'],
               onTap: () => context.push('/settings/ai-gateway'),
             ),
+          if (isLocalWorkspace && isLocalWorkspaceOwner)
+            SettingsEntry(
+              id: 'httpsms',
+              icon: Icons.sms_outlined,
+              title: 'HTTPSMS texting',
+              subtitle: 'Send customer statements through your paired phone',
+              keywords: const ['sms', 'text', 'httpsms', 'statement'],
+              onTap: () => context.push('/settings/httpsms'),
+            ),
           if (!isLocalWorkspace)
             SettingsEntry(
               id: 'offline-pin',
@@ -526,7 +544,7 @@ class SettingsScreen extends ConsumerWidget {
               'privacy',
               'policy',
               'billing',
-              'payments'
+              'payments',
             ],
             onTap: () => context.push('/legal'),
           ),
@@ -594,38 +612,108 @@ class SettingsScreen extends ConsumerWidget {
       ),
     ];
 
-    return Scaffold(
-      appBar: BrandedAppBar(
-        title: ref
-            .watch(businessLayoutProvider)
-            .actionLabel('/settings', 'Settings'),
-        showBackButton: false,
+    final settingsList = SettingsSectionList(
+      header: SettingsProfileHeader(
+        name: (user?['name'] ?? user?['email'] ?? 'User').toString(),
+        email: (user?['email'] ?? '').toString(),
+        roleLabel: _roleLabel(user?['role']),
+        businessName: identity.companyName,
+        // A local workspace has no invite or synchronization code. Its
+        // tenant slug is only a device-local identifier, so don't present it
+        // as something another shop should copy to join.
+        companyCode: isLocalWorkspace ? '' : _companyCodeFor(user),
+        branchName: identity.branchName,
+        isOnline: isOnline,
+        isLocalWorkspace: isLocalWorkspace,
       ),
+      sections: sections,
+      footer: const _SettingsFooter(),
+    );
+
+    return Scaffold(
+      appBar: desktop
+          ? null
+          : BrandedAppBar(
+              title: ref
+                  .watch(businessLayoutProvider)
+                  .actionLabel('/settings', 'Settings'),
+              showBackButton: false,
+            ),
       body: _OpenEntryOnce(
         onOpen: _openEntryAction(context, sections),
-        child: SettingsSectionList(
-          header: SettingsProfileHeader(
-            name: (user?['name'] ?? user?['email'] ?? 'User').toString(),
-            email: (user?['email'] ?? '').toString(),
-            roleLabel: _roleLabel(user?['role']),
-            businessName: identity.companyName,
-            // A local workspace has no invite or synchronization code. Its
-            // tenant slug is only a device-local identifier, so don't present it
-            // as something another shop should copy to join.
-            companyCode: isLocalWorkspace ? '' : _companyCodeFor(user),
-            branchName: identity.branchName,
-            isOnline: isOnline,
-            isLocalWorkspace: isLocalWorkspace,
-          ),
-          sections: sections,
-          footer: const _SettingsFooter(),
-        ),
+        child: desktop
+            ? FutureBuilder<PackageInfo>(
+                future: _settingsPackageInfo,
+                builder: (context, snapshot) {
+                  final info = snapshot.data;
+                  final updates = getIt<DesktopUpdateService>();
+                  return DesktopSettingsPage(
+                    title: ref
+                        .watch(businessLayoutProvider)
+                        .actionLabel('/settings', 'Settings'),
+                    initialPaneId: openEntry == null
+                        ? null
+                        : desktopSettingsPaneFor(openEntry!.trim()),
+                    panes: buildDesktopSettingsPanes(
+                      DesktopSettingsDeps(
+                        sections: sections,
+                        isLocalWorkspace: isLocalWorkspace,
+                        version: info == null
+                            ? null
+                            : DesktopAppVersion(info.version, info.buildNumber),
+                        updates: updates.supported ? updates : null,
+                        notifyKeys: const DesktopNotifyKeys(
+                          sales: _SettingsKeys.notifySales,
+                          inventory: _SettingsKeys.notifyInventory,
+                          sync: _SettingsKeys.notifySync,
+                        ),
+                        osNotificationsGranted: () =>
+                            getIt<NotificationService>().hasPermission(),
+                        requestOsNotifications: () =>
+                            getIt<NotificationService>().requestPermission(),
+                        openUserGuide: () => context.push('/user-guide'),
+                        openWebsite: () => launchUrl(
+                          Uri.parse('https://archeaxon.com'),
+                          mode: LaunchMode.externalApplication,
+                        ),
+                        profile: DesktopSettingsProfile(
+                          name: (user?['name'] ?? user?['email'] ?? 'User')
+                              .toString(),
+                          email: (user?['email'] ?? '').toString(),
+                          roleLabel: _roleLabel(user?['role']),
+                          businessName: identity.companyName,
+                          branchName: identity.branchName,
+                          companyCode:
+                              isLocalWorkspace ? '' : _companyCodeFor(user),
+                          isOnline: isOnline,
+                          isLocalWorkspace: isLocalWorkspace,
+                          onCopyCode: () async {
+                            await Clipboard.setData(
+                              ClipboardData(text: _companyCodeFor(user)),
+                            );
+                            if (!context.mounted) return;
+                            showGlassSnackBar(
+                              context,
+                              'Company code copied',
+                              icon: Icons.copy_rounded,
+                              color: DesignColors.success,
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              )
+            : settingsList,
       ),
     );
   }
 
   VoidCallback? _openEntryAction(
-      BuildContext context, List<SettingsSection> sections) {
+    BuildContext context,
+    List<SettingsSection> sections,
+  ) {
     final wanted = openEntry?.trim();
     if (wanted == null || wanted.isEmpty) return null;
     if (wanted == 'backup') {
@@ -641,8 +729,11 @@ class SettingsScreen extends ConsumerWidget {
     return null;
   }
 
-  void _showLogoutDialog(BuildContext context, WidgetRef ref,
-      {bool allDevices = false}) async {
+  void _showLogoutDialog(
+    BuildContext context,
+    WidgetRef ref, {
+    bool allDevices = false,
+  }) async {
     // Capture the settings screen context BEFORE the async gap, since the
     // dialog's own context is disposed as soon as it closes.
     final settingsContext = context;
@@ -650,9 +741,12 @@ class SettingsScreen extends ConsumerWidget {
     final confirmed = await showConfirmDialog(
       context,
       title: allDevices ? 'Sign out of all devices' : 'Sign out',
-      message: allDevices
-          ? 'This signs you out on every phone and browser. Anything not yet backed up stays saved on this phone.'
-          : 'Sign out of this phone? Anything not yet backed up stays saved on this phone.',
+      message: settingsDeviceCopy(
+        context,
+        allDevices
+            ? 'This signs you out on every phone and browser. Anything not yet backed up stays saved on this phone.'
+            : 'Sign out of this phone? Anything not yet backed up stays saved on this phone.',
+      ),
       confirmLabel: allDevices ? 'Sign out everywhere' : 'Sign out',
       confirmColor: DesignColors.error,
     );
@@ -672,7 +766,7 @@ class SettingsScreen extends ConsumerWidget {
     final auth = getIt<AuthService>();
     final localWorkspace = auth.isLocalWorkspace;
     final canManageLocalData = auth.isLocalWorkspaceOwner;
-    showModalBottomSheet(
+    showSettingsSheet(
       useRootNavigator: true,
       isScrollControlled: true,
       context: context,
@@ -683,7 +777,7 @@ class SettingsScreen extends ConsumerWidget {
         child: FractionallySizedBox(
           heightFactor: 0.82,
           child: SingleChildScrollView(
-            child: SettingsSheetScaffold(
+            child: SettingsSheetBody(
               title: 'Local data',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -765,8 +859,9 @@ class SettingsScreen extends ConsumerWidget {
                     OutlinedButton.icon(
                       onPressed: () {
                         Navigator.of(sheetContext).pop();
-                        GoRouter.of(pageContext)
-                            .push('/settings/archive-history');
+                        GoRouter.of(
+                          pageContext,
+                        ).push('/settings/archive-history');
                       },
                       icon: const Icon(Icons.history_rounded),
                       label: const Text('Browse imported archive history'),
@@ -812,10 +907,14 @@ class SettingsScreen extends ConsumerWidget {
     try {
       final service = _localPortableBackupService();
       final file = await service.createBackup(passphrase: passphrase);
-      unawaited(getIt<AppDatabase>()
-          .noteSetupStep('backup',
-              notedBy: getIt<AuthService>().currentUser?['name']?.toString())
-          .catchError((_) {}));
+      unawaited(
+        getIt<AppDatabase>()
+            .noteSetupStep(
+              'backup',
+              notedBy: getIt<AuthService>().currentUser?['name']?.toString(),
+            )
+            .catchError((_) {}),
+      );
       if (!context.mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
       progressOpen = false;
@@ -979,17 +1078,17 @@ class SettingsScreen extends ConsumerWidget {
     final message = safeMessage?.trim() ?? '';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message.isEmpty
-            ? 'Counterbase could not complete that backup action. Try again.'
-            : message),
+        content: Text(
+          message.isEmpty
+              ? 'Counterbase could not complete that backup action. Try again.'
+              : message,
+        ),
         duration: const Duration(seconds: 6),
       ),
     );
   }
 
-  Future<String?> _requestNewPortableBackupPassphrase(
-    BuildContext context,
-  ) {
+  Future<String?> _requestNewPortableBackupPassphrase(BuildContext context) {
     final password = TextEditingController();
     final confirmation = TextEditingController();
     var errorText = '';
@@ -999,9 +1098,7 @@ class SettingsScreen extends ConsumerWidget {
         builder: (dialogContext, setDialogState) {
           void submit() {
             if (password.text.length < 12 || password.text.contains('\u0000')) {
-              setDialogState(
-                () => errorText = 'Use at least 12 characters.',
-              );
+              setDialogState(() => errorText = 'Use at least 12 characters.');
               return;
             }
             if (password.text != confirmation.text) {
@@ -1075,9 +1172,7 @@ class SettingsScreen extends ConsumerWidget {
         builder: (dialogContext, setDialogState) {
           void submit() {
             if (password.text.length < 12 || password.text.contains('\u0000')) {
-              setDialogState(
-                () => errorText = 'Use at least 12 characters.',
-              );
+              setDialogState(() => errorText = 'Use at least 12 characters.');
               return;
             }
             Navigator.of(dialogContext).pop(password.text);
@@ -1132,7 +1227,8 @@ class SettingsScreen extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(error.toString().replaceFirst('Exception: ', ''))),
+            content: Text(error.toString().replaceFirst('Exception: ', '')),
+          ),
         );
       }
       return;
@@ -1203,8 +1299,11 @@ class SettingsScreen extends ConsumerWidget {
                     children: [
                       const Row(
                         children: [
-                          Icon(Icons.archive_outlined,
-                              size: 18, color: DesignColors.warning),
+                          Icon(
+                            Icons.archive_outlined,
+                            size: 18,
+                            color: DesignColors.warning,
+                          ),
                           SizedBox(width: DesignSpacing.xs),
                           Expanded(
                             child: Text(
@@ -1244,9 +1343,11 @@ class SettingsScreen extends ConsumerWidget {
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(selectedPreview.workspaceMatches
-                ? 'Restore supported records'
-                : 'Set up with supported records'),
+            child: Text(
+              selectedPreview.workspaceMatches
+                  ? 'Restore supported records'
+                  : 'Set up with supported records',
+            ),
           ),
         ],
       ),
@@ -1277,9 +1378,11 @@ class SettingsScreen extends ConsumerWidget {
       ref.read(authControllerProvider.notifier).refreshFromService();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(result.alreadyImported
-              ? 'This archive was already restored. No duplicate records were added.'
-              : 'Archive restored for ${result.tenantName}. Supported shop, sales, supplier invoice and linked customer collection records are available offline. Keep the encrypted archive for history this edition does not yet display.'),
+          content: Text(
+            result.alreadyImported
+                ? 'This archive was already restored. No duplicate records were added.'
+                : 'Archive restored for ${result.tenantName}. Supported shop, sales, supplier invoice and linked customer collection records are available offline. Keep the encrypted archive for history this edition does not yet display.',
+          ),
           duration: const Duration(seconds: 5),
         ),
       );
@@ -1309,7 +1412,8 @@ class SettingsScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                  'Enter the password used when this archive was prepared.'),
+                'Enter the password used when this archive was prepared.',
+              ),
               const SizedBox(height: DesignSpacing.md),
               TextField(
                 controller: controller,
@@ -1325,7 +1429,8 @@ class SettingsScreen extends ConsumerWidget {
                 onSubmitted: (_) {
                   if (controller.text.length < 12) {
                     setDialogState(
-                        () => errorText = 'Use at least 12 characters.');
+                      () => errorText = 'Use at least 12 characters.',
+                    );
                     return;
                   }
                   Navigator.of(dialogContext).pop(controller.text);
@@ -1342,7 +1447,8 @@ class SettingsScreen extends ConsumerWidget {
               onPressed: () {
                 if (controller.text.length < 12) {
                   setDialogState(
-                      () => errorText = 'Use at least 12 characters.');
+                    () => errorText = 'Use at least 12 characters.',
+                  );
                   return;
                 }
                 Navigator.of(dialogContext).pop(controller.text);
@@ -1366,7 +1472,7 @@ class SettingsScreen extends ConsumerWidget {
 
     if (!context.mounted) return;
 
-    showModalBottomSheet(
+    showSettingsSheet(
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,
@@ -1392,7 +1498,7 @@ class SettingsScreen extends ConsumerWidget {
 
     if (!context.mounted) return;
 
-    showModalBottomSheet(
+    showSettingsSheet(
       useRootNavigator: true,
       context: context,
       shape: const RoundedRectangleBorder(
@@ -1409,90 +1515,98 @@ class SettingsScreen extends ConsumerWidget {
 
   // ===== APPEARANCE SETTINGS =====
   void _showAppearanceSettings(BuildContext context) {
-    showModalBottomSheet(
+    showSettingsSheet(
       useRootNavigator: true,
       isScrollControlled: true,
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Consumer(builder: (ctx, ref, _) {
-        final currentMode = ref.watch(themeModeProvider);
-        return SettingsSheetScaffold(
-          title: 'Appearance',
-          child: Flexible(
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  GroupedCard(
-                    margin: EdgeInsets.zero,
-                    children: [
-                      SettingsRow(
-                        icon: Icons.light_mode_rounded,
-                        iconColor: currentMode == ThemeMode.light
-                            ? DesignColors.accent
-                            : null,
-                        title: 'Light',
-                        showChevron: false,
-                        trailing: currentMode == ThemeMode.light
-                            ? const Icon(Icons.check_circle_rounded,
-                                color: DesignColors.accent)
-                            : null,
-                        onTap: () {
-                          ref
-                              .read(themeModeProvider.notifier)
-                              .setThemeMode(ThemeMode.light);
-                          Navigator.pop(ctx);
-                        },
-                      ),
-                      SettingsRow(
-                        icon: Icons.dark_mode_rounded,
-                        iconColor: currentMode == ThemeMode.dark
-                            ? DesignColors.accent
-                            : null,
-                        title: 'Dark',
-                        showChevron: false,
-                        trailing: currentMode == ThemeMode.dark
-                            ? const Icon(Icons.check_circle_rounded,
-                                color: DesignColors.accent)
-                            : null,
-                        onTap: () {
-                          ref
-                              .read(themeModeProvider.notifier)
-                              .setThemeMode(ThemeMode.dark);
-                          Navigator.pop(ctx);
-                        },
-                      ),
-                      SettingsRow(
-                        icon: Icons.phone_android_rounded,
-                        iconColor: currentMode == ThemeMode.system
-                            ? DesignColors.accent
-                            : null,
-                        title: 'Match my phone',
-                        showChevron: false,
-                        subtitle: "Uses your phone's light or dark setting",
-                        trailing: currentMode == ThemeMode.system
-                            ? const Icon(Icons.check_circle_rounded,
-                                color: DesignColors.accent)
-                            : null,
-                        onTap: () {
-                          ref
-                              .read(themeModeProvider.notifier)
-                              .setThemeMode(ThemeMode.system);
-                          Navigator.pop(ctx);
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: DesignSpacing.lg),
-                  const LivingIconCard(),
-                ],
+      builder: (ctx) => Consumer(
+        builder: (ctx, ref, _) {
+          final currentMode = ref.watch(themeModeProvider);
+          return SettingsSheetBody(
+            title: 'Appearance',
+            child: Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GroupedCard(
+                      margin: EdgeInsets.zero,
+                      children: [
+                        SettingsRow(
+                          icon: Icons.light_mode_rounded,
+                          iconColor: currentMode == ThemeMode.light
+                              ? DesignColors.accent
+                              : null,
+                          title: 'Light',
+                          showChevron: false,
+                          trailing: currentMode == ThemeMode.light
+                              ? const Icon(
+                                  Icons.check_circle_rounded,
+                                  color: DesignColors.accent,
+                                )
+                              : null,
+                          onTap: () {
+                            ref
+                                .read(themeModeProvider.notifier)
+                                .setThemeMode(ThemeMode.light);
+                            Navigator.pop(ctx);
+                          },
+                        ),
+                        SettingsRow(
+                          icon: Icons.dark_mode_rounded,
+                          iconColor: currentMode == ThemeMode.dark
+                              ? DesignColors.accent
+                              : null,
+                          title: 'Dark',
+                          showChevron: false,
+                          trailing: currentMode == ThemeMode.dark
+                              ? const Icon(
+                                  Icons.check_circle_rounded,
+                                  color: DesignColors.accent,
+                                )
+                              : null,
+                          onTap: () {
+                            ref
+                                .read(themeModeProvider.notifier)
+                                .setThemeMode(ThemeMode.dark);
+                            Navigator.pop(ctx);
+                          },
+                        ),
+                        SettingsRow(
+                          icon: Icons.phone_android_rounded,
+                          iconColor: currentMode == ThemeMode.system
+                              ? DesignColors.accent
+                              : null,
+                          title: 'Match my phone',
+                          showChevron: false,
+                          subtitle: "Uses your phone's light or dark setting",
+                          trailing: currentMode == ThemeMode.system
+                              ? const Icon(
+                                  Icons.check_circle_rounded,
+                                  color: DesignColors.accent,
+                                )
+                              : null,
+                          onTap: () {
+                            ref
+                                .read(themeModeProvider.notifier)
+                                .setThemeMode(ThemeMode.system);
+                            Navigator.pop(ctx);
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: DesignSpacing.lg),
+                    const LivingIconCard(),
+                  ],
+                ),
               ),
             ),
-          ),
-        );
-      }),
+          );
+        },
+      ),
     );
   }
 
@@ -1549,8 +1663,10 @@ class SettingsScreen extends ConsumerWidget {
                             ? 'Choose 4–6 digits. Confirm with your current PIN or your device biometrics.'
                             : 'Choose 4–6 digits. Enter your current PIN first to confirm it is you.'
                     : isLocalWorkspace
-                        ? 'Choose 4–6 digits to unlock Counterbase on this phone.'
-                        : 'Choose 4–6 digits. You will use this PIN to open the app on this phone and to sign in quickly.',
+                        ? settingsDeviceCopy(dialogContext,
+                            'Choose 4–6 digits to unlock Counterbase on this phone.')
+                        : settingsDeviceCopy(dialogContext,
+                            'Choose 4–6 digits. You will use this PIN to open the app on this phone and to sign in quickly.'),
                 style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
                       color:
                           Theme.of(dialogContext).brightness == Brightness.dark
@@ -1608,12 +1724,16 @@ class SettingsScreen extends ConsumerWidget {
                             height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : Icon(biometricVerified
-                            ? Icons.verified_user_rounded
-                            : Icons.fingerprint_rounded),
-                    label: Text(biometricVerified
-                        ? 'Biometrics verified'
-                        : 'Forgot PIN? Verify with biometrics'),
+                        : Icon(
+                            biometricVerified
+                                ? Icons.verified_user_rounded
+                                : Icons.fingerprint_rounded,
+                          ),
+                    label: Text(
+                      biometricVerified
+                          ? 'Biometrics verified'
+                          : 'Forgot PIN? Verify with biometrics',
+                    ),
                   ),
                 ),
                 const SizedBox(height: DesignSpacing.sm),
@@ -1656,10 +1776,9 @@ class SettingsScreen extends ConsumerWidget {
                 const SizedBox(height: DesignSpacing.md),
                 Text(
                   error!,
-                  style: Theme.of(dialogContext)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: DesignColors.error),
+                  style: Theme.of(
+                    dialogContext,
+                  ).textTheme.bodySmall?.copyWith(color: DesignColors.error),
                 ),
               ],
             ],
@@ -1684,26 +1803,31 @@ class SettingsScreen extends ConsumerWidget {
                       if (hasExistingPin && !biometricVerified) {
                         if (!validPin.hasMatch(currentPin)) {
                           setDialogState(
-                              () => error = 'Enter your current 4–6 digit PIN');
+                            () => error = 'Enter your current 4–6 digit PIN',
+                          );
                           return;
                         }
                         final isCorrect = await authService
                             .verifyLocalPinForSensitiveAction(currentPin);
                         if (!isCorrect) {
-                          setDialogState(() => error =
-                              authService.pinThrottleMessage ??
-                                  'That current PIN is not correct');
+                          setDialogState(
+                            () => error = authService.pinThrottleMessage ??
+                                'That current PIN is not correct',
+                          );
                           return;
                         }
                       }
                       if (!validPin.hasMatch(newPin)) {
-                        setDialogState(() => error =
-                            'Your PIN must be 4–6 digits, numbers only');
+                        setDialogState(
+                          () => error =
+                              'Your PIN must be 4–6 digits, numbers only',
+                        );
                         return;
                       }
                       if (newPin != confirmPin) {
                         setDialogState(
-                            () => error = 'The two PINs do not match');
+                          () => error = 'The two PINs do not match',
+                        );
                         return;
                       }
 
@@ -1819,11 +1943,12 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 if (error != null) ...[
                   const SizedBox(height: 8),
-                  Text(error!,
-                      style: Theme.of(dialogContext)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: DesignColors.error)),
+                  Text(
+                    error!,
+                    style: Theme.of(
+                      dialogContext,
+                    ).textTheme.bodySmall?.copyWith(color: DesignColors.error),
+                  ),
                 ],
               ],
             ),
@@ -1889,7 +2014,7 @@ class SettingsScreen extends ConsumerWidget {
 
     if (!context.mounted) return;
 
-    showModalBottomSheet(
+    showSettingsSheet(
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,
@@ -1917,14 +2042,14 @@ class SettingsScreen extends ConsumerWidget {
 
   // ===== HELP & SUPPORT =====
   void _showHelpSupport(BuildContext context) {
-    showModalBottomSheet(
+    showSettingsSheet(
       useRootNavigator: true,
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        return SettingsSheetScaffold(
+        return SettingsSheetBody(
           title: 'Help & support',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2009,43 +2134,60 @@ class SettingsScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Q: How do I add items to the cart?',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                'Q: How do I add items to the cart?',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 4),
               const Text(
-                  'A: Tap a product on the POS screen and select the quantity.'),
+                'A: Tap a product on the POS screen and select the quantity.',
+              ),
               const SizedBox(height: 16),
-              const Text('Q: How do I manage products?',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                'Q: How do I manage products?',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 4),
               const Text(
-                  'A: Go to the Products tab. Use the + button to add products and the categories button to manage categories.'),
+                'A: Go to the Products tab. Use the + button to add products and the categories button to manage categories.',
+              ),
               const SizedBox(height: 16),
-              const Text('Q: Can I work offline?',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                'Q: Can I work offline?',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 4),
-              Text(localWorkspace
-                  ? 'A: Yes. This local workspace works offline. Sales and shop records stay on this device and do not sync to a cloud account.'
-                  : 'A: Yes. Sales and product data are stored locally and sync automatically when you\'re back online.'),
+              Text(
+                localWorkspace
+                    ? 'A: Yes. This local workspace works offline. Sales and shop records stay on this device and do not sync to a cloud account.'
+                    : 'A: Yes. Sales and product data are stored locally and sync automatically when you\'re back online.',
+              ),
               const SizedBox(height: 16),
-              const Text('Q: How do I change my PIN?',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                'Q: How do I change my PIN?',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 4),
               const Text('A: Go to Settings > Quick-unlock PIN.'),
               const SizedBox(height: 16),
-              const Text('Q: How do I process a refund?',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                'Q: How do I process a refund?',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 4),
-              Text(localWorkspace
-                  ? 'A: Open the receipt and void the sale with a reason. Stock is returned. If you physically return till cash, select the cash-refund option so the till is correct. Refund M-Pesa or card payments through the original provider; voiding alone never sends a refund.'
-                  : 'A: Open the receipt and void the sale with a reason. Voiding reverses the sale record and stock, but does not send money back. Refund the payment through its original payment method.'),
+              Text(
+                localWorkspace
+                    ? 'A: Open the receipt and void the sale with a reason. Stock is returned. If you physically return till cash, select the cash-refund option so the till is correct. Refund M-Pesa or card payments through the original provider; voiding alone never sends a refund.'
+                    : 'A: Open the receipt and void the sale with a reason. Voiding reverses the sale record and stock, but does not send money back. Refund the payment through its original payment method.',
+              ),
             ],
           ),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'))
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
         ],
       ),
     );
@@ -2074,7 +2216,8 @@ class SettingsScreen extends ConsumerWidget {
         // noise a customer has no use for and no way to hide.
         return Dialog(
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl)),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(DesignSpacing.xxl),
             child: Column(
@@ -2088,27 +2231,35 @@ class SettingsScreen extends ConsumerWidget {
                     color: DesignColors.brand,
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
                   ),
-                  child: const Icon(Icons.storefront,
-                      color: Colors.white, size: 30),
+                  child: const Icon(
+                    Icons.storefront,
+                    color: Colors.white,
+                    size: 30,
+                  ),
                 ),
                 const SizedBox(height: 16),
-                Text('Counterbase',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800, color: titleColor)),
+                Text(
+                  'Counterbase',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: titleColor,
+                      ),
+                ),
                 const SizedBox(height: 4),
-                Text(_formatReleaseName(info.version),
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: secondaryColor)),
+                Text(
+                  _formatReleaseName(info.version),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: secondaryColor),
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'A complete point-of-sale system for managing sales, inventory, and business operations.',
                   textAlign: TextAlign.center,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(color: titleColor, height: 1.4),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: titleColor,
+                        height: 1.4,
+                      ),
                 ),
                 const SizedBox(height: 20),
                 Container(
@@ -2122,14 +2273,14 @@ class SettingsScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text('Powered by Arche Axon',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(
-                                  color: secondaryColor,
-                                  fontWeight: FontWeight.w600)),
+                      Text(
+                        'Powered by Arche Axon',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: secondaryColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
                       const SizedBox(height: 8),
                       InkWell(
                         onTap: () => launchUrl(
@@ -2138,31 +2289,32 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                         child: Text(
                           'archeaxon.com',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(
-                                  color: DesignColors.brand,
-                                  fontWeight: FontWeight.w600,
-                                  decoration: TextDecoration.underline),
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: DesignColors.brand,
+                                    fontWeight: FontWeight.w600,
+                                    decoration: TextDecoration.underline,
+                                  ),
                         ),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text('© 2026 Arche Axon',
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelSmall
-                        ?.copyWith(color: secondaryColor)),
+                Text(
+                  '© 2026 Arche Axon',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelSmall?.copyWith(color: secondaryColor),
+                ),
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
                   child: TextButton(
                     onPressed: () => Navigator.pop(context),
-                    style:
-                        TextButton.styleFrom(minimumSize: const Size(64, 48)),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(64, 48),
+                    ),
                     child: const Text('Close'),
                   ),
                 ),
@@ -2174,8 +2326,11 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _showSnack(BuildContext context, String message,
-      {bool isError = false}) {
+  void _showSnack(
+    BuildContext context,
+    String message, {
+    bool isError = false,
+  }) {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -2241,16 +2396,18 @@ class SettingsScreen extends ConsumerWidget {
                 Text(
                   'Enter the VAT (tax) percentage added to every sale. Leave it at 0 if you do not charge tax.',
                   style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
-                      color: isDark
-                          ? DesignColors.darkTextSecondary
-                          : DesignColors.textSecondary),
+                        color: isDark
+                            ? DesignColors.darkTextSecondary
+                            : DesignColors.textSecondary,
+                      ),
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: controller,
                   autofocus: true,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: InputDecoration(
                     labelText: 'Tax percentage',
                     suffixText: '%',
@@ -2292,7 +2449,8 @@ class SettingsScreen extends ConsumerWidget {
                   final rate = text.isEmpty ? 0.0 : double.tryParse(text);
                   if (rate == null || rate < 0 || rate > 100) {
                     setDialogState(
-                        () => error = 'Enter a number between 0 and 100');
+                      () => error = 'Enter a number between 0 and 100',
+                    );
                     return;
                   }
                   setDialogState(() {
@@ -2313,10 +2471,7 @@ class SettingsScreen extends ConsumerWidget {
                           : <String, dynamic>{};
                       settings['taxRatePercent'] = rate;
                       settings['showTaxOnReceipt'] = showOnReceipt;
-                      updated = {
-                        ...currentTenant,
-                        'settings': settings,
-                      };
+                      updated = {...currentTenant, 'settings': settings};
                       await auth.updateTenantSession(updated);
                       ref
                           .read(authControllerProvider.notifier)
@@ -2367,7 +2522,9 @@ class SettingsScreen extends ConsumerWidget {
   /// Location and phone for the top of a device-only shop's receipts, kept
   /// with the shop's settings on this device.
   Future<void> _showReceiptDetailsSheet(
-      BuildContext context, WidgetRef ref) async {
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     await editReceiptDetails(context, ref);
   }
 
@@ -2415,10 +2572,9 @@ class SettingsScreen extends ConsumerWidget {
                   isLocalWorkspace
                       ? 'Choose a logo image. It will stay on this device and appear on receipts and shop screens.'
                       : 'Pick a new logo from your phone, or turn your current one into a sharper, resizable (SVG) logo.',
-                  style: Theme.of(dialogContext)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(color: secondary),
+                  style: Theme.of(
+                    dialogContext,
+                  ).textTheme.bodyMedium?.copyWith(color: secondary),
                 ),
                 const SizedBox(height: 16),
                 InkWell(
@@ -2430,8 +2586,9 @@ class SettingsScreen extends ConsumerWidget {
                       color: isDark
                           ? DesignColors.darkSurfaceElevated
                           : DesignColors.surfaceSubtle,
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusLg),
+                      borderRadius: BorderRadius.circular(
+                        DesignSpacing.radiusLg,
+                      ),
                       border: Border.all(
                         color: isDark
                             ? DesignColors.darkBorder
@@ -2451,8 +2608,10 @@ class SettingsScreen extends ConsumerWidget {
                           ),
                           child: logoFile != null
                               ? ClipOval(
-                                  child:
-                                      Image.file(logoFile!, fit: BoxFit.cover),
+                                  child: Image.file(
+                                    logoFile!,
+                                    fit: BoxFit.cover,
+                                  ),
                                 )
                               : Icon(
                                   Icons.add_photo_alternate_outlined,
@@ -2470,10 +2629,11 @@ class SettingsScreen extends ConsumerWidget {
                                 .textTheme
                                 .bodyMedium
                                 ?.copyWith(
-                                    fontWeight: FontWeight.w500,
-                                    color: isDark
-                                        ? DesignColors.darkTextPrimary
-                                        : DesignColors.textPrimary),
+                                  fontWeight: FontWeight.w500,
+                                  color: isDark
+                                      ? DesignColors.darkTextPrimary
+                                      : DesignColors.textPrimary,
+                                ),
                           ),
                         ),
                         Icon(Icons.chevron_right_rounded, color: secondary),
@@ -2502,11 +2662,12 @@ class SettingsScreen extends ConsumerWidget {
                 ],
                 if (error != null) ...[
                   const SizedBox(height: 10),
-                  Text(error!,
-                      style: Theme.of(dialogContext)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: DesignColors.error)),
+                  Text(
+                    error!,
+                    style: Theme.of(
+                      dialogContext,
+                    ).textTheme.bodySmall?.copyWith(color: DesignColors.error),
+                  ),
                 ],
               ],
             ),
@@ -2528,8 +2689,9 @@ class SettingsScreen extends ConsumerWidget {
                         });
                         try {
                           if (isLocalWorkspace) {
-                            final storedPath =
-                                await _storeLocalBusinessLogo(logoFile!);
+                            final storedPath = await _storeLocalBusinessLogo(
+                              logoFile!,
+                            );
                             await authService.updateTenantSession({
                               'logo': storedPath,
                               'logoUrl': storedPath,
@@ -2637,7 +2799,7 @@ class SettingsScreen extends ConsumerWidget {
     required bool canUpdate,
     required bool canDelete,
   }) {
-    showModalBottomSheet(
+    showSettingsSheet(
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,
@@ -2660,13 +2822,14 @@ class SettingsScreen extends ConsumerWidget {
 
   // ===== ADMIN-ONLY: DATA EXPORT =====
   void _showDataExport(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet(
+    final pageContext = context;
+    showSettingsSheet(
       useRootNavigator: true,
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => SettingsSheetScaffold(
+      builder: (context) => SettingsSheetBody(
         title: 'Download my data',
         child: GroupedCard(
           margin: EdgeInsets.zero,
@@ -2677,7 +2840,7 @@ class SettingsScreen extends ConsumerWidget {
               subtitle: "This month's sales, as PDF or CSV",
               onTap: () async {
                 Navigator.pop(context);
-                await _exportSalesData(context, ref);
+                await _exportSalesData(pageContext, ref);
               },
             ),
             SettingsRow(
@@ -2686,7 +2849,7 @@ class SettingsScreen extends ConsumerWidget {
               subtitle: 'What you have in stock, as PDF or CSV',
               onTap: () async {
                 Navigator.pop(context);
-                await _exportInventory(context, ref);
+                await _exportInventory(pageContext, ref);
               },
             ),
             SettingsRow(
@@ -2695,19 +2858,20 @@ class SettingsScreen extends ConsumerWidget {
               subtitle: 'All your products, as PDF or CSV',
               onTap: () async {
                 Navigator.pop(context);
-                await _exportProducts(context, ref);
+                await _exportProducts(pageContext, ref);
               },
             ),
-            SettingsRow(
-              icon: Icons.people_alt_rounded,
-              title: 'Customer accounts',
-              subtitle:
-                  'Contact details, balances and credit limits as PDF or CSV',
-              onTap: () async {
-                Navigator.pop(context);
-                await _exportCustomers(context, ref);
-              },
-            ),
+            if (ref.read(permissionsProvider).canSeeCustomers)
+              SettingsRow(
+                icon: Icons.people_alt_rounded,
+                title: 'Customer accounts',
+                subtitle:
+                    'Contact details, balances and credit limits as PDF or CSV',
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _exportCustomers(pageContext, ref);
+                },
+              ),
           ],
         ),
       ),
@@ -2783,7 +2947,9 @@ class SettingsScreen extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         _showSnack(
-            context, 'Could not prepare your file. ${apiErrorMessage(e)}');
+          context,
+          'Could not prepare your file. ${apiErrorMessage(e)}',
+        );
       }
     }
   }
@@ -2842,7 +3008,10 @@ class SettingsScreen extends ConsumerWidget {
           logoBytes: logoBytes,
           sections: [
             PdfReportSection(
-                heading: 'Inventory', headers: headers, rows: rows),
+              heading: 'Inventory',
+              headers: headers,
+              rows: rows,
+            ),
           ],
         );
         await ExportDocumentService.sharePdf(bytes, 'inventory_export');
@@ -2850,7 +3019,9 @@ class SettingsScreen extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         _showSnack(
-            context, 'Could not prepare your file. ${apiErrorMessage(e)}');
+          context,
+          'Could not prepare your file. ${apiErrorMessage(e)}',
+        );
       }
     }
   }
@@ -2916,18 +3087,44 @@ class SettingsScreen extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         _showSnack(
-            context, 'Could not prepare your file. ${apiErrorMessage(e)}');
+          context,
+          'Could not prepare your file. ${apiErrorMessage(e)}',
+        );
       }
     }
   }
 
   Future<void> _exportCustomers(BuildContext context, WidgetRef ref) async {
+    bool hasCustomerExportPermissions() {
+      final permissions = ref.read(permissionsProvider);
+      return permissions.canExportData && permissions.canSeeCustomers;
+    }
+
+    void showPermissionDenied() {
+      if (context.mounted) {
+        _showSnack(
+          context,
+          'You do not have permission to export customer accounts.',
+        );
+      }
+    }
+
+    if (!hasCustomerExportPermissions()) {
+      showPermissionDenied();
+      return;
+    }
+
     final format = await showShareFormatSheet(
       context,
       title: 'Download customer accounts',
       formats: const [ShareFormatOption.pdf, ShareFormatOption.csv],
     );
     if (format == null || !context.mounted) return;
+    if (!hasCustomerExportPermissions()) {
+      _showSnack(
+          context, 'You do not have permission to export customer accounts.');
+      return;
+    }
 
     try {
       _showSnack(context, 'Preparing your customer file...');
@@ -2959,6 +3156,11 @@ class SettingsScreen extends ConsumerWidget {
       if (!context.mounted) return;
       if (format == ShareFormat.csv) {
         final csv = ExportDocumentService.buildCsv(headers, rows);
+        if (!context.mounted) return;
+        if (!hasCustomerExportPermissions()) {
+          showPermissionDenied();
+          return;
+        }
         await ExportDocumentService.shareCsv(csv, 'customer_accounts_export');
       } else {
         final identity = ref.read(tenantIdentityProvider);
@@ -2979,19 +3181,26 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ],
         );
+        if (!context.mounted) return;
+        if (!hasCustomerExportPermissions()) {
+          showPermissionDenied();
+          return;
+        }
         await ExportDocumentService.sharePdf(bytes, 'customer_accounts_export');
       }
     } catch (error) {
       if (context.mounted) {
         _showSnack(
-            context, 'Could not prepare your file. ${apiErrorMessage(error)}');
+          context,
+          'Could not prepare your file. ${apiErrorMessage(error)}',
+        );
       }
     }
   }
 
   // ===== ADMIN-ONLY: AUDIT TRAIL =====
   void _showAuditTrail(BuildContext context) {
-    showModalBottomSheet(
+    showSettingsSheet(
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,
@@ -3010,28 +3219,28 @@ class SettingsScreen extends ConsumerWidget {
               ? DesignColors.darkTextSecondary
               : DesignColors.textSecondary;
           return Padding(
-            padding: const EdgeInsets.fromLTRB(DesignSpacing.xl,
-                DesignSpacing.md, DesignSpacing.xl, DesignSpacing.xl),
+            padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.xl,
+              DesignSpacing.md,
+              DesignSpacing.xl,
+              DesignSpacing.xl,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                    child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                            color: border,
-                            borderRadius:
-                                BorderRadius.circular(DesignSpacing.xs)))),
+                SettingsSheetHandle(color: border, radius: DesignSpacing.xs),
                 const SizedBox(height: 18),
-                Text('Activity history',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(fontWeight: FontWeight.w800)),
+                Text(
+                  'Activity history',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 4),
-                Text('Recent activity in your shop',
-                    style: TextStyle(color: secondaryColor)),
+                Text(
+                  'Recent activity in your shop',
+                  style: TextStyle(color: secondaryColor),
+                ),
                 const SizedBox(height: 18),
                 Expanded(
                   child: FutureBuilder<Map<String, dynamic>>(
@@ -3064,21 +3273,27 @@ class SettingsScreen extends ConsumerWidget {
                           GroupedCard(
                             margin: EdgeInsets.zero,
                             children: items
-                                .map((entry) => _AuditEntry(
-                                      icon: _auditIconFor(
-                                          entry['action'] as String? ?? '',
-                                          entry['entityType'] as String? ?? ''),
-                                      title: _auditTitleFor(
-                                          entry['action'] as String? ?? '',
-                                          entry['entityType'] as String? ?? ''),
-                                      subtitle: entry['userName'] as String? ??
-                                          'System',
-                                      time: entry['createdAt'] != null
-                                          ? _formatDateTime(DateTime.parse(
-                                                  entry['createdAt'] as String)
-                                              .toLocal())
-                                          : '',
-                                    ))
+                                .map(
+                                  (entry) => _AuditEntry(
+                                    icon: _auditIconFor(
+                                      entry['action'] as String? ?? '',
+                                      entry['entityType'] as String? ?? '',
+                                    ),
+                                    title: _auditTitleFor(
+                                      entry['action'] as String? ?? '',
+                                      entry['entityType'] as String? ?? '',
+                                    ),
+                                    subtitle: entry['userName'] as String? ??
+                                        'System',
+                                    time: entry['createdAt'] != null
+                                        ? _formatDateTime(
+                                            DateTime.parse(
+                                              entry['createdAt'] as String,
+                                            ).toLocal(),
+                                          )
+                                        : '',
+                                  ),
+                                )
                                 .toList(),
                           ),
                         ],
@@ -3129,6 +3344,13 @@ class SettingsScreen extends ConsumerWidget {
 
   // ===== UPDATE CHECK =====
   Future<void> _checkForUpdates(BuildContext context) async {
+    // A Windows computer updates through its own window (installer, not APK).
+    final desktopUpdates = getIt<DesktopUpdateService>();
+    if (desktopUpdates.supported) {
+      desktopUpdates.openOverlay(recheck: true);
+      return;
+    }
+
     // Capture navigator & messenger BEFORE any await so they remain valid
     // even if this widget is unmounted while the network call is in-flight.
     final navigator = Navigator.of(context);
@@ -3241,9 +3463,12 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
       if (mounted) setState(() => _isDesignatedPrinter = value);
     } catch (e) {
       if (mounted) {
-        showGlassSnackBar(context,
-            'Could not update the till printer setting. ${apiErrorMessage(e)}',
-            icon: Icons.error_outline_rounded, color: DesignColors.error);
+        showGlassSnackBar(
+          context,
+          'Could not update the till printer setting. ${apiErrorMessage(e)}',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
       }
     } finally {
       if (mounted) setState(() => _isSavingDesignation = false);
@@ -3262,9 +3487,11 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
       if (!hasPermission) {
         if (mounted) {
           showGlassSnackBar(
-              context, 'Bluetooth permission is required to find printers',
-              icon: Icons.bluetooth_disabled_rounded,
-              color: DesignColors.warning);
+            context,
+            'Bluetooth permission is required to find printers',
+            icon: Icons.bluetooth_disabled_rounded,
+            color: DesignColors.warning,
+          );
         }
         return;
       }
@@ -3272,9 +3499,12 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
       final enabled = await printer.isBluetoothEnabled;
       if (!enabled) {
         if (mounted) {
-          showGlassSnackBar(context, 'Turn on Bluetooth to find printers',
-              icon: Icons.bluetooth_disabled_rounded,
-              color: DesignColors.warning);
+          showGlassSnackBar(
+            context,
+            'Turn on Bluetooth to find printers',
+            icon: Icons.bluetooth_disabled_rounded,
+            color: DesignColors.warning,
+          );
         }
         return;
       }
@@ -3283,15 +3513,21 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
       setState(() => _pairedPrinters = paired);
 
       if (paired.isEmpty && mounted) {
-        showGlassSnackBar(context,
-            'No paired Bluetooth devices found — pair your printer in phone Bluetooth settings first',
-            icon: Icons.bluetooth_searching_rounded, color: DesignColors.info);
+        showGlassSnackBar(
+          context,
+          'No paired Bluetooth devices found — pair your printer in phone Bluetooth settings first',
+          icon: Icons.bluetooth_searching_rounded,
+          color: DesignColors.info,
+        );
       }
     } catch (e) {
       if (mounted) {
         showGlassSnackBar(
-            context, 'Could not scan for printers. ${apiErrorMessage(e)}',
-            icon: Icons.error_outline_rounded, color: DesignColors.error);
+          context,
+          'Could not scan for printers. ${apiErrorMessage(e)}',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
       }
     } finally {
       if (mounted) setState(() => _isScanning = false);
@@ -3301,26 +3537,38 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
   Future<void> _connectTo(PairedPrinter device) async {
     setState(() => _isConnecting = true);
     try {
-      final connected =
-          await getIt<ReceiptPrinterService>().connect(device.macAddress);
+      final connected = await getIt<ReceiptPrinterService>().connect(
+        device.macAddress,
+      );
       if (connected) {
         setState(() {
           _printerName = device.name;
           _printerMacAddress = device.macAddress;
         });
         if (mounted) {
-          showGlassSnackBar(context, 'Connected to ${device.name}',
-              icon: Icons.check_circle_rounded, color: DesignColors.success);
+          showGlassSnackBar(
+            context,
+            'Connected to ${device.name}',
+            icon: Icons.check_circle_rounded,
+            color: DesignColors.success,
+          );
         }
       } else if (mounted) {
-        showGlassSnackBar(context, 'Could not connect to ${device.name}',
-            icon: Icons.error_outline_rounded, color: DesignColors.error);
+        showGlassSnackBar(
+          context,
+          'Could not connect to ${device.name}',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
       }
     } catch (e) {
       if (mounted) {
         showGlassSnackBar(
-            context, 'Could not connect to the printer. ${apiErrorMessage(e)}',
-            icon: Icons.error_outline_rounded, color: DesignColors.error);
+          context,
+          'Could not connect to the printer. ${apiErrorMessage(e)}',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
       }
     } finally {
       if (mounted) setState(() => _isConnecting = false);
@@ -3333,9 +3581,9 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
       top: false,
       child: SingleChildScrollView(
         padding: EdgeInsets.only(
-            bottom:
-                MediaQuery.of(context).viewInsets.bottom + DesignSpacing.sm),
-        child: SettingsSheetScaffold(
+          bottom: MediaQuery.of(context).viewInsets.bottom + DesignSpacing.sm,
+        ),
+        child: SettingsSheetBody(
           title: 'Receipts & printers',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -3364,13 +3612,15 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
                   labelText: 'Paper size',
                   prefixIcon: const Icon(Icons.straighten_rounded),
                   border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusLg)),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+                  ),
                 ),
                 items: const [
                   DropdownMenuItem(value: '58mm', child: Text('58mm (Small)')),
                   DropdownMenuItem(
-                      value: '80mm', child: Text('80mm (Standard)')),
+                    value: '80mm',
+                    child: Text('80mm (Standard)'),
+                  ),
                 ],
                 onChanged: (v) => setState(() => _paperWidth = v ?? '58mm'),
               ),
@@ -3408,7 +3658,8 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2))
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : Switch(
                             value: _isDesignatedPrinter!,
                             activeThumbColor: DesignColors.accent,
@@ -3425,23 +3676,29 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
                 GroupedCard(
                   margin: EdgeInsets.zero,
                   children: _pairedPrinters
-                      .map((device) => SettingsRow(
-                            icon: Icons.bluetooth_rounded,
-                            title: device.name,
-                            subtitle: device.macAddress,
-                            trailing: _isConnecting
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2))
-                                : (device.macAddress == _printerMacAddress
-                                    ? const Icon(Icons.check_circle_rounded,
-                                        color: DesignColors.success)
-                                    : null),
-                            onTap:
-                                _isConnecting ? null : () => _connectTo(device),
-                          ))
+                      .map(
+                        (device) => SettingsRow(
+                          icon: Icons.bluetooth_rounded,
+                          title: device.name,
+                          subtitle: device.macAddress,
+                          trailing: _isConnecting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : (device.macAddress == _printerMacAddress
+                                  ? const Icon(
+                                      Icons.check_circle_rounded,
+                                      color: DesignColors.success,
+                                    )
+                                  : null),
+                          onTap:
+                              _isConnecting ? null : () => _connectTo(device),
+                        ),
+                      )
                       .toList(),
                 ),
               ],
@@ -3454,16 +3711,20 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(64, 48),
                         padding: const EdgeInsets.symmetric(
-                            vertical: DesignSpacing.md),
+                          vertical: DesignSpacing.md,
+                        ),
                         shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(DesignSpacing.radiusMd)),
+                          borderRadius: BorderRadius.circular(
+                            DesignSpacing.radiusMd,
+                          ),
+                        ),
                       ),
                       child: _isScanning
                           ? const SizedBox(
                               width: 18,
                               height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2))
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
                           : const Text('Find printers'),
                     ),
                   ),
@@ -3474,18 +3735,29 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
                       onPressed: () async {
                         final prefs = await SharedPreferences.getInstance();
                         await prefs.setBool(
-                            _SettingsKeys.autoPrintReceipt, _autoPrint);
+                          _SettingsKeys.autoPrintReceipt,
+                          _autoPrint,
+                        );
                         await prefs.setString(
-                            _SettingsKeys.printerName, _printerName);
-                        await prefs.setString(_SettingsKeys.printerMacAddress,
-                            _printerMacAddress);
+                          _SettingsKeys.printerName,
+                          _printerName,
+                        );
                         await prefs.setString(
-                            _SettingsKeys.paperWidth, _paperWidth);
+                          _SettingsKeys.printerMacAddress,
+                          _printerMacAddress,
+                        );
+                        await prefs.setString(
+                          _SettingsKeys.paperWidth,
+                          _paperWidth,
+                        );
                         if (context.mounted) {
                           Navigator.pop(context);
-                          showGlassSnackBar(context, 'Printer settings saved',
-                              icon: Icons.check_circle_rounded,
-                              color: DesignColors.success);
+                          showGlassSnackBar(
+                            context,
+                            'Printer settings saved',
+                            icon: Icons.check_circle_rounded,
+                            color: DesignColors.success,
+                          );
                         }
                       },
                     ),
@@ -3548,7 +3820,7 @@ class _NotificationSettingsSheetState
   void _onUpdateServiceChanged() {
     if (!mounted) return;
     setState(() {
-      _availableUpdate = getIt<UpdateCheckService>().optionalUpdate;
+      _availableUpdate = _phoneUpdate(getIt<UpdateCheckService>());
     });
   }
 
@@ -3562,9 +3834,13 @@ class _NotificationSettingsSheetState
     }
   }
 
+  /// The phone updater offers an APK, which a Windows computer cannot use.
+  AppUpdateInfo? _phoneUpdate(UpdateCheckService service) =>
+      getIt<DesktopUpdateService>().supported ? null : service.optionalUpdate;
+
   void _checkForAvailableUpdate() {
     final service = getIt<UpdateCheckService>();
-    _availableUpdate = service.optionalUpdate;
+    _availableUpdate = _phoneUpdate(service);
   }
 
   @override
@@ -3578,7 +3854,7 @@ class _NotificationSettingsSheetState
           DesignSpacing.xl,
           DesignSpacing.xl + MediaQuery.of(context).padding.bottom,
         ),
-        child: SettingsSheetScaffold(
+        child: SettingsSheetBody(
           title: 'Notifications',
           padding: EdgeInsets.zero,
           child: Column(
@@ -3614,15 +3890,23 @@ class _NotificationSettingsSheetState
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : _osPermissionGranted
-                            ? const Icon(Icons.check_circle_rounded,
-                                color: DesignColors.success)
-                            : const Icon(Icons.warning_rounded,
-                                color: DesignColors.error),
+                            ? const Icon(
+                                Icons.check_circle_rounded,
+                                color: DesignColors.success,
+                              )
+                            : const Icon(
+                                Icons.warning_rounded,
+                                color: DesignColors.error,
+                              ),
                   ),
                   if (!_osPermissionGranted && !_checkingPermission)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0,
-                          DesignSpacing.lg, DesignSpacing.md),
+                      padding: const EdgeInsets.fromLTRB(
+                        DesignSpacing.lg,
+                        0,
+                        DesignSpacing.lg,
+                        DesignSpacing.md,
+                      ),
                       child: SizedBox(
                         width: double.infinity,
                         child: SettingsPrimaryButton(
@@ -3651,11 +3935,8 @@ class _NotificationSettingsSheetState
                       icon: Icons.system_update_alt_rounded,
                       iconColor: DesignColors.accent,
                       title: 'Update available',
-                      subtitle: '${cleanReleaseName(
-                        _availableUpdate!.displayVersion,
-                        fallback:
-                            'Counterbase ${_availableUpdate!.latestVersion}',
-                      )} is ready to install',
+                      subtitle:
+                          '${cleanReleaseName(_availableUpdate!.displayVersion, fallback: 'Counterbase ${_availableUpdate!.latestVersion}')} is ready to install',
                       trailing: SettingsPrimaryButton(
                         label: 'Update',
                         onPressed: () {
@@ -3667,17 +3948,21 @@ class _NotificationSettingsSheetState
                     ),
                     if (_availableUpdate!.releaseNotes.trim().isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0,
-                            DesignSpacing.lg, DesignSpacing.md),
+                        padding: const EdgeInsets.fromLTRB(
+                          DesignSpacing.lg,
+                          0,
+                          DesignSpacing.lg,
+                          DesignSpacing.md,
+                        ),
                         child: Text(
                           _availableUpdate!.releaseNotes.trim(),
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(
-                                  color: context
-                                      .themed(DesignColors.darkTextSecondary),
-                                  height: 1.4),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: context.themed(
+                                      DesignColors.darkTextSecondary,
+                                    ),
+                                    height: 1.4,
+                                  ),
                           maxLines: 4,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -3746,11 +4031,17 @@ class _NotificationSettingsSheetState
                     onPressed: () async {
                       final prefs = await SharedPreferences.getInstance();
                       await prefs.setBool(
-                          _SettingsKeys.notifySales, _notifySales);
+                        _SettingsKeys.notifySales,
+                        _notifySales,
+                      );
                       await prefs.setBool(
-                          _SettingsKeys.notifyInventory, _notifyInventory);
+                        _SettingsKeys.notifyInventory,
+                        _notifyInventory,
+                      );
                       await prefs.setBool(
-                          _SettingsKeys.notifySync, _notifySync);
+                        _SettingsKeys.notifySync,
+                        _notifySync,
+                      );
 
                       final anyEnabled =
                           _notifySales || _notifyInventory || _notifySync;
@@ -3772,8 +4063,10 @@ class _NotificationSettingsSheetState
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(permissionMessage ??
-                                'Notification settings saved'),
+                            content: Text(
+                              permissionMessage ??
+                                  'Notification settings saved',
+                            ),
                           ),
                         );
                       }
@@ -3892,8 +4185,12 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
         await getIt<StorageService>().setPrimaryLoginMethod('pin');
       }
       if (!confirmed && mounted) {
-        showGlassSnackBar(context, 'Fingerprint check failed or was cancelled',
-            icon: Icons.fingerprint_rounded, color: DesignColors.error);
+        showGlassSnackBar(
+          context,
+          'Fingerprint check failed or was cancelled',
+          icon: Icons.fingerprint_rounded,
+          color: DesignColors.error,
+        );
       }
     } catch (e) {
       try {
@@ -3913,9 +4210,12 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
         if (shouldFallbackToPin) _primaryLoginMethod = 'pin';
       });
       if (mounted) {
-        showGlassSnackBar(context,
-            'Could not check fingerprint or face unlock. ${apiErrorMessage(e)}',
-            icon: Icons.error_outline_rounded, color: DesignColors.error);
+        showGlassSnackBar(
+          context,
+          'Could not check fingerprint or face unlock. ${apiErrorMessage(e)}',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
       }
     }
   }
@@ -3940,20 +4240,14 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                  child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                          color: border,
-                          borderRadius:
-                              BorderRadius.circular(DesignSpacing.xs)))),
+              SettingsSheetHandle(color: border, radius: DesignSpacing.xs),
               const SizedBox(height: 18),
-              Text('Sign-in & auto-lock',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w800)),
+              Text(
+                'Sign-in & auto-lock',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
               const SizedBox(height: 18),
               GroupedCard(
                 margin: const EdgeInsets.only(bottom: DesignSpacing.md),
@@ -4033,7 +4327,8 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2))
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : Switch(
                             value:
                                 _biometricEnabled && widget.biometricAvailable,
@@ -4110,8 +4405,9 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                     // only the remaining two settings are deferred to Save.
                     final storage = getIt<StorageService>();
                     try {
-                      await storage
-                          .setRequireUnlockOnResume(_requireUnlockOnResume);
+                      await storage.setRequireUnlockOnResume(
+                        _requireUnlockOnResume,
+                      );
                       await storage.setAutoLockMinutes(_autoLockMinutes);
                       await storage.setPrimaryLoginMethod(
                         _primaryLoginMethod == 'biometric' &&
@@ -4170,7 +4466,9 @@ class _StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(
-          horizontal: DesignSpacing.sm, vertical: DesignSpacing.xs),
+        horizontal: DesignSpacing.sm,
+        vertical: DesignSpacing.xs,
+      ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
@@ -4200,29 +4498,35 @@ class _InfoRow extends StatelessWidget {
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     return Padding(
       padding: const EdgeInsets.symmetric(
-          horizontal: DesignSpacing.md, vertical: DesignSpacing.md),
+        horizontal: DesignSpacing.md,
+        vertical: DesignSpacing.md,
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Flexible(
             flex: 2,
-            child: Text(label,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: secondaryColor),
-                overflow: TextOverflow.ellipsis),
+            child: Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: secondaryColor),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
           const SizedBox(width: 8),
           Flexible(
             flex: 3,
-            child: Text(value,
-                style: DesignType.numeric(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: titleColor),
-                textAlign: TextAlign.end,
-                overflow: TextOverflow.ellipsis),
+            child: Text(
+              value,
+              style: DesignType.numeric(
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                color: titleColor,
+              ),
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
@@ -4250,7 +4554,9 @@ class _AuditEntry extends StatelessWidget {
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     return Padding(
       padding: const EdgeInsets.symmetric(
-          horizontal: DesignSpacing.md, vertical: DesignSpacing.md),
+        horizontal: DesignSpacing.md,
+        vertical: DesignSpacing.md,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -4270,22 +4576,28 @@ class _AuditEntry extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 2),
-                Text(subtitle,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: secondaryColor)),
+                Text(
+                  subtitle,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: secondaryColor),
+                ),
               ],
             ),
           ),
-          Text(time,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          Text(
+            time,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: isDark
                       ? DesignColors.darkTextTertiary
-                      : DesignColors.textTertiary)),
+                      : DesignColors.textTertiary,
+                ),
+          ),
         ],
       ),
     );
@@ -4397,11 +4709,12 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
               ),
               if (error != null) ...[
                 const SizedBox(height: 8),
-                Text(error!,
-                    style: Theme.of(ctx)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: DesignColors.error)),
+                Text(
+                  error!,
+                  style: Theme.of(
+                    ctx,
+                  ).textTheme.bodySmall?.copyWith(color: DesignColors.error),
+                ),
               ],
             ],
           ),
@@ -4456,14 +4769,18 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
   }
 
   void _showEditBranchDialog(Map<String, dynamic> branch) {
-    final nameController =
-        TextEditingController(text: branch['name'] as String? ?? '');
-    final codeController =
-        TextEditingController(text: branch['code'] as String? ?? '');
-    final addressController =
-        TextEditingController(text: branch['address'] as String? ?? '');
-    final phoneController =
-        TextEditingController(text: branch['phone'] as String? ?? '');
+    final nameController = TextEditingController(
+      text: branch['name'] as String? ?? '',
+    );
+    final codeController = TextEditingController(
+      text: branch['code'] as String? ?? '',
+    );
+    final addressController = TextEditingController(
+      text: branch['address'] as String? ?? '',
+    );
+    final phoneController = TextEditingController(
+      text: branch['phone'] as String? ?? '',
+    );
     bool isSaving = false;
     String? error;
 
@@ -4476,29 +4793,34 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Branch Name')),
+                controller: nameController,
+                decoration: const InputDecoration(labelText: 'Branch Name'),
+              ),
               const SizedBox(height: 12),
               TextField(
-                  controller: codeController,
-                  textCapitalization: TextCapitalization.characters,
-                  decoration: const InputDecoration(labelText: 'Branch Code')),
+                controller: codeController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(labelText: 'Branch Code'),
+              ),
               const SizedBox(height: 12),
               TextField(
-                  controller: addressController,
-                  decoration: const InputDecoration(labelText: 'Address')),
+                controller: addressController,
+                decoration: const InputDecoration(labelText: 'Address'),
+              ),
               const SizedBox(height: 12),
               TextField(
-                  controller: phoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Phone')),
+                controller: phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: 'Phone'),
+              ),
               if (error != null) ...[
                 const SizedBox(height: 8),
-                Text(error!,
-                    style: Theme.of(ctx)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: DesignColors.error)),
+                Text(
+                  error!,
+                  style: Theme.of(
+                    ctx,
+                  ).textTheme.bodySmall?.copyWith(color: DesignColors.error),
+                ),
               ],
             ],
           ),
@@ -4559,8 +4881,9 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
         content: Text('Are you sure you want to delete "${branch['name']}"?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           SettingsPrimaryButton(
             label: 'Delete',
             color: DesignColors.error,
@@ -4594,31 +4917,30 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(DesignSpacing.xl, DesignSpacing.md,
-            DesignSpacing.xl, DesignSpacing.xl),
+        padding: const EdgeInsets.fromLTRB(
+          DesignSpacing.xl,
+          DesignSpacing.md,
+          DesignSpacing.xl,
+          DesignSpacing.xl,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-                child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                        color: border,
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.xs)))),
+            SettingsSheetHandle(color: border, radius: DesignSpacing.xs),
             const SizedBox(height: 18),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Branches',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(fontWeight: FontWeight.w800)),
                 Text(
-                    '${_branches.length} branch${_branches.length == 1 ? '' : 'es'}',
-                    style: Theme.of(context).textTheme.bodySmall),
+                  'Branches',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                Text(
+                  '${_branches.length} branch${_branches.length == 1 ? '' : 'es'}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
             ),
             const SizedBox(height: 18),
@@ -4663,12 +4985,13 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           _StatusBadge(
-                                              text: isActive
-                                                  ? 'Active'
-                                                  : 'Inactive',
-                                              color: isActive
-                                                  ? DesignColors.success
-                                                  : DesignColors.textTertiary),
+                                            text: isActive
+                                                ? 'Active'
+                                                : 'Inactive',
+                                            color: isActive
+                                                ? DesignColors.success
+                                                : DesignColors.textTertiary,
+                                          ),
                                           if (widget.canUpdate ||
                                               widget.canDelete)
                                             PopupMenuButton<String>(
@@ -4683,12 +5006,14 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                                               itemBuilder: (ctx) => [
                                                 if (widget.canUpdate)
                                                   const PopupMenuItem(
-                                                      value: 'edit',
-                                                      child: Text('Edit')),
+                                                    value: 'edit',
+                                                    child: Text('Edit'),
+                                                  ),
                                                 if (widget.canDelete)
                                                   const PopupMenuItem(
-                                                      value: 'delete',
-                                                      child: Text('Delete')),
+                                                    value: 'delete',
+                                                    child: Text('Delete'),
+                                                  ),
                                               ],
                                             ),
                                         ],

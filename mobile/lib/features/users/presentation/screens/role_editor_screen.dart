@@ -8,7 +8,11 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../data/models/permission_catalog.dart';
+import '../desktop/roles_desktop_page.dart';
+import '../desktop/team_desktop_widgets.dart';
 import '../providers/user_management_provider.dart';
 
 /// Lists roles for the tenant; tapping one opens the editor. Also the
@@ -31,6 +35,28 @@ class RoleListScreen extends ConsumerWidget {
     }
 
     final rolesAsync = ref.watch(tenantRolesProvider);
+
+    if (context.inDesktopShell) {
+      final loaded = rolesAsync.valueOrNull ?? const <Map<String, dynamic>>[];
+      return Scaffold(
+        body: DesktopRolesPage(
+          roles: [for (final r in loaded) DesktopRoleRow.fromJson(r)],
+          loading: rolesAsync.isLoading && loaded.isEmpty,
+          error: rolesAsync.hasError ? loadErrorSubtitle(rolesAsync.error) : null,
+          canInvite: permissions.canInviteStaff,
+          canCreate: permissions.canCreateRoles,
+          canEdit: permissions.canUpdateRoles,
+          onTab: (tab) => switch (tab) {
+            DesktopTeamTab.users => context.go('/users'),
+            DesktopTeamTab.roles => null,
+            DesktopTeamTab.invitations => context.go('/users/invitations'),
+          },
+          onRefresh: () => ref.invalidate(tenantRolesProvider),
+          onNewRole: () => context.push('/users/roles/new'),
+          onOpenRole: (role) => context.push('/users/roles/${role.id}'),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: BrandedAppBar(
@@ -236,6 +262,63 @@ class _RoleEditorScreenState extends ConsumerState<RoleEditorScreen> {
   Widget build(BuildContext context) {
     final permissions = ref.watch(permissionsProvider);
     final catalogAsync = ref.watch(permissionCatalogProvider);
+
+    if (context.inDesktopShell) {
+      if (_isLoading) {
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      }
+      if (_error != null) {
+        return Scaffold(
+          body: DesktopEmptyState(
+            icon: Icons.error_outline_rounded,
+            title: 'Could not load this role',
+            message: _error,
+            action: OutlinedButton(
+              onPressed: _load,
+              child: const Text('Try again'),
+            ),
+          ),
+        );
+      }
+      return Scaffold(
+        body: catalogAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (err, _) => DesktopEmptyState(
+            icon: Icons.error_outline_rounded,
+            title: 'Could not load the permission list',
+            message: loadErrorSubtitle(err),
+            action: OutlinedButton(
+              onPressed: () => ref.invalidate(permissionCatalogProvider),
+              child: const Text('Try again'),
+            ),
+          ),
+          data: (groups) => AnimatedBuilder(
+            animation: _nameController,
+            builder: (context, _) => DesktopRoleEditorView(
+              isNew: _isNew,
+              isSystem: _isSystem,
+              nameController: _nameController,
+              descriptionController: _descriptionController,
+              groups: groups,
+              selectedKeys: _selectedKeys,
+              saving: _isSaving,
+              onChanged: (keys, value) => setState(() {
+                if (value) {
+                  _selectedKeys.addAll(keys);
+                } else {
+                  _selectedKeys.removeAll(keys);
+                }
+              }),
+              onSave: _save,
+              onBack: () => context.go('/users/roles'),
+              onDelete: !_isNew && !_isSystem && permissions.canDeleteRoles
+                  ? _delete
+                  : null,
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: BrandedAppBar(

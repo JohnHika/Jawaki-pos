@@ -1,20 +1,27 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/auth/app_roles.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../../core/services/storage_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../sales/domain/recorded_payment.dart';
 import '../../../sales/presentation/providers/payment_provider.dart';
+import '../desktop/desktop_payment_inspector.dart';
+import '../desktop/desktop_payments_view.dart';
 
 /// Payments Hub - overview of today's takings plus real links into
 /// Receipts, Payment Analytics, and Customer Credit/Installments.
@@ -292,6 +299,183 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
       ? _serverCount + _localSalesMissingFromServer.length
       : _todaysSales.length;
 
+  /// Today's payments as table rows: each completed sale with its reference
+  /// and, for codes the shop typed in, whether the owner has checked it.
+  List<DesktopPaymentRow> _desktopRows() {
+    var checks = <String, dynamic>{};
+    try {
+      final raw = getIt<StorageService>().getRecordedPaymentChecksJson();
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) checks = decoded;
+      }
+    } catch (_) {}
+
+    final rows = <DesktopPaymentRow>[];
+    for (final sale in _todaysSales) {
+      final recorded = RecordedPaymentMethod.isRecorded(sale.paymentMethod);
+      final details = recorded
+          ? RecordedPaymentDetails.tryParse(sale.paymentReference)
+          : null;
+      final tenders = <({String method, double amount})>[];
+      var reference = details?.code;
+      if (!recorded && (sale.paymentReference ?? '').isNotEmpty) {
+        if (sale.paymentMethod.toUpperCase() == 'SPLIT') {
+          try {
+            final decoded = jsonDecode(sale.paymentReference!);
+            if (decoded is List) {
+              for (final t in decoded.whereType<Map>()) {
+                final amount = t['amount'];
+                if (amount is num) {
+                  tenders.add((
+                    method: t['method']?.toString() ?? '',
+                    amount: amount.toDouble(),
+                  ));
+                }
+              }
+            }
+          } catch (_) {}
+        } else {
+          reference = sale.paymentReference;
+        }
+      }
+      final check = checks[sale.id];
+      rows.add(DesktopPaymentRow(
+        saleId: sale.id,
+        receiptNumber: sale.receiptNumber.trim().isNotEmpty
+            ? sale.receiptNumber
+            : sale.id.length >= 8
+                ? sale.id.substring(0, 8).toUpperCase()
+                : sale.id.toUpperCase(),
+        at: sale.createdAt,
+        method: sale.paymentMethod,
+        amount: sale.total,
+        reference: reference,
+        recorded: recorded,
+        checked: check is Map,
+        checkedBy: check is Map ? check['by']?.toString() : null,
+        checkedAt:
+            check is Map ? DateTime.tryParse('${check['at']}')?.toLocal() : null,
+        checkNote: check is Map ? check['note']?.toString() : null,
+        recordedBy: details?.recordedByName,
+        tenders: tenders,
+      ));
+    }
+    return rows;
+  }
+
+  Widget _buildDesktop({
+    required String title,
+    required bool isLocalWorkspace,
+    required bool canViewPaymentStatus,
+    required bool canViewPaymentMethods,
+    required bool canSeePaymentAnalytics,
+    required RolePermissions permissions,
+    required PaymentState paymentState,
+  }) {
+    bool toCheck(Map<String, dynamic> row) =>
+        row['status'] == 'PENDING' ||
+        row['status'] == 'NEEDS_REVIEW' ||
+        row['status'] == 'SETTLING' ||
+        (paymentState.isRecoveredMerchantPayment &&
+            row['reference'] == paymentState.currentTransactionId &&
+            row['status'] == 'COMPLETED');
+
+    final links = <DesktopPaymentLink>[
+      if (permissions.canSeeReceipts)
+        DesktopPaymentLink(
+          label: 'Receipts',
+          icon: Icons.receipt_long_outlined,
+          onTap: () => context.go('/receipts'),
+        ),
+      if (canSeePaymentAnalytics)
+        DesktopPaymentLink(
+          label: isLocalWorkspace ? 'Reports' : 'Analytics',
+          icon: Icons.analytics_outlined,
+          onTap: () => context.go(
+            isLocalWorkspace ? '/reports/analytics' : '/payment-analytics',
+          ),
+        ),
+      if (permissions.canSeeCustomers)
+        DesktopPaymentLink(
+          label: 'Customer credit',
+          icon: Icons.credit_score_outlined,
+          onTap: () => context.go('/customers'),
+        ),
+      if (isLocalWorkspace && permissions.canCloseEndOfDay)
+        DesktopPaymentLink(
+          label: 'End of day',
+          icon: Icons.event_available_outlined,
+          onTap: () => context.go('/cash-flow/end-of-day'),
+        )
+      else if (permissions.canViewCashFlow)
+        DesktopPaymentLink(
+          label: 'Cash flow',
+          icon: Icons.account_balance_wallet_outlined,
+          onTap: () => context.go('/cash-flow'),
+        ),
+      if (!isLocalWorkspace && permissions.canManageMerchantPayout)
+        DesktopPaymentLink(
+          label: 'Payout account',
+          icon: Icons.account_balance_outlined,
+          onTap: () => context.go('/payments/setup'),
+        ),
+    ];
+
+    String? footnote;
+    if (isLocalWorkspace && canViewPaymentStatus) {
+      footnote = 'Figures include sales saved on this computer only, not '
+          'other devices.';
+    } else if (_cloudTotalsAvailable &&
+        !_canReconcileLocalSales &&
+        _todaysSales.any((sale) => !sale.isSynced)) {
+      footnote = 'Offline sales are waiting to sync.';
+    }
+
+    return Scaffold(
+      body: DesktopPaymentsView(
+        title: title,
+        payments: canViewPaymentStatus ? _desktopRows() : const [],
+        totalToday: _todaysTotal,
+        loading: _isLoading,
+        errorMessage: _error,
+        onRetry: _loadData,
+        onRefresh: _loadData,
+        footnote: footnote,
+        links: links,
+        restrictedMessage: canViewPaymentStatus
+            ? null
+            : 'Your role can see which payment methods the shop accepts, but '
+                'not the takings. Ask an administrator if you need them.',
+        methodsAvailable: canViewPaymentMethods
+            ? [
+                'Cash',
+                if (!isLocalWorkspace) 'M-Pesa',
+                'Customer debt',
+                'Cash + debt split',
+              ]
+            : const [],
+        pendingCharges: !isLocalWorkspace && canViewPaymentStatus
+            ? [
+                for (final row in _merchantCharges.where(toCheck))
+                  DesktopPendingCharge(
+                    reference: row['reference']?.toString() ?? '',
+                    amount: '${row['amount']}',
+                    status: row['status']?.toString() ?? 'PENDING',
+                  ),
+              ]
+            : const [],
+        onCheckCharge: _checkMerchantCharge,
+        inspectorBuilder: (context, row, close) => DesktopPaymentInspector(
+          payment: row,
+          onClose: close,
+          onOpenReceipt: () => context.go('/receipt/${row.saleId}'),
+          onMatch: row.unmatched ? () => context.go('/mpesa-match') : null,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(permissionsProvider, (previous, next) {
@@ -310,6 +494,17 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
     final canSeePaymentAnalytics = isLocalWorkspace
         ? permissions.canSeeReports
         : permissions.has('reporting.payment_breakdown');
+    if (context.inDesktopShell) {
+      return _buildDesktop(
+        title: businessLayout.actionLabel('/payments', 'Payments'),
+        isLocalWorkspace: isLocalWorkspace,
+        canViewPaymentStatus: canViewPaymentStatus,
+        canViewPaymentMethods: canViewPaymentMethods,
+        canSeePaymentAnalytics: canSeePaymentAnalytics,
+        permissions: permissions,
+        paymentState: paymentState,
+      );
+    }
     final quickAccessActions = <Widget>[
       if (permissions.canSeeReceipts)
         QuickActionTile(

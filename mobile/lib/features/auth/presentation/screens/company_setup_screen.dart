@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:axon_pos/core/auth/app_roles.dart';
 import 'package:axon_pos/core/auth/local_staff_roles.dart';
+import 'package:axon_pos/core/desktop/desktop_layout.dart';
 import 'package:axon_pos/core/legal/policy_catalog.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
@@ -13,6 +14,8 @@ import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/core/widgets/motion.dart';
+import 'package:axon_pos/features/auth/presentation/desktop/auth_desktop_kit.dart';
+import 'package:axon_pos/features/auth/presentation/desktop/company_setup_desktop.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
 import 'package:axon_pos/core/widgets/modal_disposal.dart';
 
@@ -67,6 +70,13 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   bool _created = false;
   String _createdName = '';
   final List<String> _teamIssues = [];
+
+  /// Computer window: split layout, dialogs instead of bottom sheets, and
+  /// wording that says computer instead of phone.
+  bool get _desktop => DesktopLayout.wantsShell(context);
+
+  /// [phone] on a phone, [computer] in a computer window.
+  String _t(String phone, String computer) => _desktop ? computer : phone;
 
   List<_SetupStep> get _steps => [
         _SetupStep.business,
@@ -185,6 +195,14 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   // ignore: unused_element
 
   Future<void> _choosePrimaryBusinessProfile() async {
+    if (_desktop) {
+      final picked = await showShopTypeDialog(
+        context,
+        selectedId: _businessLayoutId,
+      );
+      if (picked != null && mounted) _applyBusinessProfile(picked);
+      return;
+    }
     final searchController = TextEditingController();
     String? selectedId;
     try {
@@ -317,14 +335,17 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     } finally {
       disposeAfterModalCloses([searchController]);
     }
-    if (selectedId == null || !mounted || selectedId == _businessLayoutId) {
-      return;
-    }
+    if (selectedId == null || !mounted) return;
+    _applyBusinessProfile(selectedId);
+  }
+
+  void _applyBusinessProfile(String selectedId) {
+    if (selectedId == _businessLayoutId) return;
 
     final previousProfileId = _businessLayoutId;
     final previousAdditionalIds = [..._additionalBusinessLayoutIds];
     setState(() {
-      _businessLayoutId = selectedId!;
+      _businessLayoutId = selectedId;
       _additionalBusinessLayoutIds.remove(selectedId);
       _posQuickActions = businessLayoutReconcileRecommendations(
         current: _posQuickActions,
@@ -491,6 +512,16 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     });
   }
 
+  /// Enter on the last field of a step moves on, like its main button.
+  void _submitStep() {
+    if (_isLoading) return;
+    if (_steps[_currentStep] == _SetupStep.pin) {
+      _createLocalWorkspace();
+    } else {
+      _nextStep();
+    }
+  }
+
   void _goBack() {
     if (_isLoading) return;
     if (_currentStep == 0) {
@@ -509,9 +540,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_created) return _buildReady();
+    if (_created) return _desktop ? _buildReadyDesktop() : _buildReady();
     final steps = _steps;
     final step = steps[_currentStep.clamp(0, steps.length - 1)];
+    if (_desktop) return _buildDesktop(steps, step);
     return Theme(
       data: Theme.of(context).copyWith(
         splashFactory: InkRipple.splashFactory,
@@ -572,6 +604,125 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     );
   }
 
+  String _footerLabel(_SetupStep step) {
+    switch (step) {
+      case _SetupStep.pin:
+        return 'Create my shop';
+      case _SetupStep.team:
+        return _team.isEmpty ? 'Skip for now' : 'Continue';
+      case _SetupStep.business:
+      case _SetupStep.sell:
+        return 'Continue';
+    }
+  }
+
+  /// Computer window: the steps are listed on the left, the form sits in a
+  /// centred column and Back / Continue stay pinned under it.
+  Widget _buildDesktop(List<_SetupStep> steps, _SetupStep step) {
+    final current = _currentStep.clamp(0, steps.length - 1);
+    return AuthDesktopShell(
+      formMaxWidth: AuthDesktop.wizardWidth,
+      scrollController: _setupScrollController,
+      onEscape: _goBack,
+      brand: AuthBrandPanel(
+        statement: widget.join
+            ? 'Add this computer to your shop.'
+            : 'Set up your shop on this computer.',
+        steps: [for (final s in steps) _stepLabels[s]!],
+        currentStep: current,
+        onStepTap: (index) {
+          if (!_isLoading && index < current) _changeStep(index);
+        },
+        facts: const [
+          'Works without internet',
+          'Your sales and stock stay on this computer',
+        ],
+      ),
+      actions: Row(
+        children: [
+          AuthSecondaryButton(
+            label: 'Back',
+            onPressed: _isLoading ? null : _goBack,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: AuthPrimaryButton(
+              label: _footerLabel(step),
+              loading: _isLoading,
+              onPressed: _isLoading ? null : _submitStep,
+            ),
+          ),
+        ],
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedSwitcher(
+              duration: DesignAnimation.fast,
+              child: KeyedSubtree(
+                key: ValueKey(_currentStep),
+                child: _buildStep(),
+              ),
+            ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 16),
+              AuthNotice(
+                message: _errorMessage!,
+                onDismiss: () => setState(() => _errorMessage = null),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReadyDesktop() {
+    return SetupReadyDesktopView(
+      shopName: _createdName,
+      teamIssues: _teamIssues,
+      stepLabels: [for (final s in _steps) _stepLabels[s]!],
+      onOpen: _openShop,
+      next: [
+        if (widget.join)
+          SetupNextItem(
+            icon: Icons.restore_rounded,
+            title: 'Restore your backup',
+            detail: 'Bring products, prices and staff from your main computer.',
+            onTap: () => _openShopThen('/settings'),
+          ),
+        SetupNextItem(
+          icon: Icons.inventory_2_outlined,
+          title: 'Add your products',
+          detail: 'Type them in, scan, or import a list.',
+          onTap: () => _openShopThen('/products'),
+        ),
+        SetupNextItem(
+          icon: Icons.payments_outlined,
+          title: 'Choose how customers pay',
+          detail: 'Cash and M-Pesa at the counter.',
+          onTap: () => _openShopThen('/payments'),
+        ),
+        SetupNextItem(
+          icon: Icons.image_outlined,
+          title: 'Add your logo',
+          detail: 'Your own logo replaces the Counterbase mark.',
+          onTap: () => _openShopThen('/settings'),
+        ),
+        if (_sellingMode == 'multi' && !widget.join)
+          SetupNextItem(
+            icon: Icons.computer_outlined,
+            title: 'Add another till',
+            detail: 'See how to bring a second computer in.',
+            onTap: _showAddTillHelp,
+          ),
+      ],
+    );
+  }
+
   Widget _buildStep() {
     final selectedProfile = businessLayoutPreset(_businessLayoutId);
     switch (_steps[_currentStep]) {
@@ -579,18 +730,26 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
         return _StepContent(
           title: 'Tell us about your shop',
           subtitle: widget.join
-              ? 'Use the same shop name as on your main phone.'
-              : 'This sets up your shop on this phone.',
+              ? _t('Use the same shop name as on your main phone.',
+                  'Use the same shop name as on your main computer.')
+              : _t('This sets up your shop on this phone.',
+                  'This sets up your shop on this computer.'),
           children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.phone_android_rounded,
-                    size: 18, color: SignInPalette.of(context).soft),
+                Icon(
+                    _desktop
+                        ? Icons.computer_outlined
+                        : Icons.phone_android_rounded,
+                    size: 18,
+                    color: SignInPalette.of(context).soft),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Your sales and stock stay on this phone. You can move them to another phone with a backup.',
+                    _t(
+                        'Your sales and stock stay on this phone. You can move them to another phone with a backup.',
+                        'Your sales and stock stay on this computer. You can move them to another computer with a backup.'),
                     style: TextStyle(
                       color: SignInPalette.of(context).soft,
                       fontSize: 13,
@@ -608,6 +767,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
               icon: Icons.business_rounded,
               validator: _companyValidator,
               autovalidateMode: AutovalidateMode.onUserInteraction,
+              autofocus: _desktop,
             ),
             const SizedBox(height: 10),
             Text(
@@ -768,13 +928,14 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
         _OptionCard(
           selected: _sellingMode == 'solo',
           title: 'Just me',
-          detail: 'One phone, one person at the till.',
+          detail: _t('One phone, one person at the till.',
+              'One computer, one person at the till.'),
           onTap: () => choose('solo'),
         ),
         const SizedBox(height: 12),
         _OptionCard(
           selected: _sellingMode == 'team',
-          title: 'A team on this phone',
+          title: _t('A team on this phone', 'A team on this computer'),
           detail:
               'Each person signs in with their own PIN, so every sale shows who made it.',
           onTap: () => choose('team'),
@@ -782,9 +943,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
         const SizedBox(height: 12),
         _OptionCard(
           selected: _sellingMode == 'multi',
-          title: 'Several phones',
-          detail:
+          title: _t('Several phones', 'Several computers'),
+          detail: _t(
               'Each phone is its own till, such as Front counter and Back shop.',
+              'Each computer is its own till, such as Front counter and Back shop.'),
           onTap: () => choose('multi'),
         ),
         const SizedBox(height: 16),
@@ -795,7 +957,8 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
             borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
           ),
           child: Text(
-            'Each phone keeps its own records for now. Move or combine them with a backup.',
+            _t('Each phone keeps its own records for now. Move or combine them with a backup.',
+                'Each computer keeps its own records for now. Move or combine them with a backup.'),
             style: TextStyle(color: palette.ink, fontSize: 13, height: 1.45),
           ),
         ),
@@ -863,6 +1026,21 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   }
 
   Future<void> _addPerson() async {
+    if (_desktop) {
+      final person = await showAddPersonDialog(
+        context,
+        roles: LocalStaffRoles.names,
+        usedPins: [for (final member in _team) member.pin],
+      );
+      if (person != null && mounted) {
+        setState(() => _team.add(_StaffDraft(
+              name: person.name,
+              role: person.role,
+              pin: person.pin,
+            )));
+      }
+      return;
+    }
     final nameController = TextEditingController();
     final pinController = TextEditingController();
     var role = LocalStaffRoles.names.first;
@@ -981,7 +1159,8 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     return _StepContent(
       title: 'Set your owner PIN',
       subtitle:
-          'You will use this 6 digit PIN to open Counterbase on this phone.',
+          _t('You will use this 6 digit PIN to open Counterbase on this phone.',
+              'You will use this 6 digit PIN to open Counterbase on this computer.'),
       children: [
         _field(
           _ownerPinController,
@@ -990,6 +1169,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
           icon: Icons.password_rounded,
           keyboardType: TextInputType.number,
           obscureText: !_showPin,
+          autofocus: _desktop,
           suffix: pinToggle,
           inputFormatters: [
             FilteringTextInputFormatter.digitsOnly,
@@ -1060,7 +1240,9 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                     child: Padding(
                       padding: const EdgeInsets.only(top: 12),
                       child: Text(
-                        'I understand my sales and stock stay on this phone. They only move to another phone if I make a backup.',
+                        _t(
+                            'I understand my sales and stock stay on this phone. They only move to another phone if I make a backup.',
+                            'I understand my sales and stock stay on this computer. They only move to another computer if I make a backup.'),
                         style: TextStyle(
                           color: palette.ink,
                           fontSize: 13.5,
@@ -1075,10 +1257,13 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        LegalConsent(palette: palette, action: 'creating your shop'),
+        _desktop
+            ? const AuthLegalLine(action: 'creating your shop')
+            : LegalConsent(palette: palette, action: 'creating your shop'),
         const SizedBox(height: 8),
         Text(
-          'Moving a shop from another phone? After setup, restore its backup in Settings under Local data, before you record any sales.',
+          _t('Moving a shop from another phone? After setup, restore its backup in Settings under Local data, before you record any sales.',
+              'Moving a shop from another computer? After setup, restore its backup in Settings under Local data, before you record any sales.'),
           textAlign: TextAlign.center,
           style: TextStyle(color: palette.faint, fontSize: 12, height: 1.4),
         ),
@@ -1110,8 +1295,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Add another till'),
-        content: const Text(
-          'On the other phone, install Counterbase and choose "Add this phone to my shop". Then restore the backup you make on this phone. Each phone keeps its own sales, so bring the backups together when you want one view of the shop.',
+        content: Text(
+          _t(
+              'On the other phone, install Counterbase and choose "Add this phone to my shop". Then restore the backup you make on this phone. Each phone keeps its own sales, so bring the backups together when you want one view of the shop.',
+              'On the other computer, install Counterbase and choose "Add this computer to my shop". Then restore the backup you make on this computer. Each computer keeps its own sales, so bring the backups together when you want one view of the shop.'),
         ),
         actions: [
           TextButton(
@@ -1244,6 +1431,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     Widget? suffix,
     TextCapitalization textCapitalization = TextCapitalization.none,
     TextInputAction action = TextInputAction.next,
+    bool autofocus = false,
   }) =>
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1258,6 +1446,12 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
             controller: controller,
             onChanged: onChanged,
             validator: validator,
+            autofocus: autofocus,
+            // At a keyboard, Enter on the last field acts like the step's
+            // main button.
+            onFieldSubmitted: action == TextInputAction.done && _desktop
+                ? (_) => _submitStep()
+                : null,
             keyboardType: keyboardType,
             textInputAction: action,
             textCapitalization: textCapitalization,
@@ -1409,14 +1603,18 @@ class _StepContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = SignInPalette.of(context);
+    final desktop = DesktopLayout.wantsShell(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(title,
           style: DesignType.display.copyWith(
-              color: palette.ink, fontSize: 26, fontWeight: FontWeight.w700)),
+              color: palette.ink,
+              fontSize: desktop ? 22 : 26,
+              fontWeight: FontWeight.w700)),
       const SizedBox(height: DesignSpacing.sm),
       Text(subtitle,
-          style: TextStyle(color: palette.soft, fontSize: 15, height: 1.45)),
-      const SizedBox(height: DesignSpacing.xxl),
+          style: TextStyle(
+              color: palette.soft, fontSize: desktop ? 13.5 : 15, height: 1.45)),
+      SizedBox(height: desktop ? DesignSpacing.xl : DesignSpacing.xxl),
       ...children,
     ]);
   }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:axon_pos/core/desktop/adaptive_overlays.dart';
+import 'package:axon_pos/core/desktop/desktop_layout.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/features/subscription/domain/subscription_plans.dart'
     show formatKes;
@@ -29,6 +31,21 @@ Future<RecordedPaymentDetails?> showRecordPaymentSheet(
   required String recorderName,
   required ApproverCheck approverForPin,
 }) {
+  // On a computer the form opens as a dialog over the till, not a bottom sheet.
+  if (DesktopLayout.wantsShell(context)) {
+    return showAdaptiveSheet<RecordedPaymentDetails>(
+      context: context,
+      desktopWidth: 520,
+      builder: (_) => _RecordPaymentSheet(
+        method: method,
+        total: total,
+        rules: rules,
+        recorderId: recorderId,
+        recorderName: recorderName,
+        approverForPin: approverForPin,
+      ),
+    );
+  }
   return showModalBottomSheet<RecordedPaymentDetails>(
     context: context,
     isScrollControlled: true,

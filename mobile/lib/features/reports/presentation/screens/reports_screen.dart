@@ -4,13 +4,17 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/reports_provider.dart';
+import '../desktop/desktop_reports_view.dart';
 import '../../../../core/utils/format.dart';
 import '../../../billing/domain/billing_entitlement.dart';
 import '../../../billing/presentation/widgets/feature_locked.dart';
@@ -18,34 +22,70 @@ import '../../../billing/presentation/widgets/feature_locked.dart';
 class ReportsScreen extends ConsumerWidget {
   const ReportsScreen({super.key});
 
-  static final _currencyFmt =
-      NumberFormat.currency(locale: 'en_KE', symbol: 'KES ', decimalDigits: 0);
+  static final _currencyFmt = NumberFormat.currency(
+    locale: 'en_KE',
+    symbol: 'KES ',
+    decimalDigits: 0,
+  );
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final desktop = context.inDesktopShell;
+    if (desktop) {
+      return Scaffold(
+        backgroundColor: context.desktop.panel,
+        body: DesktopReportsView(
+          gate: (_) => ensureFeature(context, ref, LicensedFeature.analytics),
+          onNavigate: (path) => path.startsWith('/receipt/')
+              ? context.push(path)
+              : context.go(path),
+        ),
+      );
+    }
     final summaryAsync = ref.watch(dashboardSummaryProvider);
     final businessLayout = ref.watch(businessLayoutProvider);
 
     return Scaffold(
-      appBar: BrandedAppBar(
-        title: businessLayout.actionLabel('/reports', 'Reports'),
-        showBackButton: false,
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: () {
-              ref.invalidate(dashboardSummaryProvider);
-              ref.invalidate(salesListProvider);
-            },
-          ),
-        ],
-      ),
+      appBar: desktop
+          ? null
+          : BrandedAppBar(
+              title: businessLayout.actionLabel('/reports', 'Reports'),
+              showBackButton: false,
+              actions: [
+                IconButton(
+                  tooltip: 'Refresh',
+                  icon: const Icon(Icons.refresh_rounded),
+                  onPressed: () {
+                    ref.invalidate(dashboardSummaryProvider);
+                    ref.invalidate(salesListProvider);
+                  },
+                ),
+              ],
+            ),
       body: PageContainer(
         withScroll: true,
+        maxWidth: desktop ? 1280 : 960,
+        backgroundColor: desktop ? context.desktop.panel : null,
+        padding: desktop ? const EdgeInsets.fromLTRB(24, 8, 24, 28) : null,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (desktop)
+              DesktopPageHeader(
+                title: businessLayout.actionLabel('/reports', 'Reports'),
+                subtitle: 'Sales and operating performance',
+                padding: const EdgeInsets.fromLTRB(0, 12, 0, 20),
+                actions: [
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      ref.invalidate(dashboardSummaryProvider);
+                      ref.invalidate(salesListProvider);
+                    },
+                    icon: const Icon(Icons.refresh_rounded, size: 17),
+                    label: const Text('Refresh'),
+                  ),
+                ],
+              ),
             // Dashboard-style summary cards with MetricCard
             summaryAsync.when(
               data: (summary) => StaggeredItem(
@@ -90,103 +130,122 @@ class ReportsScreen extends ConsumerWidget {
             const SizedBox(height: DesignSpacing.sm),
 
             StaggeredItem(
-                itemKey: 'reports-tile-sales',
-                index: 2,
-                child: _ReportTile(
-                  icon: Icons.bar_chart_rounded,
-                  title: 'Sales Report',
-                  subtitle: 'View sales by period',
-                  color: DesignColors.brand,
-                  onTap: () => _showSalesReport(context, ref),
-                )),
+              itemKey: 'reports-tile-sales',
+              index: 2,
+              child: _ReportTile(
+                icon: Icons.bar_chart_rounded,
+                title: 'Sales Report',
+                subtitle: 'View sales by period',
+                color: DesignColors.brand,
+                onTap: () => _showSalesReport(context, ref),
+              ),
+            ),
             StaggeredItem(
-                itemKey: 'reports-tile-payment-methods',
-                index: 3,
-                child: _ReportTile(
-                  icon: Icons.pie_chart_rounded,
-                  title: 'Payment Methods',
-                  subtitle: 'Breakdown of payment methods used',
-                  color: DesignColors.accent,
-                  onTap: () async {
-                    if (!await ensureFeature(
-                        context, ref, LicensedFeature.analytics)) {
-                      return;
-                    }
-                    if (!context.mounted) return;
-                    _showPaymentMethodsReport(context, ref);
-                  },
-                )),
+              itemKey: 'reports-tile-payment-methods',
+              index: 3,
+              child: _ReportTile(
+                icon: Icons.pie_chart_rounded,
+                title: 'Payment Methods',
+                subtitle: 'Breakdown of payment methods used',
+                color: DesignColors.accent,
+                onTap: () async {
+                  if (!await ensureFeature(
+                    context,
+                    ref,
+                    LicensedFeature.analytics,
+                  )) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  _showPaymentMethodsReport(context, ref);
+                },
+              ),
+            ),
             StaggeredItem(
-                itemKey: 'reports-tile-cashier',
-                index: 4,
-                child: _ReportTile(
-                  icon: Icons.person_rounded,
-                  title: 'Cashier Performance',
-                  subtitle: 'Sales by cashier',
-                  color: DesignColors.accent,
-                  onTap: () async {
-                    if (!await ensureFeature(
-                        context, ref, LicensedFeature.analytics)) {
-                      return;
-                    }
-                    if (!context.mounted) return;
-                    _showCashierReport(context, ref);
-                  },
-                )),
+              itemKey: 'reports-tile-cashier',
+              index: 4,
+              child: _ReportTile(
+                icon: Icons.person_rounded,
+                title: 'Cashier Performance',
+                subtitle: 'Sales by cashier',
+                color: DesignColors.accent,
+                onTap: () async {
+                  if (!await ensureFeature(
+                    context,
+                    ref,
+                    LicensedFeature.analytics,
+                  )) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  _showCashierReport(context, ref);
+                },
+              ),
+            ),
             StaggeredItem(
-                itemKey: 'reports-tile-category',
-                index: 5,
-                child: _ReportTile(
-                  icon: Icons.category_rounded,
-                  title: 'Category Sales',
-                  subtitle: 'Sales by product category',
-                  color: DesignColors.info,
-                  onTap: () async {
-                    if (!await ensureFeature(
-                        context, ref, LicensedFeature.analytics)) {
-                      return;
-                    }
-                    if (!context.mounted) return;
-                    _showCategorySalesReport(context, ref);
-                  },
-                )),
+              itemKey: 'reports-tile-category',
+              index: 5,
+              child: _ReportTile(
+                icon: Icons.category_rounded,
+                title: 'Category Sales',
+                subtitle: 'Sales by product category',
+                color: DesignColors.info,
+                onTap: () async {
+                  if (!await ensureFeature(
+                    context,
+                    ref,
+                    LicensedFeature.analytics,
+                  )) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  _showCategorySalesReport(context, ref);
+                },
+              ),
+            ),
             StaggeredItem(
-                itemKey: 'reports-tile-top-products',
-                index: 6,
-                child: _ReportTile(
-                  icon: Icons.star_rounded,
-                  title: 'Top Products',
-                  subtitle: 'Best selling products',
-                  color: DesignColors.warning,
-                  onTap: () async {
-                    if (!await ensureFeature(
-                        context, ref, LicensedFeature.analytics)) {
-                      return;
-                    }
-                    if (!context.mounted) return;
-                    _showTopProductsReport(context, ref);
-                  },
-                )),
+              itemKey: 'reports-tile-top-products',
+              index: 6,
+              child: _ReportTile(
+                icon: Icons.star_rounded,
+                title: 'Top Products',
+                subtitle: 'Best selling products',
+                color: DesignColors.warning,
+                onTap: () async {
+                  if (!await ensureFeature(
+                    context,
+                    ref,
+                    LicensedFeature.analytics,
+                  )) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  _showTopProductsReport(context, ref);
+                },
+              ),
+            ),
             StaggeredItem(
-                itemKey: 'reports-tile-inventory',
-                index: 7,
-                child: _ReportTile(
-                  icon: Icons.warehouse_rounded,
-                  title: 'Inventory Report',
-                  subtitle: 'Stock levels and movements',
-                  color: DesignColors.success,
-                  onTap: () => _showInventoryReport(context, ref),
-                )),
+              itemKey: 'reports-tile-inventory',
+              index: 7,
+              child: _ReportTile(
+                icon: Icons.warehouse_rounded,
+                title: 'Inventory Report',
+                subtitle: 'Stock levels and movements',
+                color: DesignColors.success,
+                onTap: () => _showInventoryReport(context, ref),
+              ),
+            ),
             StaggeredItem(
-                itemKey: 'reports-tile-customer',
-                index: 8,
-                child: _ReportTile(
-                  icon: Icons.people_rounded,
-                  title: 'Customer Report',
-                  subtitle: 'Customer purchases and loyalty',
-                  color: DesignColors.brandLight,
-                  onTap: () => _showCustomerReport(context, ref),
-                )),
+              itemKey: 'reports-tile-customer',
+              index: 8,
+              child: _ReportTile(
+                icon: Icons.people_rounded,
+                title: 'Customer Report',
+                subtitle: 'Customer purchases and loyalty',
+                color: DesignColors.brandLight,
+                onTap: () => _showCustomerReport(context, ref),
+              ),
+            ),
 
             const SizedBox(height: DesignSpacing.xl),
 
@@ -199,52 +258,61 @@ class ReportsScreen extends ConsumerWidget {
             const SizedBox(height: DesignSpacing.sm),
 
             StaggeredItem(
-                itemKey: 'reports-analytics-dashboard',
-                index: 9,
-                child: _GlassCardTile(
-                  icon: Icons.bar_chart_rounded,
-                  title: 'Analytics Dashboard',
-                  subtitle:
-                      'Comprehensive sales analytics with multiple chart types',
-                  color: DesignColors.brand,
-                  onTap: () async {
-                    if (!await ensureFeature(
-                        context, ref, LicensedFeature.analytics)) {
-                      return;
-                    }
-                    if (!context.mounted) return;
-                    context.push('/reports/analytics');
-                  },
-                )),
+              itemKey: 'reports-analytics-dashboard',
+              index: 9,
+              child: _GlassCardTile(
+                icon: Icons.bar_chart_rounded,
+                title: 'Analytics Dashboard',
+                subtitle:
+                    'Comprehensive sales analytics with multiple chart types',
+                color: DesignColors.brand,
+                onTap: () async {
+                  if (!await ensureFeature(
+                    context,
+                    ref,
+                    LicensedFeature.analytics,
+                  )) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  context.push('/reports/analytics');
+                },
+              ),
+            ),
             StaggeredItem(
-                itemKey: 'reports-inventory-forecast',
-                index: 10,
-                child: _GlassCardTile(
-                  icon: Icons.trending_up_rounded,
-                  title: 'Inventory Forecast',
-                  subtitle:
-                      'Predictive inventory analytics and demand forecasting',
-                  color: DesignColors.credit,
-                  onTap: () => context.push('/reports/inventory-forecast'),
-                )),
+              itemKey: 'reports-inventory-forecast',
+              index: 10,
+              child: _GlassCardTile(
+                icon: Icons.trending_up_rounded,
+                title: 'Inventory Forecast',
+                subtitle:
+                    'Predictive inventory analytics and demand forecasting',
+                color: DesignColors.credit,
+                onTap: () => context.push('/reports/inventory-forecast'),
+              ),
+            ),
             StaggeredItem(
-                itemKey: 'reports-payment-analytics',
-                index: 11,
-                child: _GlassCardTile(
-                  icon: Icons.payments_rounded,
-                  title: 'Payment Analytics',
-                  subtitle:
-                      'Detailed payment method analysis and transaction trends',
-                  color: DesignColors.accent,
-                  onTap: () async {
-                    if (!await ensureFeature(
-                        context, ref, LicensedFeature.analytics)) {
-                      return;
-                    }
-                    if (!context.mounted) return;
-                    context.push('/payment-analytics');
-                  },
-                )),
+              itemKey: 'reports-payment-analytics',
+              index: 11,
+              child: _GlassCardTile(
+                icon: Icons.payments_rounded,
+                title: 'Payment Analytics',
+                subtitle:
+                    'Detailed payment method analysis and transaction trends',
+                color: DesignColors.accent,
+                onTap: () async {
+                  if (!await ensureFeature(
+                    context,
+                    ref,
+                    LicensedFeature.analytics,
+                  )) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  context.push('/payment-analytics');
+                },
+              ),
+            ),
 
             const SizedBox(height: DesignSpacing.xxl),
           ],
@@ -254,6 +322,47 @@ class ReportsScreen extends ConsumerWidget {
   }
 
   Widget _buildSummaryGrid(BuildContext context, Map<String, dynamic> s) {
+    if (context.inDesktopShell) {
+      return Row(
+        children: [
+          Expanded(
+            child: MetricCard(
+              title: "Today's Sales",
+              value: _currencyFmt.format(s['totalRevenue'] ?? 0),
+              icon: Icons.trending_up_rounded,
+              color: DesignColors.success,
+            ),
+          ),
+          const SizedBox(width: DesignSpacing.md),
+          Expanded(
+            child: MetricCard(
+              title: 'Transactions',
+              value: '${s['transactionCount'] ?? 0}',
+              icon: Icons.receipt_long_rounded,
+              color: DesignColors.brand,
+            ),
+          ),
+          const SizedBox(width: DesignSpacing.md),
+          Expanded(
+            child: MetricCard(
+              title: 'Avg. Ticket',
+              value: _currencyFmt.format(s['avgTicket'] ?? 0),
+              icon: Icons.shopping_cart_rounded,
+              color: DesignColors.info,
+            ),
+          ),
+          const SizedBox(width: DesignSpacing.md),
+          Expanded(
+            child: MetricCard(
+              title: 'Items Sold',
+              value: '${s['itemsSold'] ?? 0}',
+              icon: Icons.inventory_2_rounded,
+              color: DesignColors.accent,
+            ),
+          ),
+        ],
+      );
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.xs),
       child: Column(
@@ -313,143 +422,182 @@ class ReportsScreen extends ConsumerWidget {
       title: 'Sales Report',
       initialSize: 0.8,
       maxSize: 0.95,
-      child: Consumer(builder: (ctx, ref, _) {
-        final salesAsync = ref.watch(salesListProvider);
-        final range = ref.watch(dateRangeProvider);
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(
-              DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: DesignSpacing.sm),
-              Align(
-                alignment: Alignment.centerRight,
-                child: StatusBadge(
+      child: Consumer(
+        builder: (ctx, ref, _) {
+          final salesAsync = ref.watch(salesListProvider);
+          final range = ref.watch(dateRangeProvider);
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg,
+              0,
+              DesignSpacing.lg,
+              DesignSpacing.lg,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: DesignSpacing.sm),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: StatusBadge(
                     label: range.label,
                     icon: Icons.calendar_today_rounded,
-                    color: DesignColors.brand),
-              ),
-              const SizedBox(height: DesignSpacing.sm),
-              // Report navigation tabs
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildReportNavTab(context, 'Sales', true,
-                        () => _showSalesReport(context, ref)),
-                    const SizedBox(width: DesignSpacing.xs),
-                    _buildReportNavTab(context, 'Customers', false,
-                        () => _showCustomerReport(context, ref)),
-                    const SizedBox(width: DesignSpacing.xs),
-                    _buildReportNavTab(context, 'Payments', false,
-                        () => _showPaymentMethodsReport(context, ref)),
-                    const SizedBox(width: DesignSpacing.xs),
-                    _buildReportNavTab(context, 'Cashier', false,
-                        () => _showCashierReport(context, ref)),
-                  ],
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.md),
-              Expanded(
-                child: salesAsync.when(
-                  data: (sales) {
-                    if (sales.isEmpty) {
-                      return const EmptyState(
-                        icon: Icons.receipt_long_rounded,
-                        title: 'No sales in this period',
-                      );
-                    }
-                    final totalRevenue = sales.fold<double>(
-                        0,
-                        (a, s) =>
-                            a + ((s['totalAmount'] as num?)?.toDouble() ?? 0));
-                    final isDark = Theme.of(ctx).brightness == Brightness.dark;
-                    final titleColor = isDark
-                        ? DesignColors.darkTextPrimary
-                        : DesignColors.textPrimary;
-                    return Column(
-                      children: [
-                        GlassCard(
-                          padding: const EdgeInsets.all(DesignSpacing.md),
-                          borderRadius: DesignSpacing.radiusMd,
-                          blur: 8,
-                          tint: DesignColors.success.withValues(alpha: 0.1),
-                          borderColor:
-                              DesignColors.success.withValues(alpha: 0.2),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('Total: ${countLabel(sales.length, 'sale')}',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: titleColor)),
-                              Text(_currencyFmt.format(totalRevenue),
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: DesignColors.success)),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: DesignSpacing.md),
-                        Expanded(
-                          child: ListView.builder(
-                            itemCount: sales.length,
-                            // First-mount entrance: the initial batch of rows
-                            // fades/rises in once, staggered; stable keys keep
-                            // scroll rebuilds from replaying the entrance.
-                            itemBuilder: (ctx, i) {
-                              final sale = sales[i];
-                              final saleTotal =
-                                  (sale['totalAmount'] as num?)?.toDouble() ??
-                                      0;
-                              final saleCreatedAt = DateTime.tryParse(
-                                          sale['createdAt']?.toString() ?? '')
-                                      ?.toLocal() ??
-                                  DateTime.now();
-                              final saleRow = ListCard(
-                                leading: CircleAvatar(
-                                  backgroundColor:
-                                      DesignColors.brand.withValues(alpha: 0.1),
-                                  child: const Icon(Icons.receipt_rounded,
-                                      color: DesignColors.brand, size: 18),
-                                ),
-                                title: sale['receiptNumber']?.toString() ?? '',
-                                subtitle:
-                                    '${sale['paymentMethod']}  ${DateFormat('d MMM, hh:mm a').format(saleCreatedAt)}',
-                                trailing: Text(_currencyFmt.format(saleTotal),
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: titleColor)),
-                              );
-                              if (i >= 12) return saleRow;
-                              return StaggeredItem(
-                                itemKey: 'sales-sheet-${sale['id']}',
-                                index: i,
-                                child: saleRow,
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => EmptyState(
-                    icon: Icons.error_outline_rounded,
-                    title: 'Couldn\'t load sales',
-                    subtitle: _reportErrorSubtitle(e),
-                    iconColor: DesignColors.error,
-                    actionLabel: 'Retry',
-                    onAction: () => ref.invalidate(salesListProvider),
+                    color: DesignColors.brand,
                   ),
                 ),
-              ),
-            ],
-          ),
-        );
-      }),
+                const SizedBox(height: DesignSpacing.sm),
+                // Report navigation tabs
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildReportNavTab(
+                        context,
+                        'Sales',
+                        true,
+                        () => _showSalesReport(context, ref),
+                      ),
+                      const SizedBox(width: DesignSpacing.xs),
+                      _buildReportNavTab(
+                        context,
+                        'Customers',
+                        false,
+                        () => _showCustomerReport(context, ref),
+                      ),
+                      const SizedBox(width: DesignSpacing.xs),
+                      _buildReportNavTab(
+                        context,
+                        'Payments',
+                        false,
+                        () => _showPaymentMethodsReport(context, ref),
+                      ),
+                      const SizedBox(width: DesignSpacing.xs),
+                      _buildReportNavTab(
+                        context,
+                        'Cashier',
+                        false,
+                        () => _showCashierReport(context, ref),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: DesignSpacing.md),
+                Expanded(
+                  child: salesAsync.when(
+                    data: (sales) {
+                      if (sales.isEmpty) {
+                        return const EmptyState(
+                          icon: Icons.receipt_long_rounded,
+                          title: 'No sales in this period',
+                        );
+                      }
+                      final totalRevenue = sales.fold<double>(
+                        0,
+                        (a, s) =>
+                            a + ((s['totalAmount'] as num?)?.toDouble() ?? 0),
+                      );
+                      final isDark =
+                          Theme.of(ctx).brightness == Brightness.dark;
+                      final titleColor = isDark
+                          ? DesignColors.darkTextPrimary
+                          : DesignColors.textPrimary;
+                      return Column(
+                        children: [
+                          GlassCard(
+                            padding: const EdgeInsets.all(DesignSpacing.md),
+                            borderRadius: DesignSpacing.radiusMd,
+                            blur: 8,
+                            tint: DesignColors.success.withValues(alpha: 0.1),
+                            borderColor: DesignColors.success.withValues(
+                              alpha: 0.2,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Total: ${countLabel(sales.length, 'sale')}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: titleColor,
+                                  ),
+                                ),
+                                Text(
+                                  _currencyFmt.format(totalRevenue),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: DesignColors.success,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: DesignSpacing.md),
+                          Expanded(
+                            child: ListView.builder(
+                              itemCount: sales.length,
+                              // First-mount entrance: the initial batch of rows
+                              // fades/rises in once, staggered; stable keys keep
+                              // scroll rebuilds from replaying the entrance.
+                              itemBuilder: (ctx, i) {
+                                final sale = sales[i];
+                                final saleTotal =
+                                    (sale['totalAmount'] as num?)?.toDouble() ??
+                                        0;
+                                final saleCreatedAt = DateTime.tryParse(
+                                      sale['createdAt']?.toString() ?? '',
+                                    )?.toLocal() ??
+                                    DateTime.now();
+                                final saleRow = ListCard(
+                                  leading: CircleAvatar(
+                                    backgroundColor: DesignColors.brand
+                                        .withValues(alpha: 0.1),
+                                    child: const Icon(
+                                      Icons.receipt_rounded,
+                                      color: DesignColors.brand,
+                                      size: 18,
+                                    ),
+                                  ),
+                                  title:
+                                      sale['receiptNumber']?.toString() ?? '',
+                                  subtitle:
+                                      '${sale['paymentMethod']}  ${DateFormat('d MMM, hh:mm a').format(saleCreatedAt)}',
+                                  trailing: Text(
+                                    _currencyFmt.format(saleTotal),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: titleColor,
+                                    ),
+                                  ),
+                                );
+                                if (i >= 12) return saleRow;
+                                return StaggeredItem(
+                                  itemKey: 'sales-sheet-${sale['id']}',
+                                  index: i,
+                                  child: saleRow,
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                    error: (e, _) => EmptyState(
+                      icon: Icons.error_outline_rounded,
+                      title: 'Couldn\'t load sales',
+                      subtitle: _reportErrorSubtitle(e),
+                      iconColor: DesignColors.error,
+                      actionLabel: 'Retry',
+                      onAction: () => ref.invalidate(salesListProvider),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -460,120 +608,145 @@ class ReportsScreen extends ConsumerWidget {
       title: 'Payment Methods',
       initialSize: 0.6,
       maxSize: 0.9,
-      child: Consumer(builder: (ctx, ref, _) {
-        final dataAsync = ref.watch(paymentMethodProvider);
-        final range = ref.watch(dateRangeProvider);
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(
-              DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: DesignSpacing.sm),
-              Align(
-                alignment: Alignment.centerRight,
-                child: StatusBadge(
+      child: Consumer(
+        builder: (ctx, ref, _) {
+          final dataAsync = ref.watch(paymentMethodProvider);
+          final range = ref.watch(dateRangeProvider);
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg,
+              0,
+              DesignSpacing.lg,
+              DesignSpacing.lg,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: DesignSpacing.sm),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: StatusBadge(
                     label: range.label,
                     icon: Icons.calendar_today_rounded,
-                    color: DesignColors.accent),
-              ),
-              const SizedBox(height: DesignSpacing.md),
-              Expanded(
-                child: dataAsync.when(
-                  data: (data) {
-                    if (data.isEmpty) {
-                      return const EmptyState(
-                        icon: Icons.payment_rounded,
-                        title: 'No data for this period',
-                      );
-                    }
-                    final total = data.fold<double>(
-                        0,
-                        (a, d) =>
-                            a + ((d['totalAmount'] as num?)?.toDouble() ?? 0));
-                    final isDark = Theme.of(ctx).brightness == Brightness.dark;
-                    final titleColor = isDark
-                        ? DesignColors.darkTextPrimary
-                        : DesignColors.textPrimary;
-                    return ListView.builder(
-                      itemCount: data.length,
-                      itemBuilder: (ctx, i) {
-                        final d = data[i];
-                        final amount =
-                            ((d['totalAmount'] as num?)?.toDouble() ?? 0);
-                        final pct = total > 0 ? (amount / total * 100) : 0.0;
-                        final color =
-                            _paymentColor(d['paymentMethod'] as String);
-                        return GlassCard(
-                          padding: const EdgeInsets.all(DesignSpacing.lg),
-                          borderRadius: DesignSpacing.radiusMd,
-                          blur: 8,
-                          tint: color.withValues(alpha: 0.06),
-                          borderColor: color.withValues(alpha: 0.15),
-                          margin:
-                              const EdgeInsets.only(bottom: DesignSpacing.sm),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(children: [
-                                    Icon(
-                                        _paymentIcon(
-                                            d['paymentMethod'] as String),
-                                        color: color,
-                                        size: 20),
-                                    const SizedBox(width: DesignSpacing.sm),
-                                    Text(d['paymentMethod'] as String,
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            color: titleColor)),
-                                  ]),
-                                  Text(_currencyFmt.format(amount),
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: titleColor)),
-                                ],
-                              ),
-                              const SizedBox(height: DesignSpacing.sm),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(
-                                    DesignSpacing.radiusXl - 2),
-                                child: LinearProgressIndicator(
-                                  value: pct / 100,
-                                  backgroundColor: color.withValues(alpha: 0.1),
-                                  valueColor: AlwaysStoppedAnimation(color),
-                                  minHeight: 8,
-                                ),
-                              ),
-                              const SizedBox(height: DesignSpacing.xs),
-                              Text(
-                                  '${countLabel(d['count'], 'transaction')}  ${pct.toStringAsFixed(1)}%',
-                                  style: Theme.of(ctx).textTheme.bodySmall),
-                            ],
-                          ),
-                        );
-                      },
-                    );
-                  },
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => EmptyState(
-                    icon: Icons.error_outline_rounded,
-                    title: 'Couldn\'t load payment methods',
-                    subtitle: _reportErrorSubtitle(e),
-                    iconColor: DesignColors.error,
-                    actionLabel: 'Retry',
-                    onAction: () => ref.invalidate(paymentMethodProvider),
+                    color: DesignColors.accent,
                   ),
                 ),
-              ),
-            ],
-          ),
-        );
-      }),
+                const SizedBox(height: DesignSpacing.md),
+                Expanded(
+                  child: dataAsync.when(
+                    data: (data) {
+                      if (data.isEmpty) {
+                        return const EmptyState(
+                          icon: Icons.payment_rounded,
+                          title: 'No data for this period',
+                        );
+                      }
+                      final total = data.fold<double>(
+                        0,
+                        (a, d) =>
+                            a + ((d['totalAmount'] as num?)?.toDouble() ?? 0),
+                      );
+                      final isDark =
+                          Theme.of(ctx).brightness == Brightness.dark;
+                      final titleColor = isDark
+                          ? DesignColors.darkTextPrimary
+                          : DesignColors.textPrimary;
+                      return ListView.builder(
+                        itemCount: data.length,
+                        itemBuilder: (ctx, i) {
+                          final d = data[i];
+                          final amount =
+                              ((d['totalAmount'] as num?)?.toDouble() ?? 0);
+                          final pct = total > 0 ? (amount / total * 100) : 0.0;
+                          final color = _paymentColor(
+                            d['paymentMethod'] as String,
+                          );
+                          return GlassCard(
+                            padding: const EdgeInsets.all(DesignSpacing.lg),
+                            borderRadius: DesignSpacing.radiusMd,
+                            blur: 8,
+                            tint: color.withValues(alpha: 0.06),
+                            borderColor: color.withValues(alpha: 0.15),
+                            margin: const EdgeInsets.only(
+                              bottom: DesignSpacing.sm,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          _paymentIcon(
+                                            d['paymentMethod'] as String,
+                                          ),
+                                          color: color,
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: DesignSpacing.sm),
+                                        Text(
+                                          d['paymentMethod'] as String,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            color: titleColor,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Text(
+                                      _currencyFmt.format(amount),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: titleColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: DesignSpacing.sm),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(
+                                    DesignSpacing.radiusXl - 2,
+                                  ),
+                                  child: LinearProgressIndicator(
+                                    value: pct / 100,
+                                    backgroundColor: color.withValues(
+                                      alpha: 0.1,
+                                    ),
+                                    valueColor: AlwaysStoppedAnimation(color),
+                                    minHeight: 8,
+                                  ),
+                                ),
+                                const SizedBox(height: DesignSpacing.xs),
+                                Text(
+                                  '${countLabel(d['count'], 'transaction')}  ${pct.toStringAsFixed(1)}%',
+                                  style: Theme.of(ctx).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                    error: (e, _) => EmptyState(
+                      icon: Icons.error_outline_rounded,
+                      title: 'Couldn\'t load payment methods',
+                      subtitle: _reportErrorSubtitle(e),
+                      iconColor: DesignColors.error,
+                      actionLabel: 'Retry',
+                      onAction: () => ref.invalidate(paymentMethodProvider),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -584,72 +757,87 @@ class ReportsScreen extends ConsumerWidget {
       title: 'Cashier Performance',
       initialSize: 0.6,
       maxSize: 0.9,
-      child: Consumer(builder: (ctx, ref, _) {
-        final dataAsync = ref.watch(cashierPerformanceProvider);
-        final range = ref.watch(dateRangeProvider);
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(
-              DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: DesignSpacing.sm),
-              Align(
-                alignment: Alignment.centerRight,
-                child: StatusBadge(
+      child: Consumer(
+        builder: (ctx, ref, _) {
+          final dataAsync = ref.watch(cashierPerformanceProvider);
+          final range = ref.watch(dateRangeProvider);
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg,
+              0,
+              DesignSpacing.lg,
+              DesignSpacing.lg,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: DesignSpacing.sm),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: StatusBadge(
                     label: range.label,
                     icon: Icons.calendar_today_rounded,
-                    color: DesignColors.accent),
-              ),
-              const SizedBox(height: DesignSpacing.md),
-              Expanded(
-                child: dataAsync.when(
-                  data: (data) {
-                    if (data.isEmpty) {
-                      return const EmptyState(
-                        icon: Icons.person_rounded,
-                        title: 'No cashier data for this period',
-                      );
-                    }
-                    return ListView.builder(
-                      itemCount: data.length,
-                      itemBuilder: (ctx, i) {
-                        final d = data[i];
-                        return ListCard(
-                          leading: CircleAvatar(
-                            backgroundColor:
-                                DesignColors.brand.withValues(alpha: 0.1),
-                            child: Text('${i + 1}',
-                                style: const TextStyle(
-                                    color: DesignColors.brand,
-                                    fontWeight: FontWeight.bold)),
-                          ),
-                          title: d['cashierId'] as String,
-                          subtitle: countLabel(d['count'], 'transaction'),
-                          trailing: Text(_currencyFmt.format(d['totalAmount']),
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: DesignColors.success)),
-                        );
-                      },
-                    );
-                  },
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => EmptyState(
-                    icon: Icons.error_outline_rounded,
-                    title: 'Couldn\'t load cashier performance',
-                    subtitle: _reportErrorSubtitle(e),
-                    iconColor: DesignColors.error,
-                    actionLabel: 'Retry',
-                    onAction: () => ref.invalidate(cashierPerformanceProvider),
+                    color: DesignColors.accent,
                   ),
                 ),
-              ),
-            ],
-          ),
-        );
-      }),
+                const SizedBox(height: DesignSpacing.md),
+                Expanded(
+                  child: dataAsync.when(
+                    data: (data) {
+                      if (data.isEmpty) {
+                        return const EmptyState(
+                          icon: Icons.person_rounded,
+                          title: 'No cashier data for this period',
+                        );
+                      }
+                      return ListView.builder(
+                        itemCount: data.length,
+                        itemBuilder: (ctx, i) {
+                          final d = data[i];
+                          return ListCard(
+                            leading: CircleAvatar(
+                              backgroundColor: DesignColors.brand.withValues(
+                                alpha: 0.1,
+                              ),
+                              child: Text(
+                                '${i + 1}',
+                                style: const TextStyle(
+                                  color: DesignColors.brand,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            title: d['cashierId'] as String,
+                            subtitle: countLabel(d['count'], 'transaction'),
+                            trailing: Text(
+                              _currencyFmt.format(d['totalAmount']),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: DesignColors.success,
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                    error: (e, _) => EmptyState(
+                      icon: Icons.error_outline_rounded,
+                      title: 'Couldn\'t load cashier performance',
+                      subtitle: _reportErrorSubtitle(e),
+                      iconColor: DesignColors.error,
+                      actionLabel: 'Retry',
+                      onAction: () =>
+                          ref.invalidate(cashierPerformanceProvider),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -660,120 +848,141 @@ class ReportsScreen extends ConsumerWidget {
       title: 'Category Sales',
       initialSize: 0.7,
       maxSize: 0.95,
-      child: Consumer(builder: (ctx, ref, _) {
-        final dataAsync = ref.watch(categorySalesProvider);
-        final range = ref.watch(dateRangeProvider);
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(
-              DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: DesignSpacing.sm),
-              Align(
-                alignment: Alignment.centerRight,
-                child: StatusBadge(
+      child: Consumer(
+        builder: (ctx, ref, _) {
+          final dataAsync = ref.watch(categorySalesProvider);
+          final range = ref.watch(dateRangeProvider);
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg,
+              0,
+              DesignSpacing.lg,
+              DesignSpacing.lg,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: DesignSpacing.sm),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: StatusBadge(
                     label: range.label,
                     icon: Icons.calendar_today_rounded,
-                    color: DesignColors.info),
-              ),
-              const SizedBox(height: DesignSpacing.md),
-              Expanded(
-                child: dataAsync.when(
-                  data: (data) {
-                    if (data.isEmpty) {
-                      return const EmptyState(
-                        icon: Icons.category_rounded,
-                        title: 'No category data',
-                      );
-                    }
-                    final total = data.fold<double>(
-                        0,
-                        (a, d) =>
-                            a + ((d['totalRevenue'] as num?)?.toDouble() ?? 0));
-                    final isDark = Theme.of(ctx).brightness == Brightness.dark;
-                    final titleColor = isDark
-                        ? DesignColors.darkTextPrimary
-                        : DesignColors.textPrimary;
-                    return ListView.builder(
-                      itemCount: data.length,
-                      itemBuilder: (ctx, i) {
-                        final d = data[i];
-                        final revenue =
-                            ((d['totalRevenue'] as num?)?.toDouble() ?? 0);
-                        final pct = total > 0 ? (revenue / total * 100) : 0.0;
-                        final colors = [
-                          DesignColors.brand,
-                          DesignColors.success,
-                          DesignColors.info,
-                          DesignColors.warning,
-                          DesignColors.accent,
-                          DesignColors.error
-                        ];
-                        final color = colors[i % colors.length];
-                        return GlassCard(
-                          padding: const EdgeInsets.all(DesignSpacing.lg),
-                          borderRadius: DesignSpacing.radiusMd,
-                          blur: 8,
-                          tint: color.withValues(alpha: 0.06),
-                          borderColor: color.withValues(alpha: 0.15),
-                          margin:
-                              const EdgeInsets.only(bottom: DesignSpacing.sm),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                      child: Text(d['categoryName'] as String,
-                                          style: TextStyle(
-                                              fontWeight: FontWeight.w600,
-                                              color: titleColor))),
-                                  Text(_currencyFmt.format(revenue),
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: titleColor)),
-                                ],
-                              ),
-                              const SizedBox(height: DesignSpacing.sm),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(
-                                    DesignSpacing.radiusXl - 2),
-                                child: LinearProgressIndicator(
-                                  value: total > 0 ? revenue / total : 0,
-                                  backgroundColor: color.withValues(alpha: 0.1),
-                                  valueColor: AlwaysStoppedAnimation(color),
-                                  minHeight: 8,
-                                ),
-                              ),
-                              const SizedBox(height: DesignSpacing.xs),
-                              Text(
-                                  '${countLabel(d['totalQty'], 'item')}  ${pct.toStringAsFixed(1)}%',
-                                  style: Theme.of(ctx).textTheme.bodySmall),
-                            ],
-                          ),
-                        );
-                      },
-                    );
-                  },
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => EmptyState(
-                    icon: Icons.error_outline_rounded,
-                    title: 'Couldn\'t load category sales',
-                    subtitle: _reportErrorSubtitle(e),
-                    iconColor: DesignColors.error,
-                    actionLabel: 'Retry',
-                    onAction: () => ref.invalidate(categorySalesProvider),
+                    color: DesignColors.info,
                   ),
                 ),
-              ),
-            ],
-          ),
-        );
-      }),
+                const SizedBox(height: DesignSpacing.md),
+                Expanded(
+                  child: dataAsync.when(
+                    data: (data) {
+                      if (data.isEmpty) {
+                        return const EmptyState(
+                          icon: Icons.category_rounded,
+                          title: 'No category data',
+                        );
+                      }
+                      final total = data.fold<double>(
+                        0,
+                        (a, d) =>
+                            a + ((d['totalRevenue'] as num?)?.toDouble() ?? 0),
+                      );
+                      final isDark =
+                          Theme.of(ctx).brightness == Brightness.dark;
+                      final titleColor = isDark
+                          ? DesignColors.darkTextPrimary
+                          : DesignColors.textPrimary;
+                      return ListView.builder(
+                        itemCount: data.length,
+                        itemBuilder: (ctx, i) {
+                          final d = data[i];
+                          final revenue =
+                              ((d['totalRevenue'] as num?)?.toDouble() ?? 0);
+                          final pct = total > 0 ? (revenue / total * 100) : 0.0;
+                          final colors = [
+                            DesignColors.brand,
+                            DesignColors.success,
+                            DesignColors.info,
+                            DesignColors.warning,
+                            DesignColors.accent,
+                            DesignColors.error,
+                          ];
+                          final color = colors[i % colors.length];
+                          return GlassCard(
+                            padding: const EdgeInsets.all(DesignSpacing.lg),
+                            borderRadius: DesignSpacing.radiusMd,
+                            blur: 8,
+                            tint: color.withValues(alpha: 0.06),
+                            borderColor: color.withValues(alpha: 0.15),
+                            margin: const EdgeInsets.only(
+                              bottom: DesignSpacing.sm,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        d['categoryName'] as String,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: titleColor,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      _currencyFmt.format(revenue),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: titleColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: DesignSpacing.sm),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(
+                                    DesignSpacing.radiusXl - 2,
+                                  ),
+                                  child: LinearProgressIndicator(
+                                    value: total > 0 ? revenue / total : 0,
+                                    backgroundColor: color.withValues(
+                                      alpha: 0.1,
+                                    ),
+                                    valueColor: AlwaysStoppedAnimation(color),
+                                    minHeight: 8,
+                                  ),
+                                ),
+                                const SizedBox(height: DesignSpacing.xs),
+                                Text(
+                                  '${countLabel(d['totalQty'], 'item')}  ${pct.toStringAsFixed(1)}%',
+                                  style: Theme.of(ctx).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                    error: (e, _) => EmptyState(
+                      icon: Icons.error_outline_rounded,
+                      title: 'Couldn\'t load category sales',
+                      subtitle: _reportErrorSubtitle(e),
+                      iconColor: DesignColors.error,
+                      actionLabel: 'Retry',
+                      onAction: () => ref.invalidate(categorySalesProvider),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -784,74 +993,90 @@ class ReportsScreen extends ConsumerWidget {
       title: 'Top Products',
       initialSize: 0.7,
       maxSize: 0.95,
-      child: Consumer(builder: (ctx, ref, _) {
-        final dataAsync = ref.watch(topProductsProvider);
-        final range = ref.watch(dateRangeProvider);
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(
-              DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Align(
-                alignment: Alignment.centerRight,
-                child: StatusBadge(
+      child: Consumer(
+        builder: (ctx, ref, _) {
+          final dataAsync = ref.watch(topProductsProvider);
+          final range = ref.watch(dateRangeProvider);
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg,
+              0,
+              DesignSpacing.lg,
+              DesignSpacing.lg,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: StatusBadge(
                     label: range.label,
                     icon: Icons.calendar_today_rounded,
-                    color: DesignColors.warning),
-              ),
-              const SizedBox(height: DesignSpacing.md),
-              Expanded(
-                child: dataAsync.when(
-                  data: (data) {
-                    if (data.isEmpty) {
-                      return const EmptyState(
-                        icon: Icons.star_rounded,
-                        title: 'No product data for this period',
-                      );
-                    }
-                    return ListView.builder(
-                      itemCount: data.length,
-                      itemBuilder: (ctx, i) {
-                        final d = data[i];
-                        final isTop3 = i < 3;
-                        return ListCard(
-                          leading: CircleAvatar(
-                            backgroundColor: isTop3
-                                ? DesignColors.warning.withValues(alpha: 0.2)
-                                : DesignColors.brand.withValues(alpha: 0.1),
-                            child: isTop3
-                                ? const Icon(Icons.emoji_events_rounded,
-                                    color: DesignColors.warning, size: 20)
-                                : Text('${i + 1}',
-                                    style: const TextStyle(
-                                        color: DesignColors.brand)),
-                          ),
-                          title: d['productName'] as String,
-                          subtitle: '${d['totalQty']} units sold',
-                          trailing: Text(_currencyFmt.format(d['totalRevenue']),
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold)),
-                        );
-                      },
-                    );
-                  },
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => EmptyState(
-                    icon: Icons.error_outline_rounded,
-                    title: 'Couldn\'t load top products',
-                    subtitle: _reportErrorSubtitle(e),
-                    iconColor: DesignColors.error,
-                    actionLabel: 'Retry',
-                    onAction: () => ref.invalidate(topProductsProvider),
+                    color: DesignColors.warning,
                   ),
                 ),
-              ),
-            ],
-          ),
-        );
-      }),
+                const SizedBox(height: DesignSpacing.md),
+                Expanded(
+                  child: dataAsync.when(
+                    data: (data) {
+                      if (data.isEmpty) {
+                        return const EmptyState(
+                          icon: Icons.star_rounded,
+                          title: 'No product data for this period',
+                        );
+                      }
+                      return ListView.builder(
+                        itemCount: data.length,
+                        itemBuilder: (ctx, i) {
+                          final d = data[i];
+                          final isTop3 = i < 3;
+                          return ListCard(
+                            leading: CircleAvatar(
+                              backgroundColor: isTop3
+                                  ? DesignColors.warning.withValues(alpha: 0.2)
+                                  : DesignColors.brand.withValues(alpha: 0.1),
+                              child: isTop3
+                                  ? const Icon(
+                                      Icons.emoji_events_rounded,
+                                      color: DesignColors.warning,
+                                      size: 20,
+                                    )
+                                  : Text(
+                                      '${i + 1}',
+                                      style: const TextStyle(
+                                        color: DesignColors.brand,
+                                      ),
+                                    ),
+                            ),
+                            title: d['productName'] as String,
+                            subtitle: '${d['totalQty']} units sold',
+                            trailing: Text(
+                              _currencyFmt.format(d['totalRevenue']),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                    error: (e, _) => EmptyState(
+                      icon: Icons.error_outline_rounded,
+                      title: 'Couldn\'t load top products',
+                      subtitle: _reportErrorSubtitle(e),
+                      iconColor: DesignColors.error,
+                      actionLabel: 'Retry',
+                      onAction: () => ref.invalidate(topProductsProvider),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -862,206 +1087,275 @@ class ReportsScreen extends ConsumerWidget {
       title: 'Inventory Report',
       initialSize: 0.8,
       maxSize: 0.95,
-      child: Consumer(builder: (ctx, ref, _) {
-        final dataAsync = ref.watch(inventoryReportProvider);
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(
-              DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: DesignSpacing.xs),
-              const SizedBox(height: DesignSpacing.md),
-              Expanded(
-                child: dataAsync.when(
-                  data: (data) {
-                    if (data.isEmpty) {
-                      return const EmptyState(
-                        icon: Icons.warehouse_rounded,
-                        title: 'No inventory data',
-                      );
-                    }
-                    return ListView.builder(
-                      itemCount: data.length,
-                      itemBuilder: (ctx, i) {
-                        final d = data[i];
-                        final stock =
-                            ((d['stock'] as num?)?.toDouble() ?? 0).round();
-                        final minStock =
-                            ((d['minStock'] as num?)?.toDouble() ?? 0).round();
-                        final isLow = stock <= minStock && minStock > 0;
-                        final isOut = stock == 0;
-                        final statusColor = isOut
-                            ? DesignColors.error
-                            : isLow
-                                ? DesignColors.warning
-                                : DesignColors.success;
-                        return ListCard(
-                          leading: CircleAvatar(
-                            backgroundColor: statusColor.withValues(alpha: 0.1),
-                            child: Icon(
-                              isOut
-                                  ? Icons.error_outline_rounded
-                                  : isLow
-                                      ? Icons.warning_amber_rounded
-                                      : Icons.check_circle_outline_rounded,
-                              color: statusColor,
-                              size: 20,
+      child: Consumer(
+        builder: (ctx, ref, _) {
+          final dataAsync = ref.watch(inventoryReportProvider);
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg,
+              0,
+              DesignSpacing.lg,
+              DesignSpacing.lg,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: DesignSpacing.xs),
+                const SizedBox(height: DesignSpacing.md),
+                Expanded(
+                  child: dataAsync.when(
+                    data: (data) {
+                      if (data.isEmpty) {
+                        return const EmptyState(
+                          icon: Icons.warehouse_rounded,
+                          title: 'No inventory data',
+                        );
+                      }
+                      return ListView.builder(
+                        itemCount: data.length,
+                        itemBuilder: (ctx, i) {
+                          final d = data[i];
+                          final stock =
+                              ((d['stock'] as num?)?.toDouble() ?? 0).round();
+                          final minStock =
+                              ((d['minStock'] as num?)?.toDouble() ?? 0)
+                                  .round();
+                          final isLow = stock <= minStock && minStock > 0;
+                          final isOut = stock == 0;
+                          final statusColor = isOut
+                              ? DesignColors.error
+                              : isLow
+                                  ? DesignColors.warning
+                                  : DesignColors.success;
+                          return ListCard(
+                            leading: CircleAvatar(
+                              backgroundColor: statusColor.withValues(
+                                alpha: 0.1,
+                              ),
+                              child: Icon(
+                                isOut
+                                    ? Icons.error_outline_rounded
+                                    : isLow
+                                        ? Icons.warning_amber_rounded
+                                        : Icons.check_circle_outline_rounded,
+                                color: statusColor,
+                                size: 20,
+                              ),
                             ),
-                          ),
-                          title: d['name'] as String,
-                          subtitle: '${d['sku']}  ${d['categoryName']}',
-                          trailing: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text('$stock in stock',
+                            title: d['name'] as String,
+                            subtitle: '${d['sku']}  ${d['categoryName']}',
+                            trailing: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  '$stock in stock',
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     color: statusColor,
-                                  )),
-                              if (minStock > 0)
-                                Text('Min: $minStock',
-                                    style: Theme.of(ctx).textTheme.bodySmall),
-                            ],
-                          ),
-                        );
-                      },
-                    );
-                  },
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => EmptyState(
-                    icon: Icons.error_outline_rounded,
-                    title: 'Couldn\'t load inventory report',
-                    subtitle: _reportErrorSubtitle(e),
-                    iconColor: DesignColors.error,
-                    actionLabel: 'Retry',
-                    onAction: () => ref.invalidate(inventoryReportProvider),
+                                  ),
+                                ),
+                                if (minStock > 0)
+                                  Text(
+                                    'Min: $minStock',
+                                    style: Theme.of(ctx).textTheme.bodySmall,
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                    error: (e, _) => EmptyState(
+                      icon: Icons.error_outline_rounded,
+                      title: 'Couldn\'t load inventory report',
+                      subtitle: _reportErrorSubtitle(e),
+                      iconColor: DesignColors.error,
+                      actionLabel: 'Retry',
+                      onAction: () => ref.invalidate(inventoryReportProvider),
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        );
-      }),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
   // ===== CUSTOMER REPORT =====
   void _showCustomerReport(BuildContext context, WidgetRef ref) {
+    if (!ref.read(permissionsProvider).canSeeCustomers) {
+      GlassBottomSheet.show(
+        context,
+        title: 'Customer Report',
+        initialSize: 0.45,
+        maxSize: 0.6,
+        child: const Padding(
+          padding: EdgeInsets.all(DesignSpacing.lg),
+          child: EmptyState(
+            icon: Icons.lock_outline_rounded,
+            title: 'Customer access required',
+            subtitle: 'You do not have permission to view customer details.',
+          ),
+        ),
+      );
+      return;
+    }
     GlassBottomSheet.show(
       context,
       title: 'Customer Report',
       initialSize: 0.8,
       maxSize: 0.95,
-      child: Consumer(builder: (ctx, ref, _) {
-        final db = getIt<AppDatabase>();
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(
-              DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: DesignSpacing.sm),
-              // Report navigation tabs
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildReportNavTab(context, 'Sales', false,
-                        () => _showSalesReport(context, ref)),
-                    const SizedBox(width: DesignSpacing.xs),
-                    _buildReportNavTab(context, 'Customers', true,
-                        () => _showCustomerReport(context, ref)),
-                    const SizedBox(width: DesignSpacing.xs),
-                    _buildReportNavTab(context, 'Payments', false,
-                        () => _showPaymentMethodsReport(context, ref)),
-                    const SizedBox(width: DesignSpacing.xs),
-                    _buildReportNavTab(context, 'Cashier', false,
-                        () => _showCashierReport(context, ref)),
-                  ],
-                ),
+      child: Consumer(
+        builder: (ctx, ref, _) {
+          if (!ref.watch(permissionsProvider).canSeeCustomers) {
+            return const Padding(
+              padding: EdgeInsets.all(DesignSpacing.lg),
+              child: EmptyState(
+                icon: Icons.lock_outline_rounded,
+                title: 'Customer access required',
+                subtitle:
+                    'You do not have permission to view customer details.',
               ),
-              const SizedBox(height: DesignSpacing.md),
-              Expanded(
-                child: FutureBuilder<List<Map<String, dynamic>>>(
-                  future: db.getAllCustomers(),
-                  builder: (ctx, snap) {
-                    final data = snap.data ?? [];
-                    if (data.isEmpty) {
-                      return const EmptyState(
-                        icon: Icons.people_rounded,
-                        title: 'No customer data',
-                      );
-                    }
-                    return ListView.builder(
-                      itemCount: data.length,
-                      // First-mount entrance: initial batch staggered; stable
-                      // keys per customer so rebuilds never replay the motion.
-                      itemBuilder: (ctx, i) {
-                        final c = data[i];
-                        final totalPurchases = c['totalPurchases'] as int;
-                        final totalSpent = c['totalSpent'] as double;
-                        final lastPurchase = c['lastPurchaseAt'] as String?;
-                        final customerRow = ListCard(
-                          leading: CircleAvatar(
-                            backgroundColor:
-                                DesignColors.accent.withValues(alpha: 0.1),
-                            child: Text(
-                              (c['name'] as String)
-                                  .substring(0, 1)
-                                  .toUpperCase(),
-                              style: const TextStyle(
+            );
+          }
+          final db = getIt<AppDatabase>();
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg,
+              0,
+              DesignSpacing.lg,
+              DesignSpacing.lg,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: DesignSpacing.sm),
+                // Report navigation tabs
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildReportNavTab(
+                        context,
+                        'Sales',
+                        false,
+                        () => _showSalesReport(context, ref),
+                      ),
+                      const SizedBox(width: DesignSpacing.xs),
+                      _buildReportNavTab(
+                        context,
+                        'Customers',
+                        true,
+                        () => _showCustomerReport(context, ref),
+                      ),
+                      const SizedBox(width: DesignSpacing.xs),
+                      _buildReportNavTab(
+                        context,
+                        'Payments',
+                        false,
+                        () => _showPaymentMethodsReport(context, ref),
+                      ),
+                      const SizedBox(width: DesignSpacing.xs),
+                      _buildReportNavTab(
+                        context,
+                        'Cashier',
+                        false,
+                        () => _showCashierReport(context, ref),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: DesignSpacing.md),
+                Expanded(
+                  child: FutureBuilder<List<Map<String, dynamic>>>(
+                    future: db.getAllCustomers(),
+                    builder: (ctx, snap) {
+                      final data = snap.data ?? [];
+                      if (data.isEmpty) {
+                        return const EmptyState(
+                          icon: Icons.people_rounded,
+                          title: 'No customer data',
+                        );
+                      }
+                      return ListView.builder(
+                        itemCount: data.length,
+                        // First-mount entrance: initial batch staggered; stable
+                        // keys per customer so rebuilds never replay the motion.
+                        itemBuilder: (ctx, i) {
+                          final c = data[i];
+                          final totalPurchases = c['totalPurchases'] as int;
+                          final totalSpent = c['totalSpent'] as double;
+                          final lastPurchase = c['lastPurchaseAt'] as String?;
+                          final customerRow = ListCard(
+                            leading: CircleAvatar(
+                              backgroundColor: DesignColors.accent.withValues(
+                                alpha: 0.1,
+                              ),
+                              child: Text(
+                                (c['name'] as String)
+                                    .substring(0, 1)
+                                    .toUpperCase(),
+                                style: const TextStyle(
                                   color: DesignColors.accent,
-                                  fontWeight: FontWeight.bold),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
-                          ),
-                          title: c['name'] as String,
-                          subtitle:
-                              '${c['phone'] != null && (c['phone'] as String).isNotEmpty ? '${c['phone']}  ' : ''}$totalPurchases purchases  ${_currencyFmt.format(totalSpent)}',
-                          trailing: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              if (lastPurchase != null)
+                            title: c['name'] as String,
+                            subtitle:
+                                '${c['phone'] != null && (c['phone'] as String).isNotEmpty ? '${c['phone']}  ' : ''}$totalPurchases purchases  ${_currencyFmt.format(totalSpent)}',
+                            trailing: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                if (lastPurchase != null)
+                                  Text(
+                                    DateFormat(
+                                      'd MMM',
+                                    ).format(DateTime.parse(lastPurchase)),
+                                    style: Theme.of(ctx).textTheme.bodySmall,
+                                  ),
+                                const SizedBox(height: DesignSpacing.xs - 2),
                                 Text(
-                                  DateFormat('d MMM')
-                                      .format(DateTime.parse(lastPurchase)),
+                                  '${(totalPurchases > 0 ? totalSpent / totalPurchases : 0).toStringAsFixed(0)} avg',
                                   style: Theme.of(ctx).textTheme.bodySmall,
                                 ),
-                              const SizedBox(height: DesignSpacing.xs - 2),
-                              Text(
-                                '${(totalPurchases > 0 ? totalSpent / totalPurchases : 0).toStringAsFixed(0)} avg',
-                                style: Theme.of(ctx).textTheme.bodySmall,
-                              ),
-                            ],
-                          ),
-                          onTap: () => _showCustomerDetails(ctx, c),
-                        );
-                        if (i >= 12) return customerRow;
-                        return StaggeredItem(
-                          itemKey: 'customer-sheet-${c['id'] ?? i}',
-                          index: i,
-                          child: customerRow,
-                        );
-                      },
-                    );
-                  },
+                              ],
+                            ),
+                            onTap: () => _showCustomerDetails(ctx, c),
+                          );
+                          if (i >= 12) return customerRow;
+                          return StaggeredItem(
+                            itemKey: 'customer-sheet-${c['id'] ?? i}',
+                            index: i,
+                            child: customerRow,
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
-          ),
-        );
-      }),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
   void _showCustomerDetails(
-      BuildContext context, Map<String, dynamic> customer) async {
+    BuildContext context,
+    Map<String, dynamic> customer,
+  ) async {
     final db = getIt<AppDatabase>();
-    final topProducts =
-        await db.getCustomerTopProducts(customer['id'] as String);
+    final topProducts = await db.getCustomerTopProducts(
+      customer['id'] as String,
+    );
     if (!context.mounted) return;
 
     GlassBottomSheet.show(
@@ -1084,9 +1378,10 @@ class ReportsScreen extends ConsumerWidget {
                   child: Text(
                     (customer['name'] as String).substring(0, 1).toUpperCase(),
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: DesignColors.accent,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 20),
+                          color: DesignColors.accent,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                        ),
                   ),
                 ),
                 const SizedBox(width: DesignSpacing.md),
@@ -1094,11 +1389,15 @@ class ReportsScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(customer['name'] as String,
-                          style: Theme.of(context).textTheme.titleMedium),
+                      Text(
+                        customer['name'] as String,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
                       if ((customer['phone'] as String?)?.isNotEmpty == true)
-                        Text(customer['phone'] as String,
-                            style: Theme.of(context).textTheme.bodySmall),
+                        Text(
+                          customer['phone'] as String,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                     ],
                   ),
                 ),
@@ -1128,22 +1427,31 @@ class ReportsScreen extends ConsumerWidget {
             ),
             if (topProducts.isNotEmpty) ...[
               const SizedBox(height: DesignSpacing.lg),
-              Text('Top Products',
-                  style: Theme.of(context).textTheme.titleSmall),
+              Text(
+                'Top Products',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
               const SizedBox(height: DesignSpacing.sm),
-              ...topProducts.map((p) => Padding(
-                    padding: const EdgeInsets.only(bottom: DesignSpacing.xs),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                            child: Text(p['productName'] as String,
-                                overflow: TextOverflow.ellipsis)),
-                        Text('${p['totalQty']} units',
-                            style: Theme.of(context).textTheme.bodySmall),
-                      ],
-                    ),
-                  )),
+              ...topProducts.map(
+                (p) => Padding(
+                  padding: const EdgeInsets.only(bottom: DesignSpacing.xs),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          p['productName'] as String,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Text(
+                        '${p['totalQty']} units',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
             const SizedBox(height: DesignSpacing.sm),
           ],
@@ -1276,6 +1584,45 @@ class _ReportTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) {
+      final palette = context.desktop;
+      return InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 4),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: palette.border)),
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 34,
+                child: Icon(icon, size: 19, color: color),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: TextStyle(
+                            color: palette.text,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style:
+                            TextStyle(color: palette.textMuted, fontSize: 12)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded,
+                  size: 19, color: palette.textFaint),
+            ],
+          ),
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
       child: ListCard(
@@ -1306,22 +1653,29 @@ class _DateRangeSelector extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.xs),
       child: Row(
         children: [
-          _buildPeriodChip(context, ref, 'Today', range.label == 'Today',
-              () => ref.read(dateRangeProvider.notifier).setToday()),
+          _buildPeriodChip(
+            context,
+            ref,
+            'Today',
+            range.label == 'Today',
+            () => ref.read(dateRangeProvider.notifier).setToday(),
+          ),
           const SizedBox(width: DesignSpacing.sm),
           _buildPeriodChip(
-              context,
-              ref,
-              'This Week',
-              range.label == 'This Week',
-              () => ref.read(dateRangeProvider.notifier).setThisWeek()),
+            context,
+            ref,
+            'This Week',
+            range.label == 'This Week',
+            () => ref.read(dateRangeProvider.notifier).setThisWeek(),
+          ),
           const SizedBox(width: DesignSpacing.sm),
           _buildPeriodChip(
-              context,
-              ref,
-              'This Month',
-              range.label == 'This Month',
-              () => ref.read(dateRangeProvider.notifier).setThisMonth()),
+            context,
+            ref,
+            'This Month',
+            range.label == 'This Month',
+            () => ref.read(dateRangeProvider.notifier).setThisMonth(),
+          ),
           const SizedBox(width: DesignSpacing.sm),
           _buildPeriodChip(
             context,
@@ -1342,9 +1696,7 @@ class _DateRangeSelector extends ConsumerWidget {
                             onPrimary: Colors.black,
                             surface: DesignColors.darkSurface,
                           )
-                        : const ColorScheme.light(
-                            primary: DesignColors.accent,
-                          ),
+                        : const ColorScheme.light(primary: DesignColors.accent),
                   ),
                   child: child!,
                 ),
@@ -1361,8 +1713,13 @@ class _DateRangeSelector extends ConsumerWidget {
     );
   }
 
-  Widget _buildPeriodChip(BuildContext context, WidgetRef ref, String label,
-      bool selected, VoidCallback onTap) {
+  Widget _buildPeriodChip(
+    BuildContext context,
+    WidgetRef ref,
+    String label,
+    bool selected,
+    VoidCallback onTap,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final border =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
@@ -1380,7 +1737,9 @@ class _DateRangeSelector extends ConsumerWidget {
           child: AnimatedContainer(
             duration: DesignAnimation.fast,
             padding: const EdgeInsets.symmetric(
-                horizontal: DesignSpacing.lg, vertical: DesignSpacing.sm + 2),
+              horizontal: DesignSpacing.lg,
+              vertical: DesignSpacing.sm + 2,
+            ),
             decoration: BoxDecoration(
               color: selected
                   ? DesignColors.accent.withValues(alpha: 0.12)
@@ -1414,7 +1773,11 @@ class _DateRangeSelector extends ConsumerWidget {
 
 // Helper method to build report navigation tabs
 Widget _buildReportNavTab(
-    BuildContext context, String title, bool isActive, VoidCallback onTap) {
+  BuildContext context,
+  String title,
+  bool isActive,
+  VoidCallback onTap,
+) {
   final isDark = Theme.of(context).brightness == Brightness.dark;
   final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
   final secondaryColor =
@@ -1433,7 +1796,9 @@ Widget _buildReportNavTab(
         constraints: const BoxConstraints(minHeight: DesignSpacing.xl + 24),
         child: Container(
           padding: const EdgeInsets.symmetric(
-              horizontal: DesignSpacing.md + 2, vertical: DesignSpacing.sm),
+            horizontal: DesignSpacing.md + 2,
+            vertical: DesignSpacing.sm,
+          ),
           decoration: BoxDecoration(
             color: isActive
                 ? DesignColors.accent.withValues(alpha: 0.1)

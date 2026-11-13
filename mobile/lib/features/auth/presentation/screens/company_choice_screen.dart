@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:axon_pos/core/desktop/desktop_layout.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/features/auth/presentation/desktop/company_choice_desktop_view.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
 
 /// First-launch screen. Three doors: start a new shop, add this phone to a
@@ -10,6 +12,13 @@ class CompanyChoiceScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (DesktopLayout.wantsShell(context)) {
+      return CompanyChoiceDesktopView(
+        onStartNew: () => context.go('/company-setup'),
+        onJoin: () => context.go('/company-setup?join=1'),
+        onSignIn: () => context.go('/login'),
+      );
+    }
     final palette = SignInPalette.of(context);
     return Scaffold(
       backgroundColor: palette.page,

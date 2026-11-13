@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/adaptive_overlays.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
@@ -13,6 +15,7 @@ import '../../../../core/widgets/form_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../domain/stocktake_models.dart';
+import '../desktop/desktop_stock_count_views.dart';
 import '../providers/stocktake_provider.dart';
 
 /// Counting the shelf and comparing it with the system: the way a loss shows
@@ -25,6 +28,27 @@ class StockCountsScreen extends ConsumerWidget {
     final counts = ref.watch(stockCountsProvider);
     final perms = ref.watch(permissionsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (context.inDesktopShell) {
+      return Scaffold(
+        backgroundColor: context.desktop.panel,
+        body: DesktopStockCountsView(
+          title: ref
+              .watch(businessLayoutProvider)
+              .actionLabel('/stock-counts', 'Stock counts'),
+          rows: counts.valueOrNull ?? const [],
+          loading: counts.isLoading && !counts.hasValue,
+          errorMessage: counts.hasError && !counts.hasValue
+              ? apiErrorMessage(counts.error!)
+              : null,
+          canCreate: perms.has('inventory.stocktake.create'),
+          onOpen: (row) => context.push('/stock-counts/${row.id}'),
+          onStart: () => _startSheet(context, ref),
+          onRefresh: () => ref.invalidate(stockCountsProvider),
+          onRetry: () => ref.invalidate(stockCountsProvider),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: BrandedAppBar(
@@ -83,11 +107,9 @@ class StockCountsScreen extends ConsumerWidget {
   }
 
   Future<void> _startSheet(BuildContext context, WidgetRef ref) async {
-    final id = await showModalBottomSheet<String>(
+    final id = await showAdaptiveSheet<String>(
       context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      showDragHandle: true,
+      desktopWidth: 460,
       builder: (_) => const _StartCountSheet(),
     );
     ref.invalidate(stockCountsProvider);
@@ -185,6 +207,48 @@ class _StartCountSheetState extends State<_StartCountSheet> {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
+    if (DesktopLayout.wantsShell(context)) {
+      return DesktopSheetFrame(
+        title: 'Start a stock count',
+        actions: [
+          TextButton(
+            onPressed: _busy ? null : () => Navigator.of(context).maybePop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: _busy ? null : _start,
+            icon: const Icon(Icons.play_arrow_rounded, size: 18),
+            label: Text(_busy ? 'Starting…' : 'Start counting'),
+          ),
+        ],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _title,
+              autofocus: true,
+              textCapitalization: TextCapitalization.sentences,
+              onSubmitted: (_) => _busy ? null : _start(),
+              decoration: kitFieldDecoration(context,
+                  label: 'Name (optional)', hint: 'e.g. Weekly shelf count'),
+            ),
+            const SizedBox(height: DesignSpacing.sm),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _blind,
+              activeThumbColor: DesignColors.accent,
+              onChanged: _busy ? null : (v) => setState(() => _blind = v),
+              title: const Text('Hide the expected count while counting'),
+              subtitle: const Text(
+                  'The counter reports what is really on the shelf, not what they expect to find.'),
+            ),
+            if (_error != null)
+              Text(_error!, style: const TextStyle(color: DesignColors.error)),
+          ],
+        ),
+      );
+    }
     return SafeArea(
       top: false,
       child: Padding(

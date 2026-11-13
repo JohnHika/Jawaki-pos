@@ -5,18 +5,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/desktop/adaptive_overlays.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/widgets/form_kit.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
 import '../../../catalog/domain/stock_status.dart';
 import '../../../catalog/presentation/screens/barcode_scan_screen.dart';
 import '../../../catalog/presentation/widgets/stock_kit.dart';
 import '../../../sales/presentation/providers/catalog_provider.dart'
     as catalog_cache;
+import '../desktop/desktop_inventory_tabs.dart';
+import '../desktop/desktop_receive_document.dart';
 
 /// One product in a delivery.
 class _Line {
@@ -31,6 +36,10 @@ class _Line {
   final List<ProductPricingTier> tiers;
   final TextEditingController quantity;
   final TextEditingController cost;
+
+  /// Where Enter and the scanner send the cursor on the desktop grid.
+  final FocusNode qtyFocus = FocusNode();
+  final FocusNode costFocus = FocusNode();
   String unit;
 
   /// How many of the product's own unit one of [unit] holds.
@@ -52,6 +61,8 @@ class _Line {
   void dispose() {
     quantity.dispose();
     cost.dispose();
+    qtyFocus.dispose();
+    costFocus.dispose();
   }
 }
 
@@ -72,6 +83,8 @@ class _ReceiveStockScreenState extends ConsumerState<ReceiveStockScreen> {
   final List<_Line> _lines = [];
   final TextEditingController _supplier = TextEditingController();
   final TextEditingController _note = TextEditingController();
+  final TextEditingController _scanController = TextEditingController();
+  final FocusNode _scanFocus = FocusNode(debugLabel: 'ReceiveScan');
   bool _busy = false;
   String? _error;
 
@@ -89,6 +102,8 @@ class _ReceiveStockScreenState extends ConsumerState<ReceiveStockScreen> {
     }
     _supplier.dispose();
     _note.dispose();
+    _scanController.dispose();
+    _scanFocus.dispose();
     super.dispose();
   }
 
@@ -111,17 +126,65 @@ class _ReceiveStockScreenState extends ConsumerState<ReceiveStockScreen> {
     setState(() => _lines.add(_Line(product: product, tiers: tiers)));
   }
 
-  Future<void> _pick() async {
-    final product = await showModalBottomSheet<Product>(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: SignInPalette.of(context).card,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (_) => const _ProductPickerSheet(),
-    );
-    if (product != null) await _add(product);
+  Future<void> _pick({String? query}) async {
+    final Product? product;
+    if (DesktopLayout.wantsShell(context)) {
+      product = await showAdaptiveSheet<Product>(
+        context: context,
+        desktopWidth: 560,
+        builder: (_) => _ProductPickerSheet(desktop: true, initialQuery: query),
+      );
+    } else {
+      product = await showModalBottomSheet<Product>(
+        context: context,
+        useRootNavigator: true,
+        isScrollControlled: true,
+        backgroundColor: SignInPalette.of(context).card,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+        builder: (_) => const _ProductPickerSheet(),
+      );
+    }
+    if (product != null) {
+      await _add(product);
+      _focusQuantityOf(product.id);
+    }
+  }
+
+  /// Desktop: after a scan or a pick, the cursor lands in that line's quantity.
+  void _focusQuantityOf(String productId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final line in _lines) {
+        if (line.product.id == productId) {
+          line.qtyFocus.requestFocus();
+          return;
+        }
+      }
+    });
+  }
+
+  /// Desktop: a scanner types the code and presses Enter. The line is added, or
+  /// counted up by one when it is already in the delivery. A code that matches
+  /// nothing opens the item list with the text already typed.
+  Future<void> _addByCode(String raw) async {
+    final code = raw.trim();
+    if (code.isEmpty) return;
+    final all = await getIt<AppDatabase>()
+        .watchCatalogProducts(isActive: true)
+        .first;
+    final wanted = code.toUpperCase();
+    final match = all.where((p) => p.sku.toUpperCase() == wanted).toList();
+    if (!mounted) return;
+    if (match.isEmpty) {
+      await _pick(query: code);
+      if (mounted) _scanController.clear();
+      return;
+    }
+    await _add(match.first);
+    if (!mounted) return;
+    _scanController.clear();
+    _focusQuantityOf(match.first.id);
   }
 
   Future<void> _scan() async {
@@ -213,7 +276,7 @@ class _ReceiveStockScreenState extends ConsumerState<ReceiveStockScreen> {
       if (context.canPop()) {
         context.pop(true);
       } else {
-        context.go('/products');
+        context.go(context.inDesktopShell ? '/inventory' : '/products');
       }
     } catch (e) {
       if (!mounted) return;
@@ -224,8 +287,73 @@ class _ReceiveStockScreenState extends ConsumerState<ReceiveStockScreen> {
     }
   }
 
+  /// The computer layout: a delivery document with a line-entry grid.
+  Widget _buildDesktop(BuildContext context) {
+    final perms = ref.watch(permissionsProvider);
+    final paid = _totalPaid;
+    final products = _lines.where((l) => l.entered > 0).length;
+    final tabs = DesktopInventoryTabs.forRole(
+      isLocalWorkspace: true,
+      canManageStock: perms.canManageStock,
+      canRequestStock: perms.canMakeSales,
+    );
+    return Scaffold(
+      backgroundColor: context.desktop.panel,
+      body: DesktopReceiveDocument(
+        supplier: _supplier,
+        note: _note,
+        scanController: _scanController,
+        scanFocus: _scanFocus,
+        rows: [
+          for (final l in _lines)
+            DesktopReceiveRow(
+              name: l.product.name,
+              code: l.product.sku,
+              units: [l.product.unit, for (final t in l.tiers) t.unit],
+              unit: l.unit,
+              quantity: l.quantity,
+              cost: l.cost,
+              qtyFocus: l.qtyFocus,
+              costFocus: l.costFocus,
+              note: l.unit != l.product.unit
+                  ? '= ${stockNumber(l.base)} ${l.product.unit}'
+                  : null,
+              lineTotal: l.costEach == null ? null : l.costEach! * l.base,
+            ),
+        ],
+        summary:
+            '${stockNumber(_totalBase)} ${_totalBase == 1 ? 'item' : 'items'} in $products ${products == 1 ? 'product' : 'products'}',
+        paidLabel: paid == null ? null : '${formatMoney(paid)} paid',
+        busy: _busy,
+        error: _error,
+        canSave: _lines.isNotEmpty,
+        tabs: DesktopInventoryTabs(
+          tabs: tabs,
+          selectedLabel: 'Receive stock',
+          onSelect: (tab) {
+            if (tab.path != null && tab.label != 'Receive stock') {
+              context.go(tab.path!);
+            }
+          },
+        ),
+        onScanSubmitted: _addByCode,
+        onBrowse: () => _pick(),
+        onRemove: (i) => setState(() {
+          final line = _lines.removeAt(i);
+          line.dispose();
+        }),
+        onUnit: (i, unit) => setState(() => _lines[i].unit = unit),
+        onChanged: () => setState(() {}),
+        onSave: _save,
+        onCancel: () =>
+            context.canPop() ? context.pop() : context.go('/inventory'),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) return _buildDesktop(context);
     final palette = SignInPalette.of(context);
     final paid = _totalPaid;
     final products = _lines.where((l) => l.entered > 0).length;
@@ -500,14 +628,19 @@ class _ReceiveStockScreenState extends ConsumerState<ReceiveStockScreen> {
 
 /// A searchable list of the products that are counted, to add to a delivery.
 class _ProductPickerSheet extends StatefulWidget {
-  const _ProductPickerSheet();
+  const _ProductPickerSheet({this.desktop = false, this.initialQuery});
+
+  /// Shown as a desktop dialog: no grab bar, a fixed height.
+  final bool desktop;
+  final String? initialQuery;
 
   @override
   State<_ProductPickerSheet> createState() => _ProductPickerSheetState();
 }
 
 class _ProductPickerSheetState extends State<_ProductPickerSheet> {
-  final TextEditingController _query = TextEditingController();
+  late final TextEditingController _query =
+      TextEditingController(text: widget.initialQuery);
   late final Future<List<Product>> _products = getIt<AppDatabase>()
       .watchCatalogProducts(isActive: true)
       .first
@@ -524,7 +657,9 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final palette = SignInPalette.of(context);
-    final height = MediaQuery.sizeOf(context).height * 0.78;
+    final height = widget.desktop
+        ? (MediaQuery.sizeOf(context).height - 96).clamp(300.0, 560.0)
+        : MediaQuery.sizeOf(context).height * 0.78;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: SizedBox(
@@ -535,13 +670,16 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
               child: Column(
                 children: [
-                  Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                        color: palette.line, borderRadius: BorderRadius.circular(3)),
-                  ),
-                  const SizedBox(height: 14),
+                  if (!widget.desktop) ...[
+                    Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                          color: palette.line,
+                          borderRadius: BorderRadius.circular(3)),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
                   TextField(
                     controller: _query,
                     autofocus: true,

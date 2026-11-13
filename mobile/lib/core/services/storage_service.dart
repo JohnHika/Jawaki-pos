@@ -66,6 +66,8 @@ class StorageService implements LifecycleLockStorage {
       'pending_merchant_mpesa_v1';
   static const String keyHasSeenStaffTour = 'has_seen_staff_tour';
   static const String keyAxonGatewayApiKey = 'axon_gateway_api_key';
+  static const String keyHttpsmsApiKey = 'httpsms_account_api_key_v1';
+  static const String keyHttpsmsSenderNumber = 'httpsms_sender_number_v1';
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -138,6 +140,50 @@ class StorageService implements LifecycleLockStorage {
   Future<void> clearAxonGatewayApiKey() async {
     _checkInitialized();
     await _secureStorage!.delete(key: keyAxonGatewayApiKey);
+  }
+
+  /// HTTPSMS credentials stay in the OS secure credential store and are never
+  /// included in the shop database or local archive.
+  Future<void> saveHttpsmsApiKey(String key) async {
+    _checkInitialized();
+    final normalized = key.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError.value(key, 'key', 'Must not be empty');
+    }
+    await _secureStorage!.write(key: keyHttpsmsApiKey, value: normalized);
+  }
+
+  Future<String?> getHttpsmsApiKey() async {
+    _checkInitialized();
+    final key = await _secureStorage!.read(key: keyHttpsmsApiKey);
+    final normalized = key?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
+  }
+
+  Future<void> saveHttpsmsSenderNumber(String number) async {
+    _checkInitialized();
+    final normalized = number.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError.value(number, 'number', 'Must not be empty');
+    }
+    await _secureStorage!.write(key: keyHttpsmsSenderNumber, value: normalized);
+  }
+
+  Future<String?> getHttpsmsSenderNumber() async {
+    _checkInitialized();
+    final number = await _secureStorage!.read(key: keyHttpsmsSenderNumber);
+    final normalized = number?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
+  }
+
+  Future<bool> hasHttpsmsCredentials() async =>
+      await getHttpsmsApiKey() != null &&
+      await getHttpsmsSenderNumber() != null;
+
+  Future<void> clearHttpsmsCredentials() async {
+    _checkInitialized();
+    await _secureStorage!.delete(key: keyHttpsmsApiKey);
+    await _secureStorage!.delete(key: keyHttpsmsSenderNumber);
   }
 
   // ===== Quick-unlock PIN =====
@@ -1102,6 +1148,7 @@ class StorageService implements LifecycleLockStorage {
       if (userId.isNotEmpty) await clearLocalStaffPin(userId);
     }
     await clearSecureStorage();
+    await clearHttpsmsCredentials();
     await clearLocalPin();
     _checkInitialized();
     await _prefs!.clear();

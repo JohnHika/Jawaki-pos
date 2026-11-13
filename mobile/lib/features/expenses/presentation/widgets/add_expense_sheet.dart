@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../../core/desktop/adaptive_overlays.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
@@ -15,6 +17,15 @@ typedef NewExpense = ({
 
 /// Asks what was paid, what for and how. Returns null if closed.
 Future<NewExpense?> showAddExpenseSheet(BuildContext context) {
+  // On a computer it slides in from the right and keeps the page visible.
+  if (DesktopLayout.wantsShell(context)) {
+    return showAdaptiveSheet<NewExpense>(
+      context: context,
+      desktopStyle: DesktopSheetStyle.sidePanel,
+      desktopWidth: 440,
+      builder: (_) => const _AddExpenseSheet(),
+    );
+  }
   return showModalBottomSheet<NewExpense>(
     context: context,
     isScrollControlled: true,

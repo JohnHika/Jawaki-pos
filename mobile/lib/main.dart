@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/desktop/desktop_layout.dart';
+import 'core/desktop/desktop_theme.dart';
+import 'core/desktop/window_chrome.dart';
 import 'core/di/injection.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
@@ -14,6 +17,8 @@ import 'core/services/auth_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/feature_announcement_service.dart';
+import 'core/services/desktop_update_service.dart';
+import 'core/widgets/desktop_update/desktop_update_host.dart';
 import 'core/widgets/feature_announcement_host.dart';
 import 'core/widgets/tap_tracker.dart';
 import 'core/services/app_icon_service.dart';
@@ -125,6 +130,17 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
 
     _attachNotificationOpens();
+    _startDesktopUpdates();
+  }
+
+  /// On Windows the app updates itself: it reads how the last update went,
+  /// then looks for a newer release soon after launch and every few hours.
+  void _startDesktopUpdates() {
+    if (!getIt.isRegistered<DesktopUpdateService>()) return;
+    final updates = getIt<DesktopUpdateService>();
+    if (!updates.supported) return;
+    unawaited(
+        updates.initialize().then((_) => updates.startBackgroundChecks()));
   }
 
   /// Tapping a notification deep-links to what it is about (a partner chat,
@@ -207,6 +223,22 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
     }
   }
 
+  /// On a computer-sized window every page, dialog and menu gets desktop
+  /// controls (compact, flat, no ripples) and the native title bar follows the
+  /// app's theme. Phones and narrow windows are left exactly as they were.
+  Widget _desktopChrome(BuildContext context, Widget child) {
+    if (!DesktopLayout.isDesktopPlatform) return child;
+    final wide = DesktopLayout.wantsShell(context);
+    return WindowChromeSync(
+      child: wide
+          ? Theme(
+              data: DesktopTheme.of(Theme.of(context), pageSurface: false),
+              child: child,
+            )
+          : child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
@@ -244,7 +276,15 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
                   .copyWith(textScaler: TextScaler.noScaling),
               child: FeatureAnnouncementHost(
                 service: featureService,
-                child: child!,
+                child: _desktopChrome(
+                  context,
+                  getIt.isRegistered<DesktopUpdateService>()
+                      ? DesktopUpdateHost(
+                          service: getIt<DesktopUpdateService>(),
+                          child: child!,
+                        )
+                      : child!,
+                ),
               ),
             ),
           );

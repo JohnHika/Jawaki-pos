@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../domain/news_models.dart';
+import '../desktop/desktop_news_page.dart';
 import '../providers/news_provider.dart';
 import 'business_news_article_screen.dart';
 
@@ -50,6 +52,8 @@ class _BusinessNewsScreenState extends ConsumerState<BusinessNewsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // A computer gets a headline table with an inspector.
+    if (context.inDesktopShell) return const DesktopNewsPage();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final secondary =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;

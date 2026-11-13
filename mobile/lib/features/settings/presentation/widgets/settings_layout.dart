@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/widgets/motion_kit.dart';
 
 // Layout building blocks for the Settings screen: a profile/business header,
@@ -145,8 +146,10 @@ class SettingsStatusChip extends StatelessWidget {
               Container(
                 width: 6,
                 height: 6,
-                decoration:
-                    BoxDecoration(color: textColor, shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: textColor,
+                  shape: BoxShape.circle,
+                ),
               ),
               const SizedBox(width: 5),
             ],
@@ -247,8 +250,11 @@ class SettingsTile extends StatelessWidget {
                 ],
                 if (onTap != null && !destructive) ...[
                   const SizedBox(width: 4),
-                  Icon(Icons.chevron_right_rounded,
-                      size: 20, color: _tertiaryTextFor(isDark)),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 20,
+                    color: _tertiaryTextFor(isDark),
+                  ),
                 ],
               ],
             ),
@@ -440,12 +446,16 @@ class SettingsProfileHeader extends StatelessWidget {
                         children: [
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
-                              color: DesignColors.accent
-                                  .withValues(alpha: isDark ? 0.16 : 0.12),
+                              color: DesignColors.accent.withValues(
+                                alpha: isDark ? 0.16 : 0.12,
+                              ),
                               borderRadius: BorderRadius.circular(
-                                  DesignSpacing.radiusFull),
+                                DesignSpacing.radiusFull,
+                              ),
                             ),
                             child: Text(
                               roleLabel,
@@ -487,7 +497,10 @@ class SettingsProfileHeader extends StatelessWidget {
             ),
           ),
           Divider(
-              height: 1, thickness: 1, color: border.withValues(alpha: 0.7)),
+            height: 1,
+            thickness: 1,
+            color: border.withValues(alpha: 0.7),
+          ),
           Container(
             color: isDark
                 ? DesignColors.darkSurface.withValues(alpha: 0.5)
@@ -552,8 +565,11 @@ class SettingsProfileHeader extends StatelessWidget {
                     key: const ValueKey('settings-copy-company-code'),
                     tooltip: 'Copy company code',
                     onPressed: () => _copyCode(context),
-                    icon: Icon(Icons.copy_rounded,
-                        size: 20, color: _secondaryTextFor(isDark)),
+                    icon: Icon(
+                      Icons.copy_rounded,
+                      size: 20,
+                      color: _secondaryTextFor(isDark),
+                    ),
                   ),
               ],
             ),
@@ -606,11 +622,9 @@ class _SettingsSectionListState extends State<SettingsSectionList> {
               .where((e) => e.matches(section.title, terms))
               .toList();
       if (entries.isEmpty) continue;
-      result.add(SettingsSection(
-        id: section.id,
-        title: section.title,
-        entries: entries,
-      ));
+      result.add(
+        SettingsSection(id: section.id, title: section.title, entries: entries),
+      );
     }
     return result;
   }
@@ -618,6 +632,7 @@ class _SettingsSectionListState extends State<SettingsSectionList> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final desktop = context.inDesktopShell;
     final border = _borderFor(isDark);
     final visible = _visibleSections();
     final searching = _query.trim().isNotEmpty;
@@ -630,38 +645,51 @@ class _SettingsSectionListState extends State<SettingsSectionList> {
 
     return ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.md,
-          DesignSpacing.lg, DesignSpacing.xxl + DesignSpacing.sm),
+      padding: desktop
+          ? const EdgeInsets.fromLTRB(24, 8, 24, 32)
+          : const EdgeInsets.fromLTRB(
+              DesignSpacing.lg,
+              DesignSpacing.md,
+              DesignSpacing.lg,
+              DesignSpacing.xxl + DesignSpacing.sm,
+            ),
       children: [
         FadeSlideIn(distance: 10, child: widget.header),
         const SizedBox(height: 16),
-        TextField(
-          key: const ValueKey('settings-search'),
-          controller: _controller,
-          textInputAction: TextInputAction.search,
-          onChanged: (value) => setState(() => _query = value),
-          decoration: InputDecoration(
-            hintText: 'Search settings',
-            hintStyle: TextStyle(color: _tertiaryTextFor(isDark)),
-            prefixIcon:
-                Icon(Icons.search_rounded, color: _tertiaryTextFor(isDark)),
-            suffixIcon: _query.isEmpty
-                ? null
-                : IconButton(
-                    tooltip: 'Clear search',
-                    icon: const Icon(Icons.close_rounded, size: 20),
-                    onPressed: () {
-                      _controller.clear();
-                      setState(() => _query = '');
-                    },
-                  ),
-            filled: true,
-            fillColor: _surfaceFor(isDark),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            border: outline(border),
-            enabledBorder: outline(border),
-            focusedBorder: outline(DesignColors.accent, 1.5),
+        SizedBox(
+          width: desktop ? 680 : double.infinity,
+          child: TextField(
+            key: const ValueKey('settings-search'),
+            controller: _controller,
+            textInputAction: TextInputAction.search,
+            onChanged: (value) => setState(() => _query = value),
+            decoration: InputDecoration(
+              hintText: 'Search settings',
+              hintStyle: TextStyle(color: _tertiaryTextFor(isDark)),
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                color: _tertiaryTextFor(isDark),
+              ),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      onPressed: () {
+                        _controller.clear();
+                        setState(() => _query = '');
+                      },
+                    ),
+              filled: true,
+              fillColor: _surfaceFor(isDark),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
+              border: outline(border),
+              enabledBorder: outline(border),
+              focusedBorder: outline(DesignColors.accent, 1.5),
+            ),
           ),
         ),
         const SizedBox(height: 22),
@@ -670,8 +698,11 @@ class _SettingsSectionListState extends State<SettingsSectionList> {
             padding: const EdgeInsets.symmetric(vertical: 32),
             child: Column(
               children: [
-                Icon(Icons.search_off_rounded,
-                    size: 40, color: _tertiaryTextFor(isDark)),
+                Icon(
+                  Icons.search_off_rounded,
+                  size: 40,
+                  color: _tertiaryTextFor(isDark),
+                ),
                 const SizedBox(height: 12),
                 Text(
                   'No settings found',
@@ -685,11 +716,35 @@ class _SettingsSectionListState extends State<SettingsSectionList> {
                 Text(
                   'Try a different word, like "printer" or "PIN".',
                   textAlign: TextAlign.center,
-                  style:
-                      TextStyle(fontSize: 13, color: _secondaryTextFor(isDark)),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: _secondaryTextFor(isDark),
+                  ),
                 ),
               ],
             ),
+          )
+        else if (desktop)
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final itemWidth = (constraints.maxWidth - 16) / 2;
+              return Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                children: [
+                  for (var i = 0; i < visible.length; i++)
+                    SizedBox(
+                      width: itemWidth,
+                      child: FadeSlideIn(
+                        key: ValueKey('settings-section-${visible[i].id}'),
+                        distance: 10,
+                        delay: Duration(milliseconds: 40 * (i < 6 ? i : 6)),
+                        child: SettingsSectionCard(section: visible[i]),
+                      ),
+                    ),
+                ],
+              );
+            },
           )
         else
           for (var i = 0; i < visible.length; i++)

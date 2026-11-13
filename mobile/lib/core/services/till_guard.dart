@@ -242,9 +242,11 @@ List<GuardIssue> assessCreditSale(
   required bool hasCustomer,
   String? customerName,
   CreditStanding? standing,
+  bool canViewCustomerDetails = false,
 }) {
   if (rules.creditMode == GuardMode.off || creditAmount <= 0) return const [];
-  final blocks = rules.creditMode == GuardMode.block && !rules.canOverrideCredit;
+  final blocks =
+      rules.creditMode == GuardMode.block && !rules.canOverrideCredit;
 
   if (!hasCustomer) {
     return [
@@ -260,15 +262,16 @@ List<GuardIssue> assessCreditSale(
   if (standing == null) return const []; // offline: the server records it later
 
   final issues = <GuardIssue>[];
-  final who = customerName ?? 'This customer';
+  final who = canViewCustomerDetails ? customerName ?? 'This customer' : null;
   final limit = standing.limit ?? rules.defaultCreditLimit;
   if (limit != null && standing.outstanding + creditAmount > limit) {
     issues.add(GuardIssue(
       code: 'CREDIT_LIMIT_EXCEEDED',
       severity: GuardSeverity.high,
       blocking: blocks,
-      message:
-          '$who would owe ${_kes(standing.outstanding + creditAmount)}, over their ${_kes(limit)} credit limit',
+      message: canViewCustomerDetails
+          ? '$who would owe ${_kes(standing.outstanding + creditAmount)}, over their ${_kes(limit)} credit limit'
+          : 'This sale does not meet the account’s credit policy.',
     ));
   }
   final overdueAfter = rules.blockWhenOverdueDays;
@@ -277,8 +280,9 @@ List<GuardIssue> assessCreditSale(
       code: 'CREDIT_OVERDUE',
       severity: GuardSeverity.high,
       blocking: blocks,
-      message:
-          '$who has a balance ${standing.oldestOverdueDays} days overdue and is still being given credit',
+      message: canViewCustomerDetails
+          ? '$who has a balance ${standing.oldestOverdueDays} days overdue and is still being given credit'
+          : 'This sale does not meet the account’s credit policy.',
     ));
   }
   return issues;

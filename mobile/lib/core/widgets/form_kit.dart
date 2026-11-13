@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../desktop/desktop_layout.dart';
 import '../theme/design_system.dart';
 
 /// Small building blocks shared by the data-entry screens (add customer,
@@ -27,9 +28,13 @@ InputDecoration kitFieldDecoration(
       ? DesignColors.darkSurfaceElevated
       : DesignColors.surfaceBorder.withValues(alpha: 0.15);
 
+  // A computer field is a compact 8px-corner control, not a thumb-sized pad.
+  final desktop = DesktopLayout.wantsShell(context);
+  final dp = DesktopPalette.of(context);
   OutlineInputBorder outline(Color color, [double width = 1]) =>
       OutlineInputBorder(
-        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        borderRadius: BorderRadius.circular(
+            desktop ? DesktopTokens.controlRadius : DesignSpacing.radiusMd),
         borderSide: BorderSide(color: color, width: width),
       );
 
@@ -51,13 +56,16 @@ InputDecoration kitFieldDecoration(
     prefixIcon:
         prefixIcon == null ? null : Icon(prefixIcon, color: tertiary, size: 20),
     filled: true,
-    fillColor: fill,
-    border: outline(border),
-    enabledBorder: outline(border),
-    focusedBorder: outline(DesignColors.brand, 1.6),
+    isDense: desktop,
+    fillColor: desktop ? (dp.dark ? dp.panelAlt : Colors.white) : fill,
+    border: outline(desktop ? dp.border : border),
+    enabledBorder: outline(desktop ? dp.border : border),
+    focusedBorder: outline(desktop ? dp.accent : DesignColors.brand, 1.6),
     errorBorder: outline(DesignColors.error),
     focusedErrorBorder: outline(DesignColors.error, 1.6),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    contentPadding: desktop
+        ? const EdgeInsets.symmetric(horizontal: 12, vertical: 11)
+        : const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
   );
 }
 
@@ -202,7 +210,8 @@ class ChoicePill extends StatelessWidget {
             onTap();
           },
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 40),
+            constraints: BoxConstraints(
+                minHeight: DesktopLayout.wantsShell(context) ? 32 : 40),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Row(
@@ -287,6 +296,33 @@ class PinnedActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (DesktopLayout.wantsShell(context)) {
+      // On a computer the bar keeps its edge but the buttons stop stretching
+      // across the whole window: they sit at the right, like a dialog footer.
+      final p = DesktopPalette.of(context);
+      return Container(
+        padding: const EdgeInsets.fromLTRB(
+            DesktopTokens.gutter, 12, DesktopTokens.gutter, 12),
+        decoration: BoxDecoration(
+          color: p.panel,
+          border: Border(top: BorderSide(color: p.border)),
+        ),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (summary != null) ...[summary!, const SizedBox(height: 8)],
+                child,
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:axon_pos/core/config/google_auth_config.dart';
+import 'package:axon_pos/core/desktop/desktop_layout.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
@@ -11,6 +12,7 @@ import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/core/utils/company_code.dart';
 import 'package:axon_pos/core/utils/device_features.dart';
+import 'package:axon_pos/features/auth/presentation/desktop/login_desktop_view.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/password_reset_sheet.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
@@ -32,6 +34,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   // email, so the keyboard's Next key would otherwise land on the button.
   final _emailFocus = FocusNode();
   final _passwordFocus = FocusNode();
+  // The computer layout starts on the first empty field and moves back to the
+  // company code when the person chooses Change.
+  final _companyFocus = FocusNode();
   bool _obscurePassword = true;
   bool _rememberMe = false;
   bool _biometricAvailable = false;
@@ -49,6 +54,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.initState();
     _loadRememberedLogin();
     _checkBiometric();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && DesktopLayout.wantsShell(context)) _focusFirstEmptyField();
+    });
+  }
+
+  /// Computer layout: put the cursor where typing is needed next.
+  void _focusFirstEmptyField() {
+    final hasBusiness = _companyName != null && _companyLookupError == null;
+    final showCode = _editingCode || !hasBusiness;
+    if (showCode && _tenantSlugController.text.trim().isEmpty) {
+      _companyFocus.requestFocus();
+    } else if (_emailController.text.trim().isEmpty) {
+      _emailFocus.requestFocus();
+    } else {
+      _passwordFocus.requestFocus();
+    }
   }
 
   void _loadRememberedLogin() {
@@ -76,6 +97,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _passwordController.dispose();
     _emailFocus.dispose();
     _passwordFocus.dispose();
+    _companyFocus.dispose();
     super.dispose();
   }
 
@@ -131,6 +153,37 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   String _normalizeCompanyCode(String value) => CompanyCode.normalize(value);
 
   bool _isValidCompanyCode(String value) => CompanyCode.isValid(value);
+
+  String? _validateCompanyCode(String? value) {
+    final code = _normalizeCompanyCode(value ?? '');
+    if (code.isEmpty) {
+      return 'Please enter your company code';
+    }
+    if (code.length < 2 || !_isValidCompanyCode(code)) {
+      return 'Use the lowercase code format, for example acme-stores';
+    }
+    return null;
+  }
+
+  String? _validateEmail(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter your email';
+    }
+    if (!value.contains('@')) {
+      return 'Please enter a valid email';
+    }
+    return null;
+  }
+
+  String? _validatePassword(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter your password';
+    }
+    if (value.length < 8) {
+      return 'Password must be at least 8 characters';
+    }
+    return null;
+  }
 
   Future<void> _checkBiometric() async {
     debugPrint('[LoginScreen] Checking biometric availability...');
@@ -459,6 +512,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final businessName = businessNameFrom(name: _companyName, code: slug);
     final hasBusiness = _companyName != null && _companyLookupError == null;
     final showCodeField = _editingCode || !hasBusiness;
+    if (DesktopLayout.wantsShell(context)) {
+      return _buildDesktop(authState, slug, businessName, showCodeField);
+    }
     final topInset = MediaQuery.of(context).padding.top;
     final bottomInset = MediaQuery.of(context).padding.bottom;
     final sheetColor = palette.isDark ? palette.card : palette.page;
@@ -565,6 +621,64 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
+  /// Computer window: split layout, keyboard first. Same controllers and
+  /// rules as the phone layout below.
+  Widget _buildDesktop(
+    AuthState authState,
+    String slug,
+    String businessName,
+    bool showCodeField,
+  ) {
+    return LoginDesktopView(
+      formKey: _formKey,
+      companyController: _tenantSlugController,
+      emailController: _emailController,
+      passwordController: _passwordController,
+      companyFocus: _companyFocus,
+      emailFocus: _emailFocus,
+      passwordFocus: _passwordFocus,
+      showCodeField: showCodeField,
+      businessName: businessName,
+      companyCode: slug,
+      logoUrl: _companyLogoUrl,
+      fetchingCompany: _isFetchingCompany,
+      lookupError: _companyLookupError,
+      obscurePassword: _obscurePassword,
+      onToggleObscure: () =>
+          setState(() => _obscurePassword = !_obscurePassword),
+      rememberMe: _rememberMe,
+      onRememberChanged: (value) => setState(() => _rememberMe = value),
+      loading: authState.isLoading,
+      errorMessage: authState.error,
+      onSubmit: () {
+        if (!ref.read(authControllerProvider).isLoading) _handleLogin();
+      },
+      onForgotPassword: _openPasswordReset,
+      onInvite: () => context.push('/accept-invite'),
+      onCreateBusiness: () => context.push('/company-setup'),
+      onBack: () =>
+          context.canPop() ? context.pop() : context.go('/company-choice'),
+      onCompanyChanged: _onSlugChanged,
+      onChangeCompany: () {
+        setState(() => _editingCode = true);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _companyFocus.requestFocus();
+        });
+      },
+      validateCompany: _validateCompanyCode,
+      validateEmail: _validateEmail,
+      validatePassword: _validatePassword,
+      onPhoneSignIn: DeviceFeatures.isComputer
+          ? () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const PhoneSignInScreen(),
+                ),
+              )
+          : null,
+      onBiometric: _biometricAvailable ? _handleBiometricLogin : null,
+    );
+  }
+
   Widget _buildFormBody(
     SignInPalette palette,
     AuthState authState,
@@ -621,16 +735,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                   )
                 : null,
-            validator: (value) {
-              final code = _normalizeCompanyCode(value ?? '');
-              if (code.isEmpty) {
-                return 'Please enter your company code';
-              }
-              if (code.length < 2 || !_isValidCompanyCode(code)) {
-                return 'Use the lowercase code format, for example acme-stores';
-              }
-              return null;
-            },
+            validator: _validateCompanyCode,
           ),
           if (_companyLookupError != null) ...[
             const SizedBox(height: DesignSpacing.sm),
@@ -670,15 +775,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
           autocorrect: false,
           isDark: isDark,
-          validator: (value) {
-            if (value == null || value.isEmpty) {
-              return 'Please enter your email';
-            }
-            if (!value.contains('@')) {
-              return 'Please enter a valid email';
-            }
-            return null;
-          },
+          validator: _validateEmail,
         ),
         const SizedBox(height: DesignSpacing.lg),
         _buildPremiumTextField(
@@ -703,15 +800,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 setState(() => _obscurePassword = !_obscurePassword),
           ),
           isDark: isDark,
-          validator: (value) {
-            if (value == null || value.isEmpty) {
-              return 'Please enter your password';
-            }
-            if (value.length < 8) {
-              return 'Password must be at least 8 characters';
-            }
-            return null;
-          },
+          validator: _validatePassword,
         ),
         const SizedBox(height: DesignSpacing.sm),
         Row(

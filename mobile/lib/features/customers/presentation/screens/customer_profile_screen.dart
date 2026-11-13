@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:drift/drift.dart' hide Column;
+import '../../../../core/desktop/adaptive_overlays.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_widgets.dart' show DesktopEmptyState;
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
@@ -19,16 +22,46 @@ import '../../../../core/utils/api_message.dart';
 import '../widgets/credit_limit_card.dart';
 import '../../../statements/presentation/widgets/send_statement_button.dart';
 import '../../../../core/widgets/modal_disposal.dart';
+import '../../../catalog/presentation/desktop/desktop_button_styles.dart';
+import '../desktop/desktop_customer_profile.dart';
+import 'customers_screen.dart';
 
-class CustomerProfileScreen extends ConsumerStatefulWidget {
+/// The route for one customer. On a phone it is the full profile page; in the
+/// desktop shell it is the Customers page with that customer already picked,
+/// so a deep link lands on the same list-and-profile layout.
+class CustomerProfileScreen extends StatelessWidget {
   final String customerId;
   const CustomerProfileScreen({super.key, required this.customerId});
+
   @override
-  ConsumerState<CustomerProfileScreen> createState() =>
+  Widget build(BuildContext context) {
+    if (context.inDesktopShell) {
+      return CustomersScreen(initialCustomerId: customerId);
+    }
+    return CustomerProfileView(customerId: customerId);
+  }
+}
+
+/// One customer's profile. [embedded] draws the desktop pane (no page chrome)
+/// for the right side of the Customers page.
+class CustomerProfileView extends ConsumerStatefulWidget {
+  final String customerId;
+  final bool embedded;
+
+  /// Called after a payment is recorded, so the list can refresh balances.
+  final VoidCallback? onChanged;
+  const CustomerProfileView({
+    super.key,
+    required this.customerId,
+    this.embedded = false,
+    this.onChanged,
+  });
+  @override
+  ConsumerState<CustomerProfileView> createState() =>
       _CustomerProfileScreenState();
 }
 
-class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
+class _CustomerProfileScreenState extends ConsumerState<CustomerProfileView> {
   Map<String, dynamic>? _customer;
   List<Map<String, dynamic>> _purchases = [];
   List<Map<String, dynamic>> _topProducts = [];
@@ -60,7 +93,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   }
 
   @override
-  void didUpdateWidget(covariant CustomerProfileScreen oldWidget) {
+  void didUpdateWidget(covariant CustomerProfileView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.customerId != widget.customerId) {
       _customer = null;
@@ -226,11 +259,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
     String? error;
 
     try {
-      await GlassBottomSheet.show<void>(
-        context,
-        title: 'Add Payment Due',
-        child: StatefulBuilder(
-          builder: (sheetContext, setSheetState) {
+      Widget sheetBuilder(BuildContext sheetContext, StateSetter setSheetState) {
             final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
             return Padding(
               padding: EdgeInsets.fromLTRB(20, 16, 20,
@@ -376,9 +405,25 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                 ],
               ),
             );
-          },
-        ),
-      );
+      }
+
+      if (DesktopLayout.wantsShell(context)) {
+        await showAdaptiveSheet<void>(
+          context: context,
+          desktopWidth: 460,
+          builder: (dialogContext) => DesktopSheetFrame(
+            title: 'Add payment due',
+            padding: EdgeInsets.zero,
+            child: StatefulBuilder(builder: sheetBuilder),
+          ),
+        );
+      } else {
+        await GlassBottomSheet.show<void>(
+          context,
+          title: 'Add Payment Due',
+          child: StatefulBuilder(builder: sheetBuilder),
+        );
+      }
     } finally {
       disposeAfterModalCloses([amountCtrl, noteCtrl]);
     }
@@ -505,6 +550,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
         }
         if (!mounted) return;
         await _loadData();
+        widget.onChanged?.call();
         if (!mounted) return;
         showGlassSnackBar(
           context,
@@ -580,6 +626,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       final recorded = await getIt<AppDatabase>().markInstallmentPaid(id);
       if (!mounted) return;
       await _loadData();
+      widget.onChanged?.call();
       if (!mounted) return;
       showGlassSnackBar(
         context,
@@ -624,8 +671,84 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
     return raw.length > 10 ? raw.substring(0, 10) : raw;
   }
 
+  void _startSale() {
+    ref.read(cartProvider.notifier).setCustomer(
+          _activeCustomerId,
+          customerName: _customerName,
+        );
+    context.go('/');
+    showGlassSnackBar(context, '$_customerName assigned to sale',
+        icon: Icons.check_circle_rounded, color: DesignColors.success);
+  }
+
+  /// The desktop pane: the same data and actions, laid out for a computer.
+  Widget _buildEmbedded(BuildContext context) {
+    final businessLayout = ref.watch(businessLayoutProvider);
+    final canManageReceivables =
+        ref.watch(permissionsProvider).canManageReceivables;
+    final customer = _customer;
+    if (_isLoading) {
+      return const Center(
+        child: SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    if (customer == null) {
+      final notFound = _loadError == 'This customer could not be found.';
+      return DesktopEmptyState(
+        icon: Icons.person_off_outlined,
+        title: notFound
+            ? '${businessLayout.customerSingular} not found'
+            : "Couldn't load ${businessLayout.customerSingular.toLowerCase()}",
+        message: _loadError,
+        action: notFound
+            ? null
+            : OutlinedButton(
+                style: desktopSecondaryButton(context),
+                onPressed: _loadData,
+                child: const Text('Try again'),
+              ),
+      );
+    }
+    final owes = (customer['balance'] as num? ?? 0) > 0;
+    return DesktopCustomerProfile(
+      customer: customer,
+      customerLabel: businessLayout.customerSingular,
+      purchases: _purchases,
+      topProducts: _topProducts,
+      installments: _installments,
+      canManageReceivables: canManageReceivables,
+      unscheduledBalance: _unscheduledBalance,
+      purchasesFailed: _purchasesLoadFailed,
+      installmentsFailed: _installmentsLoadFailed,
+      loadError: _loadError,
+      onRetry: _loadData,
+      savingInstallmentIds: _savingInstallmentIds,
+      onStartSale: _startSale,
+      onAddDueDate: _showAddInstallmentSheet,
+      onRecordInstallment: _confirmMarkInstallmentPaid,
+      onCancelInstallment: _confirmCancelInstallment,
+      onOpenReceipt: (id) => context.push('/receipt/$id'),
+      creditCard: CreditLimitCard(
+        customerId: _activeCustomerId,
+        customerName: _customerName,
+      ),
+      statementButton: owes || getIt<AuthService>().isLocalWorkspace
+          ? SendStatementButton(
+              customerId: _activeCustomerId,
+              name: _customerName,
+              phone: customer['phone'] as String?,
+            )
+          : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) return _buildEmbedded(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;

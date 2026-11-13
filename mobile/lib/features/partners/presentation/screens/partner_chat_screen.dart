@@ -3,25 +3,56 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:google_fonts/google_fonts.dart';
+
+import '../../../../core/desktop/desktop_chat_composer.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../domain/partner_models.dart';
+import '../desktop/desktop_partners_page.dart';
 import '../providers/partners_provider.dart';
 
 /// One-to-one chat between this business and a trade partner. New messages
 /// arrive by light polling while the screen is open (and as push
 /// notifications when it is not).
-class PartnerChatScreen extends ConsumerStatefulWidget {
+class PartnerChatScreen extends StatelessWidget {
   const PartnerChatScreen({super.key, required this.partnershipId});
 
   final String partnershipId;
 
   @override
-  ConsumerState<PartnerChatScreen> createState() => _PartnerChatScreenState();
+  Widget build(BuildContext context) {
+    // On a computer the conversation is the middle pane of the partners page,
+    // with this partner already open, so a deep link still lands here.
+    if (context.inDesktopShell) {
+      return DesktopPartnersPage(initialPartnerId: partnershipId);
+    }
+    return PartnerConversationView(partnershipId: partnershipId);
+  }
 }
 
-class _PartnerChatScreenState extends ConsumerState<PartnerChatScreen> {
+/// The conversation itself: loads the messages, polls for new ones and sends.
+/// Full screen on a phone; with [embedded] it is only the messages and the
+/// message box, for the middle pane of the desktop partners page.
+class PartnerConversationView extends ConsumerStatefulWidget {
+  const PartnerConversationView({
+    super.key,
+    required this.partnershipId,
+    this.embedded = false,
+  });
+
+  final String partnershipId;
+  final bool embedded;
+
+  @override
+  ConsumerState<PartnerConversationView> createState() =>
+      _PartnerChatScreenState();
+}
+
+class _PartnerChatScreenState extends ConsumerState<PartnerConversationView> {
+  final _composerFocus = FocusNode(debugLabel: 'PartnerComposer');
   final _input = TextEditingController();
   final _scroll = ScrollController();
   final List<PartnerMessage> _messages = [];
@@ -42,6 +73,7 @@ class _PartnerChatScreenState extends ConsumerState<PartnerChatScreen> {
   @override
   void dispose() {
     _poll?.cancel();
+    _composerFocus.dispose();
     _input.dispose();
     _scroll.dispose();
     super.dispose();
@@ -59,6 +91,7 @@ class _PartnerChatScreenState extends ConsumerState<PartnerChatScreen> {
         _error = null;
       });
       _scrollToEnd();
+      if (widget.embedded) _composerFocus.requestFocus();
       // Opening the chat read them — refresh the list's unread badges.
       ref.read(partnersProvider.notifier).refresh();
     } catch (e) {
@@ -131,6 +164,7 @@ class _PartnerChatScreenState extends ConsumerState<PartnerChatScreen> {
   @override
   Widget build(BuildContext context) {
     final partner = ref.watch(partnersProvider).byId(widget.partnershipId);
+    if (widget.embedded) return _buildEmbedded(context, partner?.name);
     return Scaffold(
       appBar: BrandedAppBar(
         title: partner?.name ?? 'Trade partner',
@@ -145,7 +179,27 @@ class _PartnerChatScreenState extends ConsumerState<PartnerChatScreen> {
     );
   }
 
-  Widget _messagesView(BuildContext context) {
+  Widget _buildEmbedded(BuildContext context, String? partnerName) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(child: _messagesView(context, desktop: true)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+          child: DesktopChatComposer(
+            controller: _input,
+            focusNode: _composerFocus,
+            hint: partnerName == null ? 'Message' : 'Message $partnerName',
+            busy: _sending,
+            maxLength: 2000,
+            onSend: _send,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _messagesView(BuildContext context, {bool desktop = false}) {
     final theme = Theme.of(context);
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null && _messages.isEmpty) {
@@ -186,8 +240,10 @@ class _PartnerChatScreenState extends ConsumerState<PartnerChatScreen> {
     }
     return ListView.builder(
       controller: _scroll,
-      padding: const EdgeInsets.fromLTRB(
-          DesignSpacing.lg, DesignSpacing.md, DesignSpacing.lg, DesignSpacing.md),
+      padding: desktop
+          ? const EdgeInsets.fromLTRB(20, 12, 20, 8)
+          : const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.md,
+              DesignSpacing.lg, DesignSpacing.md),
       itemCount: _messages.length,
       itemBuilder: (context, i) {
         final m = _messages[i];
@@ -196,7 +252,7 @@ class _PartnerChatScreenState extends ConsumerState<PartnerChatScreen> {
         return Column(
           children: [
             if (showDay) _DayChip(date: m.createdAt),
-            _Bubble(message: m),
+            _Bubble(message: m, desktop: desktop),
           ],
         );
       },
@@ -284,12 +340,79 @@ class _DayChip extends StatelessWidget {
 }
 
 class _Bubble extends StatelessWidget {
-  const _Bubble({required this.message});
+  const _Bubble({required this.message, this.desktop = false});
 
   final PartnerMessage message;
 
+  /// Drawn for the desktop pane: a soft tint for the shop's own messages
+  /// (never white text on orange), a hairline box for the partner's, capped
+  /// well below the pane width.
+  final bool desktop;
+
+  Widget _buildDesktop(BuildContext context) {
+    final p = context.desktop;
+    final mine = message.fromMe;
+    final time =
+        '${message.createdAt.hour.toString().padLeft(2, '0')}:${message.createdAt.minute.toString().padLeft(2, '0')}';
+    return LayoutBuilder(
+      builder: (context, pane) => Align(
+      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+        constraints: BoxConstraints(
+          maxWidth: (pane.maxWidth * 0.78).clamp(220.0, 480.0),
+        ),
+        decoration: BoxDecoration(
+          color: mine ? p.selected : (p.dark ? p.panelAlt : Colors.white),
+          borderRadius: BorderRadius.circular(12),
+          border: mine ? null : Border.all(color: p.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!mine && message.senderName.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(
+                  message.senderName,
+                  style: GoogleFonts.plusJakartaSans(
+                    color: p.dark ? DesignColors.accent : p.accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            SelectableText(
+              message.body,
+              style: GoogleFonts.plusJakartaSans(
+                color: p.text,
+                fontSize: 14,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Text(
+                time,
+                style: GoogleFonts.plusJakartaSans(
+                  color: p.textFaint,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (desktop) return _buildDesktop(context);
     final theme = Theme.of(context);
     final mine = message.fromMe;
     final time =

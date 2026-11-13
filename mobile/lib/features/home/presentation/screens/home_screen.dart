@@ -3,6 +3,7 @@ import '../../../licence/presentation/licence_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/theme/design_system.dart';
@@ -18,6 +19,11 @@ import '../../../../core/providers/local_workspace_capabilities.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../billing/presentation/widgets/subscription_entitlement_host.dart';
 import '../../../../core/services/haptic_service.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/services/desktop_update_service.dart';
+import '../desktop/desktop_command_palette.dart';
+import '../desktop/desktop_nav.dart';
+import '../desktop/desktop_shell.dart';
 import 'home_nav_keys.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -33,6 +39,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   List<_NavItem> _latestMoreItems = const [];
   bool _isMoreSheetOpen = false;
+  String? _appVersion;
 
   @override
   void initState() {
@@ -40,12 +47,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     HomeNavKeys.moreSheetOpenRequest.addListener(_handleMoreSheetRequest);
     WidgetsBinding.instance.addPostFrameCallback((_) => _offerNotifications());
     WidgetsBinding.instance.addPostFrameCallback((_) => _offerWelcome());
+    _loadVersion();
     _checkLicence();
     _licenceTimer =
         Timer.periodic(const Duration(minutes: 30), (_) => _checkLicence());
   }
 
   Timer? _licenceTimer;
+
+  /// The running version, for the desktop status bar.
+  Future<void> _loadVersion() async {
+    if (!DesktopLayout.isDesktopPlatform) return;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) setState(() => _appVersion = info.version);
+    } catch (_) {
+      // The status bar simply omits the version.
+    }
+  }
 
   /// Keeps the shop's payment standing fresh. Does nothing until licences are
   /// switched on.
@@ -524,6 +543,72 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
+  /// The computer layout: permanent sidebar, top bar, page on a sheet. Pages
+  /// are the same routed screens the phone shows.
+  Widget _buildDesktopShell({
+    required List<_NavItem> navItems,
+    required _NavItem settingsItem,
+    required bool isLocalWorkspace,
+    required ConnectivityService connectivity,
+  }) {
+    DesktopNavItem map(_NavItem item) => DesktopNavItem(
+          icon: item.icon,
+          activeIcon: item.activeIcon,
+          label: item.label,
+          path: item.path,
+          group: desktopGroupFor(item.path),
+          keywords: desktopKeywordsFor(item.path),
+        );
+
+    final tenant = ref.watch(tenantIdentityProvider);
+    final DesktopUpdateService? updates =
+        getIt.isRegistered<DesktopUpdateService>() &&
+                getIt<DesktopUpdateService>().supported
+            ? getIt<DesktopUpdateService>()
+            : null;
+
+    return StreamBuilder<ConnectionStatus>(
+      stream: connectivity.statusStream,
+      initialData: connectivity.currentStatus,
+      builder: (context, snapshot) {
+        final offline = snapshot.data == ConnectionStatus.offline;
+        return DesktopShell(
+          items: [
+            for (final item in navItems)
+              if (item.path != settingsItem.path) map(item),
+          ],
+          settingsItem: map(settingsItem),
+          location: GoRouterState.of(context).uri.toString(),
+          onNavigate: (path) => context.go(path),
+          companyName: tenant.companyName,
+          userName: tenant.userFullName,
+          role: tenant.role,
+          connection: isLocalWorkspace
+              ? DesktopConnection.localOnly
+              : offline
+                  ? DesktopConnection.offline
+                  : DesktopConnection.online,
+          version: _appVersion,
+          onLock: () => unawaited(getIt<AuthService>().lockSession()),
+          statusWidgets: [
+            if (updates != null) _UpdateReadyChip(service: updates),
+          ],
+          extraCommands: [
+            if (updates != null)
+              DesktopCommand(
+                label: 'Check for updates',
+                icon: Icons.system_update_alt_rounded,
+                section: 'Action',
+                keywords: const ['version', 'upgrade', 'new version'],
+                run: () => updates.openOverlay(recheck: true),
+              ),
+          ],
+          child: SubscriptionEntitlementHost(child: widget.child),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final connectivity = getIt<ConnectivityService>();
@@ -586,7 +671,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           context.go(homePath);
           return true;
         },
-        child: Scaffold(
+        child: DesktopLayout.wantsShell(context)
+            ? _buildDesktopShell(
+                navItems: pinnedItems,
+                settingsItem: settingsItem,
+                isLocalWorkspace: isLocalWorkspace,
+                connectivity: connectivity,
+              )
+            : Scaffold(
           // Always distinguish device-local workspaces from cloud
           // workspaces. Internet connectivity does not enable syncing in
           // the standalone edition.
@@ -895,6 +987,57 @@ class _NavItemWidget extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// "Update ready" chip in the desktop top bar. Opens the update window.
+class _UpdateReadyChip extends StatelessWidget {
+  const _UpdateReadyChip({required this.service});
+
+  final DesktopUpdateService service;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: service,
+      builder: (context, _) {
+        final info = service.available;
+        if (info == null) return const SizedBox.shrink();
+        return Tooltip(
+          message: 'Version ${info.version} is ready to install',
+          child: InkWell(
+            onTap: () => service.openOverlay(),
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              height: 28,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: DesignColors.accent.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.arrow_circle_up_rounded,
+                      size: 15, color: DesignColors.accent),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Update ready',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? DesignColors.darkTextPrimary
+                          : DesignColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

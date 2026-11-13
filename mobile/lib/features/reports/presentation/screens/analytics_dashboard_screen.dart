@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_table.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion.dart';
@@ -13,6 +16,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../domain/analytics_mapping.dart';
+import '../desktop/desktop_report_tabs.dart';
 
 class AnalyticsDashboardScreen extends ConsumerStatefulWidget {
   const AnalyticsDashboardScreen({super.key});
@@ -202,6 +206,8 @@ class _AnalyticsDashboardScreenState
 
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) return _buildDesktopScreen();
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       appBar: BrandedAppBar(
@@ -239,6 +245,7 @@ class _AnalyticsDashboardScreenState
                   onRefresh: _loadAnalyticsData,
                   child: PageContainer(
                     withScroll: true,
+                    maxWidth: 960,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -321,6 +328,381 @@ class _AnalyticsDashboardScreenState
                   ),
                 ),
     );
+  }
+
+  Widget _buildDesktopScreen() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Scaffold(
+      appBar: null,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DesktopPageHeader(
+            title: 'Reports',
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+            bottom: DesktopReportTabs(
+              selected: DesktopReportKind.analytics,
+              onSelect: (kind) => openDesktopReport(context, kind),
+            ),
+            actions: [
+              IconButton(
+                tooltip: 'Refresh analytics',
+                icon: const Icon(Icons.refresh_rounded),
+                onPressed: _loadAnalyticsData,
+              ),
+            ],
+          ),
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(
+                          color: DesignColors.brand,
+                        ),
+                        SizedBox(height: 12),
+                        Text('Loading analytics…'),
+                      ],
+                    ),
+                  )
+                : _loadError != null
+                    ? Center(
+                        child: DesktopEmptyState(
+                          icon: Icons.cloud_off_rounded,
+                          title: "Couldn't load analytics",
+                          message: _loadError,
+                          action: OutlinedButton.icon(
+                            onPressed: _loadAnalyticsData,
+                            icon: const Icon(Icons.refresh_rounded, size: 16),
+                            label: const Text('Retry'),
+                          ),
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        physics: const ClampingScrollPhysics(),
+                        child: DesktopContent(
+                          maxWidth: DesktopTokens.contentMaxWidth,
+                          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (_isUsingLocalData) ...[
+                                _buildDesktopLocalDataNotice(),
+                                const SizedBox(height: 16),
+                              ],
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  for (var index = 0;
+                                      index < _periods.length;
+                                      index++)
+                                    DesktopFilterChip(
+                                      label: _periods[index],
+                                      selected: _selectedPeriod == index,
+                                      onTap: () {
+                                        if (_selectedPeriod == index) return;
+                                        setState(() => _selectedPeriod = index);
+                                        _loadAnalyticsData();
+                                      },
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              DesktopMetricStrip(
+                                metrics: [
+                                  DesktopMetric(
+                                    label: 'Revenue',
+                                    value: formatMoney(_analyticsNumber(
+                                        _summary['totalRevenue'])),
+                                  ),
+                                  DesktopMetric(
+                                    label: 'Transactions',
+                                    value: _formatAnalyticsCount(
+                                        _summary['transactionCount']),
+                                  ),
+                                  DesktopMetric(
+                                    label: 'Average ticket',
+                                    value: formatMoney(_analyticsNumber(
+                                        _summary['avgTicket'])),
+                                  ),
+                                  DesktopMetric(
+                                    label: 'Items sold',
+                                    value: _formatAnalyticsCount(
+                                        _summary['itemsSold']),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 24),
+                              _buildDesktopTwoColumn(
+                                left: _buildSalesTrendChart(isDark),
+                                right: _buildHourlyDistribution(isDark),
+                                leftFlex: 3,
+                                rightFlex: 2,
+                              ),
+                              const SizedBox(height: 16),
+                              _buildDesktopTwoColumn(
+                                left: _buildDesktopProductsTable(),
+                                right: _buildDesktopPaymentsTable(),
+                                leftFlex: 3,
+                                rightFlex: 2,
+                              ),
+                              const SizedBox(height: 16),
+                              _buildDesktopCategoryTable(),
+                            ],
+                          ),
+                        ),
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopTwoColumn({
+    required Widget left,
+    required Widget right,
+    int leftFlex = 1,
+    int rightFlex = 1,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 880) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              left,
+              const SizedBox(height: 16),
+              right,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: leftFlex, child: left),
+            const SizedBox(width: 16),
+            Expanded(flex: rightFlex, child: right),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDesktopProductsTable() {
+    final columns = <DesktopColumn<dynamic>>[
+      DesktopColumn(
+        label: 'Product',
+        flex: 3,
+        minWidth: 140,
+        sortBy: (row) => '${row['productName'] ?? ''}',
+        cell: (context, row) => DesktopCellText(
+          '${row['productName'] ?? 'Unknown'}',
+          strong: true,
+        ),
+      ),
+      DesktopColumn(
+        label: 'Units',
+        width: 76,
+        numeric: true,
+        sortBy: (row) => _analyticsNumber(row['totalQty']),
+        cell: (context, row) => DesktopCellText(
+          _formatAnalyticsCount(row['totalQty']),
+          numeric: true,
+        ),
+      ),
+      DesktopColumn(
+        label: 'Revenue',
+        width: 124,
+        numeric: true,
+        sortBy: (row) => _analyticsNumber(row['totalRevenue']),
+        cell: (context, row) => DesktopCellText(
+          formatMoney(_analyticsNumber(row['totalRevenue'])),
+          numeric: true,
+          strong: true,
+        ),
+      ),
+    ];
+
+    return _buildDesktopTablePanel<dynamic>(
+      title: 'Top products',
+      subtitle: 'By revenue this period',
+      rows: _topProducts,
+      columns: columns,
+      rowId: (row) => row['productId'] ?? row['productName'] ?? row.hashCode,
+      emptyIcon: Icons.shopping_bag_outlined,
+      emptyTitle: 'No products sold',
+      emptyMessage: 'Products sold in this period will appear here.',
+    );
+  }
+
+  Widget _buildDesktopPaymentsTable() {
+    final columns = <DesktopColumn<dynamic>>[
+      DesktopColumn(
+        label: 'Method',
+        flex: 2,
+        minWidth: 110,
+        sortBy: (row) => '${row['paymentMethod'] ?? ''}',
+        cell: (context, row) => DesktopCellText(
+            _formatPaymentMethod('${row['paymentMethod'] ?? 'Unknown'}')),
+      ),
+      DesktopColumn(
+        label: 'Transactions',
+        width: 106,
+        numeric: true,
+        sortBy: (row) => _analyticsNumber(row['count']),
+        cell: (context, row) => DesktopCellText(
+          _formatAnalyticsCount(row['count']),
+          numeric: true,
+          muted: true,
+        ),
+      ),
+      DesktopColumn(
+        label: 'Total',
+        width: 124,
+        numeric: true,
+        sortBy: (row) => _analyticsNumber(row['totalAmount']),
+        cell: (context, row) => DesktopCellText(
+          formatMoney(_analyticsNumber(row['totalAmount'])),
+          numeric: true,
+          strong: true,
+        ),
+      ),
+    ];
+
+    return _buildDesktopTablePanel<dynamic>(
+      title: 'Payments',
+      subtitle: 'By payment method',
+      rows: _salesByPayment,
+      columns: columns,
+      rowId: (row) => row['paymentMethod'] ?? row.hashCode,
+      emptyIcon: Icons.payments_outlined,
+      emptyTitle: 'No payments recorded',
+      emptyMessage: 'Payment totals will appear here when sales are recorded.',
+    );
+  }
+
+  Widget _buildDesktopCategoryTable() {
+    final columns = <DesktopColumn<dynamic>>[
+      DesktopColumn(
+        label: 'Category',
+        flex: 3,
+        minWidth: 160,
+        sortBy: (row) => '${row['categoryName'] ?? ''}',
+        cell: (context, row) => DesktopCellText(
+          '${row['categoryName'] ?? 'Unknown'}',
+          strong: true,
+        ),
+      ),
+      DesktopColumn(
+        label: 'Units sold',
+        width: 120,
+        numeric: true,
+        sortBy: (row) => _analyticsNumber(row['totalQty']),
+        cell: (context, row) => DesktopCellText(
+          _formatAnalyticsCount(row['totalQty']),
+          numeric: true,
+        ),
+      ),
+      DesktopColumn(
+        label: 'Revenue',
+        width: 160,
+        numeric: true,
+        sortBy: (row) => _analyticsNumber(row['totalRevenue']),
+        cell: (context, row) => DesktopCellText(
+          formatMoney(_analyticsNumber(row['totalRevenue'])),
+          numeric: true,
+          strong: true,
+        ),
+      ),
+    ];
+
+    return _buildDesktopTablePanel<dynamic>(
+      title: 'Sales by category',
+      subtitle: 'Revenue and units by category',
+      rows: _salesByCategory,
+      columns: columns,
+      rowId: (row) => row['categoryId'] ?? row['categoryName'] ?? row.hashCode,
+      emptyIcon: Icons.category_outlined,
+      emptyTitle: 'No category sales',
+      emptyMessage: 'Category totals will appear when products are sold.',
+    );
+  }
+
+  Widget _buildDesktopTablePanel<T>({
+    required String title,
+    required String subtitle,
+    required List<T> rows,
+    required List<DesktopColumn<T>> columns,
+    required Object Function(T row) rowId,
+    required IconData emptyIcon,
+    required String emptyTitle,
+    required String emptyMessage,
+  }) {
+    return DesktopPanel(
+      title: title,
+      subtitle: subtitle,
+      padding: EdgeInsets.zero,
+      clip: true,
+      child: SizedBox(
+        height: 270,
+        child: DesktopDataTable<T>(
+          columns: columns,
+          rows: rows,
+          rowId: rowId,
+          minWidth: 0,
+          empty: DesktopEmptyState(
+            icon: emptyIcon,
+            title: emptyTitle,
+            message: emptyMessage,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopLocalDataNotice() {
+    final palette = context.desktop;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color:
+            DesignColors.warning.withValues(alpha: palette.dark ? 0.14 : 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: DesignColors.warning.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.computer_rounded,
+              size: 17, color: DesignColors.warning),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Showing sales saved on this computer. Sales from other devices may be missing.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: palette.textMuted,
+                    height: 1.35,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  double _analyticsNumber(Object? value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  String _formatAnalyticsCount(Object? value) {
+    final number = _analyticsNumber(value);
+    return number == number.roundToDouble()
+        ? number.toInt().toString()
+        : number.toStringAsFixed(1);
   }
 
   Widget _buildLocalDataNotice() {

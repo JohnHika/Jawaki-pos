@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../domain/app_notification.dart';
+import '../desktop/desktop_notifications_page.dart';
 import '../providers/notifications_provider.dart';
 
 /// The notification inbox: everything the app told the user (partner
@@ -17,6 +19,8 @@ class NotificationsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // A computer gets a list-detail inbox instead of stacked cards.
+    if (context.inDesktopShell) return const DesktopNotificationsPage();
     final inbox = ref.watch(notificationInboxProvider);
     final controller = ref.read(notificationInboxProvider.notifier);
 

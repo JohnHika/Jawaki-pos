@@ -11,8 +11,10 @@ import '../services/connectivity_service.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import '../services/storage_service.dart';
+import '../services/httpsms_service.dart';
 import '../services/haptic_service.dart';
 import '../services/local_server_service.dart';
+import '../services/desktop_update_service.dart';
 import '../services/update_check_service.dart';
 import '../services/receipt_printer_service.dart';
 import '../services/print_queue_service.dart';
@@ -45,6 +47,7 @@ Future<void> configureDependencies() async {
     debugPrint('[DI] Registering StorageService...');
     final storageService = StorageService();
     getIt.registerSingleton<StorageService>(storageService);
+    getIt.registerLazySingleton<HttpsmsService>(() => HttpsmsService());
 
     // Initialize storage FIRST (required by all other services)
     debugPrint('[DI] Initializing StorageService...');
@@ -182,6 +185,9 @@ Future<void> configureDependencies() async {
     debugPrint('[DI] Registering UpdateCheckService...');
     getIt.registerSingleton<UpdateCheckService>(UpdateCheckService());
     debugPrint('[DI] UpdateCheckService registered');
+
+    // The computer's own updater (Windows only; does nothing elsewhere).
+    getIt.registerSingleton<DesktopUpdateService>(DesktopUpdateService());
 
     // ============================================
     // STEP 9: Feature Announcement Service

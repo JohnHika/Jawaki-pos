@@ -9,12 +9,16 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/services/export_document_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/shop_name.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../sales/presentation/providers/catalog_provider.dart';
+import '../../../catalog/presentation/desktop/desktop_button_styles.dart';
 import '../../domain/price_list_builder.dart';
+import '../desktop/desktop_price_list_view.dart';
 
 /// Pick what to include and send today's prices to a customer on WhatsApp.
 /// Traders sell by sending prices around; this makes that one tap, always
@@ -135,6 +139,36 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final secondary =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+
+    if (context.inDesktopShell) {
+      final title = businessLayout.actionLabel('/price-list', 'Price List');
+      return Scaffold(
+        appBar: null,
+        body: products.when(
+          loading: () => _desktopWorkspace(
+            context: context,
+            title: title,
+            businessLayout: businessLayout,
+            categories: categories,
+            items: const [],
+            text: _text(const []),
+            loading: true,
+          ),
+          error: (e, _) => _desktopError(context, title, e),
+          data: (rows) {
+            final items = _items(rows, categoryNames);
+            return _desktopWorkspace(
+              context: context,
+              title: title,
+              businessLayout: businessLayout,
+              categories: categories,
+              items: items,
+              text: _text(items),
+            );
+          },
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: BrandedAppBar(
@@ -266,6 +300,76 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
           );
         },
       ),
+    );
+  }
+
+  Widget _desktopWorkspace({
+    required BuildContext context,
+    required String title,
+    required BusinessLayoutConfig businessLayout,
+    required List<Map<String, dynamic>> categories,
+    required List<PriceListItem> items,
+    required String text,
+    bool loading = false,
+  }) {
+    return DesktopPriceListView(
+      title: title,
+      productSingular: businessLayout.productSingular,
+      productsLabel: businessLayout.productsLabel,
+      items: items,
+      categories: categories,
+      hiddenCategoryIds: _hiddenCategories,
+      inStockOnly: _inStockOnly,
+      onInStockOnlyChanged: (value) => setState(() => _inStockOnly = value),
+      showTiers: _showTiers,
+      onShowTiersChanged: (value) => setState(() => _showTiers = value),
+      phoneController: _phone,
+      onPhoneChanged: (_) => setState(() {}),
+      preview: text,
+      onToggleCategory: (id) => setState(() {
+        if (!_hiddenCategories.add(id)) _hiddenCategories.remove(id);
+      }),
+      onWhatsApp: items.isEmpty ? null : () => _whatsapp(text),
+      onSharePdf: items.isEmpty ? null : () => _pdf(items),
+      onCopy: items.isEmpty
+          ? null
+          : () {
+              Clipboard.setData(ClipboardData(text: text));
+              if (!mounted) return;
+              showGlassSnackBar(context, 'Price list copied',
+                  icon: Icons.copy_rounded, color: DesignColors.success);
+            },
+      loading: loading,
+    );
+  }
+
+  Widget _desktopError(BuildContext context, String title, Object error) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        DesktopPageHeader(
+          title: title,
+          subtitle: 'The current catalogue is unavailable.',
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+        ),
+        Expanded(
+          child: DesktopContent(
+            child: DesktopPanel(
+              title: 'Price list',
+              child: DesktopEmptyState(
+                icon: Icons.cloud_off_rounded,
+                title: "Couldn't load price list",
+                message: apiErrorMessage(error),
+                action: OutlinedButton(
+                  style: desktopSecondaryButton(context),
+                  onPressed: () => ref.invalidate(filteredProductsProvider),
+                  child: const Text('Try again'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

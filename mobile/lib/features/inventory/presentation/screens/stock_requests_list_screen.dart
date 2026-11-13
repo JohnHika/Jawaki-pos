@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/services/stock_request_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/di/injection.dart';
@@ -8,6 +10,9 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/widgets/modal_disposal.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
+import '../desktop/desktop_inventory_tabs.dart';
+import '../desktop/desktop_stock_requests_view.dart';
 
 /// Stock Requests List Screen - For managers to view and approve stock requests
 class StockRequestsListScreen extends ConsumerStatefulWidget {
@@ -101,8 +106,57 @@ class _StockRequestsListScreenState
     }
   }
 
+  /// Picks a status from the computer layout's filter; the phone's tab bar
+  /// shares the controller so both stay in step.
+  void _pickStatus(String status) {
+    const order = ['PENDING', 'APPROVED', 'FULFILLED', 'ALL'];
+    final index = order.indexOf(status);
+    if (index >= 0) _tabController.index = index;
+  }
+
+  Widget _buildDesktop(BuildContext context) {
+    final perms = ref.watch(permissionsProvider);
+    final tabs = DesktopInventoryTabs.forRole(
+      isLocalWorkspace: getIt<AuthService>().isLocalWorkspace,
+      canManageStock: perms.canManageStock,
+      canRequestStock: perms.canMakeSales,
+    );
+    final rows = _loadedStatus == _selectedStatus
+        ? [
+            for (final r in _requests)
+              if (r is Map) DesktopStockRequest.fromMap(Map<String, dynamic>.from(r)),
+          ]
+        : <DesktopStockRequest>[];
+    return Scaffold(
+      backgroundColor: context.desktop.panel,
+      body: DesktopStockRequestsView(
+        rows: rows,
+        status: _selectedStatus,
+        onStatus: _pickStatus,
+        headerBottom: DesktopInventoryTabs(
+          tabs: tabs,
+          selectedLabel: 'Stock requests',
+          onSelect: (tab) {
+            if (tab.path != null && tab.label != 'Stock requests') {
+              context.go(tab.path!);
+            }
+          },
+        ),
+        loading: _isLoading,
+        errorMessage: _loadError,
+        onRetry: _loadRequests,
+        onRefresh: _loadRequests,
+        onApprove: _approveRequest,
+        onReject: _rejectRequest,
+        onFulfill: _fulfillRequest,
+        onNewRequest: () => context.push('/inventory/request-stock'),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) return _buildDesktop(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;

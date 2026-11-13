@@ -27,6 +27,23 @@ the backup file like shop data.
 - On-device staff profiles with individual PINs and role permissions
 - Encrypted backup and restore, plus migration from a prepared `.cbarchive`
 - Optional AI chat and image analysis through the Axon AI Gateway only
+- Optional manual customer-statement SMS through HTTPSMS and a paired Android
+  phone
+
+### HTTPSMS statement SMS
+
+In a local workspace, the owner can configure an HTTPSMS account API key and
+registered sender number in **Settings → HTTPSMS**. Counterbase keeps these in
+the device secure store; they are not sent to the Counterbase server or copied
+into the shop database or backups. Pair an Android phone separately in the
+HTTPSMS app with its phone API key. Each statement is previewed and requires
+confirmation before queueing; the customer number and statement text go to
+HTTPSMS and the paired phone’s carrier. HTTPSMS end-to-end encryption is off
+for these sends, and carrier rates vary so Counterbase cannot estimate the
+charge. Delivery depends on that phone being online, and long messages may
+incur multiple carrier charges. Counterbase does
+not automate OTP or bulk sends, process replies, or track opt-outs—check for
+opt-outs before every send.
 
 Online payment-provider checkout, merchant payouts, cross-device staff
 invitations, shared shop connections, cloud notifications, and automatic

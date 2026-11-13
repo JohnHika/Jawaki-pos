@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/adaptive_overlays.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../catalog/presentation/desktop/desktop_button_styles.dart';
 import '../../../inventory/presentation/widgets/product_picker_dialog.dart';
+import '../desktop/desktop_import_detail_view.dart';
 import '../../domain/import_models.dart';
 import '../providers/imports_provider.dart';
 import 'imports_screen.dart' show importStatusColor;
@@ -56,15 +62,30 @@ class _ImportDetailScreenState extends ConsumerState<ImportDetailScreen> {
     }
   }
 
-  Future<T?> _sheet<T>(Widget child) => showModalBottomSheet<T>(
+  Future<T?> _sheet<T>(Widget child) {
+    if (context.inDesktopShell) {
+      return showAdaptiveSheet<T>(
         context: context,
-        useRootNavigator: true,
-        isScrollControlled: true,
-        showDragHandle: true,
-        builder: (_) => child,
+        desktopStyle: DesktopSheetStyle.sidePanel,
+        desktopWidth: 520,
+        builder: (_) => DesktopScope(
+          sidebarCollapsed:
+              DesktopScope.maybeOf(context)?.sidebarCollapsed ?? false,
+          child: child,
+        ),
       );
+    }
+    return showModalBottomSheet<T>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => child,
+    );
+  }
 
-  Future<void> _confirmDelete(String what, Future<dynamic> Function() action) async {
+  Future<void> _confirmDelete(
+      String what, Future<dynamic> Function() action) async {
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -87,6 +108,23 @@ class _ImportDetailScreenState extends ConsumerState<ImportDetailScreen> {
     final detail = ref.watch(importDetailProvider(widget.importId));
     final perms = ref.watch(permissionsProvider);
 
+    if (context.inDesktopShell) {
+      return Scaffold(
+        appBar: null,
+        body: detail.when(
+          loading: () => _desktopLoading(context),
+          error: (e, _) => _desktopError(context, e),
+          data: (d) => _desktopBody(
+            context,
+            d,
+            perms.has('imports.manage'),
+            perms.has('imports.receive'),
+            perms.has('imports.payments'),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: BrandedAppBar(
         title: detail.valueOrNull?.title ?? 'Container',
@@ -98,12 +136,133 @@ class _ImportDetailScreenState extends ConsumerState<ImportDetailScreen> {
           padding: const EdgeInsets.all(DesignSpacing.lg),
           child: InlineRetryNotice(
             message: apiErrorMessage(e),
-            onRetry: () => ref.invalidate(importDetailProvider(widget.importId)),
+            onRetry: () =>
+                ref.invalidate(importDetailProvider(widget.importId)),
           ),
         ),
         data: (d) => _body(context, d, perms.has('imports.manage'),
             perms.has('imports.receive'), perms.has('imports.payments')),
       ),
+    );
+  }
+
+  Widget _desktopHeader(BuildContext context, {required String title}) =>
+      DesktopPageHeader(
+        title: title,
+        leading: IconButton(
+          tooltip: 'Back to containers (Esc)',
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/containers');
+            }
+          },
+          icon: const Icon(Icons.arrow_back_rounded, size: 20),
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+      );
+
+  Widget _desktopLoading(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _desktopHeader(context, title: 'Container'),
+          const Divider(height: 1),
+          const Expanded(
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ],
+      );
+
+  Widget _desktopError(BuildContext context, Object error) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _desktopHeader(context, title: 'Container'),
+          const Divider(height: 1),
+          Expanded(
+            child: DesktopContent(
+              child: DesktopPanel(
+                title: "Couldn't load this container",
+                child: DesktopEmptyState(
+                  icon: Icons.cloud_off_rounded,
+                  title: 'Container details unavailable',
+                  message: apiErrorMessage(error),
+                  action: OutlinedButton(
+                    style: desktopSecondaryButton(context),
+                    onPressed: () =>
+                        ref.invalidate(importDetailProvider(widget.importId)),
+                    child: const Text('Try again'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+
+  Widget _desktopBody(
+    BuildContext context,
+    ImportDetail detail,
+    bool canManage,
+    bool canReceive,
+    bool canPay,
+  ) {
+    final editable = detail.isOpen && canManage;
+    final canAddTrader = canManage && !detail.isCancelled;
+    final showStatusActions = canManage &&
+        detail.isOpen &&
+        (detail.status == 'PLANNED' ||
+            detail.status == 'IN_TRANSIT' ||
+            (canReceive && detail.status == 'ARRIVED'));
+
+    return DesktopImportDetailView(
+      detail: detail,
+      onBack: () {
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/containers');
+        }
+      },
+      onRefresh: _refresh,
+      busy: _busy,
+      editable: editable,
+      canAddTrader: canAddTrader,
+      canPay: canPay,
+      showStatusActions: showStatusActions,
+      statusActions: showStatusActions
+          ? _statusActions(detail, canReceive)
+          : const SizedBox.shrink(),
+      costShare: (participant) => _costShare(detail, participant),
+      onAddItem: editable ? () => _addItem(detail) : null,
+      onAddCost: editable ? () => _addCost(detail) : null,
+      onAddTrader: canAddTrader ? _addTrader : null,
+      onRemoveItem: editable
+          ? (item) => _confirmDelete(
+                item.description,
+                () => _api.removeImportItem(detail.id, item.id),
+              )
+          : null,
+      onRemoveCost: editable
+          ? (cost) => _confirmDelete(
+                'this cost',
+                () => _api.removeImportCost(detail.id, cost.id),
+              )
+          : null,
+      onRecordPayment:
+          canPay ? (participant) => _recordPayment(detail, participant) : null,
+      onRemovePayment: canPay
+          ? (payment) => _confirmDelete(
+                'this payment',
+                () => _api.removeImportPayment(detail.id, payment.id),
+              )
+          : null,
+      onRemoveParticipant: canManage && detail.isOpen
+          ? (participant) => _confirmDelete(
+                participant.name,
+                () => _api.removeImportParticipant(detail.id, participant.id),
+              )
+          : null,
     );
   }
 
@@ -144,7 +303,8 @@ class _ImportDetailScreenState extends ConsumerState<ImportDetailScreen> {
             Padding(
               padding: const EdgeInsets.only(top: DesignSpacing.sm),
               child: Text(w,
-                  style: const TextStyle(color: DesignColors.warning, fontSize: 12)),
+                  style: const TextStyle(
+                      color: DesignColors.warning, fontSize: 12)),
             ),
           if (canManage && d.isOpen) ...[
             const SizedBox(height: DesignSpacing.md),
@@ -224,7 +384,8 @@ class _ImportDetailScreenState extends ConsumerState<ImportDetailScreen> {
                 : null,
           ),
           const SizedBox(height: DesignSpacing.sm),
-          for (final p in d.participants) _traderTile(d, p, canPay, secondary),
+          for (final p in d.participants)
+            _traderTile(d, p, canManage, canPay, secondary),
         ],
       ),
     );
@@ -232,7 +393,11 @@ class _ImportDetailScreenState extends ConsumerState<ImportDetailScreen> {
 
   Widget _statusActions(ImportDetail d, bool canReceive) {
     final next = switch (d.status) {
-      'PLANNED' => ('IN_TRANSIT', 'Mark as on the way', Icons.directions_boat_outlined),
+      'PLANNED' => (
+          'IN_TRANSIT',
+          'Mark as on the way',
+          Icons.directions_boat_outlined
+        ),
       'IN_TRANSIT' => ('ARRIVED', 'Mark as arrived', Icons.inventory_outlined),
       _ => null,
     };
@@ -253,7 +418,8 @@ class _ImportDetailScreenState extends ConsumerState<ImportDetailScreen> {
                   minimumSize: const Size.fromHeight(48)),
             ),
           ),
-        if (canReceive && (d.status == 'IN_TRANSIT' || d.status == 'ARRIVED')) ...[
+        if (canReceive &&
+            (d.status == 'IN_TRANSIT' || d.status == 'ARRIVED')) ...[
           const SizedBox(height: DesignSpacing.sm),
           GradientButton(
             label: 'Receive into stock',
@@ -266,12 +432,15 @@ class _ImportDetailScreenState extends ConsumerState<ImportDetailScreen> {
     );
   }
 
-  Widget _itemTile(ImportDetail d, ImportItemRow i, bool editable, Color secondary) {
+  Widget _itemTile(
+      ImportDetail d, ImportItemRow i, bool editable, Color secondary) {
     return Padding(
       padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
       child: ListCard(
         leading: Icon(
-          i.productId == null ? Icons.link_off_rounded : Icons.inventory_2_outlined,
+          i.productId == null
+              ? Icons.link_off_rounded
+              : Icons.inventory_2_outlined,
           color: i.productId == null ? DesignColors.warning : null,
         ),
         title: i.description,
@@ -288,7 +457,8 @@ class _ImportDetailScreenState extends ConsumerState<ImportDetailScreen> {
               children: [
                 Text(kesWhole(i.landedUnitCostKes),
                     style: const TextStyle(
-                        fontWeight: FontWeight.w800, color: DesignColors.accent)),
+                        fontWeight: FontWeight.w800,
+                        color: DesignColors.accent)),
                 Text('each, landed',
                     style: TextStyle(color: secondary, fontSize: 11)),
               ],
@@ -308,8 +478,8 @@ class _ImportDetailScreenState extends ConsumerState<ImportDetailScreen> {
     );
   }
 
-  Widget _traderTile(
-      ImportDetail d, ImportParticipantRow p, bool canPay, Color secondary) {
+  Widget _traderTile(ImportDetail d, ImportParticipantRow p, bool canManage,
+      bool canPay, Color secondary) {
     final (label, color) = switch (p.status) {
       'SETTLED' => ('Paid up', DesignColors.success),
       'PART_PAID' => ('Part paid', DesignColors.warning),
@@ -385,7 +555,7 @@ class _ImportDetailScreenState extends ConsumerState<ImportDetailScreen> {
                 ),
               ),
             ],
-            if (!p.isSelf && d.isOpen && (payments.isEmpty))
+            if (canManage && !p.isSelf && d.isOpen && payments.isEmpty)
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
@@ -440,13 +610,16 @@ class _ImportDetailScreenState extends ConsumerState<ImportDetailScreen> {
   }
 
   Future<void> _receive(ImportDetail d) async {
-    final mine = d.items.where((i) => d.participantName(i.participantId) == 'You').toList();
-    final result = await _sheet<List<Map<String, dynamic>>>(_ReceiveSheet(items: mine));
+    final mine = d.items
+        .where((i) => d.participantName(i.participantId) == 'You')
+        .toList();
+    final result =
+        await _sheet<List<Map<String, dynamic>>>(_ReceiveSheet(items: mine));
     if (result == null) return;
     final ok = await _run(() => _api.receiveImport(d.id, items: result));
     if (ok && mounted) {
-      showGlassSnackBar(
-          context, 'Booked into stock at landed cost. Check Shop Alerts for any price to review.',
+      showGlassSnackBar(context,
+          'Booked into stock at landed cost. Check Shop Alerts for any price to review.',
           icon: Icons.check_circle_rounded, color: DesignColors.success);
     }
   }
@@ -475,7 +648,9 @@ class _TotalsCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(kesWhole(detail.landedKes),
               style: DesignType.numeric(
-                color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
+                color: isDark
+                    ? DesignColors.darkTextPrimary
+                    : DesignColors.textPrimary,
                 fontSize: 30,
                 fontWeight: FontWeight.w800,
               )),
@@ -495,7 +670,9 @@ class _TotalsCard extends StatelessWidget {
               'Costs add ${detail.upliftPercent.toStringAsFixed(0)}% to the price you paid the supplier',
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  color: DesignColors.accent, fontWeight: FontWeight.w700, fontSize: 13),
+                  color: DesignColors.accent,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13),
             ),
           ],
         ],
@@ -558,7 +735,8 @@ class _AddItemSheetState extends State<_AddItemSheet> {
   }
 
   double get _total =>
-      (double.tryParse(_qty.text) ?? 0) * (double.tryParse(_unitCost.text) ?? 0);
+      (double.tryParse(_qty.text) ?? 0) *
+      (double.tryParse(_unitCost.text) ?? 0);
 
   Future<void> _pickProduct() async {
     final picked = await showProductPicker(context);
@@ -612,7 +790,9 @@ class _AddItemSheetState extends State<_AddItemSheet> {
         alignment: Alignment.centerLeft,
         child: TextButton.icon(
           onPressed: _pickProduct,
-          icon: Icon(_productId == null ? Icons.link_rounded : Icons.check_circle_rounded),
+          icon: Icon(_productId == null
+              ? Icons.link_rounded
+              : Icons.check_circle_rounded),
           label: Text(_productId == null
               ? 'Link to a product in my shop'
               : 'Linked to a product'),
@@ -624,7 +804,8 @@ class _AddItemSheetState extends State<_AddItemSheet> {
           Expanded(
             child: TextField(
               controller: _qty,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               inputFormatters: [_decimal],
               onChanged: (_) => setState(() {}),
               decoration: kitFieldDecoration(context, label: 'How many'),
@@ -681,10 +862,12 @@ class _AddItemSheetState extends State<_AddItemSheet> {
       if (_error != null)
         Padding(
           padding: const EdgeInsets.only(top: DesignSpacing.sm),
-          child: Text(_error!, style: const TextStyle(color: DesignColors.error)),
+          child:
+              Text(_error!, style: const TextStyle(color: DesignColors.error)),
         ),
       const SizedBox(height: DesignSpacing.lg),
-      GradientButton(label: 'Add goods', icon: Icons.add_rounded, onPressed: _save),
+      GradientButton(
+          label: 'Add goods', icon: Icons.add_rounded, onPressed: _save),
     ]);
   }
 }
@@ -720,7 +903,8 @@ class _AddCostSheetState extends State<_AddCostSheet> {
       'type': _type,
       'amount': amount,
       'currency': _currency,
-      if (_reference.text.trim().isNotEmpty) 'reference': _reference.text.trim(),
+      if (_reference.text.trim().isNotEmpty)
+        'reference': _reference.text.trim(),
     });
   }
 
@@ -745,7 +929,8 @@ class _AddCostSheetState extends State<_AddCostSheet> {
         controller: _amount,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         inputFormatters: [_decimal],
-        decoration: kitFieldDecoration(context, label: 'Amount', prefixText: '$_currency '),
+        decoration: kitFieldDecoration(context,
+            label: 'Amount', prefixText: '$_currency '),
       ),
       const SizedBox(height: DesignSpacing.sm),
       Wrap(
@@ -768,10 +953,12 @@ class _AddCostSheetState extends State<_AddCostSheet> {
       if (_error != null)
         Padding(
           padding: const EdgeInsets.only(top: DesignSpacing.sm),
-          child: Text(_error!, style: const TextStyle(color: DesignColors.error)),
+          child:
+              Text(_error!, style: const TextStyle(color: DesignColors.error)),
         ),
       const SizedBox(height: DesignSpacing.lg),
-      GradientButton(label: 'Add cost', icon: Icons.add_rounded, onPressed: _save),
+      GradientButton(
+          label: 'Add cost', icon: Icons.add_rounded, onPressed: _save),
     ]);
   }
 }
@@ -809,7 +996,8 @@ class _AddTraderSheetState extends State<_AddTraderSheet> {
   @override
   Widget build(BuildContext context) {
     return _sheetFrame(context, 'Add a trader', [
-      Text('Someone sharing this container. Their goods and their share of the costs are tracked separately.',
+      Text(
+          'Someone sharing this container. Their goods and their share of the costs are tracked separately.',
           style: TextStyle(
               color: Theme.of(context).brightness == Brightness.dark
                   ? DesignColors.darkTextSecondary
@@ -818,7 +1006,8 @@ class _AddTraderSheetState extends State<_AddTraderSheet> {
       TextField(
         controller: _name,
         textCapitalization: TextCapitalization.words,
-        decoration: kitFieldDecoration(context, label: 'Name', hint: 'e.g. Mama Wanjiru'),
+        decoration: kitFieldDecoration(context,
+            label: 'Name', hint: 'e.g. Mama Wanjiru'),
       ),
       const SizedBox(height: DesignSpacing.md),
       TextField(
@@ -829,10 +1018,14 @@ class _AddTraderSheetState extends State<_AddTraderSheet> {
       if (_error != null)
         Padding(
           padding: const EdgeInsets.only(top: DesignSpacing.sm),
-          child: Text(_error!, style: const TextStyle(color: DesignColors.error)),
+          child:
+              Text(_error!, style: const TextStyle(color: DesignColors.error)),
         ),
       const SizedBox(height: DesignSpacing.lg),
-      GradientButton(label: 'Add trader', icon: Icons.person_add_alt_1_rounded, onPressed: _save),
+      GradientButton(
+          label: 'Add trader',
+          icon: Icons.person_add_alt_1_rounded,
+          onPressed: _save),
     ]);
   }
 }
@@ -870,7 +1063,8 @@ class _PaymentSheetState extends State<_PaymentSheet> {
     Navigator.of(context).pop({
       'amountKes': amount,
       'method': _method,
-      if (_reference.text.trim().isNotEmpty) 'reference': _reference.text.trim(),
+      if (_reference.text.trim().isNotEmpty)
+        'reference': _reference.text.trim(),
     });
   }
 
@@ -881,7 +1075,8 @@ class _PaymentSheetState extends State<_PaymentSheet> {
         controller: _amount,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         inputFormatters: [_decimal],
-        decoration: kitFieldDecoration(context, label: 'Amount received', prefixText: 'KES '),
+        decoration: kitFieldDecoration(context,
+            label: 'Amount received', prefixText: 'KES '),
       ),
       const SizedBox(height: DesignSpacing.md),
       Wrap(
@@ -899,15 +1094,18 @@ class _PaymentSheetState extends State<_PaymentSheet> {
       TextField(
         controller: _reference,
         textCapitalization: TextCapitalization.characters,
-        decoration: kitFieldDecoration(context, label: 'M-Pesa code / reference (optional)'),
+        decoration: kitFieldDecoration(context,
+            label: 'M-Pesa code / reference (optional)'),
       ),
       if (_error != null)
         Padding(
           padding: const EdgeInsets.only(top: DesignSpacing.sm),
-          child: Text(_error!, style: const TextStyle(color: DesignColors.error)),
+          child:
+              Text(_error!, style: const TextStyle(color: DesignColors.error)),
         ),
       const SizedBox(height: DesignSpacing.lg),
-      GradientButton(label: 'Record payment', icon: Icons.check_rounded, onPressed: _save),
+      GradientButton(
+          label: 'Record payment', icon: Icons.check_rounded, onPressed: _save),
     ]);
   }
 }
@@ -923,7 +1121,8 @@ class _ReceiveSheet extends StatefulWidget {
 
 class _ReceiveSheetState extends State<_ReceiveSheet> {
   late final Map<String, TextEditingController> _qty = {
-    for (final i in widget.items) i.id: TextEditingController(text: kitNumber(i.quantity)),
+    for (final i in widget.items)
+      i.id: TextEditingController(text: kitNumber(i.quantity)),
   };
 
   @override
@@ -959,7 +1158,8 @@ class _ReceiveSheetState extends State<_ReceiveSheet> {
                     children: [
                       Text(i.description,
                           style: const TextStyle(fontWeight: FontWeight.w700)),
-                      Text('Ordered ${kitNumber(i.quantity)} ${i.unit}'
+                      Text(
+                          'Ordered ${kitNumber(i.quantity)} ${i.unit}'
                           '${i.productId == null ? ' · not linked, will be skipped' : ''}',
                           style: const TextStyle(fontSize: 12)),
                     ],

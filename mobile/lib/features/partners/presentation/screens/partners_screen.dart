@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/adaptive_overlays.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/providers/business_layout_provider.dart';
@@ -11,6 +13,7 @@ import '../../../../core/utils/company_code.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../domain/partner_models.dart';
+import '../desktop/desktop_partners_page.dart';
 import '../providers/partners_provider.dart';
 
 /// "Trade Partners": the businesses this shop trades with. Connect using the
@@ -20,6 +23,8 @@ class PartnersScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // A computer gets three panes (partners, conversation, details).
+    if (context.inDesktopShell) return const DesktopPartnersPage();
     final state = ref.watch(partnersProvider);
     final controller = ref.read(partnersProvider.notifier);
     final slug = getIt<StorageService>().getTenantSlug() ?? '';
@@ -93,19 +98,33 @@ class PartnersScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _showConnectSheet(BuildContext context, WidgetRef ref) {
-    return showModalBottomSheet<void>(
+  Future<void> _showConnectSheet(BuildContext context, WidgetRef ref) =>
+      showPartnerConnectSheet(context, ref);
+}
+
+/// Opens the "Connect with a business" form: a bottom sheet on a phone, a
+/// centred dialog on a computer.
+Future<void> showPartnerConnectSheet(BuildContext context, WidgetRef ref) {
+  Future<void> submit(String code, String? message) =>
+      ref.read(partnersProvider.notifier).connect(code, message: message);
+  if (context.inDesktopShell) {
+    return showAdaptiveSheet<void>(
       context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: context.themed(DesignColors.darkSurface),
-      builder: (sheetContext) => _ConnectSheet(
-        onSubmit: (code, message) =>
-            ref.read(partnersProvider.notifier).connect(code, message: message),
+      desktopWidth: 460,
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.only(top: 20),
+        child: _ConnectSheet(onSubmit: submit),
       ),
     );
   }
+  return showModalBottomSheet<void>(
+    context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    showDragHandle: true,
+    backgroundColor: context.themed(DesignColors.darkSurface),
+    builder: (sheetContext) => _ConnectSheet(onSubmit: submit),
+  );
 }
 
 class _MyCodeCard extends StatelessWidget {

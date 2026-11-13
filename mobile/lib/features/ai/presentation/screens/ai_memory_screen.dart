@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'package:go_router/go_router.dart';
+
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/theme/design_system.dart';
@@ -108,6 +112,44 @@ class _AiMemoryScreenState extends State<AiMemoryScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (context.inDesktopShell) {
+      // A computer gets a page header with the one primary action, a column
+      // that stops growing, and no floating button or pull-to-refresh.
+      return Scaffold(
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DesktopPageHeader(
+              title: 'Workspace memory',
+              subtitle:
+                  'Shop notes kept on this computer. They are not sent to Axon AI automatically.',
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+              leading: GoRouter.of(context).canPop()
+                  ? IconButton(
+                      tooltip: 'Back',
+                      onPressed: () => GoRouter.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                    )
+                  : null,
+              actions: [
+                FilledButton.icon(
+                  onPressed: _addMemory,
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('Add memory'),
+                ),
+              ],
+            ),
+            Expanded(
+              child: DesktopContent(
+                maxWidth: 760,
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: _buildBody(isDark),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Scaffold(
       appBar: const BrandedAppBar(title: 'Workspace Memory'),
       body: RefreshIndicator(

@@ -6,6 +6,7 @@ import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
 import '../../../../core/utils/format.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 /// The sale total, kept in thumb reach at the bottom of Sell. One orange bar:
 /// how many items and the total on the left, "Review sale" on the right.
@@ -18,7 +19,9 @@ class CartSummaryBar extends ConsumerWidget {
     if (cartState.items.isEmpty) return const SizedBox.shrink();
 
     final count = cartState.itemCount;
-    final customer = cartState.customerName;
+    final customer = ref.watch(permissionsProvider).canSeeCustomers
+        ? cartState.customerName
+        : null;
     const onAccent = DesignColors.textPrimary;
 
     return FadeSlideIn(

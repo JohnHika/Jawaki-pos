@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/services/storage_service.dart';
@@ -9,6 +10,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/accountability_models.dart';
+import '../desktop/desktop_shop_alerts_page.dart';
 import '../providers/accountability_provider.dart';
 
 /// The owner's watch-list: what happened in the shop that deserves a second
@@ -35,6 +37,8 @@ class _ShopAlertsScreenState extends ConsumerState<ShopAlertsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // A computer gets a table with an inspector instead of stacked cards.
+    if (context.inDesktopShell) return const DesktopShopAlertsPage();
     final state = ref.watch(alertsProvider);
     final controller = ref.read(alertsProvider.notifier);
     final perms = ref.watch(permissionsProvider);

@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:uuid/uuid.dart';
 
+import '../../../../core/desktop/adaptive_overlays.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../../core/di/injection.dart';
@@ -22,6 +24,7 @@ import '../../../sales/presentation/providers/catalog_provider.dart'
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
 import '../providers/catalog_categories_provider.dart';
 import '../screens/barcode_scan_screen.dart';
+import '../desktop/desktop_panel_shell.dart';
 import 'image_picker_section.dart';
 
 class _UnitPriceTier {
@@ -1122,28 +1125,26 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   Future<bool> _confirmBelowCost(double cost, double price, String unit) async {
     final palette = SignInPalette.of(context);
     final loss = cost - price;
-    final go = await showModalBottomSheet<bool>(
-      context: context,
-      useRootNavigator: true,
-      backgroundColor: palette.card,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (sheet) => SafeArea(
+    final desktop = DesktopLayout.wantsShell(context);
+    Widget body(BuildContext sheet) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: palette.line, borderRadius: BorderRadius.circular(3)),
+              if (!desktop) ...[
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: palette.line,
+                        borderRadius: BorderRadius.circular(3)),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 16),
+              ],
               Text('Price is below what you paid',
                   style: DesignType.display.copyWith(
                       color: palette.ink, fontSize: 18, fontWeight: FontWeight.w700)),
@@ -1166,8 +1167,17 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             ],
           ),
         ),
-      ),
-    );
+      );
+    final go = desktop
+        ? await showAdaptiveSheet<bool>(context: context, builder: body)
+        : await showModalBottomSheet<bool>(
+            context: context,
+            useRootNavigator: true,
+            backgroundColor: palette.card,
+            shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+            builder: body,
+          );
     return go ?? false;
   }
 
@@ -1776,6 +1786,25 @@ Future<void> openProductForm(
   required String entityLabel,
   String? initialName,
 }) {
+  // On a computer the form slides in from the right and keeps the table in
+  // view; a phone gets it as a full screen.
+  if (DesktopLayout.wantsShell(context)) {
+    return showAdaptiveSheet<void>(
+      context: context,
+      desktopStyle: DesktopSheetStyle.sidePanel,
+      desktopWidth: 520,
+      builder: (panelContext) => DesktopPanelShell(
+        title: product == null
+            ? 'New ${entityLabel.toLowerCase()}'
+            : 'Edit ${entityLabel.toLowerCase()}',
+        child: AddEditProductSheet(
+          product: product,
+          entityLabel: entityLabel,
+          initialName: initialName,
+        ),
+      ),
+    );
+  }
   return Navigator.of(context, rootNavigator: true).push<void>(
     MaterialPageRoute(
       fullscreenDialog: true,

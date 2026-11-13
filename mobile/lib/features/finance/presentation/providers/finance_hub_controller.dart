@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/finance_repository.dart';
 import '../../domain/bulk_allocation.dart';
 import '../../domain/finance_models.dart';
@@ -15,6 +17,8 @@ final financeHubProvider =
     StateNotifierProvider.autoDispose<FinanceHubController, FinanceHubState>(
   (ref) {
     final auth = getIt<AuthService>();
+    final canViewCustomerDetails =
+        ref.watch(permissionsProvider).canSeeCustomers;
     final tenantId = auth.tenantId;
     final branchId = auth.branchId;
     if (tenantId == null ||
@@ -25,7 +29,10 @@ final financeHubProvider =
           localWorkspace: auth.isLocalWorkspace);
     }
     final source = auth.isLocalWorkspace
-        ? _LocalFinanceHubDataSource(getIt<AppDatabase>())
+        ? _LocalFinanceHubDataSource(
+            getIt<AppDatabase>(),
+            canViewCustomerDetails: canViewCustomerDetails,
+          )
         : _LiveFinanceHubDataSource(
             repository: FinanceRepository(
               apiClient: getIt<ApiClient>(),
@@ -39,6 +46,7 @@ final financeHubProvider =
       tenantId: tenantId,
       branchId: branchId,
       localWorkspace: auth.isLocalWorkspace,
+      canViewCustomerDetails: canViewCustomerDetails,
     );
   },
 );
@@ -151,23 +159,29 @@ abstract class FinanceHubDataSource {
 }
 
 class FinanceHubController extends StateNotifier<FinanceHubState> {
+  static const _uuid = Uuid();
+
   FinanceHubController({
     required FinanceHubDataSource source,
     required String tenantId,
     required String branchId,
     this.localWorkspace = false,
+    bool canViewCustomerDetails = true,
   })  : _source = source,
         _branchId = branchId,
-        super(FinanceHubState(
-          snapshot: source.loadCachedSnapshot(tenantId, branchId),
-          isRefreshing: true,
-        )) {
+        _canViewCustomerDetails = canViewCustomerDetails,
+        super(const FinanceHubState(isRefreshing: true)) {
+    state = FinanceHubState(
+      snapshot: _visibleSnapshot(source.loadCachedSnapshot(tenantId, branchId)),
+      isRefreshing: true,
+    );
     unawaited(refresh());
   }
 
   FinanceHubController.unavailable({this.localWorkspace = false})
       : _source = null,
         _branchId = '',
+        _canViewCustomerDetails = false,
         super(const FinanceHubState(
           errorMessage:
               'Finance needs a selected branch. Choose a branch and retry.',
@@ -176,6 +190,62 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
   final FinanceHubDataSource? _source;
   final String _branchId;
   final bool localWorkspace;
+  final bool _canViewCustomerDetails;
+  final Map<String, String> _rawRetailReferencesByToken = {};
+  final Map<String, String> _retailTokensByRawReference = {};
+  final Map<String, String> _retailGroupTokensBySource = {};
+
+  FinanceSnapshot? _visibleSnapshot(FinanceSnapshot? snapshot) {
+    if (snapshot == null || _canViewCustomerDetails) return snapshot;
+    return snapshot.copyWith(
+      retailReceivables: snapshot.retailReceivables.map((receivable) {
+        final token = _retailTokensByRawReference.putIfAbsent(
+          receivable.id,
+          () {
+            final opaque = 'retail-ref-${_uuid.v4()}';
+            _rawRetailReferencesByToken[opaque] = receivable.id;
+            return opaque;
+          },
+        );
+        final sourceGroup = receivable.customerId ??
+            (receivable.customerName?.trim().isNotEmpty == true
+                ? receivable.customerName!.trim()
+                : receivable.id);
+        final groupToken = _retailGroupTokensBySource.putIfAbsent(
+          sourceGroup,
+          () => 'customer-group-${_uuid.v4()}',
+        );
+        return RetailReceivable(
+          id: token,
+          saleId: token,
+          receiptNumber: receivable.receiptNumber,
+          customerId: null,
+          customerName: null,
+          collectionGroupRef: groupToken,
+          originalAmount: receivable.originalAmount,
+          outstandingAmount: receivable.outstandingAmount,
+          dueDate: receivable.dueDate,
+          status: receivable.status,
+          createdAt: receivable.createdAt,
+          payments: receivable.payments
+              .map((payment) => ReceivablePayment(
+                    id: payment.id,
+                    receivableId: token,
+                    amount: payment.amount,
+                    method: payment.method,
+                    reference: payment.reference,
+                    notes: payment.notes,
+                    paidAt: payment.paidAt,
+                    createdAt: payment.createdAt,
+                  ))
+              .toList(growable: false),
+        );
+      }).toList(growable: false),
+    );
+  }
+
+  String _sourceRetailReference(String visibleReference) =>
+      _rawRetailReferencesByToken[visibleReference] ?? visibleReference;
 
   Future<void> refresh() async {
     final source = _source;
@@ -184,7 +254,7 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
     try {
       final snapshot = await source.refresh(_branchId);
       if (!mounted) return;
-      state = FinanceHubState(snapshot: snapshot);
+      state = FinanceHubState(snapshot: _visibleSnapshot(snapshot));
     } catch (_) {
       if (!mounted) return;
       state = state.copyWith(
@@ -231,7 +301,16 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
   Future<void> recordRetailCollection(
       ReceivableCollectionRequest request) async {
     _validateCollection(request);
-    await _requireSource().recordRetailCollection(request);
+    await _requireSource().recordRetailCollection(
+      ReceivableCollectionRequest(
+        receivableId: _sourceRetailReference(request.receivableId),
+        branchId: request.branchId,
+        amount: request.amount,
+        method: request.method,
+        reference: request.reference,
+        offlineId: request.offlineId,
+      ),
+    );
     await refresh();
   }
 
@@ -255,7 +334,20 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
       throw const FinanceFormException(
           'Enter a valid amount greater than zero');
     }
-    await _requireSource().recordRetailBulkCollection(request);
+    await _requireSource().recordRetailBulkCollection(
+      BulkCollectionRequest(
+        branchId: request.branchId,
+        allocations: request.allocations
+            .map((allocation) => ReceivableAllocation(
+                  receivableId: _sourceRetailReference(allocation.receivableId),
+                  amount: allocation.amount,
+                ))
+            .toList(growable: false),
+        method: request.method,
+        reference: request.reference,
+        offlineId: request.offlineId,
+      ),
+    );
     await refresh();
   }
 
@@ -486,9 +578,13 @@ class _LiveFinanceHubDataSource implements FinanceHubDataSource {
 /// Peer-shop ledgers and Paystack collections require shared online services,
 /// so the local screen only exposes supplier and customer ledgers.
 class _LocalFinanceHubDataSource implements FinanceHubDataSource {
-  _LocalFinanceHubDataSource(this._database);
+  _LocalFinanceHubDataSource(
+    this._database, {
+    required this.canViewCustomerDetails,
+  });
 
   final AppDatabase _database;
+  final bool canViewCustomerDetails;
 
   @override
   FinanceSnapshot? loadCachedSnapshot(String tenantId, String branchId) => null;
@@ -541,7 +637,7 @@ class _LocalFinanceHubDataSource implements FinanceHubDataSource {
         saleId: row['id'] as String,
         receiptNumber: null,
         customerId: row['id'] as String,
-        customerName: row['name'] as String,
+        customerName: canViewCustomerDetails ? row['name'] as String? : null,
         originalAmount: (row['originalAmount'] as num).toDouble(),
         outstandingAmount: balance,
         dueDate: _localDate(row['dueDate']),

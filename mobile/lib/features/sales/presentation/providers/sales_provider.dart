@@ -4,9 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
-import '../../../../core/auth/app_roles.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 /// Name printed at the top of a receipt: the business, plus the branch when it
 /// differs and the line still fits a 58mm (32 character) printout. Without this
@@ -127,10 +127,55 @@ double _receiptAmount(Object? value) {
   return amount != null && amount.isFinite ? amount : 0;
 }
 
-Map<String, dynamic> _normalizeRemoteReceipt(Map<String, dynamic> response) {
+bool _containsCustomerData(Object? value) {
+  if (value is Map) {
+    for (final entry in value.entries) {
+      if (entry.key.toString().toLowerCase().startsWith('customer') &&
+          entry.value != null) {
+        return true;
+      }
+      if (_containsCustomerData(entry.value)) return true;
+    }
+  } else if (value is Iterable) {
+    return value.any(_containsCustomerData);
+  }
+  return false;
+}
+
+Object? _removeCustomerFields(Object? value) {
+  if (value is Map) {
+    return <String, dynamic>{
+      for (final entry in value.entries)
+        if (!entry.key.toString().toLowerCase().startsWith('customer'))
+          entry.key.toString(): _removeCustomerFields(entry.value),
+    };
+  }
+  if (value is List) {
+    return value.map(_removeCustomerFields).toList(growable: false);
+  }
+  return value;
+}
+
+Map<String, dynamic> receiptForCustomerVisibility(
+  Map<String, dynamic> receipt, {
+  required bool canViewCustomerDetails,
+}) {
+  if (canViewCustomerDetails) return Map<String, dynamic>.from(receipt);
+  return Map<String, dynamic>.from(_removeCustomerFields(receipt) as Map);
+}
+
+Map<String, dynamic> _normalizeRemoteReceipt(
+  Map<String, dynamic> response, {
+  required bool canViewCustomerDetails,
+}) {
   final payload = response['data'] is Map
       ? Map<String, dynamic>.from(response['data'] as Map)
       : response;
+  final visiblePayload = receiptForCustomerVisibility(
+    payload,
+    canViewCustomerDetails: canViewCustomerDetails,
+  );
+  final hasCustomer = _containsCustomerData(payload);
   final total = _receiptAmount(payload['total'] ?? payload['totalAmount']);
   final paid = _receiptAmount(payload['paidAmount']);
   final change = _receiptAmount(payload['changeAmount']);
@@ -171,7 +216,7 @@ Map<String, dynamic> _normalizeRemoteReceipt(Map<String, dynamic> response) {
       : const <String, dynamic>{};
 
   return {
-    ...payload,
+    ...visiblePayload,
     'subtotal': payload['subtotal'] ?? 0,
     'discount': payload['discount'] ?? payload['discountAmount'] ?? 0,
     'tax': payload['tax'] ?? payload['taxAmount'] ?? 0,
@@ -180,8 +225,10 @@ Map<String, dynamic> _normalizeRemoteReceipt(Map<String, dynamic> response) {
     'branchAddress': payload['branchAddress'] ?? branch['address'],
     'branchPhone': payload['branchPhone'] ?? branch['phone'],
     'cashierName': payload['cashierName'] ?? payload['userName'],
-    'customerName': payload['customerName'],
-    'customerPhone': payload['customerPhone'],
+    'hasCustomer': hasCustomer,
+    'linkedCustomerDetailsHidden': hasCustomer && !canViewCustomerDetails,
+    if (canViewCustomerDetails) 'customerName': payload['customerName'],
+    if (canViewCustomerDetails) 'customerPhone': payload['customerPhone'],
     'paymentMethod': method,
     'paymentTenders': tenders,
     'creditAmountAtSale': creditAmountAtSale,
@@ -196,6 +243,8 @@ final receiptProvider = StreamProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, saleId) async* {
   final database = getIt<AppDatabase>();
   final auth = getIt<AuthService>();
+  final permissions = ref.watch(permissionsProvider);
+  final canViewCustomerDetails = permissions.canSeeCustomers;
   final sale = await database.getPendingSaleById(saleId);
 
   if (sale == null) {
@@ -203,13 +252,13 @@ final receiptProvider = StreamProvider.autoDispose
       throw StateError('This receipt is not saved on this device.');
     }
     // A remote sale from another device has no local row to watch.
-    yield _normalizeRemoteReceipt(await getIt<ApiClient>().getSale(saleId));
+    yield _normalizeRemoteReceipt(
+      await getIt<ApiClient>().getSale(saleId),
+      canViewCustomerDetails: canViewCustomerDetails,
+    );
     return;
   }
 
-  final permissions = RolePermissions(
-    auth.currentUser?['permissions'] as List<dynamic>?,
-  );
   final isOwnSale = sale.cashierId == auth.userId;
 
   if (!permissions.canMakeSales && !permissions.has('sales.view')) {
@@ -223,7 +272,10 @@ final receiptProvider = StreamProvider.autoDispose
       // sale is visible to this cashier. A device-only workspace has no
       // remote receipt endpoint: its saved database is the source of truth.
       if (!auth.isLocalWorkspace) {
-        yield _normalizeRemoteReceipt(await getIt<ApiClient>().getSale(saleId));
+        yield _normalizeRemoteReceipt(
+          await getIt<ApiClient>().getSale(saleId),
+          canViewCustomerDetails: canViewCustomerDetails,
+        );
         return;
       }
     } else {
@@ -234,7 +286,7 @@ final receiptProvider = StreamProvider.autoDispose
   await for (final currentSale in database.watchPendingSaleById(saleId)) {
     if (currentSale == null) return;
     final items = await database.getSaleItems(saleId);
-    final customer = currentSale.customerId == null
+    final customer = !canViewCustomerDetails || currentSale.customerId == null
         ? null
         : await database.getCustomer(currentSale.customerId!);
     final cashTender = await database.getSaleCashTender(saleId);
@@ -247,6 +299,9 @@ final receiptProvider = StreamProvider.autoDispose
     yield {
       'id': currentSale.id,
       'receiptNumber': currentSale.receiptNumber,
+      'hasCustomer': currentSale.customerId != null,
+      'linkedCustomerDetailsHidden':
+          currentSale.customerId != null && !canViewCustomerDetails,
       'subtotal': currentSale.subtotal,
       'discount': currentSale.discount,
       'tax': currentSale.tax,
@@ -260,8 +315,8 @@ final receiptProvider = StreamProvider.autoDispose
       if (cashTender != null) 'cashGiven': cashTender['cashGiven'],
       if (cashTender != null) 'changeGiven': cashTender['change'],
       'cashierName': auth.currentUser?['name'],
-      'customerName': customer?['name'],
-      'customerPhone': customer?['phone'],
+      if (canViewCustomerDetails) 'customerName': customer?['name'],
+      if (canViewCustomerDetails) 'customerPhone': customer?['phone'],
       'status': currentSale.status,
       // Keep cloud delivery state visible on the receipt so a device-only
       // sale cannot be mistaken for one already synced across the workspace.

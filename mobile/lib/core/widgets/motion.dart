@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
+import '../desktop/desktop_layout.dart';
 import '../theme/design_system.dart';
 
 /// ═══════════════════════════════════════════════════════════════
@@ -14,7 +15,12 @@ import '../theme/design_system.dart';
 /// True when the device has "remove animations" (a11y) enabled. Gate all
 /// non-essential motion behind this; see [animateEntrance] and
 /// [StaggeredItem] for the two canonical patterns.
-bool reducedMotion(BuildContext c) => MediaQuery.disableAnimationsOf(c);
+///
+/// A computer window counts as "reduced": entrance fades, pops and staggers are
+/// a phone habit, and on a desktop they make every page load feel like a
+/// slideshow. Content just appears.
+bool reducedMotion(BuildContext c) =>
+    MediaQuery.disableAnimationsOf(c) || DesktopLayout.wantsShell(c);
 
 /// A restrained depth-and-fade entrance for high-attention identity controls.
 /// The small perspective turn gives login and biometric surfaces a tactile

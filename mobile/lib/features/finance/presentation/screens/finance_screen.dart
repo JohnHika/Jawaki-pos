@@ -7,6 +7,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../../core/desktop/adaptive_overlays.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../../core/services/auth_service.dart';
@@ -25,6 +28,9 @@ import '../../domain/bulk_allocation.dart';
 import '../widgets/pay_suppliers_sheet.dart';
 import '../../domain/collections_ledger.dart';
 import '../../domain/finance_models.dart';
+import '../../../catalog/presentation/desktop/desktop_button_styles.dart';
+import '../desktop/desktop_finance_hub_view.dart';
+import '../desktop/desktop_finance_tabs.dart';
 import '../providers/finance_hub_controller.dart';
 import 'invoice_review_screen.dart';
 import 'shop_ledger_screen.dart';
@@ -80,27 +86,12 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
   /// disposing a TextEditingController right after awaiting it crashes with
   /// "used after being disposed". Awaiting the route's `completed` future
   /// (which fires only after the transition ends) closes that window.
-  Future<T?> _showSheetUntilFullyClosed<T>(WidgetBuilder builder) async {
-    final navigator = Navigator.of(context, rootNavigator: true);
-    final localizations = MaterialLocalizations.of(context);
-    final route = ModalBottomSheetRoute<T>(
-      builder: builder,
-      capturedThemes:
-          InheritedTheme.capture(from: context, to: navigator.context),
-      isScrollControlled: true,
-      showDragHandle: true,
-      barrierLabel: localizations.scrimLabel,
-      barrierOnTapHint:
-          localizations.scrimOnTapHint(localizations.bottomSheetLabel),
-      modalBarrierColor: Theme.of(context).bottomSheetTheme.modalBarrierColor,
-    );
-    final result = await navigator.push(route);
-    await route.completed;
-    return result;
-  }
+  Future<T?> _showSheetUntilFullyClosed<T>(WidgetBuilder builder) =>
+      showAdaptiveSheetUntilClosed<T>(context: context, builder: builder);
 
   @override
   Widget build(BuildContext context) {
+    final desktop = context.inDesktopShell;
     final hub = ref.watch(financeHubProvider);
     final controller = ref.read(financeHubProvider.notifier);
     final permissions = ref.watch(permissionsProvider);
@@ -108,65 +99,82 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final snapshot = hub.snapshot;
 
+    final pageTitle = businessLayout.actionLabel('/finance', 'Finance');
+
     return Scaffold(
-      appBar: BrandedAppBar(
-        title: businessLayout.actionLabel('/finance', 'Finance'),
-        showBackButton: false,
-        actions: <Widget>[
-          if (permissions.canViewCashFlow)
-            _appBarAction(
-              tooltip: 'Cash Flow',
-              icon: const Icon(Icons.point_of_sale_rounded),
-              onPressed: () => context.push('/cash-flow'),
+      appBar: desktop
+          ? null
+          : BrandedAppBar(
+              title: pageTitle,
+              showBackButton: false,
+              actions: <Widget>[
+                if (permissions.canViewCashFlow)
+                  _appBarAction(
+                    tooltip: 'Cash Flow',
+                    icon: const Icon(Icons.point_of_sale_rounded),
+                    onPressed: () => context.push('/cash-flow'),
+                  ),
+                if (permissions.canRecordRestock)
+                  _appBarAction(
+                    tooltip: _isScanning ? 'Scanning receipt' : 'Scan Receipt',
+                    icon: _isScanning
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.document_scanner_rounded),
+                    onPressed: _isScanning ? null : _pickAndScanReceipt,
+                  ),
+                _appBarAction(
+                  tooltip: 'Refresh Finance',
+                  icon: const Icon(Icons.refresh_rounded),
+                  onPressed: hub.isRefreshing ? null : controller.refresh,
+                ),
+              ],
             ),
-          if (permissions.canRecordRestock)
-            _appBarAction(
-              tooltip: _isScanning ? 'Scanning receipt' : 'Scan Receipt',
-              icon: _isScanning
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.document_scanner_rounded),
-              onPressed: _isScanning ? null : _pickAndScanReceipt,
-            ),
-          _appBarAction(
-            tooltip: 'Refresh Finance',
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: hub.isRefreshing ? null : controller.refresh,
-          ),
-        ],
-      ),
       body: Stack(
         children: <Widget>[
           SafeArea(
             top: false,
             child: snapshot == null
-                ? _NoSnapshotState(
-                    state: hub,
-                    onRetry: controller.refresh,
-                    localWorkspace: isLocalWorkspace,
-                  )
-                : Column(
-                    children: <Widget>[
-                      _FinanceStatusBar(
+                ? (desktop
+                    ? _desktopNoSnapshot(hub, controller, isLocalWorkspace)
+                    : _NoSnapshotState(
                         state: hub,
                         onRetry: controller.refresh,
                         localWorkspace: isLocalWorkspace,
+                      ))
+                : desktop
+                    ? _desktopHub(
+                        context,
+                        hub: hub,
+                        snapshot: snapshot,
+                        controller: controller,
+                        permissions: permissions,
+                        pageTitle: pageTitle,
+                        isLocalWorkspace: isLocalWorkspace,
+                      )
+                    : Column(
+                        children: <Widget>[
+                          _FinanceStatusBar(
+                            state: hub,
+                            onRetry: controller.refresh,
+                            localWorkspace: isLocalWorkspace,
+                          ),
+                          _FinanceTabs(
+                              index: _tab,
+                              isLocalWorkspace: isLocalWorkspace,
+                              onChanged: (index) =>
+                                  setState(() => _tab = index)),
+                          Expanded(
+                              child: SlideSwitcher(
+                                  from: SlideFrom.right,
+                                  child: KeyedSubtree(
+                                      key: ValueKey<int>(_tab),
+                                      child: _tabBody(snapshot, controller,
+                                          permissions, isLocalWorkspace)))),
+                        ],
                       ),
-                      _FinanceTabs(
-                          index: _tab,
-                          isLocalWorkspace: isLocalWorkspace,
-                          onChanged: (index) => setState(() => _tab = index)),
-                      Expanded(
-                          child: SlideSwitcher(
-                              from: SlideFrom.right,
-                              child: KeyedSubtree(
-                                  key: ValueKey<int>(_tab),
-                                  child: _tabBody(snapshot, controller,
-                                      permissions, isLocalWorkspace)))),
-                    ],
-                  ),
           ),
           if (_isScanning)
             Positioned.fill(
@@ -177,11 +185,108 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     );
   }
 
+  /// The Finance hub as a computer page: figures, one table per ledger and a
+  /// side panel for the selected record. The sheets that record money open as
+  /// dialogs here (see [_showSheetUntilFullyClosed]).
+  Widget _desktopHub(
+    BuildContext context, {
+    required FinanceHubState hub,
+    required FinanceSnapshot snapshot,
+    required FinanceHubController controller,
+    required RolePermissions permissions,
+    required String pageTitle,
+    required bool isLocalWorkspace,
+  }) {
+    final savedAt = snapshot.savedAt;
+    final status = isLocalWorkspace
+        ? 'On this device'
+        : hub.isRefreshing
+            ? 'Refreshing'
+            : savedAt == null
+                ? 'Saved figures'
+                : 'Saved ${DateFormat('d MMM, HH:mm').format(savedAt.toLocal())}';
+    return DesktopFinanceHubView(
+      title: pageTitle,
+      subtitle: 'Payables, customer credit and shop debts · $status',
+      headerBottom: DesktopFinanceTabs(
+        current: FinanceSection.overview,
+        available: DesktopFinanceTabs.forRole(
+          canViewFinance: permissions.canViewFinance,
+          canViewCashFlow: permissions.canViewCashFlow,
+        ),
+      ),
+      snapshot: snapshot,
+      localWorkspace: isLocalWorkspace,
+      canRecordRestock: permissions.canRecordRestock,
+      canRecordSupplierPayment: permissions.canRecordSupplierPayment,
+      canManageReceivables: permissions.canManageReceivables,
+      canViewCustomerDetails: permissions.canSeeCustomers,
+      refreshing: hub.isRefreshing,
+      scanning: _isScanning,
+      errorMessage: hub.errorMessage,
+      onRefresh: controller.refresh,
+      onRetry: controller.refresh,
+      onScan: _isScanning ? null : _pickAndScanReceipt,
+      onManualInvoice:
+          permissions.canRecordRestock ? _showManualInvoiceDialog : null,
+      onOpenPayable: (item) => _showSupplierDetailsSheet(
+        item,
+        controller,
+        canRecordPayment: permissions.canRecordSupplierPayment,
+      ),
+      onPaySeveral: permissions.canRecordSupplierPayment
+          ? () => _showPaySuppliers(snapshot, controller)
+          : null,
+      onCollectRetail: (item) => _collectRetail(
+        snapshot,
+        controller,
+        item,
+      ),
+      onCollectForCustomer: () => _showBulkCollectionSheet(
+        snapshot,
+        controller,
+        canViewCustomerDetails: permissions.canSeeCustomers,
+      ),
+      onOpenShop: (shop) => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ShopLedgerScreen(shopId: shop.id),
+        ),
+      ),
+      onAddShop: () => _showPeerShopSheet(controller),
+      onAddDebt: () => _showPeerReceivableSheet(snapshot, controller),
+      onCollectPeer: (item) => _collectPeer(snapshot, controller, item),
+    );
+  }
+
+  Widget _desktopNoSnapshot(
+    FinanceHubState hub,
+    FinanceHubController controller,
+    bool isLocalWorkspace,
+  ) {
+    if (hub.isRefreshing) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return DesktopEmptyState(
+      icon: isLocalWorkspace ? Icons.storage_rounded : Icons.cloud_off_rounded,
+      title: "Couldn't load Finance",
+      message: hub.errorMessage ?? 'Check your connection and try again.',
+      action: OutlinedButton(
+        style: desktopSecondaryButton(context),
+        onPressed: controller.refresh,
+        child: const Text('Try again'),
+      ),
+    );
+  }
+
   Widget _tabBody(FinanceSnapshot snapshot, FinanceHubController controller,
       RolePermissions permissions, bool isLocalWorkspace) {
     if (isLocalWorkspace) {
       return switch (_tab) {
-        0 => _OverviewTab(snapshot: snapshot, localWorkspace: true),
+        0 => _OverviewTab(
+            snapshot: snapshot,
+            localWorkspace: true,
+            canViewCustomerDetails: permissions.canSeeCustomers,
+          ),
         1 => _SupplierTab(
             payables: snapshot.payables,
             canCreateInvoices: permissions.canRecordRestock,
@@ -200,36 +305,25 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         _ => _RetailTab(
             receivables: snapshot.retailReceivables,
             canManageReceivables: permissions.canManageReceivables,
-            onCollectForCustomer: () =>
-                _showBulkCollectionSheet(snapshot, controller),
-            onCollect: (item) => _showReceivableActions(
-              title: 'Collect from ${item.customerName ?? 'customer'}',
-              amount: item.outstandingAmount,
-              receivableId: item.id,
-              receivableType: 'retail',
-              branchId: snapshot.branchId,
-              controller: controller,
-              onRecordReceived: () => _showCollectionSheet(
-                title: 'Record payment from ${item.customerName ?? 'customer'}',
-                amount: item.outstandingAmount,
-                onSave: (amount, method, reference, offlineId) =>
-                    controller.recordRetailCollection(
-                  ReceivableCollectionRequest(
-                    receivableId: item.id,
-                    branchId: snapshot.branchId,
-                    amount: amount,
-                    method: method,
-                    reference: reference,
-                    offlineId: offlineId,
-                  ),
-                ),
-              ),
+            canViewCustomerDetails: permissions.canSeeCustomers,
+            onCollectForCustomer: () => _showBulkCollectionSheet(
+              snapshot,
+              controller,
+              canViewCustomerDetails: permissions.canSeeCustomers,
+            ),
+            onCollect: (item) => _collectRetail(
+              snapshot,
+              controller,
+              item,
             ),
           ),
       };
     }
     return switch (_tab) {
-      0 => _OverviewTab(snapshot: snapshot),
+      0 => _OverviewTab(
+          snapshot: snapshot,
+          canViewCustomerDetails: permissions.canSeeCustomers,
+        ),
       1 => _SupplierTab(
           payables: snapshot.payables,
           canCreateInvoices: permissions.canRecordRestock,
@@ -248,30 +342,16 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
       2 => _RetailTab(
           receivables: snapshot.retailReceivables,
           canManageReceivables: permissions.canManageReceivables,
-          onCollectForCustomer: () =>
-              _showBulkCollectionSheet(snapshot, controller),
-          onCollect: (item) => _showReceivableActions(
-            title: 'Collect from ${item.customerName ?? 'customer'}',
-            amount: item.outstandingAmount,
-            receivableId: item.id,
-            receivableType: 'retail',
-            branchId: snapshot.branchId,
-            controller: controller,
-            onRecordReceived: () => _showCollectionSheet(
-              title: 'Record payment from ${item.customerName ?? 'customer'}',
-              amount: item.outstandingAmount,
-              onSave: (amount, method, reference, offlineId) =>
-                  controller.recordRetailCollection(
-                ReceivableCollectionRequest(
-                  receivableId: item.id,
-                  branchId: snapshot.branchId,
-                  amount: amount,
-                  method: method,
-                  reference: reference,
-                  offlineId: offlineId,
-                ),
-              ),
-            ),
+          canViewCustomerDetails: permissions.canSeeCustomers,
+          onCollectForCustomer: () => _showBulkCollectionSheet(
+            snapshot,
+            controller,
+            canViewCustomerDetails: permissions.canSeeCustomers,
+          ),
+          onCollect: (item) => _collectRetail(
+            snapshot,
+            controller,
+            item,
           ),
         ),
       _ => _PeerTab(
@@ -282,32 +362,65 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                   builder: (_) => ShopLedgerScreen(shopId: shop.id))),
           onAddShop: () => _showPeerShopSheet(controller),
           onAddReceivable: () => _showPeerReceivableSheet(snapshot, controller),
-          onCollect: (item) => _showReceivableActions(
-            title: 'Collect from ${item.debtor.name}',
-            amount: item.outstandingAmount,
-            receivableId: item.id,
-            receivableType: 'peer',
-            branchId: snapshot.branchId,
-            controller: controller,
-            onRecordReceived: () => _showCollectionSheet(
-              title: 'Record payment from ${item.debtor.name}',
-              amount: item.outstandingAmount,
-              onSave: (amount, method, reference, offlineId) =>
-                  controller.recordPeerCollection(
-                ReceivableCollectionRequest(
-                  receivableId: item.id,
-                  branchId: snapshot.branchId,
-                  amount: amount,
-                  method: method,
-                  reference: reference,
-                  offlineId: offlineId,
-                ),
-              ),
-            ),
-          ),
+          onCollect: (item) => _collectPeer(snapshot, controller, item),
         ),
     };
   }
+
+  Future<void> _collectRetail(
+    FinanceSnapshot snapshot,
+    FinanceHubController controller,
+    RetailReceivable item,
+  ) =>
+      _showReceivableActions(
+        title: 'Collect from customer',
+        amount: item.outstandingAmount,
+        receivableId: item.id,
+        receivableType: 'retail',
+        branchId: snapshot.branchId,
+        controller: controller,
+        onRecordReceived: () => _showCollectionSheet(
+          title: 'Record payment from customer',
+          amount: item.outstandingAmount,
+          onSave: (amount, method, reference, offlineId) =>
+              controller.recordRetailCollection(
+            ReceivableCollectionRequest(
+              receivableId: item.id,
+              branchId: snapshot.branchId,
+              amount: amount,
+              method: method,
+              reference: reference,
+              offlineId: offlineId,
+            ),
+          ),
+        ),
+      );
+
+  Future<void> _collectPeer(FinanceSnapshot snapshot,
+          FinanceHubController controller, PeerReceivable item) =>
+      _showReceivableActions(
+        title: 'Collect from ${item.debtor.name}',
+        amount: item.outstandingAmount,
+        receivableId: item.id,
+        receivableType: 'peer',
+        branchId: snapshot.branchId,
+        controller: controller,
+        onRecordReceived: () => _showCollectionSheet(
+          title: 'Record payment from ${item.debtor.name}',
+          amount: item.outstandingAmount,
+          onSave: (amount, method, reference, offlineId) =>
+              controller.recordPeerCollection(
+            ReceivableCollectionRequest(
+              receivableId: item.id,
+              branchId: snapshot.branchId,
+              amount: amount,
+              method: method,
+              reference: reference,
+              offlineId: offlineId,
+            ),
+          ),
+        ),
+      );
 
   Widget _appBarAction(
           {required String tooltip,
@@ -366,22 +479,24 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final source = !DeviceFeatures.cameraCapture
         ? ImageSource.gallery
         : await showModalBottomSheet<ImageSource>(
-      useRootNavigator: true,
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
-          ListTile(
-              leading: const Icon(Icons.photo_camera_rounded),
-              title: const Text('Take receipt photo'),
-              onTap: () => Navigator.pop(sheetContext, ImageSource.camera)),
-          ListTile(
-              leading: const Icon(Icons.photo_library_rounded),
-              title: const Text('Choose receipt image'),
-              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery)),
-        ]),
-      ),
-    );
+            useRootNavigator: true,
+            context: context,
+            showDragHandle: true,
+            builder: (sheetContext) => SafeArea(
+              child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+                ListTile(
+                    leading: const Icon(Icons.photo_camera_rounded),
+                    title: const Text('Take receipt photo'),
+                    onTap: () =>
+                        Navigator.pop(sheetContext, ImageSource.camera)),
+                ListTile(
+                    leading: const Icon(Icons.photo_library_rounded),
+                    title: const Text('Choose receipt image'),
+                    onTap: () =>
+                        Navigator.pop(sheetContext, ImageSource.gallery)),
+              ]),
+            ),
+          );
     if (source == null || !mounted) return;
     final image = await _picker.pickImage(
         source: source, imageQuality: 88, maxWidth: 1600);
@@ -727,10 +842,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     required FinanceHubController controller,
     required Future<void> Function() onRecordReceived,
   }) async {
-    final choice = await showModalBottomSheet<int>(
-      useRootNavigator: true,
+    final choice = await showAdaptiveSheet<int>(
       context: context,
-      showDragHandle: true,
       builder: (sheetContext) => _SheetFrame(
         title: title,
         children: [
@@ -1259,14 +1372,21 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
   /// One payment from a customer, split across their open credits (oldest due first).
   Future<void> _showBulkCollectionSheet(
     FinanceSnapshot snapshot,
-    FinanceHubController controller,
-  ) async {
+    FinanceHubController controller, {
+    required bool canViewCustomerDetails,
+  }) async {
     final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final groups = <String, List<RetailReceivable>>{};
     for (final item in snapshot.retailReceivables) {
       if (item.outstandingAmount <= 0) continue;
       groups
-          .putIfAbsent(item.customerId ?? item.customerName ?? '', () => [])
+          .putIfAbsent(
+            item.customerId ??
+                item.collectionGroupRef ??
+                (canViewCustomerDetails ? item.customerName : item.id) ??
+                '',
+            () => [],
+          )
           .add(item);
     }
     if (groups.isEmpty) return;
@@ -1289,8 +1409,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           final items = groups[selectedKey]!;
           final amount = double.tryParse(amountController.text) ?? 0;
           final plan = allocateOldestFirst(items, amount);
-          String nameOf(List<RetailReceivable> list) =>
-              list.first.customerName ?? 'No customer';
+          String nameOf(List<RetailReceivable> _) => 'Customer details hidden';
           return _SheetFrame(
             title: 'Collect for a customer',
             children: <Widget>[
@@ -1571,9 +1690,14 @@ class _FinanceTabs extends StatelessWidget {
 }
 
 class _OverviewTab extends StatelessWidget {
-  const _OverviewTab({required this.snapshot, this.localWorkspace = false});
+  const _OverviewTab({
+    required this.snapshot,
+    this.localWorkspace = false,
+    this.canViewCustomerDetails = false,
+  });
   final FinanceSnapshot snapshot;
   final bool localWorkspace;
+  final bool canViewCustomerDetails;
 
   @override
   Widget build(BuildContext context) {
@@ -1651,7 +1775,10 @@ class _OverviewTab extends StatelessWidget {
         const SizedBox(height: DesignSpacing.sm),
         _CountCard(overdue: overdue),
         const SizedBox(height: DesignSpacing.lg),
-        _CollectionsFeed(snapshot: snapshot),
+        _CollectionsFeed(
+          snapshot: snapshot,
+          canViewCustomerDetails: canViewCustomerDetails,
+        ),
       ],
     );
   }
@@ -1660,8 +1787,12 @@ class _OverviewTab extends StatelessWidget {
 /// "Collected today" plus the latest money received from customers and shops,
 /// so the owner can see what came in and when without opening each ledger.
 class _CollectionsFeed extends StatelessWidget {
-  const _CollectionsFeed({required this.snapshot});
+  const _CollectionsFeed({
+    required this.snapshot,
+    required this.canViewCustomerDetails,
+  });
   final FinanceSnapshot snapshot;
+  final bool canViewCustomerDetails;
 
   @override
   Widget build(BuildContext context) {
@@ -1732,7 +1863,10 @@ class _CollectionsFeed extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text(recent[i].who,
+                          Text(
+                              recent[i].isShop || canViewCustomerDetails
+                                  ? recent[i].who
+                                  : 'Customer details hidden',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.titleSmall),
@@ -1860,11 +1994,13 @@ class _RetailTab extends StatelessWidget {
   const _RetailTab({
     required this.receivables,
     required this.canManageReceivables,
+    required this.canViewCustomerDetails,
     required this.onCollect,
     required this.onCollectForCustomer,
   });
   final List<RetailReceivable> receivables;
   final bool canManageReceivables;
+  final bool canViewCustomerDetails;
   final ValueChanged<RetailReceivable> onCollect;
   final VoidCallback onCollectForCustomer;
 
@@ -1887,17 +2023,22 @@ class _RetailTab extends StatelessWidget {
             ),
           ),
         if (canManageReceivables) const SizedBox(height: DesignSpacing.md),
-        ...open.map((item) => _LedgerCard(
-              title: item.receiptNumber ?? item.customerName ?? 'Customer',
-              subtitle: item.receiptNumber == null
-                  ? 'Owed from credit sales'
-                  : item.customerName ?? 'Customer',
-              value: item.outstandingAmount,
-              dueDate: item.dueDate,
-              icon: Icons.person_rounded,
-              action: canManageReceivables ? 'Collect' : null,
-              onAction: canManageReceivables ? () => onCollect(item) : null,
-            )),
+        ...open.map((item) {
+          final customerLabel = canViewCustomerDetails
+              ? item.customerName ?? 'Customer'
+              : 'Customer details hidden';
+          return _LedgerCard(
+            title: item.receiptNumber ?? customerLabel,
+            subtitle: item.receiptNumber == null
+                ? 'Owed from credit sales'
+                : customerLabel,
+            value: item.outstandingAmount,
+            dueDate: item.dueDate,
+            icon: Icons.person_rounded,
+            action: canManageReceivables ? 'Collect' : null,
+            onAction: canManageReceivables ? () => onCollect(item) : null,
+          );
+        }),
       ],
     ]);
   }
@@ -2337,7 +2478,22 @@ class _SheetFrame extends StatelessWidget {
   final String title;
   final List<Widget> children;
   @override
-  Widget build(BuildContext context) => SafeArea(
+  Widget build(BuildContext context) {
+    if (DesktopLayout.wantsShell(context)) {
+      // A computer shows it as a dialog with the shared frame and no stagger.
+      return DesktopSheetFrame(
+        title: title,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: children,
+        ),
+      );
+    }
+    return _phoneBody(context);
+  }
+
+  Widget _phoneBody(BuildContext context) => SafeArea(
           child: Padding(
         padding: EdgeInsets.fromLTRB(
             DesignSpacing.xl,

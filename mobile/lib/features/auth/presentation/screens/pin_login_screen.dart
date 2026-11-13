@@ -4,11 +4,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:axon_pos/core/desktop/desktop_layout.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/features/auth/presentation/desktop/pin_login_desktop_view.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
 
@@ -397,11 +399,61 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
     });
   }
 
+  /// Computer window: split layout with a keypad that also answers the
+  /// physical keyboard. Same state and sign-in calls as the phone layout.
+  Widget _buildDesktop(bool pickingPerson) {
+    final authState = ref.watch(authControllerProvider);
+    final isLoading = authState.isLoading || _pinProfileLoading;
+    final selected = _selected;
+    final hasLocalWorkspace = getIt<StorageService>().hasLocalWorkspace();
+    final hint = _pinProfileLoading
+        ? 'Getting the keypad ready'
+        : _hasActiveLocalTeam
+            ? 'Enter your own 4 to 6 digit PIN'
+            : _hasLocalPin == true && _configuredPinLength != null
+                ? 'Enter your $_configuredPinLength digit PIN'
+                : 'Enter your 4 to 6 digit PIN';
+    PinDesktopPerson? asDesktop(_Person? person) => person == null
+        ? null
+        : PinDesktopPerson(id: person.id, name: person.name, role: person.role);
+    return PinLoginDesktopView(
+      companyName: _workspaceIdentity.companyName,
+      branchName: _workspaceIdentity.branchName,
+      logoUrl: _workspaceIdentity.logoUrl,
+      people: [for (final person in _people) asDesktop(person)!],
+      picking: pickingPerson,
+      selected: asDesktop(selected),
+      pinLength: _visiblePinLength,
+      filled: _pin.length,
+      showError: _showError,
+      errorMessage: _errorMessage,
+      loading: authState.isLoading,
+      keypadEnabled: !isLoading,
+      hint: hint,
+      actionLabel: _isLockedSession ? 'Unlock' : 'Sign in',
+      canSubmit: _isPinReady && !_pinProfileLoading,
+      localWorkspace: hasLocalWorkspace,
+      appVersion: _appVersion.isEmpty ? null : _appVersion,
+      onDigit: _onNumberPressed,
+      onBackspace: _onBackspacePressed,
+      onClear: _onClearPressed,
+      onSubmit: _submitPin,
+      onChoosePerson: (person) => _choosePerson(
+        person == null
+            ? null
+            : _people.firstWhere((candidate) => candidate.id == person.id),
+      ),
+      onBiometric: _biometricAvailable ? _handleBiometricLogin : null,
+      onUsePassword: hasLocalWorkspace ? null : _useEmailInstead,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = SignInPalette.of(context);
     final pickingPerson =
         _hasActiveLocalTeam && _people.length > 1 && _selected == null;
+    if (DesktopLayout.wantsShell(context)) return _buildDesktop(pickingPerson);
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(

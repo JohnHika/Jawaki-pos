@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_table.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion.dart';
@@ -15,6 +18,7 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/utils/format.dart';
 import '../../domain/analytics_mapping.dart';
+import '../desktop/desktop_report_tabs.dart';
 
 class InventoryForecastingScreen extends ConsumerStatefulWidget {
   const InventoryForecastingScreen({super.key});
@@ -32,6 +36,8 @@ class _InventoryForecastingScreenState
   List<Map<String, dynamic>> _forecastData = [];
   bool _isLoading = true;
   bool _isUsingLocalSales = false;
+  String? _loadError;
+  String _desktopSearchQuery = '';
 
   @override
   void initState() {
@@ -40,7 +46,10 @@ class _InventoryForecastingScreenState
   }
 
   Future<void> _loadInventoryData() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
 
     try {
       final database = getIt<AppDatabase>();
@@ -114,7 +123,12 @@ class _InventoryForecastingScreenState
     } catch (e) {
       if (!kReleaseMode) debugPrint('Inventory forecast load error: $e');
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _loadError = getIt<AuthService>().isLocalWorkspace
+              ? "Couldn't read inventory and sales saved on this computer. Refresh and try again."
+              : loadErrorSubtitle(e);
+        });
         showGlassSnackBar(
           context,
           getIt<AuthService>().isLocalWorkspace
@@ -161,18 +175,22 @@ class _InventoryForecastingScreenState
 
   @override
   Widget build(BuildContext context) {
+    final desktop = context.inDesktopShell;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (desktop) return _buildDesktopScreen(isDark);
+
+    final pageAppBar = BrandedAppBar(
+      title: 'Inventory Forecast',
+      actions: [
+        IconButton(
+          tooltip: 'Refresh',
+          icon: const Icon(Icons.refresh_rounded),
+          onPressed: _loadInventoryData,
+        ),
+      ],
+    );
     return Scaffold(
-      appBar: BrandedAppBar(
-        title: 'Inventory Forecast',
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: _loadInventoryData,
-          ),
-        ],
-      ),
+      appBar: pageAppBar,
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(color: DesignColors.brand))
@@ -180,6 +198,7 @@ class _InventoryForecastingScreenState
               onRefresh: _loadInventoryData,
               child: PageContainer(
                 withScroll: true,
+                maxWidth: desktop ? 1400 : 960,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -235,6 +254,365 @@ class _InventoryForecastingScreenState
             ),
     );
   }
+
+  Widget _buildDesktopScreen(bool isDark) => Scaffold(
+        appBar: null,
+        backgroundColor: context.desktop.panel,
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DesktopPageHeader(
+              title: 'Reports',
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+              bottom: DesktopReportTabs(
+                selected: DesktopReportKind.forecast,
+                onSelect: (kind) => openDesktopReport(context, kind),
+              ),
+              actions: [
+                IconButton(
+                  tooltip: 'Refresh forecast',
+                  icon: const Icon(Icons.refresh_rounded),
+                  onPressed: _loadInventoryData,
+                ),
+              ],
+            ),
+            Expanded(
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: DesignColors.brand,
+                      ),
+                    )
+                  : _loadError != null
+                      ? DesktopEmptyState(
+                          icon: Icons.cloud_off_rounded,
+                          title: "Couldn't load inventory trends",
+                          message: _loadError,
+                          action: OutlinedButton.icon(
+                            onPressed: _loadInventoryData,
+                            icon: const Icon(Icons.refresh_rounded, size: 16),
+                            label: const Text('Retry'),
+                          ),
+                        )
+                      : _buildDesktopForecastBody(isDark),
+            ),
+          ],
+        ),
+      );
+
+  Widget _buildDesktopForecastBody(bool isDark) => SingleChildScrollView(
+        physics: const ClampingScrollPhysics(),
+        child: DesktopContent(
+          maxWidth: DesktopTokens.contentMaxWidth,
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_isUsingLocalSales) ...[
+                _buildDesktopLocalSalesNotice(),
+                const SizedBox(height: 16),
+              ],
+              DesktopMetricStrip(
+                metrics: [
+                  DesktopMetric(
+                    label: 'Low stock',
+                    value: '${_lowStockItems.length}',
+                    hint: 'Needs attention',
+                  ),
+                  DesktopMetric(
+                    label: 'Fast movers',
+                    value: '${_fastMovingItems.length}',
+                    hint: 'This week',
+                  ),
+                  DesktopMetric(
+                    label: 'Slow movers',
+                    value: '${_slowMovingItems.length}',
+                    hint: 'This week',
+                  ),
+                  const DesktopMetric(
+                    label: 'Sales window',
+                    value: '7 days',
+                    hint: 'Historical actuals',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Inventory movement',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: context.desktop.text,
+                          ),
+                    ),
+                  ),
+                  DesktopSearchField(
+                    width: 280,
+                    hint: 'Search products or SKU',
+                    onChanged: (value) =>
+                        setState(() => _desktopSearchQuery = value),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _buildDesktopTwoColumn(
+                left: _buildDemandForecastChart(isDark),
+                right: _buildDesktopLowStockTable(),
+                leftFlex: 3,
+                rightFlex: 2,
+              ),
+              const SizedBox(height: 16),
+              _buildDesktopTwoColumn(
+                left: _buildDesktopMovementTable(
+                  title: 'Fast-moving items',
+                  subtitle: 'Highest unit sales this week',
+                  rows: _fastMovingItems,
+                  emptyIcon: Icons.trending_up_rounded,
+                  emptyTitle: 'No fast-moving items',
+                  emptyMessage: 'Products sold this week will appear here.',
+                ),
+                right: _buildDesktopMovementTable(
+                  title: 'Slow-moving items',
+                  subtitle: 'Lowest unit sales this week',
+                  rows: _slowMovingItems,
+                  emptyIcon: Icons.trending_down_rounded,
+                  emptyTitle: 'No slow-moving items',
+                  emptyMessage: 'Products with slower sales will appear here.',
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Widget _buildDesktopTwoColumn({
+    required Widget left,
+    required Widget right,
+    int leftFlex = 1,
+    int rightFlex = 1,
+  }) =>
+      LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 1000) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [left, const SizedBox(height: 16), right],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(flex: leftFlex, child: left),
+              const SizedBox(width: 16),
+              Expanded(flex: rightFlex, child: right),
+            ],
+          );
+        },
+      );
+
+  Widget _buildDesktopLowStockTable() {
+    final rows = _filterDesktopRows(_lowStockItems);
+    return _buildDesktopTablePanel(
+      title: 'Low stock',
+      subtitle: 'On hand compared with reorder level',
+      rows: rows,
+      rowId: (row) =>
+          row['id'] ?? row['productId'] ?? row['name'] ?? row.hashCode,
+      columns: [
+        DesktopColumn<Map<String, dynamic>>(
+          label: 'Product',
+          flex: 2,
+          minWidth: 120,
+          sortBy: (row) =>
+              '${row['name'] ?? row['productName'] ?? ''}'.toLowerCase(),
+          cell: (_, row) => DesktopCellText(
+            '${row['name'] ?? row['productName'] ?? 'Unknown'}',
+            strong: true,
+          ),
+        ),
+        DesktopColumn<Map<String, dynamic>>(
+          label: 'SKU',
+          width: 94,
+          minWidth: 80,
+          sortBy: (row) => '${row['sku'] ?? ''}'.toLowerCase(),
+          cell: (_, row) => DesktopCellText(
+            '${row['sku'] ?? '—'}',
+            muted: true,
+          ),
+        ),
+        DesktopColumn<Map<String, dynamic>>(
+          label: 'On hand',
+          width: 82,
+          numeric: true,
+          sortBy: (row) => _inventoryNumber(row['quantity']),
+          cell: (_, row) => DesktopCellText(
+            _formatInventoryCount(row['quantity']),
+            numeric: true,
+            strong: true,
+          ),
+        ),
+        DesktopColumn<Map<String, dynamic>>(
+          label: 'Reorder at',
+          width: 98,
+          numeric: true,
+          sortBy: (row) => _inventoryNumber(row['minStock']),
+          cell: (_, row) => DesktopCellText(
+            _formatInventoryCount(row['minStock']),
+            numeric: true,
+            muted: true,
+          ),
+        ),
+      ],
+      emptyIcon: Icons.inventory_2_outlined,
+      emptyTitle: _desktopSearchQuery.trim().isEmpty
+          ? 'No low stock items'
+          : 'No matching items',
+      emptyMessage: _desktopSearchQuery.trim().isEmpty
+          ? 'Items below their reorder level will appear here.'
+          : 'Try another product name or SKU.',
+    );
+  }
+
+  Widget _buildDesktopMovementTable({
+    required String title,
+    required String subtitle,
+    required List<Map<String, dynamic>> rows,
+    required IconData emptyIcon,
+    required String emptyTitle,
+    required String emptyMessage,
+  }) {
+    final filteredRows = _filterDesktopRows(rows);
+    return _buildDesktopTablePanel(
+      title: title,
+      subtitle: subtitle,
+      rows: filteredRows,
+      rowId: (row) =>
+          row['productId'] ?? row['id'] ?? row['productName'] ?? row.hashCode,
+      columns: [
+        DesktopColumn<Map<String, dynamic>>(
+          label: 'Product',
+          flex: 3,
+          minWidth: 140,
+          sortBy: (row) => '${row['productName'] ?? ''}'.toLowerCase(),
+          cell: (_, row) => DesktopCellText(
+            '${row['productName'] ?? 'Unknown'}',
+            strong: true,
+          ),
+        ),
+        DesktopColumn<Map<String, dynamic>>(
+          label: 'Units',
+          width: 82,
+          numeric: true,
+          sortBy: (row) => _inventoryNumber(row['totalQty']),
+          cell: (_, row) => DesktopCellText(
+            _formatInventoryCount(row['totalQty']),
+            numeric: true,
+          ),
+        ),
+        DesktopColumn<Map<String, dynamic>>(
+          label: 'Revenue',
+          width: 126,
+          numeric: true,
+          sortBy: (row) => _inventoryNumber(row['totalRevenue']),
+          cell: (_, row) => DesktopCellText(
+            formatMoney(_inventoryNumber(row['totalRevenue'])),
+            numeric: true,
+            strong: true,
+          ),
+        ),
+      ],
+      emptyIcon: emptyIcon,
+      emptyTitle:
+          _desktopSearchQuery.trim().isEmpty ? emptyTitle : 'No matching items',
+      emptyMessage: _desktopSearchQuery.trim().isEmpty
+          ? emptyMessage
+          : 'Try another product name or SKU.',
+    );
+  }
+
+  Widget _buildDesktopTablePanel({
+    required String title,
+    required String subtitle,
+    required List<Map<String, dynamic>> rows,
+    required Object Function(Map<String, dynamic> row) rowId,
+    required List<DesktopColumn<Map<String, dynamic>>> columns,
+    required IconData emptyIcon,
+    required String emptyTitle,
+    required String emptyMessage,
+  }) =>
+      DesktopPanel(
+        title: title,
+        subtitle: subtitle,
+        padding: EdgeInsets.zero,
+        clip: true,
+        child: SizedBox(
+          height: 270,
+          child: DesktopDataTable<Map<String, dynamic>>(
+            columns: columns,
+            rows: rows,
+            rowId: rowId,
+            rowHeight: 44,
+            minWidth: 0,
+            empty: DesktopEmptyState(
+              icon: emptyIcon,
+              title: emptyTitle,
+              message: emptyMessage,
+            ),
+          ),
+        ),
+      );
+
+  List<Map<String, dynamic>> _filterDesktopRows(
+    List<Map<String, dynamic>> rows,
+  ) {
+    final query = _desktopSearchQuery.trim().toLowerCase();
+    if (query.isEmpty) return rows;
+    return rows.where((row) {
+      return [row['name'], row['productName'], row['sku']].any(
+        (value) => value?.toString().toLowerCase().contains(query) ?? false,
+      );
+    }).toList();
+  }
+
+  double _inventoryNumber(Object? value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  String _formatInventoryCount(Object? value) {
+    final number = _inventoryNumber(value);
+    return number == number.roundToDouble()
+        ? number.toInt().toString()
+        : number.toStringAsFixed(1);
+  }
+
+  Widget _buildDesktopLocalSalesNotice() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: DesignColors.warning.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+          border:
+              Border.all(color: DesignColors.warning.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.computer_rounded,
+                size: 17, color: DesignColors.warning),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Sales trends use records saved on this computer. Sales from other devices may be missing.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: context.desktop.textMuted,
+                      height: 1.35,
+                    ),
+              ),
+            ),
+          ],
+        ),
+      );
 
   Widget _buildLocalSalesNotice() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -397,6 +775,7 @@ class _InventoryForecastingScreenState
                         bottomTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
+                            interval: 1,
                             getTitlesWidget: (value, meta) {
                               final index = value.toInt();
                               if (index >= 0 && index < _forecastData.length) {

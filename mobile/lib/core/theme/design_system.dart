@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../desktop/desktop_layout.dart';
 import '../widgets/motion.dart';
 import '../widgets/motion_kit.dart';
 import '../widgets/workspace_image.dart';
@@ -491,6 +492,7 @@ class GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (DesktopLayout.wantsShell(context)) return _buildDesktop(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final rawTint =
         tint ?? (isDark ? DesignColors.glassDark : DesignColors.glassWhite);
@@ -549,6 +551,39 @@ class GlassCard extends StatelessWidget {
 
     return card;
   }
+
+  /// On a computer a card is a flat panel: a hairline edge, no shadow, no
+  /// blur, no press-scale, a hover tint when it can be clicked.
+  Widget _buildDesktop(BuildContext context) {
+    final p = DesktopPalette.of(context);
+    final base = p.dark ? p.panelAlt : Colors.white;
+    final radius = BorderRadius.circular(borderRadius > 12 ? 12 : borderRadius);
+    final card = Container(
+      padding: padding,
+      margin: margin,
+      decoration: BoxDecoration(
+        gradient: gradient,
+        color: gradient != null
+            ? null
+            : (tint == null ? base : Color.alphaBlend(tint!, base)),
+        borderRadius: radius,
+        border: Border.all(color: borderColor ?? p.border),
+        boxShadow: boxShadow,
+      ),
+      child: child,
+    );
+    if (onTap == null) return card;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: radius,
+      child: InkWell(
+        onTap: onTap,
+        hoverColor: p.hover,
+        borderRadius: radius,
+        child: card,
+      ),
+    );
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -601,6 +636,11 @@ class _GradientButtonState extends State<GradientButton> {
   @override
   Widget build(BuildContext context) {
     final reduced = reducedMotion(context);
+    // A computer button is a 40px control with an 8px corner, not a 56px
+    // thumb target. Callers that ask for something smaller keep it.
+    final desktop = DesktopLayout.wantsShell(context);
+    final height = desktop && widget.height > 40 ? 40.0 : widget.height;
+    final radius = desktop ? 8.0 : widget.borderRadius;
     final fill = widget.gradient?.first ?? DesignColors.accent;
     // Whichever of the dark ink or white reads better on the fill. On the
     // orange accent that is the ink, as on every other orange button.
@@ -626,7 +666,7 @@ class _GradientButtonState extends State<GradientButton> {
           : 1.0,
       child: AnimatedContainer(
         duration: DesignAnimation.fast,
-        height: widget.height,
+        height: height,
         width: widget.expanded ? double.infinity : null,
         // A compact (non-expanded) button hugs its content, so without side
         // padding the icon and label sit flush against the button edge.
@@ -634,7 +674,7 @@ class _GradientButtonState extends State<GradientButton> {
             ? null
             : const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(widget.borderRadius),
+          borderRadius: BorderRadius.circular(radius),
           color: _isPressed ? _darken(fill, 0.12) : fill,
         ),
         child: Material(
@@ -648,7 +688,7 @@ class _GradientButtonState extends State<GradientButton> {
                 : null,
             onTapCancel: () => setState(() => _isPressed = false),
             onTap: widget.isLoading ? null : widget.onPressed,
-            borderRadius: BorderRadius.circular(widget.borderRadius),
+            borderRadius: BorderRadius.circular(radius),
             child: Center(
               child: widget.isLoading
                   ? _LoadingDots(color: textColor)
@@ -657,8 +697,9 @@ class _GradientButtonState extends State<GradientButton> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (widget.icon != null) ...[
-                          Icon(widget.icon, color: textColor, size: 20),
-                          const SizedBox(width: 10),
+                          Icon(widget.icon,
+                              color: textColor, size: desktop ? 18 : 20),
+                          SizedBox(width: desktop ? 8 : 10),
                         ],
                         Flexible(
                           child: FittedBox(
@@ -668,7 +709,7 @@ class _GradientButtonState extends State<GradientButton> {
                               maxLines: 1,
                               style: TextStyle(
                                 color: textColor,
-                                fontSize: 16,
+                                fontSize: desktop ? 13.5 : 16,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: 0.1,
                               ),
@@ -808,6 +849,8 @@ class MetricCard extends StatelessWidget {
   final double? trendValue;
   final bool showChart;
 
+  Widget _buildDesktop(BuildContext context) => _MetricCardDesktop(this);
+
   const MetricCard({
     super.key,
     required this.title,
@@ -821,6 +864,7 @@ class MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (DesktopLayout.wantsShell(context)) return _buildDesktop(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final trendColor = context.readable(trendValue != null
         ? (trendValue! >= 0 ? DesignColors.success : DesignColors.error)
@@ -921,6 +965,89 @@ class MetricCard extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════
 //  STATUS BADGE
 // ═══════════════════════════════════════════════════════════════
+class _MetricCardDesktop extends StatelessWidget {
+  const _MetricCardDesktop(this.card);
+
+  final MetricCard card;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = DesktopPalette.of(context);
+    final trendColor = context.readable(card.trendValue != null
+        ? (card.trendValue! >= 0 ? DesignColors.success : DesignColors.error)
+        : DesignColors.textTertiary);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: p.dark ? p.panelAlt : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: p.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  card.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: DesignType.body.copyWith(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: p.textMuted,
+                  ),
+                ),
+              ),
+              Icon(card.icon, color: p.dark ? card.color : context.readable(card.color), size: 16),
+            ],
+          ),
+          const SizedBox(height: 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              card.value,
+              maxLines: 1,
+              style: DesignType.numeric(
+                fontSize: 21,
+                fontWeight: FontWeight.w700,
+                color: p.text,
+              ),
+            ),
+          ),
+          if (card.trend != null) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  card.trendValue != null && card.trendValue! >= 0
+                      ? Icons.arrow_upward_rounded
+                      : Icons.arrow_downward_rounded,
+                  color: trendColor,
+                  size: 12,
+                ),
+                const SizedBox(width: 2),
+                Text(
+                  card.trend!,
+                  style: DesignType.numeric(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: trendColor,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class StatusBadge extends StatelessWidget {
   final String label;
   final Color color;
@@ -941,6 +1068,33 @@ class StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (DesktopLayout.wantsShell(context)) {
+      final p = DesktopPalette.of(context);
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: p.dark ? 0.18 : 0.14),
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, color: textColor ?? p.text, size: 12),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: DesignType.body.copyWith(
+                color: textColor ?? p.text,
+                fontSize: fontSize > 11.5 ? fontSize : 11.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return PopIn(
         beginScale: 0.85,
         duration: const Duration(milliseconds: 380),
@@ -1013,6 +1167,59 @@ class SectionHeader extends StatelessWidget {
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final subtitleColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+
+    if (DesktopLayout.wantsShell(context)) {
+      final p = DesktopPalette.of(context);
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(2, 6, 2, 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, color: p.dark ? DesignColors.accent : p.accent, size: 17),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Flexible(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: DesignType.display.copyWith(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                        color: p.text,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: DesignType.body.copyWith(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                          color: p.textMuted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (trailing != null) trailing!,
+          ],
+        ),
+      );
+    }
 
     return FadeSlideIn(
         from: SlideFrom.left,
@@ -1095,6 +1302,69 @@ class EmptyState extends StatelessWidget {
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final subtitleColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    if (DesktopLayout.wantsShell(context)) {
+      final p = DesktopPalette.of(context);
+      return Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: iconColor == null
+                        ? p.selected
+                        : iconColor!.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 24,
+                    color: iconColor ?? (p.dark ? DesignColors.accent : p.accent),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: DesignType.display.copyWith(
+                    color: p.text,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    subtitle!,
+                    textAlign: TextAlign.center,
+                    style: DesignType.body.copyWith(
+                      color: p.textMuted,
+                      fontSize: 13.5,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+                if (actionLabel != null && onAction != null) ...[
+                  const SizedBox(height: 18),
+                  GradientButton(
+                    label: actionLabel!,
+                    icon: actionIcon,
+                    onPressed: onAction,
+                    expanded: false,
+                    height: 36,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
@@ -1293,12 +1563,16 @@ class PageContainer extends StatelessWidget {
   final bool withScroll;
   final Color? backgroundColor;
 
+  /// Widest the content may grow. Computer windows pass a larger value.
+  final double maxWidth;
+
   const PageContainer({
     super.key,
     required this.child,
     this.padding,
     this.withScroll = false,
     this.backgroundColor,
+    this.maxWidth = 960,
   });
 
   @override
@@ -1320,7 +1594,7 @@ class PageContainer extends StatelessWidget {
             child: Align(
               alignment: Alignment.topCenter,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 960),
+                constraints: BoxConstraints(maxWidth: maxWidth),
                 child: FadeSlideIn(distance: 10, child: child),
               ),
             ),
@@ -1337,7 +1611,7 @@ class PageContainer extends StatelessWidget {
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 960),
+            constraints: BoxConstraints(maxWidth: maxWidth),
             child: child,
           ),
         ),
@@ -1686,6 +1960,72 @@ class ListCard extends StatelessWidget {
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
+    if (DesktopLayout.wantsShell(context)) {
+      final p = DesktopPalette.of(context);
+      final radius = BorderRadius.circular(10);
+      return Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        decoration: BoxDecoration(
+          color: p.dark ? p.panelAlt : Colors.white,
+          border: Border.all(color: p.border),
+          borderRadius: radius,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            hoverColor: p.hover,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                children: [
+                  leading,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: DesignType.body.copyWith(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: p.text,
+                          ),
+                        ),
+                        if (subtitle != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: DesignType.body.copyWith(
+                              fontSize: 12.5,
+                              color: p.textMuted,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (trailing != null) ...[
+                    const SizedBox(width: 8),
+                    trailing!,
+                  ],
+                  if (onTap != null)
+                    Icon(Icons.chevron_right_rounded,
+                        color: p.textFaint, size: 18),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return FadeSlideIn(
         distance: 10,
         child: TapScale(
@@ -1784,6 +2124,33 @@ class GroupedCard extends StatelessWidget {
     final border =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
+    if (DesktopLayout.wantsShell(context)) {
+      final p = DesktopPalette.of(context);
+      return Container(
+        margin: margin,
+        decoration: BoxDecoration(
+          color: p.dark ? p.panelAlt : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: p.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            for (var i = 0; i < children.length; i++) ...[
+              children[i],
+              if (showDividers && i != children.length - 1)
+                Divider(
+                  height: 1,
+                  thickness: 1,
+                  indent: dividerIndent,
+                  color: p.border,
+                ),
+            ],
+          ],
+        ),
+      );
+    }
 
     return FadeSlideIn(
         distance: 14,
@@ -2365,6 +2732,63 @@ class GlassBottomSheet {
     bool scrollable = false,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (DesktopLayout.wantsShell(context)) {
+      // A computer opens the same content as a centred dialog.
+      return showDialog<T>(
+        context: context,
+        useRootNavigator: true,
+        builder: (ctx) {
+          final p = DesktopPalette.of(ctx);
+          final height = MediaQuery.sizeOf(ctx).height;
+          return Dialog(
+            clipBehavior: Clip.antiAlias,
+            insetPadding: const EdgeInsets.all(24),
+            child: SizedBox(
+              width: 580,
+              height: (height * maxSize.clamp(0.5, 0.9)).clamp(320.0, 720.0),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 14, 10, 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: DesignType.display.copyWith(
+                              color: p.text,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Close (Esc)',
+                          icon: const Icon(Icons.close_rounded, size: 20),
+                          onPressed: () => Navigator.of(ctx).pop(),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Divider(height: 1, color: p.border),
+                  Expanded(
+                    child: scrollable
+                        ? SingleChildScrollView(
+                            padding: const EdgeInsets.only(bottom: 24),
+                            child: child,
+                          )
+                        : child,
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
     return showModalBottomSheet<T>(
       useRootNavigator: true,
       context: context,
@@ -2606,6 +3030,45 @@ class BrandedAppBar extends StatelessWidget implements PreferredSizeWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final fg = isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final hasLeading = leading != null || showBackButton;
+
+    // On a computer the shell already shows the brand and the sidebar shows
+    // where you are, so the bar is just a quiet page header: no logo, the page
+    // colour, a plain back arrow and left-aligned title.
+    if (context.inDesktopShell) {
+      final p = context.desktop;
+      return AppBar(
+        automaticallyImplyLeading: false,
+        leading: leading ??
+            (showBackButton
+                ? IconButton(
+                    tooltip: 'Back',
+                    icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                    onPressed: () => Navigator.of(context).maybePop(),
+                  )
+                : null),
+        centerTitle: false,
+        titleSpacing: hasLeading ? 0 : DesktopTokens.gutter,
+        toolbarHeight: preferredSize.height,
+        backgroundColor: p.panel,
+        foregroundColor: p.text,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        title: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: DesignType.display.copyWith(
+            color: p.text,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+          ),
+        ),
+        actions: [...?actions, const SizedBox(width: 12)],
+        shape: Border(bottom: BorderSide(color: p.border)),
+      );
+    }
 
     return AppBar(
       automaticallyImplyLeading: false,

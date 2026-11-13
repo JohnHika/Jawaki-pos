@@ -66,6 +66,7 @@ import '../../features/settings/presentation/screens/user_guide_screen.dart';
 import '../../features/settings/presentation/screens/operating_hours_screen.dart';
 import '../../features/settings/presentation/screens/bug_report_screen.dart';
 import '../../features/settings/presentation/screens/axon_gateway_settings_screen.dart';
+import '../../features/settings/presentation/screens/httpsms_settings_screen.dart';
 import '../../features/legal/presentation/screens/legal_document_screen.dart';
 import '../../features/ai/presentation/screens/ai_memory_screen.dart';
 import '../../features/payments/presentation/screens/payments_hub_screen.dart';
@@ -450,6 +451,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return '/settings';
         }
         if (path == '/settings/ai-gateway' &&
+            (!authService.isLocalWorkspace ||
+                !authService.isLocalWorkspaceOwner)) {
+          return '/settings';
+        }
+        if (path == '/settings/httpsms' &&
             (!authService.isLocalWorkspace ||
                 !authService.isLocalWorkspaceOwner)) {
           return '/settings';
@@ -869,6 +875,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/settings/ai-gateway',
             name: 'axon-ai-gateway-settings',
             builder: (context, state) => const AxonGatewaySettingsScreen(),
+          ),
+          GoRoute(
+            path: '/settings/httpsms',
+            name: 'httpsms-settings',
+            builder: (context, state) => const HttpsmsSettingsScreen(),
           ),
           GoRoute(
             path: '/settings/archive-history',

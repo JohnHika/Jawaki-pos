@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/adaptive_overlays.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
@@ -12,6 +14,7 @@ import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/import_models.dart';
+import '../desktop/desktop_imports_view.dart';
 import '../providers/imports_provider.dart';
 
 Color importStatusColor(String status) => switch (status) {
@@ -31,12 +34,56 @@ class ImportsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final imports = ref.watch(importsProvider);
     final perms = ref.watch(permissionsProvider);
+    final title = ref
+        .watch(businessLayoutProvider)
+        .actionLabel('/containers', 'Containers');
+
+    if (context.inDesktopShell) {
+      void onRefresh() => ref.invalidate(importsProvider);
+      final onCreate = perms.has('imports.manage')
+          ? () => _newContainer(context, ref)
+          : null;
+      return Scaffold(
+        appBar: null,
+        body: imports.when(
+          loading: () => DesktopImportsView(
+            title: title,
+            rows: const [],
+            loading: true,
+            canCreate: perms.has('imports.manage'),
+            statusColor: importStatusColor,
+            onCreate: onCreate,
+            onRefresh: onRefresh,
+            onOpen: (row) => context.push('/containers/${row.id}'),
+          ),
+          error: (e, _) => DesktopImportsView(
+            title: title,
+            rows: const [],
+            loading: false,
+            errorMessage: apiErrorMessage(e),
+            canCreate: perms.has('imports.manage'),
+            statusColor: importStatusColor,
+            onCreate: onCreate,
+            onRefresh: onRefresh,
+            onOpen: (row) => context.push('/containers/${row.id}'),
+          ),
+          data: (rows) => DesktopImportsView(
+            title: title,
+            rows: rows,
+            loading: false,
+            canCreate: perms.has('imports.manage'),
+            statusColor: importStatusColor,
+            onCreate: onCreate,
+            onRefresh: onRefresh,
+            onOpen: (row) => context.push('/containers/${row.id}'),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: ref
-            .watch(businessLayoutProvider)
-            .actionLabel('/containers', 'Containers'),
+        title: title,
         showBackButton: GoRouter.of(context).canPop(),
       ),
       floatingActionButton: perms.has('imports.manage')
@@ -106,13 +153,25 @@ class ImportsScreen extends ConsumerWidget {
   }
 
   Future<void> _newContainer(BuildContext context, WidgetRef ref) async {
-    final id = await showModalBottomSheet<String>(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => const _NewContainerSheet(),
-    );
+    final Future<String?> sheet = context.inDesktopShell
+        ? showAdaptiveSheet<String>(
+            context: context,
+            desktopStyle: DesktopSheetStyle.sidePanel,
+            desktopWidth: 560,
+            builder: (_) => DesktopScope(
+              sidebarCollapsed:
+                  DesktopScope.maybeOf(context)?.sidebarCollapsed ?? false,
+              child: const _NewContainerSheet(),
+            ),
+          )
+        : showModalBottomSheet<String>(
+            context: context,
+            useRootNavigator: true,
+            isScrollControlled: true,
+            showDragHandle: true,
+            builder: (_) => const _NewContainerSheet(),
+          );
+    final id = await sheet;
     ref.invalidate(importsProvider);
     if (id != null && context.mounted) context.push('/containers/$id');
   }

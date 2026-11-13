@@ -52,3 +52,12 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Open {#MyAppName}"; Flags: nowait postinstall skipifsilent
+; The in-app updater runs this setup with /SILENT /RELAUNCH=1: open Counterbase again
+; as soon as the new files are in, so the shop never has to find the icon.
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait; Check: ReopenAfterUpdate
+
+[Code]
+function ReopenAfterUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;

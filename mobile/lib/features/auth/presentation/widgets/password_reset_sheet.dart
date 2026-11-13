@@ -1,17 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../../core/desktop/adaptive_overlays.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/company_code.dart';
+import 'sign_in_kit.dart';
 
 Future<bool?> showPasswordResetSheet(
   BuildContext context, {
   required String email,
   required String companyCode,
 }) {
+  // A computer gets a dialog; the phone keeps its bottom sheet.
+  if (DesktopLayout.wantsShell(context)) {
+    return showAdaptiveSheet<bool>(
+      context: context,
+      desktopWidth: 440,
+      builder: (_) => _PasswordResetSheet(
+        email: email,
+        companyCode: companyCode,
+      ),
+    );
+  }
   return showModalBottomSheet<bool>(
     context: context,
     useRootNavigator: true,
@@ -119,6 +133,7 @@ class _PasswordResetSheetState extends State<_PasswordResetSheet> {
     final theme = Theme.of(context);
     final primary = context.themed(DesignColors.darkTextPrimary);
     final secondary = context.themed(DesignColors.darkTextSecondary);
+    final desktop = DesktopLayout.wantsShell(context);
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
@@ -139,29 +154,43 @@ class _PasswordResetSheetState extends State<_PasswordResetSheet> {
               children: [
                 Row(
                   children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: DesignColors.accent.withValues(alpha: 0.12),
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusMd),
+                    if (!desktop) ...[
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: DesignColors.accent.withValues(alpha: 0.12),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusMd),
+                        ),
+                        child: const Icon(
+                          Icons.lock_reset_rounded,
+                          color: DesignColors.accent,
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.lock_reset_rounded,
-                        color: DesignColors.accent,
-                      ),
-                    ),
-                    const SizedBox(width: DesignSpacing.md),
+                      const SizedBox(width: DesignSpacing.md),
+                    ],
                     Expanded(
                       child: Text(
                         'Reset your password',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          color: primary,
-                          fontWeight: FontWeight.w800,
-                        ),
+                        style: desktop
+                            ? theme.textTheme.titleMedium?.copyWith(
+                                color: primary,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                              )
+                            : theme.textTheme.titleLarge?.copyWith(
+                                color: primary,
+                                fontWeight: FontWeight.w800,
+                              ),
                       ),
                     ),
+                    if (desktop)
+                      IconButton(
+                        tooltip: 'Close',
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      ),
                   ],
                 ),
                 const SizedBox(height: DesignSpacing.sm),
@@ -178,6 +207,8 @@ class _PasswordResetSheetState extends State<_PasswordResetSheet> {
                 TextFormField(
                   controller: _companyCode,
                   enabled: !_codeRequested && !_busy,
+                  autofocus: desktop && _companyCode.text.isEmpty,
+                  textInputAction: desktop ? TextInputAction.next : null,
                   textCapitalization: TextCapitalization.none,
                   autocorrect: false,
                   inputFormatters: const [CompanyCodeFormatter()],
@@ -197,6 +228,14 @@ class _PasswordResetSheetState extends State<_PasswordResetSheet> {
                 TextFormField(
                   controller: _email,
                   enabled: !_codeRequested && !_busy,
+                  autofocus: desktop &&
+                      _companyCode.text.isNotEmpty &&
+                      _email.text.isEmpty,
+                  textInputAction:
+                      desktop ? TextInputAction.done : null,
+                  onFieldSubmitted: desktop && !_busy && !_codeRequested
+                      ? (_) => _requestCode()
+                      : null,
                   keyboardType: TextInputType.emailAddress,
                   textCapitalization: TextCapitalization.none,
                   autocorrect: false,
@@ -218,6 +257,8 @@ class _PasswordResetSheetState extends State<_PasswordResetSheet> {
                   TextFormField(
                     controller: _code,
                     enabled: !_busy,
+                    autofocus: desktop,
+                    textInputAction: desktop ? TextInputAction.next : null,
                     keyboardType: TextInputType.number,
                     inputFormatters: [
                       FilteringTextInputFormatter.digitsOnly,
@@ -237,6 +278,7 @@ class _PasswordResetSheetState extends State<_PasswordResetSheet> {
                     enabled: !_busy,
                     obscureText: !_showPassword,
                     autocorrect: false,
+                    textInputAction: desktop ? TextInputAction.next : null,
                     decoration: InputDecoration(
                       labelText: 'New password',
                       helperText:
@@ -268,6 +310,10 @@ class _PasswordResetSheetState extends State<_PasswordResetSheet> {
                     controller: _confirmPassword,
                     enabled: !_busy,
                     obscureText: !_showPassword,
+                    textInputAction: desktop ? TextInputAction.done : null,
+                    onFieldSubmitted: desktop && !_busy
+                        ? (_) => _resetPassword()
+                        : null,
                     decoration: const InputDecoration(
                       labelText: 'Confirm new password',
                       prefixIcon: Icon(Icons.lock_outline_rounded),
@@ -299,7 +345,7 @@ class _PasswordResetSheetState extends State<_PasswordResetSheet> {
                 ],
                 const SizedBox(height: DesignSpacing.lg),
                 SizedBox(
-                  height: 52,
+                  height: desktop ? 42 : 52,
                   child: FilledButton.icon(
                     onPressed: _busy
                         ? null
@@ -325,7 +371,10 @@ class _PasswordResetSheetState extends State<_PasswordResetSheet> {
                     ),
                     style: FilledButton.styleFrom(
                       backgroundColor: DesignColors.accent,
-                      foregroundColor: Colors.white,
+                      // White on this orange is only 2.6:1; the computer
+                      // layout uses dark ink like the other buttons.
+                      foregroundColor:
+                          desktop ? SignInPalette.onAccent : Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius:
                             BorderRadius.circular(DesignSpacing.radiusMd),

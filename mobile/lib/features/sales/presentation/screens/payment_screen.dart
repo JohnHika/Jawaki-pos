@@ -1,12 +1,14 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import '../../../../core/utils/format.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/auth/app_roles.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/till_guard.dart';
 import '../../../accountability/data/till_guard_service.dart';
@@ -20,11 +22,12 @@ import '../providers/cart_provider.dart';
 import '../providers/catalog_provider.dart';
 import '../../domain/cash_tender.dart';
 import '../providers/payment_provider.dart';
+import '../desktop/checkout_support.dart';
 import '../widgets/cash_tender_sheet.dart';
 import '../widgets/record_payment_sheet.dart';
-import '../../../../core/services/storage_service.dart';
 import '../../domain/recorded_payment.dart';
 import '../../../../core/widgets/modal_disposal.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 enum PaymentMethod {
   cash,
@@ -65,26 +68,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   }
 
   /// The signed-in person's name, saved with every recorded payment.
-  String _recorderName() {
-    final user = getIt<AuthService>().currentUser;
-    final name = (user?['name'] ??
-            '${user?['firstName'] ?? ''} ${user?['lastName'] ?? ''}')
-        .toString()
-        .trim();
-    return name.isEmpty ? 'Cashier' : name;
-  }
+  String _recorderName() => currentRecorderName();
 
   void _loadRecordedRules() {
-    final json = getIt<StorageService>().getRecordedPaymentRulesJson();
-    if (json == null || json.isEmpty) return;
-    try {
-      final decoded = jsonDecode(json);
-      if (decoded is Map<String, dynamic>) {
-        _recordedRules = RecordedPaymentRules.fromJson(decoded);
-      }
-    } catch (_) {
-      // A damaged setting falls back to the safe defaults.
-    }
+    _recordedRules = loadStoredRecordedRules();
   }
 
   @override
@@ -244,7 +231,17 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final desktop = context.inDesktopShell;
+    if (desktop) {
+      // On a computer payment happens in the ticket panel on Sell, not on a
+      // separate page. Send old links and shortcuts there.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/');
+      });
+      return const SizedBox.shrink();
+    }
     final cart = ref.watch(cartProvider);
+    final permissions = ref.watch(permissionsProvider);
     final paymentState = ref.watch(paymentProvider);
     final businessLayout = ref.watch(businessLayoutProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -255,334 +252,371 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         !_isPreparingPayment;
 
     return Scaffold(
-      appBar: AppBar(
-        leadingWidth: 68,
-        leading: Opacity(
-          opacity: paymentState.isProcessing ? 0.45 : 1,
-          child: IgnorePointer(
-            ignoring: paymentState.isProcessing,
-            child: AppBackButton(
-              color: isDark
-                  ? DesignColors.darkTextPrimary
-                  : DesignColors.textPrimary,
-              isDark: isDark,
-              onPressed: () => context.pop(),
+      appBar: desktop
+          ? null
+          : AppBar(
+              leadingWidth: 68,
+              leading: Opacity(
+                opacity: paymentState.isProcessing ? 0.45 : 1,
+                child: IgnorePointer(
+                  ignoring: paymentState.isProcessing,
+                  child: AppBackButton(
+                    color: isDark
+                        ? DesignColors.darkTextPrimary
+                        : DesignColors.textPrimary,
+                    isDark: isDark,
+                    onPressed: () => context.pop(),
+                  ),
+                ),
+              ),
+              title: Text(
+                'Payment',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: DesignSpacing.xl,
+                  letterSpacing: -0.5,
+                  color: isDark
+                      ? DesignColors.darkTextPrimary
+                      : DesignColors.textPrimary,
+                ),
+              ),
+              centerTitle: false,
+              backgroundColor:
+                  isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
+              elevation: 0,
+              scrolledUnderElevation: 0,
             ),
-          ),
-        ),
-        title: Text(
-          'Payment',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: DesignSpacing.xl,
-            letterSpacing: -0.5,
-            color: isDark
-                ? DesignColors.darkTextPrimary
-                : DesignColors.textPrimary,
-          ),
-        ),
-        centerTitle: false,
-        backgroundColor:
-            isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-      ),
-      backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
+      backgroundColor: desktop
+          ? Colors.transparent
+          : isDark
+              ? DesignColors.darkBg
+              : DesignColors.surfaceMuted,
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(DesignSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Amount due: the same dark card as Home.
-            SizedBox(
-              width: double.infinity,
-              child: Container(
-                padding: const EdgeInsets.all(DesignSpacing.lg + 2),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? const Color(0xFF211C16)
-                      : const Color(0xFF1A1610),
-                  borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'AMOUNT DUE',
-                      style: DesignType.numeric(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFFB3A89A),
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    const SizedBox(height: DesignSpacing.sm),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        formatMoney(cart.total, decimals: cart.total % 1 != 0),
-                        style: DesignType.display.copyWith(
-                          color: const Color(0xFFF6EFE6),
-                          fontSize: 34,
-                          fontWeight: FontWeight.w800,
-                          height: 1.05,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: DesignSpacing.sm),
-                    Text(
-                      cart.customerName == null
-                          ? '${cart.itemCount} ${cart.itemCount == 1 ? 'item' : 'items'}'
-                          : '${cart.itemCount} ${cart.itemCount == 1 ? 'item' : 'items'} · ${cart.customerName}',
-                      style: const TextStyle(
-                        color: Color(0xFFB3A89A),
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: desktop ? 940 : double.infinity,
             ),
-            const SizedBox(height: DesignSpacing.lg),
-
-            // Select Payment Method
-            // Cash
-            _PaymentMethodTile(
-              icon: Icons.money_rounded,
-              title: 'Cash',
-              subtitle: 'Counts into the till',
-              color: MoneyColors.cash,
-              isSelected: _selectedMethod == PaymentMethod.cash,
-              onTap: canChangePaymentMethod
-                  ? () => setState(() => _selectedMethod = PaymentMethod.cash)
-                  : null,
-            ),
-            const SizedBox(height: DesignSpacing.md - 2),
-
-            if (_isLocalWorkspace) ...[
-              if (_recordedRules.enabled) ...[
-                _PaymentMethodTile(
-                  icon: Icons.phone_android_rounded,
-                  title: 'M-Pesa to our till',
-                  subtitle: _recordedRules.tillNumber.isEmpty
-                      ? 'Customer pays your own till'
-                      : 'Till ${_recordedRules.tillNumber} · recorded by you',
-                  badge: 'Recorded',
-                  color: MoneyColors.recorded,
-                  isSelected: _selectedMethod == PaymentMethod.recordedMpesa,
-                  onTap: canChangePaymentMethod
-                      ? () => setState(
-                          () => _selectedMethod = PaymentMethod.recordedMpesa)
-                      : null,
-                ),
-                const SizedBox(height: DesignSpacing.md - 2),
-                _PaymentMethodTile(
-                  icon: Icons.account_balance_rounded,
-                  title: 'Bank transfer',
-                  subtitle: 'Recorded with a reference',
-                  badge: 'Recorded',
-                  color: MoneyColors.recorded,
-                  isSelected: _selectedMethod == PaymentMethod.recordedBank,
-                  onTap: canChangePaymentMethod
-                      ? () => setState(
-                          () => _selectedMethod = PaymentMethod.recordedBank)
-                      : null,
-                ),
-                const SizedBox(height: DesignSpacing.md - 2),
-              ],
-            ] else ...[
-              // M-Pesa
-              _PaymentMethodTile(
-                icon: Icons.phone_android_rounded,
-                title: 'M-Pesa',
-                subtitle: _checkingPayoutStatus
-                    ? 'Checking your payout account'
-                    : _canAcceptMpesa
-                        ? 'Customer pays $shopName through secure checkout'
-                        : 'Requires a verified business payout account',
-                color: DesignColors.accent,
-                isSelected: _selectedMethod == PaymentMethod.mpesa,
-                onTap: paymentState.isProcessing || _isPreparingPayment
-                    ? null
-                    : () => _selectMpesa(
-                          cart.total,
-                          hasPendingRequest:
-                              paymentState.hasUnresolvedMerchantPayment,
-                        ),
-              ),
-              const SizedBox(height: DesignSpacing.md - 2),
-
-              if (!_checkingPayoutStatus && !_canAcceptMpesa) ...[
-                _buildPayoutStatusNotice(),
-                const SizedBox(height: DesignSpacing.md - 2),
-              ],
-            ],
-
-            // Debt (sell now, customer pays later)
-            _PaymentMethodTile(
-              icon: Icons.account_balance_wallet_outlined,
-              title: 'Customer credit',
-              subtitle: cart.customerId == null
-                  ? 'Choose or add a ${businessLayout.customerSingular.toLowerCase()} to continue'
-                  : 'Adds to what they owe',
-              color: MoneyColors.credit,
-              isSelected: _selectedMethod == PaymentMethod.debt,
-              onTap: canChangePaymentMethod
-                  ? () async {
-                      if (cart.customerId == null) {
-                        final customer = await _showCustomerPicker();
-                        if (customer == null || !mounted) return;
-                        ref.read(cartProvider.notifier).setCustomer(
-                              customer.id,
-                              customerName: customer.name,
-                            );
-                      }
-                      if (mounted) {
-                        setState(() => _selectedMethod = PaymentMethod.debt);
-                      }
-                    }
-                  : null,
-            ),
-            const SizedBox(height: DesignSpacing.md - 2),
-
-            // Split
-            _PaymentMethodTile(
-              icon: Icons.call_split_rounded,
-              title: 'Split',
-              subtitle: 'Part cash, part customer credit',
-              color: DesignColors.textSecondary,
-              isSelected: _selectedMethod == PaymentMethod.split,
-              onTap: canChangePaymentMethod
-                  ? () => setState(() => _selectedMethod = PaymentMethod.split)
-                  : null,
-            ),
-
-            if (paymentState.hasUnresolvedMerchantPayment &&
-                paymentState.isRecoveredMerchantPayment) ...[
-              const SizedBox(height: DesignSpacing.lg),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(DesignSpacing.md),
-                decoration: BoxDecoration(
-                  color: DesignColors.warning.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                  border: Border.all(
-                      color: DesignColors.warning.withValues(alpha: 0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      children: [
-                        Icon(Icons.history_rounded,
-                            color: DesignColors.warning, size: 20),
-                        SizedBox(width: DesignSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            'Previous M-Pesa request recovered',
-                            style: TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (desktop)
+                  DesktopPageHeader(
+                    title: 'Take payment',
+                    subtitle: 'Confirm the amount and how the customer paid',
+                    leading: IconButton(
+                      tooltip: 'Back to sale',
+                      onPressed: paymentState.isProcessing
+                          ? null
+                          : () => context.pop(),
+                      icon: const Icon(Icons.arrow_back_rounded),
                     ),
-                    const SizedBox(height: DesignSpacing.xs),
-                    const Text(
-                      'Check its status before taking another payment. This prevents charging the customer twice.',
+                    padding: EdgeInsets.zero,
+                  ),
+                // Amount due: the same dark card as Home.
+                SizedBox(
+                  width: double.infinity,
+                  child: Container(
+                    padding: const EdgeInsets.all(DesignSpacing.lg + 2),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF211C16)
+                          : const Color(0xFF1A1610),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusXl),
                     ),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: () => context.push('/payments'),
-                        icon: const Icon(Icons.receipt_long_rounded),
-                        label: const Text('Open Payments to check'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
-            if (_selectedMethod == PaymentMethod.mpesa &&
-                paymentState.currentTransactionId != null) ...[
-              const SizedBox(height: DesignSpacing.lg),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(DesignSpacing.md),
-                decoration: BoxDecoration(
-                  color: DesignColors.accent.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                  border: Border.all(
-                      color: DesignColors.accent.withValues(alpha: 0.25)),
-                ),
-                child: Row(children: [
-                  const Icon(Icons.phone_android_rounded,
-                      color: DesignColors.accent),
-                  const SizedBox(width: DesignSpacing.md),
-                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Payment to $shopName',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+                          'AMOUNT DUE',
+                          style: DesignType.numeric(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFFB3A89A),
+                            letterSpacing: 1.2,
+                          ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Request sent for $shopName. Ask the customer to approve it, then tap “Check M-Pesa Payment” below. Other methods stay locked until it is resolved. The phone may show Counterbase; settlement goes to $shopName’s verified payout account on the payment partner’s schedule.',
-                        ),
-                      ],
-                    ),
-                  ),
-                ]),
-              ),
-            ],
-
-            // Error message
-            if (paymentState.error != null &&
-                !_isPayoutError(paymentState.error)) ...[
-              const SizedBox(height: DesignSpacing.lg),
-              Container(
-                padding: const EdgeInsets.all(DesignSpacing.md),
-                decoration: BoxDecoration(
-                  color: DesignColors.error.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                  border: Border.all(
-                      color: DesignColors.error.withValues(alpha: 0.2)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.error_outline_rounded,
-                            color: DesignColors.error, size: 20),
-                        const SizedBox(width: DesignSpacing.sm),
-                        Expanded(
+                        const SizedBox(height: DesignSpacing.sm),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
                           child: Text(
-                            paymentState.error!,
-                            style: const TextStyle(
-                                color: DesignColors.error,
-                                fontSize: DesignType.chatBody - 1),
+                            formatMoney(cart.total,
+                                decimals: cart.total % 1 != 0),
+                            style: DesignType.display.copyWith(
+                              color: const Color(0xFFF6EFE6),
+                              fontSize: 34,
+                              fontWeight: FontWeight.w800,
+                              height: 1.05,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: DesignSpacing.sm),
+                        Text(
+                          !permissions.canSeeCustomers ||
+                                  cart.customerName == null
+                              ? '${cart.itemCount} ${cart.itemCount == 1 ? 'item' : 'items'}'
+                              : '${cart.itemCount} ${cart.itemCount == 1 ? 'item' : 'items'} · ${cart.customerName}',
+                          style: const TextStyle(
+                            color: Color(0xFFB3A89A),
+                            fontSize: 13,
                           ),
                         ),
                       ],
                     ),
-                    if (paymentState.isRecoveredMerchantPayment)
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          onPressed: () => context.push('/payments'),
-                          icon: const Icon(Icons.receipt_long_rounded),
-                          label: const Text('Open Payments to check'),
+                  ),
+                ),
+                const SizedBox(height: DesignSpacing.lg),
+
+                // Select Payment Method
+                // Cash
+                _PaymentMethodTile(
+                  icon: Icons.money_rounded,
+                  title: 'Cash',
+                  subtitle: 'Counts into the till',
+                  color: MoneyColors.cash,
+                  isSelected: _selectedMethod == PaymentMethod.cash,
+                  onTap: canChangePaymentMethod
+                      ? () =>
+                          setState(() => _selectedMethod = PaymentMethod.cash)
+                      : null,
+                ),
+                const SizedBox(height: DesignSpacing.md - 2),
+
+                if (_isLocalWorkspace) ...[
+                  if (_recordedRules.enabled) ...[
+                    _PaymentMethodTile(
+                      icon: Icons.phone_android_rounded,
+                      title: 'M-Pesa to our till',
+                      subtitle: _recordedRules.tillNumber.isEmpty
+                          ? 'Customer pays your own till'
+                          : 'Till ${_recordedRules.tillNumber} · recorded by you',
+                      badge: 'Recorded',
+                      color: MoneyColors.recorded,
+                      isSelected:
+                          _selectedMethod == PaymentMethod.recordedMpesa,
+                      onTap: canChangePaymentMethod
+                          ? () => setState(() =>
+                              _selectedMethod = PaymentMethod.recordedMpesa)
+                          : null,
+                    ),
+                    const SizedBox(height: DesignSpacing.md - 2),
+                    _PaymentMethodTile(
+                      icon: Icons.account_balance_rounded,
+                      title: 'Bank transfer',
+                      subtitle: 'Recorded with a reference',
+                      badge: 'Recorded',
+                      color: MoneyColors.recorded,
+                      isSelected: _selectedMethod == PaymentMethod.recordedBank,
+                      onTap: canChangePaymentMethod
+                          ? () => setState(() =>
+                              _selectedMethod = PaymentMethod.recordedBank)
+                          : null,
+                    ),
+                    const SizedBox(height: DesignSpacing.md - 2),
+                  ],
+                ] else ...[
+                  // M-Pesa
+                  _PaymentMethodTile(
+                    icon: Icons.phone_android_rounded,
+                    title: 'M-Pesa',
+                    subtitle: _checkingPayoutStatus
+                        ? 'Checking your payout account'
+                        : _canAcceptMpesa
+                            ? 'Customer pays $shopName through secure checkout'
+                            : 'Requires a verified business payout account',
+                    color: DesignColors.accent,
+                    isSelected: _selectedMethod == PaymentMethod.mpesa,
+                    onTap: paymentState.isProcessing || _isPreparingPayment
+                        ? null
+                        : () => _selectMpesa(
+                              cart.total,
+                              hasPendingRequest:
+                                  paymentState.hasUnresolvedMerchantPayment,
+                            ),
+                  ),
+                  const SizedBox(height: DesignSpacing.md - 2),
+
+                  if (!_checkingPayoutStatus && !_canAcceptMpesa) ...[
+                    _buildPayoutStatusNotice(),
+                    const SizedBox(height: DesignSpacing.md - 2),
+                  ],
+                ],
+
+                // Debt (sell now, customer pays later)
+                _PaymentMethodTile(
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'Customer credit',
+                  subtitle: cart.customerId == null
+                      ? 'Choose or add a ${businessLayout.customerSingular.toLowerCase()} to continue'
+                      : 'Adds to what they owe',
+                  color: MoneyColors.credit,
+                  isSelected: _selectedMethod == PaymentMethod.debt,
+                  onTap: canChangePaymentMethod
+                      ? () async {
+                          if (cart.customerId == null) {
+                            final customer = await _showCustomerPicker();
+                            if (customer == null || !mounted) return;
+                            ref.read(cartProvider.notifier).setCustomer(
+                                  customer.id,
+                                  customerName: customer.name,
+                                );
+                          }
+                          if (mounted) {
+                            setState(
+                                () => _selectedMethod = PaymentMethod.debt);
+                          }
+                        }
+                      : null,
+                ),
+                const SizedBox(height: DesignSpacing.md - 2),
+
+                // Split
+                _PaymentMethodTile(
+                  icon: Icons.call_split_rounded,
+                  title: 'Split',
+                  subtitle: 'Part cash, part customer credit',
+                  color: DesignColors.textSecondary,
+                  isSelected: _selectedMethod == PaymentMethod.split,
+                  onTap: canChangePaymentMethod
+                      ? () =>
+                          setState(() => _selectedMethod = PaymentMethod.split)
+                      : null,
+                ),
+
+                if (paymentState.hasUnresolvedMerchantPayment &&
+                    paymentState.isRecoveredMerchantPayment) ...[
+                  const SizedBox(height: DesignSpacing.lg),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(DesignSpacing.md),
+                    decoration: BoxDecoration(
+                      color: DesignColors.warning.withValues(alpha: 0.12),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                      border: Border.all(
+                          color: DesignColors.warning.withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.history_rounded,
+                                color: DesignColors.warning, size: 20),
+                            SizedBox(width: DesignSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                'Previous M-Pesa request recovered',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: DesignSpacing.xs),
+                        const Text(
+                          'Check its status before taking another payment. This prevents charging the customer twice.',
+                        ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () => context.push('/payments'),
+                            icon: const Icon(Icons.receipt_long_rounded),
+                            label: const Text('Open Payments to check'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                if (_selectedMethod == PaymentMethod.mpesa &&
+                    paymentState.currentTransactionId != null) ...[
+                  const SizedBox(height: DesignSpacing.lg),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(DesignSpacing.md),
+                    decoration: BoxDecoration(
+                      color: DesignColors.accent.withValues(alpha: 0.10),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                      border: Border.all(
+                          color: DesignColors.accent.withValues(alpha: 0.25)),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.phone_android_rounded,
+                          color: DesignColors.accent),
+                      const SizedBox(width: DesignSpacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Payment to $shopName',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Request sent for $shopName. Ask the customer to approve it, then tap “Check M-Pesa Payment” below. Other methods stay locked until it is resolved. The phone may show Counterbase; settlement goes to $shopName’s verified payout account on the payment partner’s schedule.',
+                            ),
+                          ],
                         ),
                       ),
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: DesignSpacing.xxl),
-          ],
+                    ]),
+                  ),
+                ],
+
+                // Error message
+                if (paymentState.error != null &&
+                    !_isPayoutError(paymentState.error)) ...[
+                  const SizedBox(height: DesignSpacing.lg),
+                  Container(
+                    padding: const EdgeInsets.all(DesignSpacing.md),
+                    decoration: BoxDecoration(
+                      color: DesignColors.error.withValues(alpha: 0.1),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                      border: Border.all(
+                          color: DesignColors.error.withValues(alpha: 0.2)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.error_outline_rounded,
+                                color: DesignColors.error, size: 20),
+                            const SizedBox(width: DesignSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                paymentState.error!,
+                                style: const TextStyle(
+                                    color: DesignColors.error,
+                                    fontSize: DesignType.chatBody - 1),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (paymentState.isRecoveredMerchantPayment)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton.icon(
+                              onPressed: () => context.push('/payments'),
+                              icon: const Icon(Icons.receipt_long_rounded),
+                              label: const Text('Open Payments to check'),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: DesignSpacing.xxl),
+              ],
+            ),
+          ),
         ),
       ),
       bottomNavigationBar: SafeArea(
@@ -820,56 +854,34 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         false;
   }
 
-  String _normalizeKenyanPhone(String value) {
-    var digits = value.replaceAll(RegExp(r'\D'), '');
-    if (digits.startsWith('0')) {
-      digits = digits.substring(1);
-    }
-    if (digits.startsWith('254')) {
-      digits = digits.substring(3);
-    }
-    return '254$digits';
-  }
+  String _normalizeKenyanPhone(String value) => normalizeKenyanPhone(value);
 
-  bool _isKenyanPhone(String value) {
-    final digits = value.replaceAll(RegExp(r'\D'), '');
-    if (digits.length == 9) {
-      return digits.startsWith('7') || digits.startsWith('1');
-    }
-    if (digits.length == 10) {
-      return digits.startsWith('07') || digits.startsWith('01');
-    }
-    return digits.length == 12 &&
-        digits.startsWith('254') &&
-        (digits[3] == '7' || digits[3] == '1');
-  }
+  bool _isKenyanPhone(String value) => isKenyanPhone(value);
 
-  /// The cart as the shop's price and discount rules see it.
-  /// A coupon's share of each line lowers the price the item really sold at,
-  /// so a coupon cannot hide a sale below cost, but it is the owner's own
-  /// approved discount and does not count against the cashier's limit.
-  List<GuardLine> _guardLines(CartState cart) {
-    final shares = cart.couponShares;
-    return [
-      for (var i = 0; i < cart.items.length; i++)
-        GuardLine(
-          productId: cart.items[i].productId,
-          name: cart.items[i].productName,
-          quantity: cart.items[i].quantity,
-          unitPrice: cart.items[i].unitPrice,
-          discount: cart.items[i].discount,
-          approvedDiscount: shares[i],
-        ),
-    ];
-  }
+  /// The cart as the shop's price and discount rules see it (see
+  /// [guardLinesFor]).
+  List<GuardLine> _guardLines(CartState cart) => guardLinesFor(cart);
 
   /// The coupon code to record with the sale, only if it actually took money off.
-  String? _couponCodeFor(CartState cart) =>
-      cart.couponDiscount > 0 ? cart.coupon?.code : null;
+  String? _couponCodeFor(CartState cart) => couponCodeFor(cart);
 
-  Future<_CustomerChoice?> _showCustomerPicker() {
+  bool _canSaveManualDiscount(CartState cart) {
+    if (!cartHasManualDiscount(cart) ||
+        ref.read(permissionsProvider).canApplyDiscount) {
+      return true;
+    }
+    showGlassSnackBar(
+      context,
+      'You do not have permission to apply discounts.',
+      icon: Icons.lock_outline_rounded,
+      color: DesignColors.error,
+    );
+    return false;
+  }
+
+  Future<_CustomerChoice?> _showCustomerPicker() async {
     final layout = ref.read(businessLayoutProvider);
-    return showModalBottomSheet<_CustomerChoice>(
+    final customer = await showModalBottomSheet<_CustomerChoice>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
@@ -880,6 +892,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         customersLabel: layout.customersLabel,
       ),
     );
+    if (customer == null || !ref.read(permissionsProvider).canSeeCustomers) {
+      return null;
+    }
+    return customer;
   }
 
   Future<bool> _ensureCartStockAvailable() async {
@@ -990,6 +1006,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
     var cart = ref.read(cartProvider);
     final paymentNotifier = ref.read(paymentProvider.notifier);
+    if (!_canSaveManualDiscount(cart)) return;
 
     // Recover in place if the cashier chose debt before attaching a customer.
     // The cart and its discounts remain intact while the customer is selected.
@@ -1020,6 +1037,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     // cash, starting M-Pesa, or recording credit.
     if (!await _ensureCartStockAvailable() || !mounted) return;
     cart = ref.read(cartProvider);
+    if (!_canSaveManualDiscount(cart)) return;
 
     // The shop's price, discount and credit rules. Checked once per sale (the
     // M-Pesa details sheet re-enters this method) and before any money moves.
@@ -1177,20 +1195,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     }
 
     if (result != null && mounted) {
-      final customerId = cart.customerId;
-      var customerHistoryFailed = false;
-
-      if (customerId != null && !getIt<AuthService>().isLocalWorkspace) {
-        try {
-          await getIt<AppDatabase>()
-              .recordCustomerPurchase(customerId, cart.total);
-        } catch (_) {
-          // The sale is already saved or provider-confirmed. A local customer
-          // history counter must never strand the cashier on checkout and make
-          // them think they should charge the customer again.
-          customerHistoryFailed = true;
-        }
-      }
+      final customerHistoryFailed = await recordSaleCustomerPurchase(cart);
 
       if (!mounted) return;
       ref.read(cartProvider.notifier).clear();
@@ -1443,7 +1448,7 @@ class _CustomerChoice {
   final String name;
 }
 
-class _CustomerPickerSheet extends StatefulWidget {
+class _CustomerPickerSheet extends ConsumerStatefulWidget {
   const _CustomerPickerSheet({
     required this.customerSingular,
     required this.customersLabel,
@@ -1453,31 +1458,75 @@ class _CustomerPickerSheet extends StatefulWidget {
   final String customersLabel;
 
   @override
-  State<_CustomerPickerSheet> createState() => _CustomerPickerSheetState();
+  ConsumerState<_CustomerPickerSheet> createState() =>
+      _CustomerPickerSheetState();
 }
 
-class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
+class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
   final _searchController = TextEditingController();
   List<Map<String, dynamic>> _customers = const [];
   bool _loading = true;
   bool _failed = false;
   int _request = 0;
   Timer? _searchDebounce;
+  late final ProviderSubscription<RolePermissions> _permissionsSubscription;
+  late bool _canViewCustomers;
+  late bool _canCreateCustomers;
 
   @override
   void initState() {
     super.initState();
-    _loadCustomers();
+    final permissions = ref.read(permissionsProvider);
+    _canViewCustomers = permissions.canSeeCustomers;
+    _canCreateCustomers = permissions.has('customers.create');
+    _permissionsSubscription = ref.listenManual(
+      permissionsProvider,
+      (_, next) {
+        final nextCanViewCustomers = next.canSeeCustomers;
+        final nextCanCreateCustomers = next.has('customers.create');
+        if (nextCanViewCustomers == _canViewCustomers &&
+            nextCanCreateCustomers == _canCreateCustomers) {
+          return;
+        }
+        if (!nextCanViewCustomers) {
+          _request++;
+          _searchDebounce?.cancel();
+          _searchController.clear();
+          setState(() {
+            _canViewCustomers = false;
+            _canCreateCustomers = nextCanCreateCustomers;
+            _customers = const [];
+            _loading = false;
+            _failed = false;
+          });
+          return;
+        }
+        setState(() {
+          _canViewCustomers = true;
+          _canCreateCustomers = nextCanCreateCustomers;
+        });
+        _loadCustomers();
+      },
+    );
+    if (_canViewCustomers) {
+      _loadCustomers();
+    } else {
+      _loading = false;
+    }
   }
 
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _permissionsSubscription.close();
     _searchController.dispose();
     super.dispose();
   }
 
   Future<void> _loadCustomers() async {
+    if (!_canViewCustomers || !ref.read(permissionsProvider).canSeeCustomers) {
+      return;
+    }
     final request = ++_request;
     setState(() {
       _loading = true;
@@ -1486,13 +1535,23 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
     try {
       final customers = await getIt<AppDatabase>()
           .searchCustomers(_searchController.text.trim());
-      if (!mounted || request != _request) return;
+      if (!mounted ||
+          request != _request ||
+          !_canViewCustomers ||
+          !ref.read(permissionsProvider).canSeeCustomers) {
+        return;
+      }
       setState(() {
         _customers = customers;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || request != _request) return;
+      if (!mounted ||
+          request != _request ||
+          !_canViewCustomers ||
+          !ref.read(permissionsProvider).canSeeCustomers) {
+        return;
+      }
       setState(() {
         _failed = true;
         _loading = false;
@@ -1501,6 +1560,10 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
   }
 
   Future<void> _addCustomer() async {
+    if (!_canCreateCustomers ||
+        !ref.read(permissionsProvider).has('customers.create')) {
+      return;
+    }
     // The sale records today's credit after selection. Hiding the opening
     // balance control here prevents the same debt from being recorded twice.
     final added = await showAddCustomerSheet(
@@ -1508,11 +1571,27 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
       allowInitialCredit: false,
       customerSingular: widget.customerSingular,
     );
-    if (added == null || !mounted) return;
+    if (added == null ||
+        !mounted ||
+        !ref.read(permissionsProvider).has('customers.create')) {
+      return;
+    }
     Navigator.of(context).pop(_CustomerChoice(id: added.id, name: added.name));
   }
 
   void _choose(Map<String, dynamic> customer) {
+    if (!_canViewCustomers || !ref.read(permissionsProvider).canSeeCustomers) {
+      _request++;
+      _searchDebounce?.cancel();
+      _searchController.clear();
+      setState(() {
+        _canViewCustomers = false;
+        _customers = const [];
+        _loading = false;
+        _failed = false;
+      });
+      return;
+    }
     Navigator.of(context).pop(_CustomerChoice(
       id: customer['id'] as String,
       name: customer['name'] as String? ?? widget.customerSingular,
@@ -1551,114 +1630,139 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
                     ?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: DesignSpacing.xs),
             Text(
-                'Choose an existing ${widget.customersLabel.toLowerCase()} or add one. Your sale stays here.',
+                _canViewCustomers
+                    ? 'Choose an existing ${widget.customersLabel.toLowerCase()}${_canCreateCustomers ? ' or add one' : ''}. Your sale stays here.'
+                    : _canCreateCustomers
+                        ? 'Saved customer details are hidden. Add a new ${widget.customerSingular.toLowerCase()} to continue.'
+                        : 'Customer access is unavailable. Cancel and choose a walk-in payment.',
                 style: TextStyle(color: secondary)),
             const SizedBox(height: DesignSpacing.md),
-            TextField(
-              controller: _searchController,
-              textInputAction: TextInputAction.search,
-              onChanged: (_) {
-                setState(() {});
-                _searchDebounce?.cancel();
-                _searchDebounce =
-                    Timer(const Duration(milliseconds: 220), _loadCustomers);
-              },
-              decoration: InputDecoration(
-                hintText: 'Search name or phone',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _searchController.text.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: 'Clear search',
-                        onPressed: () {
-                          _searchController.clear();
-                          _loadCustomers();
-                        },
-                        icon: const Icon(Icons.close_rounded),
-                      ),
+            if (_canViewCustomers) ...[
+              TextField(
+                controller: _searchController,
+                textInputAction: TextInputAction.search,
+                onChanged: (_) {
+                  setState(() {});
+                  _searchDebounce?.cancel();
+                  _searchDebounce =
+                      Timer(const Duration(milliseconds: 220), _loadCustomers);
+                },
+                decoration: InputDecoration(
+                  hintText: 'Search name or phone',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _searchController.text.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          onPressed: () {
+                            _searchController.clear();
+                            _loadCustomers();
+                          },
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                ),
               ),
-            ),
-            const SizedBox(height: DesignSpacing.sm),
+              const SizedBox(height: DesignSpacing.sm),
+            ],
             Expanded(
-              child: _loading
-                  ? const Center(
-                      child:
-                          CircularProgressIndicator(color: DesignColors.accent))
-                  : _failed
-                      ? EmptyState(
-                          icon: Icons.error_outline_rounded,
-                          title:
-                              'Could not read saved ${widget.customersLabel.toLowerCase()}',
-                          subtitle:
-                              'The ${widget.customersLabel.toLowerCase()} list on this device could not be opened. Try again or add a ${widget.customerSingular.toLowerCase()}.',
-                          actionLabel: 'Retry',
-                          onAction: _loadCustomers,
-                        )
-                      : _customers.isEmpty
+              child: !_canViewCustomers
+                  ? EmptyState(
+                      icon: _canCreateCustomers
+                          ? Icons.person_add_alt_1_rounded
+                          : Icons.lock_outline_rounded,
+                      title: _canCreateCustomers
+                          ? 'Create a customer to continue'
+                          : 'Customer access required',
+                      subtitle: _canCreateCustomers
+                          ? 'Saved customers are hidden from this role. Add a new account for this sale.'
+                          : 'Cancel this sheet and choose cash for a walk-in sale.',
+                      actionLabel: _canCreateCustomers ? 'Add customer' : null,
+                      actionIcon: Icons.person_add_alt_1_rounded,
+                      onAction: _canCreateCustomers ? _addCustomer : null,
+                    )
+                  : _loading
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                              color: DesignColors.accent))
+                      : _failed
                           ? EmptyState(
-                              icon: Icons.person_search_rounded,
+                              icon: Icons.error_outline_rounded,
                               title:
-                                  'No matching ${widget.customersLabel.toLowerCase()}',
+                                  'Could not read saved ${widget.customersLabel.toLowerCase()}',
                               subtitle:
-                                  'Add this ${widget.customerSingular.toLowerCase()} and continue the sale.',
-                              actionLabel:
-                                  'Add ${widget.customerSingular.toLowerCase()}',
-                              actionIcon: Icons.person_add_alt_1_rounded,
-                              onAction: _addCustomer,
+                                  'The ${widget.customersLabel.toLowerCase()} list on this device could not be opened. Try again or add a ${widget.customerSingular.toLowerCase()}.',
+                              actionLabel: 'Retry',
+                              onAction: _loadCustomers,
                             )
-                          : ListView.separated(
-                              itemCount: _customers.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: DesignSpacing.xs),
-                              itemBuilder: (context, index) {
-                                final customer = _customers[index];
-                                final name = customer['name'] as String? ??
-                                    widget.customerSingular;
-                                final phone =
-                                    customer['phone'] as String? ?? '';
-                                final balance =
-                                    (customer['balance'] as num?)?.toDouble() ??
-                                        0;
-                                return Material(
-                                  color: surface,
-                                  borderRadius: BorderRadius.circular(
-                                      DesignSpacing.radiusMd),
-                                  child: ListTile(
-                                    shape: RoundedRectangleBorder(
+                          : _customers.isEmpty
+                              ? EmptyState(
+                                  icon: Icons.person_search_rounded,
+                                  title:
+                                      'No matching ${widget.customersLabel.toLowerCase()}',
+                                  subtitle:
+                                      'Add this ${widget.customerSingular.toLowerCase()} and continue the sale.',
+                                  actionLabel: _canCreateCustomers
+                                      ? 'Add ${widget.customerSingular.toLowerCase()}'
+                                      : null,
+                                  actionIcon: Icons.person_add_alt_1_rounded,
+                                  onAction:
+                                      _canCreateCustomers ? _addCustomer : null,
+                                )
+                              : ListView.separated(
+                                  itemCount: _customers.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: DesignSpacing.xs),
+                                  itemBuilder: (context, index) {
+                                    final customer = _customers[index];
+                                    final name = customer['name'] as String? ??
+                                        widget.customerSingular;
+                                    final phone =
+                                        customer['phone'] as String? ?? '';
+                                    final balance =
+                                        (customer['balance'] as num?)
+                                                ?.toDouble() ??
+                                            0;
+                                    return Material(
+                                      color: surface,
                                       borderRadius: BorderRadius.circular(
                                           DesignSpacing.radiusMd),
-                                      side: BorderSide(
-                                        color: isDark
-                                            ? DesignColors.darkBorder
-                                            : DesignColors.surfaceBorder,
+                                      child: ListTile(
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                              DesignSpacing.radiusMd),
+                                          side: BorderSide(
+                                            color: isDark
+                                                ? DesignColors.darkBorder
+                                                : DesignColors.surfaceBorder,
+                                          ),
+                                        ),
+                                        leading: CircleAvatar(
+                                          backgroundColor: DesignColors.accent
+                                              .withValues(alpha: 0.12),
+                                          foregroundColor: DesignColors.accent,
+                                          child: Text(name.isEmpty
+                                              ? '?'
+                                              : name[0].toUpperCase()),
+                                        ),
+                                        title: Text(name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis),
+                                        subtitle: Text([
+                                          if (phone.isNotEmpty) phone,
+                                          if (balance > 0)
+                                            'Owes KES ${balance.toStringAsFixed(0)}',
+                                        ].join(' · ')),
+                                        trailing: const Icon(
+                                            Icons.arrow_forward_rounded,
+                                            color: DesignColors.accent),
+                                        onTap: () => _choose(customer),
                                       ),
-                                    ),
-                                    leading: CircleAvatar(
-                                      backgroundColor: DesignColors.accent
-                                          .withValues(alpha: 0.12),
-                                      foregroundColor: DesignColors.accent,
-                                      child: Text(name.isEmpty
-                                          ? '?'
-                                          : name[0].toUpperCase()),
-                                    ),
-                                    title: Text(name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis),
-                                    subtitle: Text([
-                                      if (phone.isNotEmpty) phone,
-                                      if (balance > 0)
-                                        'Owes KES ${balance.toStringAsFixed(0)}',
-                                    ].join(' · ')),
-                                    trailing: const Icon(
-                                        Icons.arrow_forward_rounded,
-                                        color: DesignColors.accent),
-                                    onTap: () => _choose(customer),
-                                  ),
-                                );
-                              },
-                            ),
+                                    );
+                                  },
+                                ),
             ),
-            if (_loading || _failed || _customers.isNotEmpty) ...[
+            if (_canCreateCustomers &&
+                (_loading || _failed || _customers.isNotEmpty)) ...[
               const SizedBox(height: DesignSpacing.sm),
               SizedBox(
                 width: double.infinity,
