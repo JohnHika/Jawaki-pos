@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/features/dashboard/presentation/widgets/staff_invite_nudge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,8 +29,86 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Invite your team'), findsOneWidget);
-      expect(find.text('Invite Staff Now'), findsOneWidget);
+      expect(find.text('Invite staff'), findsOneWidget);
       expect(find.text('Remind Later'), findsOneWidget);
+    });
+
+    testWidgets('uses a neutral card and touch-sized outlined actions',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StaffInviteNudge(
+              onboardingLoader: () async => {
+                'steps': [
+                  {'key': 'invite_staff', 'status': 'PENDING'},
+                ],
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final card = tester.widget<Container>(
+        find
+            .ancestor(
+              of: find.text('Invite your team'),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      expect((card.decoration! as BoxDecoration).color, Colors.white);
+
+      final invite = find.widgetWithText(OutlinedButton, 'Invite staff');
+      final later = find.widgetWithText(TextButton, 'Remind Later');
+      expect(invite, findsOneWidget);
+      final inviteButton = tester.widget<OutlinedButton>(invite);
+      expect(
+        inviteButton.style!.foregroundColor!.resolve({}),
+        DesignColors.textPrimary,
+      );
+      expect(later, findsOneWidget);
+      expect(tester.getSize(invite).height, greaterThanOrEqualTo(48));
+      expect(tester.getSize(later).height, greaterThanOrEqualTo(48));
+    });
+
+    testWidgets('dark theme keeps invite nudge readable and touch-sized',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: Scaffold(
+            body: StaffInviteNudge(
+              onboardingLoader: () async => {
+                'steps': [
+                  {'key': 'invite_staff', 'status': 'PENDING'},
+                ],
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final card = tester.widget<Container>(
+        find
+            .ancestor(
+              of: find.text('Invite your team'),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      expect(
+          (card.decoration! as BoxDecoration).color, DesignColors.darkSurface);
+
+      final invite = find.widgetWithText(OutlinedButton, 'Invite staff');
+      final button = tester.widget<OutlinedButton>(invite);
+      expect(
+        button.style!.foregroundColor!.resolve({}),
+        DesignColors.darkTextPrimary,
+      );
+      expect(tester.getSize(invite).height, greaterThanOrEqualTo(48));
     });
 
     testWidgets('shows nudge when invite_staff step is DEFERRED',
@@ -50,7 +129,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Invite your team'), findsOneWidget);
-      expect(find.text('Invite Staff Now'), findsOneWidget);
+      expect(find.text('Invite staff'), findsOneWidget);
     });
 
     testWidgets('hides nudge when invite_staff step is COMPLETED',
@@ -73,7 +152,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Invite your team'), findsNothing);
-      expect(find.text('Invite Staff Now'), findsNothing);
+      expect(find.text('Invite staff'), findsNothing);
     });
 
     testWidgets('shows nudge when invite_staff step is absent from steps list',
@@ -118,7 +197,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.text('Invite your team'), findsNothing);
-      expect(find.text('Invite Staff Now'), findsNothing);
+      expect(find.text('Invite staff'), findsNothing);
     });
 
     testWidgets('hides nudge on load error', (tester) async {
@@ -134,7 +213,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Invite your team'), findsNothing);
-      expect(find.text('Invite Staff Now'), findsNothing);
+      expect(find.text('Invite staff'), findsNothing);
     });
 
     testWidgets('"Remind Later" dismisses nudge for the session',
@@ -163,11 +242,10 @@ void main() {
 
       // Nudge is dismissed
       expect(find.text('Invite your team'), findsNothing);
-      expect(find.text('Invite Staff Now'), findsNothing);
+      expect(find.text('Invite staff'), findsNothing);
     });
 
-    testWidgets('"Invite Staff Now" button navigates to /users',
-        (tester) async {
+    testWidgets('"Invite staff" button navigates to /users', (tester) async {
       final router = GoRouter(
         initialLocation: '/',
         routes: [
@@ -196,8 +274,8 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      // Tap "Invite Staff Now"
-      await tester.tap(find.text('Invite Staff Now'));
+      // Tap "Invite staff"
+      await tester.tap(find.text('Invite staff'));
       await tester.pumpAndSettle();
 
       // Should have navigated to /users

@@ -10,6 +10,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../../core/services/sync_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/desktop/desktop_widgets.dart';
@@ -278,7 +279,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     // After first frame, offer to close the day if it's past the branch's
     // configured closing time and today isn't closed yet (self-gates on
     // permission + hours + close status).
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybePromptEndOfDay());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybePromptEndOfDay();
+      unawaited(_pullLatestCloudSales());
+    });
+  }
+
+  Future<void> _pullLatestCloudSales() async {
+    if (getIt<AuthService>().isLocalWorkspace) return;
+    await getIt<SyncService>().pullChanges();
   }
 
   void _maybePromptEndOfDay() {
@@ -297,6 +306,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _refreshIfDayChanged();
+      unawaited(_pullLatestCloudSales());
       _maybePromptEndOfDay();
     }
   }
@@ -343,6 +353,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   Future<void> _refreshDashboard(WidgetRef ref) async {
+    final pull = _pullLatestCloudSales();
     ref.invalidate(_dashboardSummaryProvider);
     ref.invalidate(_recentSalesProvider);
     ref.invalidate(_todaysCostProvider);
@@ -353,6 +364,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     // useful feedback. Keep the gesture bounded if an optional network-backed
     // card (such as the AI brief) is slow or unavailable.
     final refreshes = <Future<void>>[
+      pull,
       ref.read(_dashboardSummaryProvider.future),
       ref.read(_recentSalesProvider.future),
       ref.read(_todaysCostProvider.future),

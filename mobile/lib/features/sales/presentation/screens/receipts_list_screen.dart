@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +8,7 @@ import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../../core/services/sync_service.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/load_error.dart';
@@ -29,6 +32,7 @@ class ReceiptsListScreen extends ConsumerStatefulWidget {
 
 class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
   late final AppDatabase _db;
+  StreamSubscription<List<PendingSale>>? _salesSubscription;
   List<PendingSale> _sales = [];
   Map<String, Map<String, dynamic>> _customersById = {};
   final TextEditingController _searchController = TextEditingController();
@@ -47,6 +51,9 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
 
   @override
   void dispose() {
+    final salesSubscription = _salesSubscription;
+    _salesSubscription = null;
+    if (salesSubscription != null) unawaited(salesSubscription.cancel());
     _searchController.dispose();
     super.dispose();
   }
@@ -70,16 +77,48 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
     }).toList();
   }
 
+  ({DateTime from, DateTime to}) _selectedSalesRange() {
+    final now = DateTime.now();
+    final from = _rangeDays == null
+        ? DateTime(2000)
+        : _rangeDays == 0
+            ? DateTime(now.year, now.month, now.day)
+            : now.subtract(Duration(days: _rangeDays!));
+    return (from: from, to: now);
+  }
+
+  void _watchSales(int generation) {
+    final previous = _salesSubscription;
+    _salesSubscription = null;
+    if (previous != null) unawaited(previous.cancel());
+
+    _salesSubscription = _db.watchAllSales().listen(
+      (allSales) {
+        if (!mounted || generation != _loadGeneration) return;
+        final range = _selectedSalesRange();
+        final sales = allSales
+            .where((sale) =>
+                !sale.createdAt.isBefore(range.from) &&
+                !sale.createdAt.isAfter(range.to))
+            .toList(growable: false);
+        setState(() => _sales = sales);
+      },
+      onError: (Object error) {
+        if (!mounted || generation != _loadGeneration || !_isLoading) return;
+        setState(() {
+          _isLoading = false;
+          _error = loadErrorSubtitle(error);
+        });
+      },
+    );
+  }
+
   Future<void> _loadSales() async {
     final generation = ++_loadGeneration;
+    _watchSales(generation);
     try {
-      final now = DateTime.now();
-      final from = _rangeDays == null
-          ? DateTime(2000)
-          : _rangeDays == 0
-              ? DateTime(now.year, now.month, now.day)
-              : now.subtract(Duration(days: _rangeDays!));
-      final sales = await _db.getSalesByDateRange(from, now);
+      final range = _selectedSalesRange();
+      final sales = await _db.getSalesByDateRange(range.from, range.to);
       if (!mounted || generation != _loadGeneration) return;
       final canViewCustomerDetails =
           ref.read(permissionsProvider).canSeeCustomers;
@@ -112,6 +151,13 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
           _error = loadErrorSubtitle(e);
         });
       }
+    }
+  }
+
+  Future<void> _refreshSales() async {
+    await _loadSales();
+    if (!getIt<AuthService>().isLocalWorkspace) {
+      await getIt<SyncService>().pullChanges();
     }
   }
 
@@ -219,7 +265,7 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                     setState(() {
                       _isLoading = true;
                     });
-                    _loadSales();
+                    unawaited(_refreshSales());
                   },
                 )
               : _sales.isEmpty
@@ -232,12 +278,12 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                         setState(() {
                           _isLoading = true;
                         });
-                        _loadSales();
+                        unawaited(_refreshSales());
                       },
                     )
                   : RefreshIndicator(
                       color: DesignColors.accent,
-                      onRefresh: _loadSales,
+                      onRefresh: _refreshSales,
                       child: PageContainer(
                         withScroll: true,
                         child: Column(
@@ -311,7 +357,7 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
 
   void _reload() {
     setState(() => _isLoading = true);
-    _loadSales();
+    unawaited(_refreshSales());
   }
 
   Widget _buildDesktop(String pageTitle, bool canViewCustomerDetails) {

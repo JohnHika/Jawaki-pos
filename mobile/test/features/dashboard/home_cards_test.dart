@@ -4,6 +4,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('takings card uses a quieter neutral surface and heading',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: HomeTakingsCard(
+          revenue: 1000,
+          transactions: 3,
+          averageTicket: 333,
+          split: TakingsSplit(cash: 600, recorded: 300, credit: 100),
+        ),
+      ),
+    ));
+
+    expect(find.text('Sold today'), findsOneWidget);
+    expect(find.text('SOLD TODAY'), findsNothing);
+    final semantics = find.byWidgetPredicate(
+      (widget) =>
+          widget is Semantics &&
+          widget.properties.label?.startsWith('Sold today') == true,
+    );
+    final card = tester.widget<Container>(
+      find.descendant(of: semantics, matching: find.byType(Container)).first,
+    );
+    expect((card.decoration! as BoxDecoration).color, Colors.white);
+  });
+
   testWidgets('the split bar is drawn with one segment per money group',
       (tester) async {
     await tester.pumpWidget(const MaterialApp(
@@ -18,15 +44,16 @@ void main() {
     ));
 
     final bars = find.byWidgetPredicate(
-      (w) => w is ColoredBox &&
-          (w.color == kCashColor ||
-              w.color == kRecordedColor ||
-              w.color == kCreditColor),
+      (w) =>
+          w is ColoredBox &&
+          (w.color == kCashColor.withValues(alpha: 0.78) ||
+              w.color == kRecordedColor.withValues(alpha: 0.78) ||
+              w.color == kCreditColor.withValues(alpha: 0.78)),
     );
     expect(bars, findsNWidgets(3));
     for (final element in bars.evaluate()) {
       final size = element.renderObject!.paintBounds.size;
-      expect(size.height, 8);
+      expect(size.height, 6);
       expect(size.width, greaterThan(10));
     }
     expect(find.text('Cash'), findsOneWidget);
@@ -46,8 +73,8 @@ void main() {
         ),
       ),
     ));
-    final bars = find.byWidgetPredicate(
-        (w) => w is ColoredBox && w.color == kRecordedColor);
+    final bars = find.byWidgetPredicate((w) =>
+        w is ColoredBox && w.color == kRecordedColor.withValues(alpha: 0.78));
     expect(bars, findsOneWidget);
     expect(bars.evaluate().single.renderObject!.paintBounds.width,
         greaterThan(100));

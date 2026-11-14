@@ -45,10 +45,7 @@ class HomeTakingsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = SignInPalette.of(context);
-    const ink = Color(0xFF1A1610);
-    const onInk = Color(0xFFF6EFE6);
-    const mutedOnInk = Color(0xFFB3A89A);
-    final background = palette.isDark ? const Color(0xFF211C16) : ink;
+    final background = palette.card;
 
     final groups = <({String label, double amount, Color color})>[
       (label: 'Cash', amount: split.cash, color: kCashColor),
@@ -65,13 +62,13 @@ class HomeTakingsCard extends StatelessWidget {
 
     return Semantics(
       container: true,
-      label:
-          'Sold today KES ${_money(revenue)} in $transactions sales',
+      label: 'Sold today KES ${_money(revenue)} in $transactions sales',
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: background,
           borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
+          border: Border.all(color: palette.line),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -80,42 +77,31 @@ class HomeTakingsCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'SOLD TODAY',
-                    style: _mono.copyWith(
-                      color: mutedOnInk,
-                      fontSize: 11,
-                      letterSpacing: 1.2,
+                    'Sold today',
+                    style: TextStyle(
+                      color: palette.soft,
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
                 if (sellingSince != null)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF173325),
-                      borderRadius: BorderRadius.circular(999),
+                  Text(
+                    'Selling since $sellingSince',
+                    style: TextStyle(
+                      color: palette.soft,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
-                    child: Text('Selling since $sellingSince',
-                        style: const TextStyle(
-                            color: Color(0xFF7FD3A4),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700)),
                   )
                 else if (dateLabel != null)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2B251E),
-                      borderRadius: BorderRadius.circular(999),
+                  Text(
+                    dateLabel!,
+                    style: TextStyle(
+                      color: palette.soft,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
-                    child: Text(dateLabel!,
-                        style: const TextStyle(
-                            color: mutedOnInk,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700)),
                   ),
               ],
             ),
@@ -124,22 +110,25 @@ class HomeTakingsCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                Text('KES ',
-                    style: DesignType.display.copyWith(
-                        color: mutedOnInk,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600)),
+                Text(
+                  'KES ',
+                  style: DesignType.numeric(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: palette.soft,
+                  ),
+                ),
                 Flexible(
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerLeft,
                     child: Text(
                       _money(revenue),
-                      style: DesignType.display.copyWith(
-                          color: onInk,
-                          fontSize: 36,
-                          fontWeight: FontWeight.w800,
-                          height: 1),
+                      style: DesignType.numeric(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w700,
+                        color: palette.ink,
+                      ),
                     ),
                   ),
                 ),
@@ -150,14 +139,18 @@ class HomeTakingsCard extends StatelessWidget {
               transactions == 0
                   ? 'No sales yet today'
                   : '$transactions ${transactions == 1 ? 'sale' : 'sales'} · average KES ${_money(averageTicket)}${itemsSold == null ? '' : ' · ${_itemsText(itemsSold!)}'}',
-              style: const TextStyle(color: mutedOnInk, fontSize: 13, height: 1.35),
+              style: TextStyle(
+                color: palette.soft,
+                fontSize: 13,
+                height: 1.4,
+              ),
             ),
             if (splitTotal > 0) ...[
               const SizedBox(height: 14),
               ClipRRect(
                 borderRadius: BorderRadius.circular(6),
                 child: SizedBox(
-                  height: 8,
+                  height: 6,
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -167,7 +160,9 @@ class HomeTakingsCard extends StatelessWidget {
                           flex: (groups[i].amount / splitTotal * 1000)
                               .round()
                               .clamp(1, 1000),
-                          child: ColoredBox(color: groups[i].color),
+                          child: ColoredBox(
+                            color: groups[i].color.withValues(alpha: 0.78),
+                          ),
                         ),
                       ],
                     ],
@@ -181,23 +176,27 @@ class HomeTakingsCard extends StatelessWidget {
                   child: Row(
                     children: [
                       Container(
-                        width: 9,
-                        height: 9,
+                        width: 8,
+                        height: 8,
                         decoration: BoxDecoration(
-                          color: group.color,
+                          color: group.color.withValues(alpha: 0.78),
                           borderRadius: BorderRadius.circular(3),
                         ),
                       ),
                       const SizedBox(width: 9),
                       Expanded(
-                        child: Text(group.label,
-                            style: const TextStyle(
-                                color: onInk, fontSize: 13)),
+                        child: Text(
+                          group.label,
+                          style: TextStyle(color: palette.ink, fontSize: 13),
+                        ),
                       ),
                       Text(
                         _money(group.amount),
                         style: DesignType.numeric(
-                            fontSize: 13, color: onInk),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: palette.ink,
+                        ),
                       ),
                     ],
                   ),
@@ -253,9 +252,8 @@ class HomeRecordedReminder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = SignInPalette.of(context);
-    final background = palette.isDark
-        ? const Color(0xFF3A2A14)
-        : const Color(0xFFFBE9C8);
+    final background =
+        palette.isDark ? const Color(0xFF3A2A14) : const Color(0xFFFBE9C8);
     final foreground =
         palette.isDark ? const Color(0xFFF0BF82) : const Color(0xFF5A3A06);
     return Material(
@@ -529,10 +527,13 @@ class HomeLicenceBanner extends StatelessWidget {
         : (palette.isDark ? const Color(0xFFF0BF82) : const Color(0xFF5A3A06));
     final days = daysLeft == 1 ? '1 day' : '$daysLeft days';
     final text = switch (status) {
-      LicenceStatusKind.trial => 'Your free trial ends in $days. Open Plan and licence to keep selling.',
+      LicenceStatusKind.trial =>
+        'Your free trial ends in $days. Open Plan and licence to keep selling.',
       LicenceStatusKind.due => 'Your payment is due in $days.',
-      LicenceStatusKind.late => 'Your payment is late. New sales pause in $days.',
-      LicenceStatusKind.paused => 'New sales are paused. Your records are safe. Tap to pay and unlock.',
+      LicenceStatusKind.late =>
+        'Your payment is late. New sales pause in $days.',
+      LicenceStatusKind.paused =>
+        'New sales are paused. Your records are safe. Tap to pay and unlock.',
     };
     return Material(
       color: background,
@@ -549,7 +550,8 @@ class HomeLicenceBanner extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(text,
-                    style: TextStyle(color: foreground, fontSize: 13.5, height: 1.4)),
+                    style: TextStyle(
+                        color: foreground, fontSize: 13.5, height: 1.4)),
               ),
               Icon(Icons.chevron_right_rounded, color: foreground),
             ],

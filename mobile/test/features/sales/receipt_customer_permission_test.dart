@@ -7,6 +7,7 @@ import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/providers/business_layout_provider.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
+import 'package:axon_pos/core/services/sync_service.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 import 'package:axon_pos/features/sales/presentation/providers/sales_provider.dart';
 import 'package:axon_pos/features/sales/presentation/screens/receipts_list_screen.dart';
@@ -76,6 +77,77 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('receipt list shows a sale added by background sync',
+      (tester) async {
+    getIt.pushNewScope();
+    final database = _ReceiptDatabase();
+    getIt.registerSingleton<AppDatabase>(database);
+    getIt.registerSingleton<AuthService>(
+      _ReceiptAuth(local: true, permissions: const ['sales.view']),
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await database.salesUpdates.close();
+      await database.close();
+      await getIt.popScope();
+    });
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        permissionsProvider.overrideWithValue(
+          RolePermissions(const ['sales.view']),
+        ),
+        businessLayoutProvider.overrideWithValue(businessLayoutFromUser(null)),
+      ],
+      child: const MaterialApp(home: ReceiptsListScreen()),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('R-1001'), findsNothing);
+
+    database.salesUpdates.add([_sale()]);
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('R-1001'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('refreshing cloud receipts pulls remote changes', (tester) async {
+    getIt.pushNewScope();
+    final database = _ReceiptDatabase(sale: _sale());
+    final sync = _ReceiptSyncService();
+    getIt.registerSingleton<AppDatabase>(database);
+    getIt.registerSingleton<AuthService>(
+      _ReceiptAuth(local: false, permissions: const ['sales.view']),
+    );
+    getIt.registerSingleton<SyncService>(sync);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await database.salesUpdates.close();
+      await database.close();
+      await getIt.popScope();
+    });
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        permissionsProvider.overrideWithValue(
+          RolePermissions(const ['sales.view']),
+        ),
+        businessLayoutProvider.overrideWithValue(businessLayoutFromUser(null)),
+      ],
+      child: const MaterialApp(home: ReceiptsListScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    final refresh = tester.widget<RefreshIndicator>(
+      find.byType(RefreshIndicator),
+    );
+    await refresh.onRefresh();
+
+    expect(sync.pullCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('receipts still show customer details with customers.view',
       (tester) async {
@@ -499,9 +571,13 @@ class _ReceiptDatabase extends AppDatabase {
         super.forTesting(NativeDatabase.memory(), StorageService());
 
   final PendingSale? _sale;
+  final salesUpdates = StreamController<List<PendingSale>>.broadcast();
   var allCustomerCalls = 0;
   var customerLookups = 0;
   final customerQueries = <Completer<List<Map<String, dynamic>>>>[];
+
+  @override
+  Stream<List<PendingSale>> watchAllSales() => salesUpdates.stream;
 
   @override
   Future<List<PendingSale>> getSalesByDateRange(
@@ -557,6 +633,18 @@ class _ReceiptAuth implements AuthService {
         'tenantName': 'Test Shop',
         'permissions': permissions,
       };
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _ReceiptSyncService implements SyncService {
+  var pullCalls = 0;
+
+  @override
+  Future<void> pullChanges({String? since}) async {
+    pullCalls++;
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

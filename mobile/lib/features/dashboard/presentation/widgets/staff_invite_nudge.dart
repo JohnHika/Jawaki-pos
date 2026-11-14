@@ -97,11 +97,9 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
         padding: const EdgeInsets.only(bottom: 12),
         child: Container(
           decoration: BoxDecoration(
-            color: DesignColors.brand.withValues(alpha: 0.08),
+            color: isDark ? DesignColors.darkSurface : Colors.white,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: DesignColors.accent.withValues(alpha: 0.25),
-            ),
+            border: Border.all(color: borderColor),
           ),
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -111,17 +109,10 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
               // Header row
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: DesignColors.accent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.group_add_rounded,
-                      color: DesignColors.accent,
-                      size: 20,
-                    ),
+                  const Icon(
+                    Icons.group_add_rounded,
+                    color: DesignColors.accentDark,
+                    size: 20,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -133,7 +124,7 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
                           style: TextStyle(
                             color: titleColor,
                             fontSize: 15,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -156,34 +147,44 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
                 children: [
                   Expanded(
                     child: SizedBox(
-                      height: 42,
-                      child: GradientButton(
-                        label: 'Invite Staff Now',
-                        icon: Icons.send_rounded,
+                      height: 48,
+                      child: OutlinedButton.icon(
                         onPressed: () async {
                           await context.push('/users');
                           if (mounted) await _checkStaffStatus();
                         },
-                        height: 42,
-                        borderRadius: 10,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: titleColor,
+                          minimumSize: const Size(0, 48),
+                          side: BorderSide(
+                            color: isDark
+                                ? DesignColors.accent
+                                : DesignColors.accentDark,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        icon: const Icon(Icons.group_add_rounded, size: 18),
+                        label: const Text('Invite staff'),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   SizedBox(
-                    height: 42,
-                    child: OutlinedButton(
+                    height: 48,
+                    child: TextButton(
                       onPressed: () {
                         setState(() => _dismissedThisSession = true);
                       },
-                      style: OutlinedButton.styleFrom(
+                      style: TextButton.styleFrom(
                         foregroundColor: btnFgColor,
-                        // The theme's buttons are full-width; in this Row that
-                        // means infinite width and a failed layout.
-                        minimumSize: const Size(0, 42),
-                        side: BorderSide(
-                          color: borderColor,
-                        ),
+                        minimumSize: const Size(0, 48),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
@@ -191,9 +192,10 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
                       child: Text(
                         'Remind Later',
                         style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: btnFgColor),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: btnFgColor,
+                        ),
                       ),
                     ),
                   ),
