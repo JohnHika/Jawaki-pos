@@ -53,6 +53,24 @@ class _SpyApiClient extends ApiClient {
     'graceDays': 3,
   };
   Map<String, dynamic>? lastUpdateSettingsCall;
+  Map<String, dynamic> paystackVerificationResult = {'status': 'PENDING'};
+
+  @override
+  Future<Map<String, dynamic>> verifyPaystackSubscriptionPayment(
+    String reference,
+  ) async {
+    if (paystackVerificationResult['status'] == 'NEEDS_REVIEW') {
+      invoices = invoices.map((rawInvoice) {
+        final invoice = Map<String, dynamic>.from(rawInvoice as Map);
+        if (invoice['reference'] == reference) {
+          invoice['status'] = 'NEEDS_REVIEW';
+          invoice['authorizationUrl'] = null;
+        }
+        return invoice;
+      }).toList();
+    }
+    return paystackVerificationResult;
+  }
 
   @override
   Future<Map<String, dynamic>> getBillingEntitlement() async {
@@ -84,7 +102,6 @@ class _SpyApiClient extends ApiClient {
     };
     return settingsData;
   }
-
 }
 
 void main() {
@@ -203,6 +220,76 @@ void main() {
       expect(find.text('M-Pesa confirmation code'), findsNothing);
       expect(find.text('Paybill'), findsNothing);
       expect(find.text('Submit Payment Code'), findsNothing);
+    });
+
+    testWidgets(
+        'a payment held for review cannot be retried from the billing page',
+        (tester) async {
+      spyApi.invoices = [
+        {
+          'id': 'inv-review',
+          'plan': 'CORE',
+          'amount': 3000,
+          'currency': 'KES',
+          'status': 'NEEDS_REVIEW',
+          'provider': 'PAYSTACK',
+          'reference': 'AXON-SUB-review',
+        },
+      ];
+
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester.pumpAndSettle();
+
+      expect(
+          find.textContaining('on hold for a payment review'), findsOneWidget);
+      expect(find.text('Pay subscription securely'), findsNothing);
+      await tester.scrollUntilVisible(
+        find.text('NEEDS REVIEW'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('NEEDS REVIEW'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('verification reports a mismatch as a review hold, not pending',
+        (tester) async {
+      spyApi.paystackVerificationResult = {'status': 'NEEDS_REVIEW'};
+      spyApi.invoices = [
+        {
+          'id': 'inv-pending-review',
+          'plan': 'CORE',
+          'amount': 3000,
+          'currency': 'KES',
+          'status': 'PENDING',
+          'provider': 'PAYSTACK',
+          'authorizationUrl': 'https://checkout.paystack.com/example',
+          'reference': 'AXON-SUB-review-check',
+        },
+      ];
+
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Check payment'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Check payment'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Payment is on hold for a billing review'),
+        findsOneWidget,
+      );
+      expect(
+          find.text(
+              'Payment is still being confirmed. Refresh again in a moment.'),
+          findsNothing);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('auto-renew tile visible for admin and opens sheet',

@@ -35,6 +35,11 @@ export class PaystackBillingService {
     if (!invoice) {
       throw new BadRequestException('There is no monthly payment due yet');
     }
+    if (invoice.status === 'NEEDS_REVIEW') {
+      throw new ConflictException(
+        'This invoice is on hold for review. Contact Counterbase support before starting another payment.',
+      );
+    }
     if (invoice.status === 'PAID') {
       return {
         status: 'PAID',
@@ -196,6 +201,9 @@ export class PaystackBillingService {
     if (invoice.status === 'PAID') {
       return { status: 'PAID', invoiceId: invoice.id, reference, paidAt: invoice.paidAt };
     }
+    if (invoice.status === 'NEEDS_REVIEW') {
+      return { status: 'NEEDS_REVIEW', invoiceId: invoice.id, reference };
+    }
 
     const charge = await this.paystack.verifyTransaction(reference);
     if (charge.reference !== reference) {
@@ -221,7 +229,16 @@ export class PaystackBillingService {
       metadata.tenantId !== tenantId ||
       metadata.invoiceId !== invoice.id
     ) {
-      throw new BadRequestException('Paystack payment details do not match this subscription invoice');
+      await this.prisma.subscriptionInvoice.updateMany({
+        where: {
+          id: invoice.id,
+          tenantId,
+          status: { not: 'PAID' },
+          reference,
+        },
+        data: { status: 'NEEDS_REVIEW', authorizationUrl: null },
+      });
+      return { status: 'NEEDS_REVIEW', invoiceId: invoice.id, reference };
     }
 
     const paidAt = charge.paid_at ? new Date(charge.paid_at) : new Date();

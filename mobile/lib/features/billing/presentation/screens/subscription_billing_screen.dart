@@ -31,6 +31,7 @@ Color _statusColor(String? status) {
     case 'PAST_DUE':
     case 'PENDING':
     case 'PENDING_CONFIRMATION':
+    case 'NEEDS_REVIEW':
       return DesignColors.warning;
     case 'RESTRICTED':
     case 'CANCELED':
@@ -58,6 +59,8 @@ String _statusLabel(String? status) {
       return 'Pending';
     case 'PENDING_CONFIRMATION':
       return 'Payment processing';
+    case 'NEEDS_REVIEW':
+      return 'On hold for review';
     case 'UNKNOWN':
       return 'Status unavailable';
     default:
@@ -312,7 +315,8 @@ class _SubscriptionBillingScreenState
                               () => acceptedBillingTerms = value ?? false,
                             ),
                     title: const TermsConsentText(
-                      before: 'I agree to the subscription, billing and refund ',
+                      before:
+                          'I agree to the subscription, billing and refund ',
                       linkText: 'terms',
                       after: ' for the plan shown above.',
                       route: '/legal/billing',
@@ -1008,6 +1012,12 @@ class _SubscriptionBillingScreenState
       );
     }
     final openInvoice = _openInvoiceForPayment();
+    final invoiceStatus = openInvoice?['status']?.toString().toUpperCase();
+    if (invoiceStatus == 'NEEDS_REVIEW') {
+      return _buildBillingNotice(
+        'This invoice is on hold for a payment review. Do not retry it; contact support@archeaxon.com with the invoice reference.',
+      );
+    }
     final provider = openInvoice?['provider']?.toString().toUpperCase();
     if (provider == 'JENGA_STK_INITIALIZING') {
       return _buildInvoicePreparationNotice(
@@ -1188,7 +1198,8 @@ class _SubscriptionBillingScreenState
       if (uri == null ||
           uri.scheme != 'https' ||
           uri.host != 'checkout.paystack.com') {
-        throw Exception('The payment partner returned an invalid checkout link.');
+        throw Exception(
+            'The payment partner returned an invalid checkout link.');
       }
       if (!await launchUrl(uri, mode: LaunchMode.inAppBrowserView)) {
         throw Exception('Could not open secure checkout page.');
@@ -1207,11 +1218,20 @@ class _SubscriptionBillingScreenState
       final result =
           await _apiClient.verifyPaystackSubscriptionPayment(reference);
       if (!mounted) return;
-      if (result['status']?.toString().toUpperCase() == 'PAID') {
+      final status = result['status']?.toString().toUpperCase();
+      if (status == 'PAID') {
         ref.read(entitlementRefreshTickProvider.notifier).state++;
         await _loadData();
         if (mounted) {
           _showPaymentMessage('Monthly subscription payment confirmed.');
+        }
+      } else if (status == 'NEEDS_REVIEW') {
+        await _loadInvoices();
+        if (mounted) {
+          _showPaymentMessage(
+            'Payment is on hold for a billing review. Contact support@archeaxon.com before retrying.',
+            isError: true,
+          );
         }
       } else {
         _showPaymentMessage(
