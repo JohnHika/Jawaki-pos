@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,8 +19,10 @@ import 'core/services/storage_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/feature_announcement_service.dart';
 import 'core/services/desktop_update_service.dart';
+import 'core/services/update_check_service.dart';
 import 'core/widgets/desktop_update/desktop_update_host.dart';
 import 'core/widgets/feature_announcement_host.dart';
+import 'core/widgets/optional_update_prompt_host.dart';
 import 'core/widgets/tap_tracker.dart';
 import 'core/services/app_icon_service.dart';
 import 'features/notifications/domain/app_notification.dart';
@@ -258,10 +261,33 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
         routerConfig: router,
         builder: (context, child) {
           final featureService = getIt<FeatureAnnouncementService>();
+          final mobileUpdateService =
+              defaultTargetPlatform == TargetPlatform.android &&
+                      getIt.isRegistered<UpdateCheckService>()
+                  ? getIt<UpdateCheckService>()
+                  : null;
           // Status and navigation bars melt into the app and their icons stay
           // readable in both themes, like a native app rather than a web view.
           final dark = Theme.of(context).brightness == Brightness.dark;
           final icons = dark ? Brightness.light : Brightness.dark;
+          final appContent = FeatureAnnouncementHost(
+            service: featureService,
+            child: _desktopChrome(
+              context,
+              getIt.isRegistered<DesktopUpdateService>()
+                  ? DesktopUpdateHost(
+                      service: getIt<DesktopUpdateService>(),
+                      child: child!,
+                    )
+                  : child!,
+            ),
+          );
+          final updateAwareContent = mobileUpdateService == null
+              ? appContent
+              : OptionalUpdatePromptHost(
+                  updateService: mobileUpdateService,
+                  child: appContent,
+                );
           return AnnotatedRegion<SystemUiOverlayStyle>(
             value: SystemUiOverlayStyle(
               statusBarColor: Colors.transparent,
@@ -274,18 +300,7 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
             child: MediaQuery(
               data: MediaQuery.of(context)
                   .copyWith(textScaler: TextScaler.noScaling),
-              child: FeatureAnnouncementHost(
-                service: featureService,
-                child: _desktopChrome(
-                  context,
-                  getIt.isRegistered<DesktopUpdateService>()
-                      ? DesktopUpdateHost(
-                          service: getIt<DesktopUpdateService>(),
-                          child: child!,
-                        )
-                      : child!,
-                ),
-              ),
+              child: updateAwareContent,
             ),
           );
         },

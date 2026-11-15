@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_it/get_it.dart';
 import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/widgets/optional_update_prompt_host.dart';
@@ -30,6 +31,36 @@ void main() {
 
       expect(find.text('Update available'), findsOneWidget);
       expect(find.text('Login Screen'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Update now opens the install gate instead of dismissing the prompt',
+    (tester) async {
+      final updateService = _FakeUpdateCheckService();
+      final locator = GetIt.instance;
+      await locator.reset();
+      locator.registerSingleton<UpdateCheckService>(updateService);
+      addTearDown(locator.reset);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => OptionalUpdatePromptHost(
+            updateService: updateService,
+            child: child ?? const SizedBox.shrink(),
+          ),
+          home: const Scaffold(body: Center(child: Text('Settings'))),
+        ),
+      );
+      updateService.setOptionalUpdate(_optionalUpdate('1.0.3'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Update now'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Update Required'), findsOneWidget);
+      expect(find.text('Download & install update'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -99,6 +130,7 @@ void main() {
       expect(find.text('Recent changes'), findsOneWidget);
       expect(updateService.installedNoticeConsumeCount, 1);
 
+      await tester.ensureVisible(find.text('Continue to sign in'));
       await tester.tap(find.text('Continue to sign in'));
       await tester.pumpAndSettle();
 
@@ -141,9 +173,19 @@ class _FakeUpdateCheckService extends UpdateCheckService {
 
   AppUpdateInfo? _optional;
   AppUpdateInfo? _installedNotice;
+  AppUpdateInfo? _gateUpdate;
   bool _forceUpdate = false;
   int installedNoticeConsumeCount = 0;
   String? _lastConsumedNoticeKey;
+
+  @override
+  AppUpdateInfo? get activeGateUpdate => _gateUpdate;
+
+  @override
+  void beginOptionalUpdateNow(AppUpdateInfo update) {
+    _gateUpdate = update;
+    notifyListeners();
+  }
 
   @override
   bool get hasOptionalUpdateAvailable => _optional != null;

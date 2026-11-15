@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../di/injection.dart';
 import '../services/auth_service.dart';
 import '../services/update_check_service.dart';
+import 'forced_update_gate.dart';
 import 'update_available_dialog.dart';
 import 'update_success_screen.dart';
 
@@ -125,9 +126,14 @@ class _OptionalUpdatePromptHostState extends State<OptionalUpdatePromptHost> {
 
   @override
   Widget build(BuildContext context) {
+    final activeGateUpdate = widget.updateService.activeGateUpdate;
     final optionalUpdate = _visibleOptionalUpdate;
     final successNotice = _visibleSuccessNotice;
-    if (optionalUpdate == null && successNotice == null) return widget.child;
+    if (activeGateUpdate == null &&
+        optionalUpdate == null &&
+        successNotice == null) {
+      return widget.child;
+    }
 
     return Theme(
       data: Theme.of(context).copyWith(
@@ -136,14 +142,18 @@ class _OptionalUpdatePromptHostState extends State<OptionalUpdatePromptHost> {
       child: Stack(
         children: [
           widget.child,
-          if (optionalUpdate != null)
+          if (activeGateUpdate != null)
+            Positioned.fill(
+              child: ForcedUpdateGate(updateService: widget.updateService),
+            )
+          else if (optionalUpdate != null)
             Positioned.fill(
               child: UpdateAvailableCard(
                 update: optionalUpdate,
                 onDismiss: () => setState(() => _visibleOptionalUpdate = null),
               ),
-            ),
-          if (successNotice != null)
+            )
+          else if (successNotice != null)
             Positioned.fill(
               child: UpdateSuccessScreen(
                 update: successNotice,

@@ -3394,8 +3394,11 @@ class SettingsScreen extends ConsumerWidget {
     if (!context.mounted) return;
 
     if (updateService.hasOptionalUpdateAvailable) {
-      updateService.showCachedOptionalUpdateDialog(context);
-    } else if (!wasUpdateShown) {
+      // The Android root update host displays the optional-update card. Do not
+      // open a second Navigator dialog over that root overlay.
+      return;
+    }
+    if (!wasUpdateShown) {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
