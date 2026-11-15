@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
+import { THROTTLER_LIMITERS } from './common/throttler/throttler-limiters';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 import { AuthModule } from './auth/auth.module';
@@ -59,19 +60,8 @@ import { VercelCronController } from './vercel-cron.controller';
       envFilePath: ['.env.local', '.env'],
     }),
 
-    // Rate Limiting
-    ThrottlerModule.forRoot([
-      {
-        name: 'default',
-        ttl: 60000,
-        limit: 100,
-      },
-      {
-        name: 'bug-report',
-        ttl: 60000,
-        limit: 5,
-      },
-    ]),
+    // Rate Limiting: one limiter only (see throttler-limiters.ts).
+    ThrottlerModule.forRoot(THROTTLER_LIMITERS),
 
     // Vercel functions do not stay alive between requests. Use Vercel Cron
     // to trigger the protected HTTP routes instead of starting in-process

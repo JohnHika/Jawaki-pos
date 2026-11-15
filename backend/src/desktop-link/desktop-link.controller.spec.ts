@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { THROTTLER_LIMITERS } from '../common/throttler/throttler-limiters';
 import * as request from 'supertest';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { DesktopLinkController } from './desktop-link.controller';
@@ -8,7 +9,7 @@ import { DesktopLinkService } from './desktop-link.service';
 
 /**
  * The computer polls `status` every 2 seconds until the phone answers.
- * The limiters below mirror ThrottlerModule.forRoot in app.module.ts.
+ * The limiters are the same list app.module.ts registers.
  */
 describe('DesktopLinkController limits', () => {
   let app: INestApplication;
@@ -16,10 +17,7 @@ describe('DesktopLinkController limits', () => {
   beforeAll(async () => {
     const moduleFixture = await Test.createTestingModule({
       imports: [
-        ThrottlerModule.forRoot([
-          { name: 'default', ttl: 60000, limit: 100 },
-          { name: 'bug-report', ttl: 60000, limit: 5 },
-        ]),
+        ThrottlerModule.forRoot(THROTTLER_LIMITERS),
       ],
       controllers: [DesktopLinkController],
       providers: [
