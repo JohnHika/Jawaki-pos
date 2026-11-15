@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/responsive/device_class.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/theme/theme_provider.dart';
@@ -485,6 +486,23 @@ class SettingsScreen extends ConsumerWidget {
             ],
             onTap: () => context.push('/settings/desktop-approvals'),
           ),
+          if (!isLocalWorkspace)
+            SettingsEntry(
+              id: 'linked-computers',
+              icon: Icons.devices_rounded,
+              title: 'Linked computers',
+              subtitle: 'See which computers are signed in and sign them out',
+              keywords: const [
+                'desktop',
+                'computer',
+                'laptop',
+                'windows',
+                'revoke',
+                'sign out',
+                'devices',
+              ],
+              onTap: () => context.push('/settings/linked-computers'),
+            ),
         ],
       ),
       SettingsSection(
@@ -705,7 +723,7 @@ class SettingsScreen extends ConsumerWidget {
                   );
                 },
               )
-            : settingsList,
+            : TabletContent(maxWidth: 760, child: settingsList),
       ),
     );
   }

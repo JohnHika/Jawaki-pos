@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, Length, Matches } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, Length, Matches } from 'class-validator';
 
 export class StartDesktopLinkDto {
   @ApiPropertyOptional({ description: 'Computer name shown on the phone' })
@@ -19,6 +19,15 @@ export class StartDesktopLinkDto {
   })
   @Matches(/^[a-fA-F0-9]{64}$/, { message: 'claimChallenge must be a SHA-256 hex digest' })
   claimChallenge!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Email of the person to ask. Their signed-in phones get a prompt to approve. Never confirms whether the account exists.',
+  })
+  @IsOptional()
+  @IsEmail()
+  @Length(3, 200)
+  hint?: string;
 }
 
 export class PreviewDesktopLinkDto {

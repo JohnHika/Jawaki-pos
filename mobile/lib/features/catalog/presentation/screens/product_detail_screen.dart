@@ -19,7 +19,10 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/utils/stock_quantity_display.dart';
+import '../../../../core/responsive/device_class.dart';
+import '../../../../core/widgets/alive_feedback.dart';
 import '../../../../core/widgets/form_kit.dart';
+import '../../../../core/widgets/skeleton_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
 import '../../../sales/presentation/providers/catalog_provider.dart'
@@ -36,21 +39,41 @@ import '../../../../core/desktop/adaptive_sheet.dart';
 class ProductDetailScreen extends StatelessWidget {
   final String productId;
 
-  const ProductDetailScreen({super.key, required this.productId});
+  /// Drawn beside the Products list on a tablet: no back arrow, and removing
+  /// the product calls [onGone] instead of closing a page.
+  final bool embedded;
+  final VoidCallback? onGone;
+
+  const ProductDetailScreen({
+    super.key,
+    required this.productId,
+    this.embedded = false,
+    this.onGone,
+  });
 
   @override
   Widget build(BuildContext context) {
-    if (context.inDesktopShell) {
+    if (context.inDesktopShell && !embedded) {
       return ProductsScreen(initialProductId: productId);
     }
-    return _ProductDetailPhone(productId: productId);
+    return _ProductDetailPhone(
+      productId: productId,
+      embedded: embedded,
+      onGone: onGone,
+    );
   }
 }
 
 class _ProductDetailPhone extends ConsumerStatefulWidget {
   final String productId;
+  final bool embedded;
+  final VoidCallback? onGone;
 
-  const _ProductDetailPhone({required this.productId});
+  const _ProductDetailPhone({
+    required this.productId,
+    this.embedded = false,
+    this.onGone,
+  });
 
   @override
   ConsumerState<_ProductDetailPhone> createState() =>
@@ -242,17 +265,16 @@ class _ProductDetailScreenState extends ConsumerState<_ProductDetailPhone> {
       if (!mounted) return;
       if (bringBack) {
         _loadProduct();
+        Alive.done(context, '${product.name} is back');
+      } else if (widget.embedded) {
+        widget.onGone?.call();
+        Alive.done(context, '${product.name} removed');
       } else if (context.canPop()) {
         context.pop();
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not update the product. ${apiErrorMessage(e)}'),
-          backgroundColor: DesignColors.error,
-        ),
-      );
+      Alive.failed(context, 'Could not update the product. ${apiErrorMessage(e)}');
     }
   }
 
@@ -281,9 +303,7 @@ class _ProductDetailScreenState extends ConsumerState<_ProductDetailPhone> {
             ),
           );
     if (saved == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Count corrected. It is in the history.')),
-      );
+      Alive.done(context, 'Count corrected. It is in the history.');
       _loadHistory();
     }
   }
@@ -299,12 +319,15 @@ class _ProductDetailScreenState extends ConsumerState<_ProductDetailPhone> {
         backgroundColor: palette.page,
         foregroundColor: palette.ink,
         elevation: 0,
-        leading: IconButton(
-          tooltip: 'Back',
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () =>
-              context.canPop() ? context.pop() : context.go('/products'),
-        ),
+        automaticallyImplyLeading: false,
+        leading: widget.embedded
+            ? null
+            : IconButton(
+                tooltip: 'Back',
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: () =>
+                    context.canPop() ? context.pop() : context.go('/products'),
+              ),
         title: Text(
           product?.name ?? 'Product',
           maxLines: 1,
@@ -337,7 +360,10 @@ class _ProductDetailScreenState extends ConsumerState<_ProductDetailPhone> {
       ),
       body: SafeArea(
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Padding(
+                padding: EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: SkeletonList(rows: 6, padding: EdgeInsets.zero),
+              )
             : product == null
                 ? Center(
                     child: Padding(
@@ -346,8 +372,11 @@ class _ProductDetailScreenState extends ConsumerState<_ProductDetailPhone> {
                           style: TextStyle(color: palette.soft)),
                     ),
                   )
-                : _content(context, palette, product, perms.canManageStock,
-                    perms.canEditProducts),
+                : TabletContent(
+                    maxWidth: 760,
+                    child: _content(context, palette, product,
+                        perms.canManageStock, perms.canEditProducts),
+                  ),
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/responsive/two_pane.dart';
 import '../../../../core/services/pricing_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
@@ -191,7 +192,14 @@ class ProductGrid extends ConsumerWidget {
         // card has to grow with it or its column overflows (seen at 360dp with
         // the text at 130%).
         final textScale = MediaQuery.textScalerOf(context).scale(1.0);
-        final growth = 1 + (textScale - 1).clamp(0.0, 1.0) * 1.5;
+        var growth = 1 + (textScale - 1).clamp(0.0, 1.0) * 1.5;
+        // Beside a sale ticket the grid gets only part of the screen, and a
+        // two-column card there is narrow: give it a little more height.
+        final paneWidth = PaneExtent.widthOf(context);
+        if (paneWidth < 380 &&
+            paneWidth < MediaQuery.sizeOf(context).width * 0.8) {
+          growth *= 1.1;
+        }
         if (businessLayout.effectivePosProductView == 'list') {
           return _withCatalogStatus(
             context,
@@ -225,8 +233,7 @@ class ProductGrid extends ConsumerWidget {
           GridView.builder(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount:
-                  productGridColumns(MediaQuery.sizeOf(context).width),
+              crossAxisCount: productGridColumns(PaneExtent.widthOf(context)),
               childAspectRatio: (hasPhotos ? 0.62 : 0.72) / growth,
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
@@ -370,7 +377,7 @@ class ProductGrid extends ConsumerWidget {
     return GridView.builder(
       padding: const EdgeInsets.all(12),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: productGridColumns(MediaQuery.sizeOf(context).width),
+        crossAxisCount: productGridColumns(PaneExtent.widthOf(context)),
         childAspectRatio: 0.78,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,

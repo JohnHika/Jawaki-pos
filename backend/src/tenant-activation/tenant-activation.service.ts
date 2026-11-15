@@ -21,6 +21,11 @@ const ACTIVATION_PRODUCT = 'axon_startup_activation';
 /** Attempts opened at an older price, or paid with a different amount, wait here. */
 const NEEDS_REVIEW = 'NEEDS_REVIEW';
 const SUPERSEDED = 'SUPERSEDED';
+// A checkout link older than this is replaced rather than reopened; a link
+// that is still being created (INITIALIZED) is left alone for a short moment
+// so a double tap does not open two.
+const CHECKOUT_LINK_TTL_MS = 30 * 60 * 1000;
+const SETUP_GRACE_MS = 60 * 1000;
 
 @Injectable()
 export class TenantActivationService {
@@ -64,22 +69,30 @@ export class TenantActivationService {
       where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } },
     });
     if (prior) {
-      // An unpaid checkout opened at an older price must not be reused at the
-      // new one: close it and open a fresh attempt. A paid or held attempt is
-      // never touched.
+      // A paid or held attempt is never touched. An unpaid one is reused only
+      // while it can still be paid: a live checkout at the current price, or
+      // one that was created a moment ago and is still being set up. Anything
+      // else (failed, half-created, superseded, expired, or opened at an older
+      // price) is closed and replaced, so a retry always gets a working link
+      // instead of the same dead one.
       const unpaid = ['INITIALIZED', 'PENDING', 'FAILED'].includes(prior.status);
-      if (!unpaid || Number(prior.amount ?? AXON_STARTUP_FEE_KES) === AXON_STARTUP_FEE_KES) {
-        return this.formatStatus(tenant, prior);
+      if (prior.status !== SUPERSEDED && !unpaid) return this.formatStatus(tenant, prior);
+      if (this.isUsableCheckout(prior)) return this.formatStatus(tenant, prior);
+      if (unpaid) {
+        await this.prisma.tenantActivationAttempt.update({
+          where: { id: prior.id },
+          data: { status: SUPERSEDED, authorizationUrl: null },
+        });
       }
-      await this.prisma.tenantActivationAttempt.update({
-        where: { id: prior.id },
-        data: { status: SUPERSEDED, authorizationUrl: null },
+      // The client keeps sending the same key, so the replacement attempt is
+      // found by recency rather than by key.
+      const latest = await this.prisma.tenantActivationAttempt.findFirst({
+        where: { tenantId }, orderBy: { createdAt: 'desc' },
       });
-      key = `${key}:${AXON_STARTUP_FEE_KES}`;
-      const renewed = await this.prisma.tenantActivationAttempt.findUnique({
-        where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } },
-      });
-      if (renewed) return this.formatStatus(tenant, renewed);
+      if (latest && latest.id !== prior.id && this.isUsableCheckout(latest)) {
+        return this.formatStatus(tenant, latest);
+      }
+      key = `${key}:${randomUUID().slice(0, 8)}`;
     }
 
     const reference = `AXON-${tenant.id.slice(0, 8).toUpperCase()}-${randomUUID()}`;
@@ -127,6 +140,15 @@ export class TenantActivationService {
       });
       throw error;
     }
+  }
+
+  /** A checkout the owner can still pay: current price and a link, or one being set up right now. */
+  private isUsableCheckout(attempt: any): boolean {
+    if (Number(attempt.amount ?? AXON_STARTUP_FEE_KES) !== AXON_STARTUP_FEE_KES) return false;
+    const age = attempt.createdAt ? Date.now() - new Date(attempt.createdAt).getTime() : 0;
+    if (attempt.status === 'PENDING') return !!attempt.authorizationUrl && age < CHECKOUT_LINK_TTL_MS;
+    if (attempt.status === 'INITIALIZED') return age < SETUP_GRACE_MS;
+    return false;
   }
 
   async verify(tenantId: string, reference: string) {

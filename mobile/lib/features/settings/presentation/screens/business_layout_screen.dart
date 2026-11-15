@@ -1,5 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
@@ -14,6 +18,12 @@ import '../../../../core/widgets/modal_disposal.dart';
 import '../../../../core/desktop/adaptive_sheet.dart';
 import '../../../../core/desktop/desktop_layout.dart';
 import '../desktop/desktop_sub_page.dart';
+import '../../../../core/widgets/alive_feedback.dart';
+import '../../../../core/widgets/motion.dart';
+import '../../../../core/widgets/motion_kit.dart';
+import '../providers/layout_requests_provider.dart';
+import '../widgets/layout_business_type_card.dart';
+import '../widgets/layout_live_preview.dart';
 
 class BusinessLayoutScreen extends ConsumerStatefulWidget {
   const BusinessLayoutScreen({super.key});
@@ -48,6 +58,190 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
   String _profileSearch = '';
   bool _initialized = false;
   bool _saving = false;
+  bool _justSaved = false;
+  Timer? _savedTimer;
+
+  /// The layout as last saved, to count what is still unsaved.
+  Map<String, dynamic>? _baseline;
+  String _activeSection = 'type';
+  final Set<String> _expandedSections = {'type'};
+
+  bool _isWide(BuildContext context) => MediaQuery.sizeOf(context).width >= 600;
+
+  /// Applies a business profile and resets the recommended defaults that go
+  /// with it. Wording the owner customised is kept.
+  void _selectProfile(BusinessLayoutPreset preset, {List<String>? additional}) {
+    if (_profileId == preset.id && additional == null) return;
+    _profileId = preset.id;
+    _additionalProfileIds = additional != null
+        ? [...additional]
+        : (_additionalProfileIds.where((id) => id != preset.id).toList());
+    _hiddenPaths =
+        businessLayoutDefaultHiddenPaths(_profileId, _additionalProfileIds);
+    _priorityPaths = _supportedPriorityPaths(
+      businessLayoutDefaultPriorityPaths(_profileId, _additionalProfileIds),
+    );
+    _startPath = _priorityPaths.isEmpty ? null : _priorityPaths.first;
+    _defaultBaseUnit = preset.defaultBaseUnit;
+    _allowFractionsForNewProducts = preset.defaultAllowFractions;
+    _trackInventoryForNewProducts = preset.defaultTrackInventoryForNewProducts;
+    _posProductView = preset.defaultPosProductView;
+    _showPosCategories = preset.defaultShowPosCategories;
+    _showPosFavorites = preset.defaultShowPosFavorites;
+    _showPosCustomer = preset.defaultShowPosCustomer;
+    _posQuickActions = _supportedPosQuickActions(
+      businessLayoutDefaultPosQuickActions(_profileId, _additionalProfileIds),
+    );
+    _dashboardMetrics = [
+      ...businessLayoutDefaultDashboardMetrics(_profileId, _additionalProfileIds)
+    ];
+    _dashboardSections = [
+      ...businessLayoutDefaultDashboardSections(
+          _profileId, _additionalProfileIds)
+    ];
+    _productFieldKeys = [
+      ...businessLayoutDefaultProductFieldKeys(
+        _profileId,
+        _additionalProfileIds,
+        customFields: _customProductFields,
+      ),
+    ];
+  }
+
+  /// Which areas of the layout differ from what is saved, by name.
+  List<String> _changedAreas(BusinessLayoutConfig layout) {
+    final base = _baseline;
+    if (base == null) return const [];
+    final now = layout.toJson();
+    const areaOf = <String, String>{
+      'profileId': 'Business type',
+      'additionalProfileIds': 'Business type',
+      'defaultBaseUnit': 'Products',
+      'allowFractionsForNewProducts': 'Products',
+      'trackInventoryForNewProducts': 'Products',
+      'productFieldKeys': 'Products',
+      'customProductFields': 'Products',
+      'posProductView': 'Checkout',
+      'showPosCategories': 'Checkout',
+      'showPosFavorites': 'Checkout',
+      'showPosCustomer': 'Checkout',
+      'posQuickActions': 'Checkout',
+      'posProductPages': 'Checkout',
+      'dashboardMetrics': 'Dashboard',
+      'dashboardSections': 'Dashboard',
+    };
+    final areas = <String>[];
+    for (final key in {...base.keys, ...now.keys}) {
+      if (key == 'version') continue;
+      if (jsonEncode(base[key]) == jsonEncode(now[key])) continue;
+      final area = areaOf[key] ?? 'Navigation';
+      if (!areas.contains(area)) areas.add(area);
+    }
+    return areas;
+  }
+
+  void _discard() {
+    setState(() {
+      _initialized = false;
+      _baseline = null;
+    });
+  }
+
+  Future<void> _requestTypeChange() async {
+    final stored = businessLayoutFromUser(ref.read(currentUserProvider));
+    final sent = await showLayoutChangeRequestSheet(
+      context,
+      currentProfileId: stored.profileId,
+    );
+    if (sent == null || !mounted) return;
+    ref.invalidate(layoutRequestsProvider);
+    showLayoutRequestSent(context);
+  }
+
+  Future<void> _cancelRequest(LayoutChangeRequest request) async {
+    final ok = await Alive.run(
+      context,
+      () => ref.read(layoutRequestsApiProvider).cancel(request.id),
+      done: 'Request withdrawn',
+      failed: 'Could not withdraw the request. Please try again.',
+    );
+    if (ok) ref.invalidate(layoutRequestsProvider);
+  }
+
+  Future<void> _applyApprovedChange(LayoutChangeRequest request) async {
+    final preset = businessLayoutPreset(request.toProfileId);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Switch to ${preset.name}?'),
+        content: const Text(
+          'Wording, checkout and dashboard defaults change to match the new business type. Your products and sales are not touched.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Switch'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _selectProfile(
+          preset,
+          additional: request.additionalProfileIds,
+        ));
+    await _save();
+    if (mounted) ref.invalidate(layoutRequestsProvider);
+  }
+
+  Future<void> _explainAddStore() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 4, 22, 22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Add a store for a different business',
+                style: Theme.of(sheetContext)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Your layout stays fixed to the business you set up. If you are opening something different, like a food counter next to a bookshop, add it as another store. Each store keeps its own business type, and you switch between them from the branch picker.',
+                style: Theme.of(sheetContext)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(height: 1.45),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(sheetContext).pop();
+                    if (mounted) context.go('/settings');
+                  },
+                  icon: const Icon(Icons.add_business_rounded),
+                  label: const Text('Go to Settings > Branches'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   List<String> _supportedPriorityPaths(Iterable<String> paths) {
     if (!getIt<AuthService>().isLocalWorkspace) return paths.toList();
@@ -73,6 +267,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
 
   @override
   void dispose() {
+    _savedTimer?.cancel();
     _profileSearchController.dispose();
     super.dispose();
   }
@@ -137,6 +332,8 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
       productFieldKeys: _productFieldKeys,
       customProductFields: _customProductFields,
     );
+    _baseline ??= jsonDecode(jsonEncode(selectedLayout.toJson()))
+        as Map<String, dynamic>;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final surface = isDark ? DesignColors.darkSurface : Colors.white;
     final text =
@@ -157,34 +354,24 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
     }).toList(growable: false);
 
     final desktop = context.inDesktopShell;
-    final layoutBody = Column(
-          children: [
-            Expanded(
-              child: ListView(
-                padding: desktop
-                    ? const EdgeInsets.symmetric(vertical: 16)
-                    : const EdgeInsets.fromLTRB(18, 12, 18, 24),
-                children: [
-                  Text(
-                    'Make Counterbase fit the way your shop works.',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          color: text,
-                          fontWeight: FontWeight.w800,
-                        ),
+    final typeLock = ref.watch(businessTypeLockProvider);
+    final typeLocked = typeLock.locked;
+    final requests =
+        ref.watch(layoutRequestsProvider).valueOrNull ?? const <LayoutChangeRequest>[];
+    final profileSection = <Widget>[
+                  LayoutBusinessTypeCard(
+                    layout: selectedLayout,
+                    locked: typeLocked,
+                    requests: requests,
+                    canManage: canManageLayout,
+                    wide: _isWide(context),
+                    onRequestChange: _requestTypeChange,
+                    onApply: _applyApprovedChange,
+                    onCancel: _cancelRequest,
+                    onAddStore: _explainAddStore,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Choose a shop profile, shape checkout, rename and show the work areas you use, set the opening screen, and arrange shortcuts. This layout is saved on this device; other installations keep their own layout.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: secondary,
-                          height: 1.45,
-                        ),
-                  ),
-                  if (!canManageLayout) ...[
-                    const SizedBox(height: 14),
-                    const _PermissionNotice(),
-                  ],
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 16),
+                  if (!typeLocked) ...[
                   const _SectionHeading(
                     title: 'Shop profile',
                     subtitle:
@@ -240,75 +427,19 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                             selected: selected,
                             onTap: !canEditLayout
                                 ? null
-                                : () => setState(() {
-                                      if (_profileId != preset.id) {
-                                        _profileId = preset.id;
-                                        _additionalProfileIds.remove(preset.id);
-                                        _hiddenPaths =
-                                            businessLayoutDefaultHiddenPaths(
-                                          _profileId,
-                                          _additionalProfileIds,
-                                        );
-                                        _priorityPaths =
-                                            _supportedPriorityPaths(
-                                          businessLayoutDefaultPriorityPaths(
-                                            _profileId,
-                                            _additionalProfileIds,
-                                          ),
-                                        );
-                                        _startPath = _priorityPaths.isEmpty
-                                            ? null
-                                            : _priorityPaths.first;
-                                        _defaultBaseUnit =
-                                            preset.defaultBaseUnit;
-                                        _allowFractionsForNewProducts =
-                                            preset.defaultAllowFractions;
-                                        _trackInventoryForNewProducts = preset
-                                            .defaultTrackInventoryForNewProducts;
-                                        _posProductView =
-                                            preset.defaultPosProductView;
-                                        _showPosCategories =
-                                            preset.defaultShowPosCategories;
-                                        _showPosFavorites =
-                                            preset.defaultShowPosFavorites;
-                                        _showPosCustomer =
-                                            preset.defaultShowPosCustomer;
-                                        _posQuickActions =
-                                            _supportedPosQuickActions(
-                                          businessLayoutDefaultPosQuickActions(
-                                            _profileId,
-                                            _additionalProfileIds,
-                                          ),
-                                        );
-                                        _dashboardMetrics = [
-                                          ...businessLayoutDefaultDashboardMetrics(
-                                            _profileId,
-                                            _additionalProfileIds,
-                                          )
-                                        ];
-                                        _dashboardSections = [
-                                          ...businessLayoutDefaultDashboardSections(
-                                            _profileId,
-                                            _additionalProfileIds,
-                                          )
-                                        ];
-                                        _productFieldKeys = [
-                                          ...businessLayoutDefaultProductFieldKeys(
-                                            _profileId,
-                                            _additionalProfileIds,
-                                            customFields: _customProductFields,
-                                          ),
-                                        ];
-                                      }
-                                    }),
+                                : () => setState(
+                                      () => _selectProfile(preset),
+                                    ),
                           ),
                         );
                       }).toList(),
                     );
                   }),
                   const SizedBox(height: 12),
+                  ],
                   BusinessLayoutPreview(layout: selectedLayout),
                   const SizedBox(height: 16),
+                  if (!typeLocked) ...[
                   const _SectionHeading(
                     title: 'Additional shop profiles',
                     subtitle:
@@ -355,13 +486,15 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                           : 'Edit additional profiles'),
                     ),
                   ),
+                  ],
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
                     onPressed: !canEditLayout ? null : _editProductWording,
                     icon: const Icon(Icons.edit_note_rounded),
                     label: const Text('Customize shop wording'),
                   ),
-                  const SizedBox(height: 22),
+    ];
+    final productSection = <Widget>[
                   const _SectionHeading(
                     title: 'New product defaults',
                     subtitle:
@@ -437,7 +570,9 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                             : DesignColors.surfaceBorderLight,
                       ),
                     ),
-                    child: Column(
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: Column(
                       children: [
                         if (selectedPreset.productFields.isEmpty &&
                             _customProductFields.isEmpty)
@@ -495,8 +630,10 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                         ),
                       ],
                     ),
+                    ),
                   ),
-                  const SizedBox(height: 22),
+    ];
+    final checkoutSection = <Widget>[
                   const _SectionHeading(
                     title: 'Checkout layout',
                     subtitle:
@@ -903,7 +1040,8 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 22),
+    ];
+    final dashboardSection = <Widget>[
                   const _SectionHeading(
                     title: 'Dashboard layout',
                     subtitle:
@@ -1017,7 +1155,8 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                       ),
                     );
                   }),
-                  const SizedBox(height: 22),
+    ];
+    final navigationSection = <Widget>[
                   const _SectionHeading(
                     title: 'What appears in the app',
                     subtitle:
@@ -1435,46 +1574,177 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                       ],
                     ),
                   ),
+    ];
+
+    final sections = <_LayoutSectionSpec>[
+      _LayoutSectionSpec(
+        id: 'type',
+        title: 'Business type',
+        subtitle: typeLocked
+            ? 'Fixed to what you set up. Request a change any time.'
+            : 'Pick the shop profile that matches your trade.',
+        icon: Icons.storefront_rounded,
+        children: profileSection,
+      ),
+      _LayoutSectionSpec(
+        id: 'products',
+        title: 'Products',
+        subtitle: 'New item defaults and the details each product collects.',
+        icon: Icons.inventory_2_rounded,
+        children: productSection,
+      ),
+      _LayoutSectionSpec(
+        id: 'checkout',
+        title: 'Checkout',
+        subtitle: 'How the sales counter looks and the shortcuts on it.',
+        icon: Icons.point_of_sale_rounded,
+        children: checkoutSection,
+      ),
+      _LayoutSectionSpec(
+        id: 'dashboard',
+        title: 'Dashboard',
+        subtitle: 'The figures and sections your team sees first.',
+        icon: Icons.insights_rounded,
+        children: dashboardSection,
+      ),
+      _LayoutSectionSpec(
+        id: 'navigation',
+        title: 'Navigation',
+        subtitle: 'Work areas, opening screen and shortcut names.',
+        icon: Icons.menu_open_rounded,
+        children: navigationSection,
+      ),
+    ];
+
+    final saveBar = _SaveBar(
+      changedAreas: _changedAreas(selectedLayout),
+      saving: _saving,
+      justSaved: _justSaved,
+      enabled: canManageLayout,
+      desktop: desktop,
+      onSave: _save,
+      onDiscard: _discard,
+    );
+
+    final layoutBody = LayoutBuilder(builder: (context, constraints) {
+      final twoPane = constraints.maxWidth >= 600;
+      final intro = <Widget>[
+        Text(
+          'Make Counterbase fit the way your shop works.',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: text,
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          isLocalWorkspace
+              ? 'Choose how checkout, the dashboard and navigation look. This layout is saved on this device.'
+              : 'Choose how checkout, the dashboard and navigation look. It is saved for your whole shop, so every phone, tablet and computer shows the same layout.',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: secondary,
+                height: 1.45,
+              ),
+        ),
+        if (!canManageLayout) ...[
+          const SizedBox(height: 14),
+          const _PermissionNotice(),
+        ],
+        const SizedBox(height: 18),
+      ];
+
+      Widget sectionBody(_LayoutSectionSpec section) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: section.children,
+          );
+
+      final Widget scroll;
+      if (twoPane) {
+        final active = sections.firstWhere(
+          (s) => s.id == _activeSection,
+          orElse: () => sections.first,
+        );
+        scroll = Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: constraints.maxWidth >= 900 ? 280 : 220,
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(desktop ? 0 : 14, 12, 8, 24),
+                children: [
+                  for (var i = 0; i < sections.length; i++)
+                    StaggeredItem(
+                      itemKey: 'layout-nav-${sections[i].id}',
+                      index: i,
+                      child: _SectionRailTile(
+                        spec: sections[i],
+                        selected: sections[i].id == active.id,
+                        onTap: () =>
+                            setState(() => _activeSection = sections[i].id),
+                      ),
+                    ),
+                  const SizedBox(height: 14),
+                  Center(
+                    child: LayoutLivePreview(
+                      layout: selectedLayout,
+                      wide: true,
+                      height: constraints.maxWidth >= 900 ? 150 : 120,
+                    ),
+                  ),
                 ],
               ),
             ),
-            Container(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
-              decoration: BoxDecoration(
-                color: surface,
-                border: Border(
-                  top: BorderSide(
-                    color: isDark
-                        ? DesignColors.darkBorder
-                        : DesignColors.surfaceBorderLight,
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(8, 12, desktop ? 0 : 18, 24),
+                children: [
+                  ...intro,
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    child: KeyedSubtree(
+                      key: ValueKey(active.id),
+                      child: sectionBody(active),
+                    ),
                   ),
-                ),
-              ),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: !canEditLayout ? null : _save,
-                  icon: _saving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.check_rounded),
-                  label: Text(_saving ? 'Saving layout…' : 'Save shop layout'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: DesignColors.accent,
-                    foregroundColor:
-                        desktop ? const Color(0xFF1C1917) : Colors.white,
-                    padding: EdgeInsets.symmetric(vertical: desktop ? 12 : 16),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(desktop ? 8 : 16)),
-                  ),
-                ),
+                ],
               ),
             ),
           ],
         );
+      } else {
+        scroll = ListView(
+          padding: desktop
+              ? const EdgeInsets.symmetric(vertical: 16)
+              : const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          children: [
+            ...intro,
+            for (var i = 0; i < sections.length; i++)
+              StaggeredItem(
+                itemKey: 'layout-section-${sections[i].id}',
+                index: i,
+                child: _CollapsibleSection(
+                  spec: sections[i],
+                  expanded: _expandedSections.contains(sections[i].id),
+                  onToggle: () => setState(() {
+                    if (!_expandedSections.add(sections[i].id)) {
+                      _expandedSections.remove(sections[i].id);
+                    }
+                  }),
+                  child: sectionBody(sections[i]),
+                ),
+              ),
+          ],
+        );
+      }
+
+      return Column(
+        children: [
+          Expanded(child: scroll),
+          saveBar,
+        ],
+      );
+    });
+
     if (desktop) {
       return Scaffold(
         body: DesktopSubPage(
@@ -2148,37 +2418,359 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
         customProductFields: [..._customProductFields],
       );
       final authService = getIt<AuthService>();
-      final tenant = authService.currentUser?['tenant'];
-      final currentSettings = tenant is Map && tenant['settings'] is Map
-          ? Map<String, dynamic>.from(tenant['settings'] as Map)
-          : <String, dynamic>{};
-      await authService.updateTenantSession({
-        'settings': {
-          ...currentSettings,
-          'businessLayout': layout.toJson(),
-        },
-      });
+      final json = layout.toJson();
+      final synced = await authService.saveBusinessLayout(json);
       ref.read(authControllerProvider.notifier).refreshFromService();
       if (mounted) {
-        showGlassSnackBar(
+        setState(() {
+          _baseline = jsonDecode(jsonEncode(json)) as Map<String, dynamic>;
+          _justSaved = true;
+        });
+        _savedTimer?.cancel();
+        _savedTimer = Timer(const Duration(milliseconds: 2200), () {
+          if (mounted) setState(() => _justSaved = false);
+        });
+        Alive.done(
           context,
-          'Layout saved on this device',
-          icon: Icons.check_circle_rounded,
-          color: DesignColors.success,
+          synced
+              ? (authService.isLocalWorkspace
+                  ? 'Layout saved on this device'
+                  : 'Layout saved for your whole shop')
+              : 'Layout saved here. It will upload when you are back online.',
+          icon: synced ? Icons.check_circle_rounded : Icons.cloud_off_rounded,
+          color: synced ? DesignColors.success : DesignColors.warning,
         );
       }
     } catch (_) {
       if (mounted) {
-        showGlassSnackBar(
+        Alive.failed(
           context,
-          'Could not save the layout on this device. Please try again.',
-          icon: Icons.error_outline_rounded,
-          color: DesignColors.error,
+          'Could not save the layout. Please try again.',
         );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+}
+
+class _LayoutSectionSpec {
+  const _LayoutSectionSpec({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.children,
+  });
+
+  final String id;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final List<Widget> children;
+}
+
+/// Phone: one section as a card that opens and closes, so the long list of
+/// editors stays tidy and the rarely used ones stay out of the way.
+class _CollapsibleSection extends StatelessWidget {
+  const _CollapsibleSection({
+    required this.spec,
+    required this.expanded,
+    required this.onToggle,
+    required this.child,
+  });
+
+  final _LayoutSectionSpec spec;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight;
+    final secondary =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        decoration: BoxDecoration(
+          color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: expanded
+                ? DesignColors.accent.withValues(alpha: .55)
+                : border,
+          ),
+        ),
+        child: Column(
+          children: [
+            TapScale(
+              scale: .985,
+              child: InkWell(
+                onTap: onToggle,
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: DesignColors.accent.withValues(alpha: .13),
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      child: Icon(spec.icon,
+                          color: DesignColors.accent, size: 21),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            spec.title,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            spec.subtitle,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: secondary, height: 1.3),
+                          ),
+                        ],
+                      ),
+                    ),
+                    AnimatedRotation(
+                      turns: expanded ? .5 : 0,
+                      duration: const Duration(milliseconds: 220),
+                      child: Icon(Icons.keyboard_arrow_down_rounded,
+                          color: secondary),
+                    ),
+                  ],
+                ),
+              ),
+              ),
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: expanded
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+                      // Ink from list tiles inside paints on this, not under the
+                      // card's own background.
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: child,
+                      ),
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Tablet, POS terminal and desktop: the section list sits on the left.
+class _SectionRailTile extends StatelessWidget {
+  const _SectionRailTile({
+    required this.spec,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _LayoutSectionSpec spec;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondary =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: selected
+            ? DesignColors.accent.withValues(alpha: isDark ? .17 : .09)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            child: Row(
+              children: [
+                Icon(spec.icon,
+                    size: 20,
+                    color: selected ? DesignColors.accent : secondary),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Text(
+                    spec.title,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                          color: selected ? DesignColors.accent : null,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Always visible at the bottom: how much is unsaved, and the save button.
+/// After saving it turns into an animated "Saved" for a moment.
+class _SaveBar extends StatelessWidget {
+  const _SaveBar({
+    required this.changedAreas,
+    required this.saving,
+    required this.justSaved,
+    required this.enabled,
+    required this.desktop,
+    required this.onSave,
+    required this.onDiscard,
+  });
+
+  final List<String> changedAreas;
+  final bool saving;
+  final bool justSaved;
+  final bool enabled;
+  final bool desktop;
+  final VoidCallback onSave;
+  final VoidCallback onDiscard;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dirty = changedAreas.isNotEmpty;
+    final secondary =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final status = justSaved
+        ? 'All changes saved'
+        : dirty
+            ? 'Unsaved: ${changedAreas.join(', ')}'
+            : 'No changes yet';
+    final statusRow = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      child: Row(
+        key: ValueKey(status),
+        children: [
+          if (justSaved)
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: AnimatedCheckmark(size: 22, strokeWidth: 3),
+            )
+          else
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: dirty ? DesignColors.warning : secondary,
+              ),
+            ),
+          const SizedBox(width: 9),
+          Flexible(
+            child: Text(
+              status,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: justSaved ? DesignColors.success : null,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+    final saveButton = FilledButton.icon(
+      onPressed: enabled && dirty && !saving ? onSave : null,
+      icon: saving
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.check_rounded),
+      label: Text(saving ? 'Saving…' : 'Save layout'),
+      style: FilledButton.styleFrom(
+        backgroundColor: DesignColors.accent,
+        foregroundColor: desktop ? const Color(0xFF1C1917) : Colors.white,
+        padding:
+            EdgeInsets.symmetric(horizontal: 18, vertical: desktop ? 12 : 14),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(desktop ? 8 : 14)),
+      ),
+    );
+    final discardButton = dirty && !saving
+        ? TextButton(onPressed: onDiscard, child: const Text('Discard'))
+        : null;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      decoration: BoxDecoration(
+        color: isDark ? DesignColors.darkSurface : Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: isDark
+                ? DesignColors.darkBorder
+                : DesignColors.surfaceBorderLight,
+          ),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: LayoutBuilder(builder: (context, c) {
+          if (c.maxWidth >= 560) {
+            return Row(
+              children: [
+                Expanded(child: statusRow),
+                if (discardButton != null) discardButton,
+                const SizedBox(width: 6),
+                saveButton,
+              ],
+            );
+          }
+          // Phone: the status gets its own line so it is never squeezed.
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              statusRow,
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  if (discardButton != null) ...[
+                    discardButton,
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(child: saveButton),
+                ],
+              ),
+            ],
+          );
+        }),
+      ),
+    );
   }
 }
 
@@ -2213,9 +2805,10 @@ class _ProfileCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accent = preset.accent ?? DesignColors.accent;
     return Material(
       color: selected
-          ? DesignColors.accent.withValues(alpha: isDark ? .17 : .08)
+          ? accent.withValues(alpha: isDark ? .17 : .08)
           : (isDark ? DesignColors.darkSurface : Colors.white),
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
@@ -2228,7 +2821,7 @@ class _ProfileCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: selected
-                  ? DesignColors.accent
+                  ? accent
                   : (isDark
                       ? DesignColors.darkBorder
                       : DesignColors.surfaceBorderLight),
@@ -2239,11 +2832,18 @@ class _ProfileCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [
-                Icon(preset.icon, color: DesignColors.accent, size: 21),
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: .15),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Icon(preset.icon, color: accent, size: 20),
+                ),
                 const Spacer(),
                 if (selected)
-                  const Icon(Icons.check_circle_rounded,
-                      color: DesignColors.accent, size: 19),
+                  Icon(Icons.check_circle_rounded, color: accent, size: 19),
               ]),
               const SizedBox(height: 11),
               Text(

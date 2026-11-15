@@ -45,7 +45,7 @@ export const PLAN_PRICING: Record<string, PlanPricing> = {
   CORE: {
     planId: 'CORE',
     name: 'Core',
-    monthlyAmountKes: 3200,
+    monthlyAmountKes: 3000,
     trialDays: 7,
     features: {
       maxBranches: 3,
@@ -60,7 +60,7 @@ export const PLAN_PRICING: Record<string, PlanPricing> = {
   BUSINESS: {
     planId: 'BUSINESS',
     name: 'Business',
-    monthlyAmountKes: 6500,
+    monthlyAmountKes: 5000,
     trialDays: 7,
     features: {
       maxBranches: 10,
@@ -75,7 +75,7 @@ export const PLAN_PRICING: Record<string, PlanPricing> = {
   ENTERPRISE: {
     planId: 'ENTERPRISE',
     name: 'Enterprise',
-    monthlyAmountKes: 10000,
+    monthlyAmountKes: 9999,
     trialDays: 7,
     features: {
       maxBranches: UNLIMITED_PLAN_LIMIT,
@@ -126,6 +126,8 @@ export class SubscriptionService {
       maxBranches: isTrial ? PLAN_PRICING.TRIAL.features.maxBranches : currentPlan.maxBranches,
       maxUsers: isTrial ? PLAN_PRICING.TRIAL.features.maxUsers : currentPlan.maxUsers,
       pendingPlan: selectedTrialPlan(settings) ?? (isTrial && currentPlan.plan !== 'TRIAL' ? currentPlan.plan : null),
+      // A change scheduled for the next renewal on a paid plan.
+      pendingChange: isTrial ? null : scheduledPlanChange(settings, currentPlan.plan),
       planMeta,
       availablePlans: Object.values(PLAN_PRICING),
     };
@@ -153,6 +155,9 @@ export class SubscriptionService {
     if (newPlan === 'TRIAL') {
       throw new ConflictException('Select a paid plan to continue after your free trial.');
     }
+    if (PAID_STATUSES.includes(tenant.subscriptionStatus ?? '')) {
+      return this.changePaidPlan(tenant, newPlan);
+    }
     const now = new Date();
     const isActiveTrial =
       tenant.subscriptionStatus === 'TRIAL' &&
@@ -160,7 +165,7 @@ export class SubscriptionService {
       tenant.currentPeriodEnd.getTime() > now.getTime();
     if (!isActiveTrial) {
       throw new ConflictException(
-        'Your trial has ended. Pay the open subscription invoice through Paystack before changing your plan.',
+        'Your trial has ended. Pay the open subscription invoice before changing your plan.',
       );
     }
 
@@ -185,6 +190,175 @@ export class SubscriptionService {
       },
     });
     return { ...updated, pendingPlan: newPlan };
+  }
+
+  /**
+   * A paying company switches plans. Nothing is charged or downgraded on the
+   * spot: the choice is recorded and the next invoice is issued for it, so the
+   * plan the company already paid for stays in force until the period ends.
+   * The exception is a company that is overdue with an unpaid invoice that no
+   * checkout has started on: that invoice is re-priced, because nothing has
+   * been paid yet and the next payment should be for the plan they want.
+   */
+  private async changePaidPlan(
+    tenant: {
+      id: string;
+      plan: string | null;
+      subscriptionStatus: string | null;
+      currentPeriodEnd: Date | null;
+      settings: unknown;
+    },
+    newPlan: string,
+  ) {
+    const currentPlan = tenant.plan ?? 'CORE';
+    if (newPlan === currentPlan) {
+      return this.cancelPlanChange(tenant.id);
+    }
+    const now = new Date();
+    const periodEnded = tenant.currentPeriodEnd != null && tenant.currentPeriodEnd.getTime() <= now.getTime();
+    const overdue = tenant.subscriptionStatus === 'PAST_DUE' || periodEnded;
+    const openInvoice = await this.findOpenInvoice(tenant.id);
+
+    if (overdue && openInvoice) {
+      if (invoiceHasCheckoutInFlight(openInvoice)) {
+        throw new ConflictException(
+          'A payment for this month is already in progress. Finish it, or wait a few minutes, before changing your plan.',
+        );
+      }
+      const plan = PLAN_PRICING[newPlan];
+      await this.prisma.subscriptionInvoice.update({
+        where: { id: openInvoice.id },
+        data: {
+          plan: newPlan,
+          amount: new Prisma.Decimal(plan.monthlyAmountKes),
+          provider: null,
+          reference: null,
+          authorizationUrl: null,
+          authorizationIssuedAt: null,
+          mpesaCheckoutId: null,
+        },
+      });
+      await this.writeSettings(tenant.id, tenant.settings, {
+        pendingSubscriptionPlan: undefined,
+        pendingSubscriptionPlanEffectiveAt: undefined,
+        pendingSubscriptionPlanRequestedAt: undefined,
+      });
+      return {
+        plan: currentPlan,
+        subscriptionStatus: tenant.subscriptionStatus,
+        currentPeriodEnd: tenant.currentPeriodEnd,
+        pendingPlan: newPlan,
+        pendingChange: null,
+        effective: 'on_payment' as const,
+        invoicePlan: newPlan,
+      };
+    }
+
+    const effectiveAt = tenant.currentPeriodEnd ? tenant.currentPeriodEnd.toISOString() : null;
+    await this.writeSettings(tenant.id, tenant.settings, {
+      pendingSubscriptionPlan: newPlan,
+      pendingSubscriptionPlanEffectiveAt: effectiveAt ?? now.toISOString(),
+      pendingSubscriptionPlanRequestedAt: now.toISOString(),
+    });
+    return {
+      plan: currentPlan,
+      subscriptionStatus: tenant.subscriptionStatus,
+      currentPeriodEnd: tenant.currentPeriodEnd,
+      pendingPlan: newPlan,
+      pendingChange: {
+        plan: newPlan,
+        effectiveAt: effectiveAt ?? now.toISOString(),
+        direction: planDirection(currentPlan, newPlan),
+      },
+      effective: 'at_renewal' as const,
+    };
+  }
+
+  /** Drops a scheduled plan change; an unpaid, unstarted invoice goes back to the current plan. */
+  async cancelPlanChange(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        id: true,
+        plan: true,
+        subscriptionStatus: true,
+        currentPeriodEnd: true,
+        settings: true,
+      },
+    });
+    if (!tenant) throw new NotFoundException('Company not found');
+    const currentPlan = tenant.plan ?? 'CORE';
+
+    if (PAID_STATUSES.includes(tenant.subscriptionStatus ?? '')) {
+      const openInvoice = await this.findOpenInvoice(tenantId);
+      if (
+        openInvoice &&
+        openInvoice.plan !== currentPlan &&
+        PLAN_PRICING[currentPlan] &&
+        !invoiceHasCheckoutInFlight(openInvoice)
+      ) {
+        await this.prisma.subscriptionInvoice.update({
+          where: { id: openInvoice.id },
+          data: {
+            plan: currentPlan,
+            amount: new Prisma.Decimal(PLAN_PRICING[currentPlan].monthlyAmountKes),
+            provider: null,
+            reference: null,
+            authorizationUrl: null,
+            authorizationIssuedAt: null,
+            mpesaCheckoutId: null,
+          },
+        });
+      }
+    }
+    await this.writeSettings(tenantId, tenant.settings, {
+      pendingSubscriptionPlan: undefined,
+      pendingSubscriptionPlanEffectiveAt: undefined,
+      pendingSubscriptionPlanRequestedAt: undefined,
+    });
+    return {
+      plan: currentPlan,
+      subscriptionStatus: tenant.subscriptionStatus,
+      currentPeriodEnd: tenant.currentPeriodEnd,
+      pendingPlan: null,
+      pendingChange: null,
+      effective: 'none' as const,
+    };
+  }
+
+  private findOpenInvoice(tenantId: string) {
+    return this.prisma.subscriptionInvoice.findFirst({
+      where: { tenantId, status: { in: ['PENDING', 'PENDING_CONFIRMATION'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /** Merges keys into tenant.settings; a key set to undefined is removed. */
+  private async writeSettings(
+    tenantId: string,
+    current: unknown,
+    changes: Record<string, string | undefined>,
+  ) {
+    const next: Record<string, unknown> =
+      current && typeof current === 'object' && !Array.isArray(current)
+        ? { ...(current as Record<string, unknown>) }
+        : {};
+    for (const [key, value] of Object.entries(changes)) {
+      if (value === undefined) delete next[key];
+      else next[key] = value;
+    }
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { settings: next as Prisma.InputJsonValue },
+    });
+  }
+
+  /** The plans on offer, straight from the price table the invoices use. */
+  listPlans() {
+    return {
+      currency: 'KES',
+      plans: Object.values(PLAN_PRICING).filter((p) => p.planId !== 'TRIAL'),
+    };
   }
 
   async listInvoices(tenantId: string) {
@@ -256,6 +430,60 @@ export function selectedTrialPlan(settings: unknown): string | null {
   return typeof selected === 'string' && selected !== 'TRIAL' && VALID_PLANS.includes(selected)
     ? selected
     : null;
+}
+
+/** Statuses of a company that is paying (or owes a payment) rather than on trial. */
+const PAID_STATUSES = ['ACTIVE', 'PAST_DUE'];
+
+export type PlanDirection = 'UPGRADE' | 'DOWNGRADE';
+
+export function planDirection(from: string, to: string): PlanDirection {
+  const a = PLAN_PRICING[from]?.monthlyAmountKes ?? 0;
+  const b = PLAN_PRICING[to]?.monthlyAmountKes ?? 0;
+  return b >= a ? 'UPGRADE' : 'DOWNGRADE';
+}
+
+/**
+ * A plan change a paying company scheduled for its next renewal. Only the new
+ * flow writes `pendingSubscriptionPlanEffectiveAt`, so a trial-time selection
+ * left in settings is never mistaken for a downgrade or an upgrade.
+ */
+export function scheduledPlanChange(
+  settings: unknown,
+  currentPlan: string | null | undefined,
+): { plan: string; effectiveAt: string | null; direction: PlanDirection } | null {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
+  const s = settings as Record<string, unknown>;
+  const plan = s.pendingSubscriptionPlan;
+  const effectiveAt = s.pendingSubscriptionPlanEffectiveAt;
+  if (typeof plan !== 'string' || typeof effectiveAt !== 'string') return null;
+  if (!VALID_PLANS.includes(plan) || plan === 'TRIAL' || plan === currentPlan) return null;
+  return { plan, effectiveAt, direction: planDirection(currentPlan ?? 'CORE', plan) };
+}
+
+/** The plan the next invoice is issued for. */
+export function nextInvoicePlan(tenant: {
+  plan?: string | null;
+  settings?: unknown;
+}): string {
+  if (tenant.plan === 'TRIAL') return selectedTrialPlan(tenant.settings) ?? 'CORE';
+  return scheduledPlanChange(tenant.settings, tenant.plan)?.plan ?? tenant.plan ?? 'CORE';
+}
+
+/** A checkout or M-Pesa prompt has already been started on this invoice. */
+export function invoiceHasCheckoutInFlight(invoice: {
+  provider?: string | null;
+  authorizationIssuedAt?: Date | null;
+}): boolean {
+  const provider = invoice.provider;
+  if (!provider || provider === 'PAYSTACK_FAILED') return false;
+  if (provider === 'PAYSTACK') {
+    // A hosted link nobody paid within a day is dead; do not let it block a
+    // plan change forever. Rows from before the issue time was recorded too.
+    const issued = invoice.authorizationIssuedAt;
+    return !!issued && Date.now() - new Date(issued).getTime() < 24 * 60 * 60 * 1000;
+  }
+  return true;
 }
 
 export type FeatureKey =

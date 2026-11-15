@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
+import 'package:dio/dio.dart' show DioException;
 import 'package:flutter/foundation.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:uuid/uuid.dart';
@@ -1398,6 +1399,38 @@ class AuthService implements LifecycleLockAuth {
     }
   }
 
+  /// What a computer is told after the phone that signed it in signs it out.
+  static const computerSignedOutMessage =
+      'This computer was signed out from your phone. Sign in again to keep '
+      'using it.';
+
+  String? _signOutNotice;
+
+  /// A sentence for the sign-in screen explaining why the session ended, or
+  /// null. Read once: the sign-in screen shows it and the notice is cleared.
+  String? takeSignOutNotice() {
+    final notice = _signOutNotice;
+    _signOutNotice = null;
+    return notice;
+  }
+
+  /// True when the server refused a request because the phone signed this
+  /// computer out (see the API's linked computers).
+  static bool isComputerSignedOut(Object error) {
+    if (error is! DioException || error.response?.statusCode != 401) {
+      return false;
+    }
+    return '${error.response?.data}'.contains('signed out from your phone');
+  }
+
+  /// Ends the session and leaves the plain reason for the sign-in screen. The
+  /// notice is set before logging out, because that is what moves the app to
+  /// the sign-in screen.
+  Future<void> endSessionSignedOutFromPhone() async {
+    _signOutNotice = computerSignedOutMessage;
+    await logout();
+  }
+
   Future<void> logout({bool allDevices = false}) async {
     final localWorkspace = isLocalWorkspace;
     final refreshToken =
@@ -1515,13 +1548,25 @@ class AuthService implements LifecycleLockAuth {
       if (!isAuthenticated || _currentUser == null) return;
       if (latestTenant['id']?.toString() != tenantId) return;
 
+      // The server's copy can be missing the saved layout (older saves never
+      // reached it) or be behind a save that is still waiting to upload. Merge
+      // instead of replacing, or the layout vanishes on the next resume.
+      final mergedSettings = mergeTenantSettings(
+        currentTenant['settings'],
+        latestTenant['settings'],
+      );
       final settingsChanged = jsonEncode(currentTenant['settings'] ?? {}) !=
-          jsonEncode(latestTenant['settings'] ?? {});
+          jsonEncode(mergedSettings);
       final identityChanged = currentTenant['name'] != latestTenant['name'] ||
           currentTenant['slug'] != latestTenant['slug'] ||
           currentTenant['logo'] != latestTenant['logo'] ||
           currentTenant['logoPublicId'] != latestTenant['logoPublicId'];
-      if (!settingsChanged && !identityChanged) return;
+      if (!settingsChanged && !identityChanged) {
+        if (_layoutNeedsUpload(currentTenant['settings'], latestTenant['settings'])) {
+          unawaited(_uploadLayout());
+        }
+        return;
+      }
 
       await updateTenantSession({
         for (final key in const [
@@ -1530,16 +1575,144 @@ class AuthService implements LifecycleLockAuth {
           'slug',
           'logo',
           'logoPublicId',
-          'settings',
           'isActive',
         ])
           if (latestTenant.containsKey(key)) key: latestTenant[key],
+        'settings': mergedSettings,
       });
+      if (_layoutNeedsUpload(mergedSettings, latestTenant['settings'])) {
+        unawaited(_uploadLayout());
+      }
       _authStatusController.add(AuthStatus.authenticated);
     } catch (_) {
       _lastTenantSettingsRefreshAt = null;
       // Keep the last known shop settings when the device is offline.
     }
+  }
+
+  /// Client-only marker: the saved layout has not reached the server yet.
+  static const _layoutPendingKey = 'businessLayoutPendingSync';
+
+  /// Combines the settings this device holds with the server's copy. The server
+  /// wins for everything except the business layout: a layout this device has
+  /// that the server lacks, or has not yet received, is kept, not wiped by a
+  /// refresh or sign-in that returns settings without it.
+  static Map<String, dynamic> mergeTenantSettings(Object? local, Object? server) {
+    final merged = server is Map
+        ? Map<String, dynamic>.from(server)
+        : <String, dynamic>{};
+    if (local is! Map) return merged;
+    final localLayout = local['businessLayout'];
+    if (localLayout == null) return merged;
+    final pending = local[_layoutPendingKey] == true;
+    if (merged['businessLayout'] == null || pending) {
+      merged['businessLayout'] = localLayout;
+      if (pending) merged[_layoutPendingKey] = true;
+    }
+    return merged;
+  }
+
+  bool _layoutNeedsUpload(Object? local, Object? server) {
+    if (isLocalWorkspace || local is! Map || local['businessLayout'] == null) {
+      return false;
+    }
+    if (!_canUpdateTenant) return false;
+    final serverLayout = server is Map ? server['businessLayout'] : null;
+    return serverLayout == null || local[_layoutPendingKey] == true;
+  }
+
+  bool get _canUpdateTenant {
+    final permissions = _currentUser?['permissions'];
+    return permissions is List &&
+        (permissions.contains('*') || permissions.contains('branches.tenant.update'));
+  }
+
+  bool _uploadingLayout = false;
+
+  /// Sends the layout held on this device to the shop. On success the pending
+  /// marker is cleared; on failure it stays and the next resume tries again.
+  Future<void> _uploadLayout() async {
+    if (_uploadingLayout || _currentUser == null || isLocalWorkspace) return;
+    final tenant = _currentUser!['tenant'];
+    final settings = tenant is Map && tenant['settings'] is Map
+        ? Map<String, dynamic>.from(tenant['settings'] as Map)
+        : <String, dynamic>{};
+    final layout = settings['businessLayout'];
+    if (layout == null) return;
+    _uploadingLayout = true;
+    try {
+      final saved = await _apiClient.updateCurrentTenant(
+        settings: {'businessLayout': layout},
+      );
+      if (_currentUser == null) return;
+      // Take the shop's settings, keeping the layout just sent, and clear the
+      // pending marker.
+      final fromServer = saved['settings'] is Map
+          ? Map<String, dynamic>.from(saved['settings'] as Map)
+          : <String, dynamic>{};
+      fromServer.remove(_layoutPendingKey);
+      await updateTenantSession({
+        'settings': {...fromServer, 'businessLayout': layout},
+      });
+    } catch (e) {
+      // Offline or a server hiccup: stays pending and the next resume retries.
+      // A refusal (the shop's business type is locked) will never succeed, so
+      // drop the waiting copy and take the shop's own layout instead.
+      if (e is DioException && e.response?.statusCode == 403) {
+        await _discardRejectedLayout();
+      }
+    } finally {
+      _uploadingLayout = false;
+    }
+  }
+
+  Future<void> _discardRejectedLayout() async {
+    try {
+      final latest = await _apiClient.getCurrentTenant();
+      if (_currentUser == null) return;
+      final settings = latest['settings'] is Map
+          ? Map<String, dynamic>.from(latest['settings'] as Map)
+          : <String, dynamic>{};
+      settings.remove(_layoutPendingKey);
+      final tenant = _currentUser!['tenant'];
+      final local = tenant is Map && tenant['settings'] is Map
+          ? Map<String, dynamic>.from(tenant['settings'] as Map)
+          : <String, dynamic>{};
+      local.remove('businessLayout');
+      local.remove(_layoutPendingKey);
+      // Shop settings win; with no stored layout on the shop the local one is
+      // dropped so the phone shows what the shop actually has.
+      await updateTenantSession({'settings': {...local, ...settings}});
+      _authStatusController.add(AuthStatus.authenticated);
+    } catch (_) {}
+  }
+
+  /// Saves the business layout so it survives locking the phone, signing out
+  /// and signing in on another device. The shop copy is written first for a
+  /// cloud shop; if the phone is offline the layout is kept here and uploaded
+  /// later. Returns whether the shop copy is up to date.
+  Future<bool> saveBusinessLayout(Map<String, dynamic> layoutJson) async {
+    final tenant = _currentUser?['tenant'];
+    final current = tenant is Map && tenant['settings'] is Map
+        ? Map<String, dynamic>.from(tenant['settings'] as Map)
+        : <String, dynamic>{};
+    final cloud = !isLocalWorkspace;
+    await updateTenantSession({
+      'settings': {
+        ...current,
+        'businessLayout': layoutJson,
+        if (cloud) _layoutPendingKey: true,
+      },
+    });
+    if (!cloud) return true;
+    await _uploadLayout();
+    final after = _currentUser?['tenant'];
+    final settings = after is Map ? after['settings'] : null;
+    // Up to date only if nothing is waiting AND the shop kept what was chosen
+    // (a locked business type is refused and the shop's own layout returns).
+    return settings is Map &&
+        settings[_layoutPendingKey] != true &&
+        jsonEncode(settings['businessLayout']) == jsonEncode(layoutJson);
   }
 
   Future<void> updateTenantSession(Map<String, dynamic> tenantData) async {
@@ -1550,6 +1723,13 @@ class AuthService implements LifecycleLockAuth {
         ? Map<String, dynamic>.from(previousUser['tenant'] as Map)
         : <String, dynamic>{};
     final updatedTenant = <String, dynamic>{...currentTenant, ...tenantData};
+    // Callers that replace `settings` wholesale (for example with the shop's
+    // copy) must not drop a saved layout the incoming copy does not have.
+    final incomingSettings = tenantData['settings'];
+    if (incomingSettings is Map && incomingSettings['businessLayout'] == null) {
+      updatedTenant['settings'] =
+          mergeTenantSettings(currentTenant['settings'], incomingSettings);
+    }
     final updatedUser = <String, dynamic>{
       ...previousUser,
       'tenant': updatedTenant,
@@ -1847,6 +2027,30 @@ class AuthService implements LifecycleLockAuth {
       }
     }
 
+    // Signing in returns the shop's settings, which may lack a layout this
+    // device saved. Keep it (and upload it once the session is up).
+    final previous = _currentUser ?? _storage.getUser();
+    final previousTenant = previous?['tenant'];
+    final incomingTenant = userData['tenant'];
+    var mergedWithPrevious = false;
+    Object? serverSettings;
+    if (previousTenant is Map && incomingTenant is Map) {
+      final sameShop = previousTenant['id'] != null &&
+          previousTenant['id'].toString() == incomingTenant['id']?.toString();
+      if (sameShop) {
+        final merged = mergeTenantSettings(
+          previousTenant['settings'],
+          incomingTenant['settings'],
+        );
+        userData['tenant'] = {
+          ...Map<String, dynamic>.from(incomingTenant),
+          'settings': merged,
+        };
+        serverSettings = incomingTenant['settings'];
+        mergedWithPrevious = true;
+      }
+    }
+
     _currentUser = userData;
 
     await _storage.saveAccessToken(_accessToken!);
@@ -1866,6 +2070,12 @@ class AuthService implements LifecycleLockAuth {
 
     _updateStatus(AuthStatus.authenticated);
     _registerDeviceIfPossible();
+    final mergedTenant = _currentUser!['tenant'];
+    if (mergedWithPrevious &&
+        mergedTenant is Map &&
+        _layoutNeedsUpload(mergedTenant['settings'], serverSettings)) {
+      unawaited(_uploadLayout());
+    }
   }
 
   /// Best-effort device registration — without this, POST /branches/:id/

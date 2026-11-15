@@ -44,7 +44,7 @@ describe('PlatformAdminService', () => {
               { subscriptionStatus: 'TRIAL', _count: 3 },
               { subscriptionStatus: 'PAST_DUE', _count: 1 },
             ]),
-            // 2 CORE (3200 each) + 1 ENTERPRISE (10000) => MRR 16400
+            // 2 CORE (3000 each) + 1 ENTERPRISE (9999) => MRR 15999
             findMany: jest.fn().mockResolvedValue([
               { plan: 'CORE' },
               { plan: 'CORE' },
@@ -69,8 +69,8 @@ describe('PlatformAdminService', () => {
 
       const result = await service.getDashboard();
 
-      expect(result.mrrKes).toBe(16400);
-      expect(result.arrKes).toBe(16400 * 12);
+      expect(result.mrrKes).toBe(15999);
+      expect(result.arrKes).toBe(15999 * 12);
       expect(result.tenants).toEqual({
         ACTIVE: 2,
         TRIAL: 3,

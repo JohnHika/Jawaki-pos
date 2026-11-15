@@ -18,6 +18,7 @@ import '../../../../core/services/receipt_vision_service.dart';
 import '../../../../core/services/supplier_receipt_ocr_service.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/providers/business_layout_provider.dart';
+import '../../../../core/responsive/device_class.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/widgets/motion_kit.dart';
@@ -154,26 +155,29 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                         pageTitle: pageTitle,
                         isLocalWorkspace: isLocalWorkspace,
                       )
-                    : Column(
-                        children: <Widget>[
-                          _FinanceStatusBar(
-                            state: hub,
-                            onRetry: controller.refresh,
-                            localWorkspace: isLocalWorkspace,
-                          ),
-                          _FinanceTabs(
-                              index: _tab,
-                              isLocalWorkspace: isLocalWorkspace,
-                              onChanged: (index) =>
-                                  setState(() => _tab = index)),
-                          Expanded(
-                              child: SlideSwitcher(
-                                  from: SlideFrom.right,
-                                  child: KeyedSubtree(
-                                      key: ValueKey<int>(_tab),
-                                      child: _tabBody(snapshot, controller,
-                                          permissions, isLocalWorkspace)))),
-                        ],
+                    : TabletContent(
+                        maxWidth: 960,
+                        child: Column(
+                          children: <Widget>[
+                            _FinanceStatusBar(
+                              state: hub,
+                              onRetry: controller.refresh,
+                              localWorkspace: isLocalWorkspace,
+                            ),
+                            _FinanceTabs(
+                                index: _tab,
+                                isLocalWorkspace: isLocalWorkspace,
+                                onChanged: (index) =>
+                                    setState(() => _tab = index)),
+                            Expanded(
+                                child: SlideSwitcher(
+                                    from: SlideFrom.right,
+                                    child: KeyedSubtree(
+                                        key: ValueKey<int>(_tab),
+                                        child: _tabBody(snapshot, controller,
+                                            permissions, isLocalWorkspace)))),
+                          ],
+                        ),
                       ),
           ),
           if (_isScanning)

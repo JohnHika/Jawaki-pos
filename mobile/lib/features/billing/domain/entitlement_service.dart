@@ -114,6 +114,36 @@ class EntitlementService {
     await prefs.setInt(_fetchedAtKey, DateTime.now().millisecondsSinceEpoch);
   }
 
+  /// Signs [payload] with this app's own key, in the shape [resolveCached]
+  /// reads. Static and pure so tests can build tokens.
+  static String signPayload(Map<String, dynamic> payload) {
+    final segment =
+        base64Url.encode(utf8.encode(jsonEncode(payload))).replaceAll('=', '');
+    final mac = Hmac(sha256, utf8.encode(secretKey))
+        .convert(utf8.encode(segment))
+        .bytes;
+    return '$segment.${base64Url.encode(mac).replaceAll('=', '')}';
+  }
+
+  /// Remembers a live entitlement for offline use.
+  ///
+  /// The backend's own signed offline token (`/billing/entitlement/offline`)
+  /// is keyed with a server secret this app never holds, so it can never be
+  /// verified here, and it is shaped differently. The live answer was just
+  /// received over the authenticated connection, so the app keeps it signed
+  /// with its own key: that is what stops a hand-edited cache from unlocking
+  /// anything. The server still decides on every request.
+  Future<void> cacheLiveEntitlement(BillingEntitlement entitlement) async {
+    final paidUntil = DateTime.tryParse(entitlement.paidUntil ?? '');
+    final graceUntil = DateTime.tryParse(entitlement.graceUntil ?? '');
+    final payload = <String, dynamic>{
+      ...entitlement.toMap()..remove('license'),
+      if (paidUntil != null) 'validUntil': paidUntil.millisecondsSinceEpoch,
+      if (graceUntil != null) 'graceUntil': graceUntil.millisecondsSinceEpoch,
+    };
+    await cacheSignedToken(signPayload(payload));
+  }
+
   /// The cached signed token, if any. (Exposed for tests/diagnostics.)
   Future<String?> cachedSignedToken() async {
     final prefs = await _prefsFuture;

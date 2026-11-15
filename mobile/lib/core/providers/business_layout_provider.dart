@@ -36,7 +36,16 @@ class BusinessLayoutPreset {
     this.defaultDashboardMetrics = _defaultDashboardMetrics,
     this.defaultDashboardSections = _defaultDashboardSections,
     this.defaultVisiblePaths = const [],
+    this.accent,
+    this.highlights = const [],
   });
+
+  /// Brand colour for this business type on pickers and cards; falls back to
+  /// the app accent when a profile does not set one.
+  final Color? accent;
+
+  /// Three short selling points shown on the profile card.
+  final List<String> highlights;
 
   final String id;
   final String name;
@@ -767,6 +776,8 @@ const businessLayoutPresets = <BusinessLayoutPreset>[
     id: 'kamukunji_counter',
     name: 'Kamukunji sales counter',
     description: 'Keep rapid counter sales, stock and cash flow close at hand.',
+    accent: Color(0xFF2F9E8F),
+    highlights: ['Rapid sales', 'Stock at hand', 'Cash flow'],
     productSingular: 'Item',
     icon: Icons.store_mall_directory_rounded,
     productsLabel: 'Stock items',
@@ -1190,7 +1201,9 @@ const businessLayoutPresets = <BusinessLayoutPreset>[
     id: 'bakery_food_counter',
     name: 'Bakery & food counter',
     description:
-        'Put quick checkout, menu items and daily stock within easy reach.',
+        'Fast counter checkout, tap-to-sell menu tiles and daily bake stock, laid out for a phone, a tablet or a POS terminal.',
+    accent: Color(0xFFE8893A),
+    highlights: ['Menu tiles', 'Quick counter', 'Daily stock'],
     productSingular: 'Item',
     icon: Icons.bakery_dining_rounded,
     productsLabel: 'Menu & goods',

@@ -12,6 +12,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:axon_pos/core/desktop/desktop_layout.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
+import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/core/utils/api_message.dart';
 import 'package:axon_pos/features/auth/presentation/desktop/auth_desktop_kit.dart';
@@ -45,10 +46,19 @@ class _PhoneSignInScreenState extends ConsumerState<PhoneSignInScreen> {
   Timer? _poll;
   Timer? _clock;
   bool _checking = false;
+  // Who is signing in. When known, their signed-in phone is sent a prompt so
+  // they can approve with one tap instead of scanning.
+  final _email = TextEditingController();
+  bool _promptSent = false;
+
+  static final _emailShape = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
   @override
   void initState() {
     super.initState();
+    try {
+      _email.text = getIt<StorageService>().getRememberedEmail() ?? '';
+    } catch (_) {}
     _start();
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || _phase != _Phase.waiting) return;
@@ -70,6 +80,7 @@ class _PhoneSignInScreenState extends ConsumerState<PhoneSignInScreen> {
   void dispose() {
     _poll?.cancel();
     _clock?.cancel();
+    _email.dispose();
     super.dispose();
   }
 
@@ -97,9 +108,11 @@ class _PhoneSignInScreenState extends ConsumerState<PhoneSignInScreen> {
         desktopName: _computerName,
         platform: Platform.operatingSystem,
         claimChallenge: sha256.convert(utf8.encode(verifier)).toString(),
+        hint: _emailShape.hasMatch(_email.text.trim()) ? _email.text.trim() : null,
       );
       if (!mounted) return;
       setState(() {
+        _promptSent = _emailShape.hasMatch(_email.text.trim());
         _verifier = verifier;
         _linkId = started['linkId']?.toString();
         _qr = started['qr']?.toString() ?? '';
@@ -337,9 +350,52 @@ class _PhoneSignInScreenState extends ConsumerState<PhoneSignInScreen> {
           style: TextStyle(color: palette.soft, height: 1.45),
         ),
         const SizedBox(height: DesignSpacing.lg),
+        if (_promptSent)
+          Container(
+            margin: const EdgeInsets.only(bottom: DesignSpacing.md),
+            padding: const EdgeInsets.all(DesignSpacing.md),
+            decoration: BoxDecoration(
+              color: DesignColors.accent.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.notifications_active_rounded,
+                    color: DesignColors.accent, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'We asked your phone. Tap the notification and approve. '
+                    'No scanning needed.',
+                    style: TextStyle(color: palette.ink, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ),
         step(1, 'On your phone, open Counterbase, then Settings and Sign in a computer.'),
         step(2, 'Scan this code, or type the 6 digits under it.'),
         step(3, 'Check the computer name on your phone and tap Sign it in.'),
+        const SizedBox(height: DesignSpacing.sm),
+        TextField(
+          controller: _email,
+          keyboardType: TextInputType.emailAddress,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            labelText: 'Your email (to ask your phone directly)',
+            isDense: true,
+          ),
+          onSubmitted: (_) => _start(),
+        ),
+        const SizedBox(height: DesignSpacing.sm),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _start,
+            icon: const Icon(Icons.phone_iphone_rounded, size: 18),
+            label: const Text('Ask my phone'),
+          ),
+        ),
         const SizedBox(height: DesignSpacing.sm),
         Text(
           'This computer opens with the same account and role as the phone that approves it.',

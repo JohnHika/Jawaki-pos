@@ -1,5 +1,5 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { SubscriptionService, UNLIMITED_PLAN_LIMIT } from './subscription.service';
+import { SubscriptionService, UNLIMITED_PLAN_LIMIT, nextInvoicePlan } from './subscription.service';
 
 describe('SubscriptionService', () => {
   const buildPrisma = (overrides: Record<string, any> = {}) => ({
@@ -98,15 +98,15 @@ describe('SubscriptionService', () => {
   });
 
   describe('changePlan', () => {
-    it('does not activate or change a paid plan without a paid invoice', async () => {
+    it('refuses a plan change once the trial has ended and nothing is being paid', async () => {
       const { service, prisma } = buildService({
         prisma: {
           tenant: {
             findUnique: jest.fn().mockResolvedValue({
               id: 'tenant-1',
-              subscriptionStatus: 'ACTIVE',
+              subscriptionStatus: 'TRIAL',
               currentPeriodStart: new Date('2026-08-01T00:00:00Z'),
-              currentPeriodEnd: new Date('2026-09-01T00:00:00Z'),
+              currentPeriodEnd: new Date('2026-08-08T00:00:00Z'),
             }),
           },
         },
@@ -116,6 +116,201 @@ describe('SubscriptionService', () => {
         ConflictException,
       );
       expect(prisma.tenant.update).not.toHaveBeenCalled();
+    });
+
+    describe('a paying company', () => {
+      const periodEnd = new Date(Date.now() + 12 * 24 * 60 * 60 * 1000);
+      const active = (over: Record<string, any> = {}) => ({
+        id: 'tenant-1',
+        plan: 'BUSINESS',
+        subscriptionStatus: 'ACTIVE',
+        currentPeriodStart: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000),
+        currentPeriodEnd: periodEnd,
+        settings: { currency: 'KES' },
+        ...over,
+      });
+
+      it('schedules a downgrade for the next renewal and keeps the current plan', async () => {
+        const { service, prisma } = buildService({
+          prisma: {
+            tenant: { findUnique: jest.fn().mockResolvedValue(active()), update: jest.fn() },
+            subscriptionInvoice: { findFirst: jest.fn().mockResolvedValue(null) },
+          },
+        });
+
+        const result: any = await service.changePlan('tenant-1', 'CORE');
+
+        const data = prisma.tenant.update.mock.calls[0][0].data;
+        expect(data.settings).toMatchObject({
+          currency: 'KES',
+          pendingSubscriptionPlan: 'CORE',
+          pendingSubscriptionPlanEffectiveAt: periodEnd.toISOString(),
+        });
+        expect(data).not.toHaveProperty('plan');
+        expect(data).not.toHaveProperty('maxBranches');
+        expect(result).toMatchObject({
+          plan: 'BUSINESS',
+          pendingPlan: 'CORE',
+          effective: 'at_renewal',
+          pendingChange: { plan: 'CORE', direction: 'DOWNGRADE', effectiveAt: periodEnd.toISOString() },
+        });
+      });
+
+      it('schedules an upgrade the same way, so nothing is charged on the spot', async () => {
+        const { service, prisma } = buildService({
+          prisma: {
+            tenant: {
+              findUnique: jest.fn().mockResolvedValue(active({ plan: 'CORE' })),
+              update: jest.fn(),
+            },
+            subscriptionInvoice: { findFirst: jest.fn().mockResolvedValue(null) },
+          },
+        });
+
+        const result: any = await service.changePlan('tenant-1', 'ENTERPRISE');
+
+        expect(prisma.tenant.update.mock.calls[0][0].data).not.toHaveProperty('plan');
+        expect(result.pendingChange).toMatchObject({ plan: 'ENTERPRISE', direction: 'UPGRADE' });
+      });
+
+      it('choosing the plan you are already on clears a scheduled change', async () => {
+        const { service, prisma } = buildService({
+          prisma: {
+            tenant: {
+              findUnique: jest.fn().mockResolvedValue(
+                active({
+                  settings: {
+                    pendingSubscriptionPlan: 'CORE',
+                    pendingSubscriptionPlanEffectiveAt: periodEnd.toISOString(),
+                  },
+                }),
+              ),
+              update: jest.fn(),
+            },
+            subscriptionInvoice: { findFirst: jest.fn().mockResolvedValue(null) },
+          },
+        });
+
+        const result: any = await service.changePlan('tenant-1', 'BUSINESS');
+
+        const written = prisma.tenant.update.mock.calls[0][0].data.settings;
+        expect(written).not.toHaveProperty('pendingSubscriptionPlan');
+        expect(written).not.toHaveProperty('pendingSubscriptionPlanEffectiveAt');
+        expect(result.pendingChange).toBeNull();
+      });
+
+      it('re-prices the unpaid invoice of an overdue company when no checkout was started', async () => {
+        const invoice = { id: 'inv-1', plan: 'BUSINESS', provider: null, status: 'PENDING' };
+        const { service, prisma } = buildService({
+          prisma: {
+            tenant: {
+              findUnique: jest.fn().mockResolvedValue(
+                active({ subscriptionStatus: 'PAST_DUE', currentPeriodEnd: new Date(Date.now() - 86400000) }),
+              ),
+              update: jest.fn(),
+            },
+            subscriptionInvoice: {
+              findFirst: jest.fn().mockResolvedValue(invoice),
+              update: jest.fn(),
+            },
+          },
+        });
+
+        const result: any = await service.changePlan('tenant-1', 'CORE');
+
+        expect(prisma.subscriptionInvoice.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { id: 'inv-1' },
+            data: expect.objectContaining({ plan: 'CORE', authorizationUrl: null }),
+          }),
+        );
+        expect(Number(prisma.subscriptionInvoice.update.mock.calls[0][0].data.amount)).toBe(3000);
+        expect(result.effective).toBe('on_payment');
+      });
+
+      it('will not re-price an invoice a checkout has already been started on', async () => {
+        const invoice = {
+          id: 'inv-1', plan: 'BUSINESS', provider: 'JENGA_STK', status: 'PENDING',
+        };
+        const { service, prisma } = buildService({
+          prisma: {
+            tenant: {
+              findUnique: jest.fn().mockResolvedValue(
+                active({ subscriptionStatus: 'PAST_DUE', currentPeriodEnd: new Date(Date.now() - 86400000) }),
+              ),
+              update: jest.fn(),
+            },
+            subscriptionInvoice: {
+              findFirst: jest.fn().mockResolvedValue(invoice),
+              update: jest.fn(),
+            },
+          },
+        });
+
+        await expect(service.changePlan('tenant-1', 'CORE')).rejects.toBeInstanceOf(ConflictException);
+        expect(prisma.subscriptionInvoice.update).not.toHaveBeenCalled();
+      });
+
+      it('cancelling a scheduled change removes it and restores an untouched invoice', async () => {
+        const invoice = { id: 'inv-2', plan: 'CORE', provider: null, status: 'PENDING' };
+        const { service, prisma } = buildService({
+          prisma: {
+            tenant: {
+              findUnique: jest.fn().mockResolvedValue(
+                active({
+                  settings: {
+                    pendingSubscriptionPlan: 'CORE',
+                    pendingSubscriptionPlanEffectiveAt: periodEnd.toISOString(),
+                  },
+                }),
+              ),
+              update: jest.fn(),
+            },
+            subscriptionInvoice: {
+              findFirst: jest.fn().mockResolvedValue(invoice),
+              update: jest.fn(),
+            },
+          },
+        });
+
+        const result: any = await service.cancelPlanChange('tenant-1');
+
+        expect(prisma.subscriptionInvoice.update).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ plan: 'BUSINESS' }) }),
+        );
+        expect(prisma.tenant.update.mock.calls[0][0].data.settings).not.toHaveProperty(
+          'pendingSubscriptionPlan',
+        );
+        expect(result.pendingChange).toBeNull();
+      });
+    });
+
+    it('reads the plan the next invoice is for from a scheduled change', () => {
+      const effectiveAt = new Date().toISOString();
+      expect(
+        nextInvoicePlan({
+          plan: 'BUSINESS',
+          settings: { pendingSubscriptionPlan: 'CORE', pendingSubscriptionPlanEffectiveAt: effectiveAt },
+        }),
+      ).toBe('CORE');
+      // A leftover trial-time selection (no effective date) never re-plans a paying company.
+      expect(
+        nextInvoicePlan({ plan: 'BUSINESS', settings: { pendingSubscriptionPlan: 'CORE' } }),
+      ).toBe('BUSINESS');
+      expect(nextInvoicePlan({ plan: 'TRIAL', settings: { pendingSubscriptionPlan: 'ENTERPRISE' } })).toBe(
+        'ENTERPRISE',
+      );
+    });
+
+    it('lists the paid plans with the prices invoices use', () => {
+      const { service } = buildService();
+      const { plans, currency } = service.listPlans();
+      expect(currency).toBe('KES');
+      expect(plans.map((p) => [p.planId, p.monthlyAmountKes])).toEqual([
+        ['CORE', 3000],
+        ['BUSINESS', 5000],
+        ['ENTERPRISE', 9999],
+      ]);
     });
 
     it('preserves the active seven-day trial when the owner chooses a plan', async () => {
@@ -222,9 +417,9 @@ describe('SubscriptionService', () => {
   describe('listInvoices', () => {
     it('returns subscription invoices for a tenant ordered by newest first', async () => {
       const invoices = [
-        { id: 'inv-1', plan: 'CORE', amount: 3200 },
-        { id: 'inv-2', plan: 'BUSINESS', amount: 6500 },
-        { id: 'inv-3', plan: 'ENTERPRISE', amount: 10000 },
+        { id: 'inv-1', plan: 'CORE', amount: 3000 },
+        { id: 'inv-2', plan: 'BUSINESS', amount: 5000 },
+        { id: 'inv-3', plan: 'ENTERPRISE', amount: 9999 },
       ];
       const { service, prisma } = buildService({
         prisma: {

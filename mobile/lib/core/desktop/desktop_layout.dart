@@ -28,6 +28,11 @@ class DesktopLayout {
   /// Narrower than this and the window shows the phone layout.
   static const double shellMinWidth = 900;
 
+  /// Between this and [shellMinWidth] the app is on a tablet / till terminal
+  /// layout (side rail, two columns). See `core/responsive/device_class.dart`,
+  /// which carries the full set of breakpoints.
+  static const double tabletMinWidth = 600;
+
   /// Narrower than this and the sidebar folds into an icon rail. A 1366-wide
   /// laptop at 125% display scaling is about 1093 logical pixels, so it
   /// starts on the rail and the page keeps the room.

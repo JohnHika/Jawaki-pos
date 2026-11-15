@@ -114,7 +114,7 @@ describe("PesapalRecurringService.startCardSubscription", () => {
     const payload = pesapal.buildRecurringOrderRequest.mock.calls[0][0];
     expect(payload.accountNumber).toMatch(/^AXONSUBCARD-tenant-1-\d{13}$/);
     expect(payload.billingCycle).toBe("MONTHLY");
-    expect(payload.amount).toBe(3200); // CORE monthly
+    expect(payload.amount).toBe(3000); // CORE monthly
     const start = new Date(payload.startDate).getTime();
     const end = new Date(payload.endDate).getTime();
     const oneYearMs = 365 * 24 * 3_600_000;
@@ -155,10 +155,10 @@ describe("PesapalRecurringService.startCardSubscription", () => {
 
     const payload = pesapal.buildRecurringOrderRequest.mock.calls[0][0];
     expect(payload.billingCycle).toBe("YEARLY");
-    expect(payload.amount).toBe(120_000); // ENTERPRISE 10000 × 12
+    expect(payload.amount).toBe(119_988); // ENTERPRISE 9999 × 12
     const submitted = pesapal.submitOrderRequest.mock.calls[0][0];
     expect(submitted.subscription_details.frequency).toBe("YEARLY");
-    expect(result.amount).toBe(120_000);
+    expect(result.amount).toBe(119_988);
   });
 
   it("accepts the BUSINESS plan and charges its monthly price", async () => {
@@ -168,9 +168,9 @@ describe("PesapalRecurringService.startCardSubscription", () => {
     const result = await service.startCardSubscription("tenant-1", "BUSINESS", "MONTHLY");
 
     const payload = pesapal.buildRecurringOrderRequest.mock.calls[0][0];
-    expect(payload.amount).toBe(6500); // BUSINESS monthly
+    expect(payload.amount).toBe(5000); // BUSINESS monthly
     expect(result.plan).toBe("BUSINESS");
-    expect(result.amount).toBe(6500);
+    expect(result.amount).toBe(5000);
   });
 
   it("does not stack a second live subscription for the same plan/cycle", async () => {
@@ -299,7 +299,7 @@ describe("PesapalRecurringService.handleRecurringIpn", () => {
     });
     pesapal.getTransactionStatus.mockResolvedValue({
       paymentStatus: "PENDING",
-      amount: 3200,
+      amount: 3000,
     });
     const svc = service();
     const result = await svc.handleRecurringIpn({
@@ -323,12 +323,12 @@ describe("PesapalRecurringService.handleRecurringIpn", () => {
     pesapal.getTransactionStatus.mockResolvedValue({
       orderTrackingId: "track-2",
       paymentStatus: "COMPLETED",
-      amount: 3200,
+      amount: 3000,
       currency: "KES",
       merchantReference: "provider-order-ref",
       subscriptionTransactionInfo: {
         accountReference: "AXONSUBCARD-tenant-1-1",
-        amount: 3200,
+        amount: 3000,
         correlationId: "unique-recurring-charge-1",
       },
     });
@@ -342,7 +342,7 @@ describe("PesapalRecurringService.handleRecurringIpn", () => {
     expect(recurring.settleCardRenewal).toHaveBeenCalledWith(
       "tenant-1",
       "unique-recurring-charge-1",
-      3200,
+      3000,
       "KES",
     );
     expect(result.settled).toBe(true);
@@ -365,12 +365,12 @@ describe("PesapalRecurringService.handleRecurringIpn", () => {
     pesapal.getTransactionStatus.mockResolvedValue({
       orderTrackingId: "track-1",
       paymentStatus: "COMPLETED",
-      amount: 3200,
+      amount: 3000,
       currency: "KES",
       merchantReference: "AXONSUBCARD-tenant-1-1",
       subscriptionTransactionInfo: {
         accountReference: "SOMEONE-ELSE-42",
-        amount: 3200,
+        amount: 3000,
         correlationId: "AXONSUBCARD-tenant-1-1",
       },
     });
@@ -410,11 +410,11 @@ describe("PesapalRecurringService.handleRecurringIpn", () => {
     pesapal.getTransactionStatus.mockResolvedValue({
       orderTrackingId: "track-1",
       paymentStatus: "COMPLETED",
-      amount: 3200,
+      amount: 3000,
       currency: "KES",
       subscriptionTransactionInfo: {
         accountReference: "AXONSUBCARD-tenant-1-1",
-        amount: 3200,
+        amount: 3000,
         correlationId: "",
       },
     });

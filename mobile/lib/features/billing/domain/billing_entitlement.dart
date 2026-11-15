@@ -196,6 +196,21 @@ class BillingEntitlement {
     }
   }
 
+  /// The same shape the server sends, so a saved copy reads back through
+  /// [BillingEntitlement.fromMap].
+  Map<String, dynamic> toMap() => {
+        'plan': plan,
+        'status': status,
+        'paidUntil': paidUntil,
+        'daysRemaining': daysRemaining,
+        'daysOverdue': daysOverdue,
+        'graceUntil': graceUntil,
+        'features': {'maxBranches': maxBranches, 'maxUsers': maxUsers},
+        'restrictedMode': restrictedMode,
+        'restrictedReason': restrictedReason,
+        if (license != null) 'license': license!.toMap(),
+      };
+
   BillingEntitlement copyWith({
     EntitlementSource? source,
     ClientLicense? license,

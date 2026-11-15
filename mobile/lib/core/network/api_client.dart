@@ -2056,6 +2056,13 @@ class ApiClient {
     return response.data as Map<String, dynamic>;
   }
 
+  /// Drop a plan change scheduled for the next renewal.
+  /// DELETE /api/v1/subscription/change-plan
+  Future<Map<String, dynamic>> cancelSubscriptionPlanChange() async {
+    final response = await _dio.delete('/subscription/change-plan');
+    return response.data as Map<String, dynamic>;
+  }
+
   /// Fetch invoice history for the current tenant.
   /// GET /api/v1/subscription/invoices
   Future<List<dynamic>> getSubscriptionInvoices() async {
@@ -2111,7 +2118,10 @@ class ApiClient {
     final response = await _dio.get('/billing/entitlement/offline');
     final data = response.data;
     if (data is Map<String, dynamic>) {
-      return (data['token'] ?? data['entitlement'])?.toString() ?? '';
+      // The server names it `token` (and `signature` for older clients).
+      return (data['token'] ?? data['signature'] ?? data['entitlement'])
+              ?.toString() ??
+          '';
     }
     return data?.toString() ?? '';
   }
@@ -2444,11 +2454,13 @@ class ApiClient {
     required String desktopName,
     required String platform,
     required String claimChallenge,
+    String? hint,
   }) async {
     final response = await _dio.post('/auth/desktop-link/start', data: {
       'desktopName': desktopName,
       'platform': platform,
       'claimChallenge': claimChallenge,
+      if (hint != null && hint.isNotEmpty) 'hint': hint,
     });
     return Map<String, dynamic>.from(response.data as Map);
   }
@@ -2498,6 +2510,20 @@ class ApiClient {
       if (pin != null && pin.isNotEmpty) 'pin': pin,
     });
     return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  /// Phone: the computers this account signed in, newest activity first.
+  Future<List<Map<String, dynamic>>> getLinkedComputers() async =>
+      _payloadList(await _dio.get('/auth/desktop-link/computers'));
+
+  /// Phone: signs one linked computer out everywhere.
+  Future<void> revokeLinkedComputer(String id) async {
+    await _dio.delete('/auth/desktop-link/computers/$id');
+  }
+
+  /// Phone: signs every linked computer out.
+  Future<void> revokeAllLinkedComputers() async {
+    await _dio.delete('/auth/desktop-link/computers');
   }
 
   String _mimeTypeForFile(String fileName) {

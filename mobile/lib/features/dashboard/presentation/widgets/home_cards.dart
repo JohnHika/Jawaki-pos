@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/core/widgets/motion.dart' show reducedMotion;
 import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
 import 'package:axon_pos/features/home/domain/shop_guidance.dart';
 
@@ -30,6 +31,8 @@ class HomeTakingsCard extends StatelessWidget {
     required this.split,
     this.dateLabel,
     this.sellingSince,
+    this.accent = DesignColors.accent,
+    this.updating = false,
   });
 
   final double revenue;
@@ -41,6 +44,12 @@ class HomeTakingsCard extends StatelessWidget {
 
   /// "7:42": when today's first sale was rung. Shown in place of the date.
   final String? sellingSince;
+
+  /// The shop profile's colour, used for the small mark beside the heading.
+  final Color accent;
+
+  /// True while the figures are the saved copy and fresh ones are on the way.
+  final bool updating;
 
   @override
   Widget build(BuildContext context) {
@@ -64,17 +73,27 @@ class HomeTakingsCard extends StatelessWidget {
       container: true,
       label: 'Sold today KES ${_money(revenue)} in $transactions sales',
       child: Container(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(DesignSpacing.xl),
         decoration: BoxDecoration(
           color: background,
           borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
           border: Border.all(color: palette.line),
+          boxShadow: DesignShadows.soft(palette.isDark),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: accent,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                const SizedBox(width: DesignSpacing.sm),
                 Expanded(
                   child: Text(
                     'Sold today',
@@ -85,22 +104,44 @@ class HomeTakingsCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (sellingSince != null)
-                  Text(
-                    'Selling since $sellingSince',
-                    style: TextStyle(
-                      color: palette.soft,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                // Flexible, so large text shortens it instead of overflowing.
+                if (updating)
+                  Flexible(
+                    child: Text(
+                      'Updating…',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: palette.faint,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  )
+                else if (sellingSince != null)
+                  Flexible(
+                    child: Text(
+                      'Selling since $sellingSince',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: palette.soft,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   )
                 else if (dateLabel != null)
-                  Text(
-                    dateLabel!,
-                    style: TextStyle(
-                      color: palette.soft,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                  Flexible(
+                    child: Text(
+                      dateLabel!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: palette.soft,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
               ],
@@ -122,12 +163,21 @@ class HomeTakingsCard extends StatelessWidget {
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerLeft,
-                    child: Text(
-                      _money(revenue),
-                      style: DesignType.numeric(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w700,
-                        color: palette.ink,
+                    // The first draw shows the figure at once; later changes
+                    // (a new sale, the fresh totals) count up to the new value.
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween<double>(end: revenue),
+                      duration: reducedMotion(context)
+                          ? Duration.zero
+                          : const Duration(milliseconds: 600),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, value, _) => Text(
+                        _money(value),
+                        style: DesignType.numeric(
+                          fontSize: 34,
+                          fontWeight: FontWeight.w700,
+                          color: palette.ink,
+                        ),
                       ),
                     ),
                   ),
@@ -170,37 +220,45 @@ class HomeTakingsCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              for (final group in groups)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: group.color.withValues(alpha: 0.78),
-                          borderRadius: BorderRadius.circular(3),
+              // One tidy wrap instead of a row per method: a day with four
+              // kinds of money no longer pushes the page down.
+              Wrap(
+                spacing: DesignSpacing.lg,
+                runSpacing: DesignSpacing.sm,
+                children: [
+                  for (final group in groups)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: group.color.withValues(alpha: 0.78),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 9),
-                      Expanded(
-                        child: Text(
-                          group.label,
-                          style: TextStyle(color: palette.ink, fontSize: 13),
+                        const SizedBox(width: 7),
+                        Flexible(
+                          child: Text(
+                            group.label,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: palette.soft, fontSize: 12.5),
+                          ),
                         ),
-                      ),
-                      Text(
-                        _money(group.amount),
-                        style: DesignType.numeric(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: palette.ink,
+                        const SizedBox(width: 6),
+                        Text(
+                          _money(group.amount),
+                          style: DesignType.numeric(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: palette.ink,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
+                      ],
+                    ),
+                ],
+              ),
             ],
           ],
         ),
@@ -217,18 +275,25 @@ class HomeTakingsCard extends StatelessWidget {
 
 /// The one button Home exists to offer.
 class HomeStartSaleButton extends StatelessWidget {
-  const HomeStartSaleButton({super.key, required this.onPressed});
+  const HomeStartSaleButton({
+    super.key,
+    required this.onPressed,
+    this.accent = DesignColors.accent,
+  });
 
   final VoidCallback onPressed;
+
+  /// The shop profile's colour.
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 54,
+      height: 56,
       child: FilledButton.icon(
         onPressed: onPressed,
         style: FilledButton.styleFrom(
-          backgroundColor: DesignColors.accent,
+          backgroundColor: accent,
           foregroundColor: SignInPalette.onAccent,
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(DesignSpacing.radiusLg)),

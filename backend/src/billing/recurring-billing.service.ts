@@ -11,7 +11,13 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { JengaPaymentService } from '../payments/jenga-payment.service';
 import { SubscriptionRenewalSettler } from './subscription-renewal-settler.service';
-import { PLAN_PRICING, VALID_PLANS, selectedTrialPlan } from '../subscription/subscription.service';
+import {
+  PLAN_PRICING,
+  VALID_PLANS,
+  nextInvoicePlan,
+  scheduledPlanChange,
+  selectedTrialPlan,
+} from '../subscription/subscription.service';
 import { describeLicense, resolveLicense } from '../license/license.catalog';
 import { LegalPolicyService } from '../legal/legal-policy.service';
 
@@ -77,6 +83,9 @@ export class RecurringBillingService {
       plan: tenant.plan,
       pendingPlan: selectedTrialPlan(tenant.settings) ??
         (tenant.subscriptionStatus === 'TRIAL' && tenant.plan !== 'TRIAL' ? tenant.plan : null),
+      pendingChange: tenant.subscriptionStatus === 'TRIAL'
+        ? null
+        : scheduledPlanChange(tenant.settings, tenant.plan),
       autoRenewEnabled: tenant.autoRenewEnabled && hasAutoRenewAuthorization,
       autoRenewAuthorizationRequired: !hasAutoRenewAuthorization,
       billingPhone: tenant.billingPhone,
@@ -180,9 +189,7 @@ export class RecurringBillingService {
     for (const tenant of due) {
       try {
         // Reuse an outstanding invoice before considering a new period.
-        const planForInvoice = tenant.plan === 'TRIAL'
-          ? selectedTrialPlan(tenant.settings) ?? 'CORE'
-          : tenant.plan;
+        const planForInvoice = nextInvoicePlan(tenant);
         const invoice = await this.ensureInvoiceForPeriod(tenant.id, planForInvoice, now);
 
         // Auto-charge only an unpaid invoice with no provider checkout already
@@ -727,7 +734,9 @@ export class RecurringBillingService {
     const signature = base64UrlEncode(
       createHmac('sha256', secret).update(body).digest(),
     );
-    return { ...payload, signature: `${body}.${signature}` };
+    // `token` is the name API clients read; `signature` is kept for older ones.
+    const token = `${body}.${signature}`;
+    return { ...payload, signature: token, token };
   }
 
   /**
@@ -802,9 +811,7 @@ export class RecurringBillingService {
     // Period may not have ended yet — no open invoice.
     if (tenant.currentPeriodEnd && tenant.currentPeriodEnd > now) return null;
 
-    const planForInvoice = tenant.plan === 'TRIAL'
-      ? selectedTrialPlan(tenant.settings) ?? 'CORE'
-      : tenant.plan ?? 'CORE';
+    const planForInvoice = nextInvoicePlan(tenant);
     return this.ensureInvoiceForPeriod(tenantId, planForInvoice, now);
   }
 

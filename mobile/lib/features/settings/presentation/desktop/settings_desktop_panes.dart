@@ -92,6 +92,7 @@ const _paneOfEntry = <String, String>{
   'device-security': 'security',
   'offline-pin': 'security',
   'desktop-approvals': 'security',
+  'linked-computers': 'security',
   'axon-gateway-key': 'security',
   'notification-centre': 'notifications',
   'notifications': 'notifications',
@@ -286,7 +287,7 @@ List<DesktopSettingsPaneData> buildDesktopSettingsPanes(
       group(
         [
           if (approveComputer != null) approveComputer,
-          ...links(['axon-gateway-key']),
+          ...links(['linked-computers', 'axon-gateway-key']),
         ],
         title: 'Other computers and services',
       ),

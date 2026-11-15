@@ -10,6 +10,7 @@ import { RedisService } from '../common/redis/redis.service';
 import { AuditService } from '../audit/audit.service';
 import { LicenseService } from '../license/license.service';
 import { normalizeOperatingHours } from '../common/operating-hours';
+import { applyBusinessTypeLock } from './layout-lock';
 import {
   CreateTenantDto,
   UpdateTenantDto,
@@ -89,7 +90,10 @@ export class BranchesService {
       throw new NotFoundException('Tenant not found');
     }
 
-    const { taxRatePercent, showTaxOnReceipt, settings, ...rest } = dto;
+    const { taxRatePercent, showTaxOnReceipt, settings: requestedSettings, ...rest } = dto;
+    // A paid shop keeps the business type it paid for unless a change request
+    // was approved.
+    const settings = applyBusinessTypeLock(tenant, requestedSettings);
     const hasSettingsUpdate =
       taxRatePercent !== undefined ||
       showTaxOnReceipt !== undefined ||

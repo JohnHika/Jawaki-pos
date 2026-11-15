@@ -278,7 +278,7 @@ void main() {
     expect(find.byType(DesktopPageHeader), findsOneWidget);
   });
 
-  testWidgets('the phone route retains its original price-list controls',
+  testWidgets('the phone shows a searchable list with category chips and a send bar',
       (tester) async {
     useWindow(tester, const Size(430, 850));
     final router = _router(desktopShell: false);
@@ -289,9 +289,40 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(DesktopPageHeader), findsNothing);
     expect(find.byType(DesktopDataTable<PriceListItem>), findsNothing);
+    // One column: no side panel, options live in a sheet.
+    expect(find.text('Send this list'), findsNothing);
+    expect(find.text('Send on WhatsApp'), findsOneWidget);
+    expect(find.text('Groceries'), findsWidgets);
+    expect(find.text('Maize flour 2kg'), findsOneWidget);
+    expect(find.text('Only products in stock'), findsNothing);
+
+    // Search narrows what is shown.
+    await tester.enterText(find.byType(TextField).first, 'maize');
+    await tester.pump();
+    expect(find.text('Maize flour 2kg'), findsOneWidget);
+    expect(find.text('Nothing matches "maize"'), findsNothing);
+    await tester.enterText(find.byType(TextField).first, 'zzzz');
+    await tester.pump();
+    expect(find.text('Nothing matches "zzzz"'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Options'));
+    await tester.pumpAndSettle();
     expect(find.text('Only products in stock'), findsOneWidget);
     expect(find.text('Show bulk prices'), findsOneWidget);
-    expect(find.text('Send on WhatsApp'), findsOneWidget);
+  });
+
+  testWidgets('a tablet shows the list beside the send panel with the preview',
+      (tester) async {
+    useWindow(tester, const Size(900, 700));
+    final router = _router(desktopShell: false);
+    addTearDown(router.dispose);
+    await tester.pumpWidget(_app(router));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Send this list'), findsOneWidget);
+    expect(find.text('Only products in stock'), findsOneWidget);
+    expect(find.text('Maize flour 2kg'), findsWidgets);
     expect(
       tester.widget<SelectableText>(find.byType(SelectableText)).data,
       contains('Carton (12): KES 1,320'),

@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   Query,
   Request,
@@ -92,5 +94,35 @@ export class DesktopLinkController {
       dto,
       originFromRequest(req),
     );
+  }
+
+  /** Phone: the computers it has signed in. */
+  @Get('computers')
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List computers signed in by this person' })
+  computers(@Request() req: any) {
+    return this.desktopLinkService.listComputers(req.user.sub, req.user.sid);
+  }
+
+  /** Phone: sign every linked computer out. */
+  @Delete('computers')
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Sign out every computer this person linked' })
+  revokeAll(@Request() req: any) {
+    return this.desktopLinkService.revokeAllComputers(req.user.sub);
+  }
+
+  /** Phone: sign one linked computer out. */
+  @Delete('computers/:id')
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Sign out one linked computer' })
+  revoke(@Request() req: any, @Param('id') id: string) {
+    return this.desktopLinkService.revokeComputer(req.user.sub, id);
   }
 }

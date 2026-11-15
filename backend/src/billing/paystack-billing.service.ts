@@ -13,6 +13,8 @@ import { RecurringBillingService } from './recurring-billing.service';
 import { PLAN_PRICING } from '../subscription/subscription.service';
 
 const SUBSCRIPTION_INVOICE_PRODUCT = 'axon_subscription_invoice';
+// A hosted checkout link older than this is replaced, not reopened.
+const CHECKOUT_LINK_TTL_MS = 30 * 60 * 1000;
 
 @Injectable()
 export class PaystackBillingService {
@@ -74,21 +76,27 @@ export class PaystackBillingService {
         );
       }
     }
-    if (invoice.provider === 'PAYSTACK' && invoice.authorizationUrl && invoice.reference) {
-      return {
-        status: invoice.status,
-        invoiceId: invoice.id,
-        reference: invoice.reference,
-        authorizationUrl: invoice.authorizationUrl,
-        amountKes: Number(invoice.amount),
-        currency: invoice.currency,
-      };
-    }
     if (invoice.provider === 'PAYSTACK_INITIALIZING') {
-      throw new ConflictException('Paystack checkout is being prepared. Please try again shortly.');
+      throw new ConflictException('Checkout is being prepared. Please try again shortly.');
     }
-    if (invoice.provider === 'PAYSTACK' && !invoice.authorizationUrl) {
-      throw new ConflictException('Paystack checkout is being prepared. Please try again shortly.');
+    if (invoice.provider === 'PAYSTACK' && invoice.reference) {
+      if (this.isFreshCheckout(invoice)) {
+        return {
+          status: invoice.status,
+          invoiceId: invoice.id,
+          reference: invoice.reference,
+          authorizationUrl: invoice.authorizationUrl,
+          amountKes: Number(invoice.amount),
+          currency: invoice.currency,
+        };
+      }
+      // The link is old, was never stored, or has no issue time (rows from
+      // before it was recorded). Hosted checkouts expire, so reopening one is
+      // what ends in "could not start this transaction". Before replacing it,
+      // make sure the old one was not paid in the meantime: a payment made on
+      // the old reference must settle this invoice, not be orphaned.
+      const settled = await this.settleIfAlreadyPaid(invoice);
+      if (settled) return settled;
     }
 
     const amountKes = Number(invoice.amount);
@@ -131,13 +139,14 @@ export class PaystackBillingService {
         },
       });
       if (checkout.reference !== reference) {
-        throw new BadRequestException('Paystack returned an unexpected transaction reference');
+        throw new BadRequestException('The payment returned an unexpected reference');
       }
       const updated = await this.prisma.subscriptionInvoice.update({
         where: { id: invoice.id },
         data: {
           provider: 'PAYSTACK',
           authorizationUrl: checkout.authorizationUrl,
+          authorizationIssuedAt: new Date(),
         },
       });
 
@@ -156,10 +165,53 @@ export class PaystackBillingService {
           provider: 'PAYSTACK_INITIALIZING',
           reference,
         },
-        data: { provider: null, reference: null, authorizationUrl: null },
+        data: { provider: null, reference: null, authorizationUrl: null, authorizationIssuedAt: null },
       });
       throw error;
     }
+  }
+
+  /** A stored checkout link is reused only while it is young enough to still open. */
+  private isFreshCheckout(invoice: {
+    authorizationUrl?: string | null;
+    authorizationIssuedAt?: Date | null;
+  }): boolean {
+    if (!invoice.authorizationUrl || !invoice.authorizationIssuedAt) return false;
+    return Date.now() - new Date(invoice.authorizationIssuedAt).getTime() < CHECKOUT_LINK_TTL_MS;
+  }
+
+  /** If the previous checkout was in fact paid, settle it and say so. */
+  private async settleIfAlreadyPaid(invoice: {
+    id: string;
+    tenantId: string;
+    reference?: string | null;
+    amount: unknown;
+    currency: string;
+  }) {
+    if (!invoice.reference) return null;
+    let result: { status?: string } | null = null;
+    try {
+      const charge = await this.paystack.verifyTransaction(invoice.reference);
+      if (charge?.status !== 'success') return null;
+      result = await this.verifyAndSettle(invoice.id, invoice.reference, invoice.tenantId);
+    } catch {
+      // Never opened or unknown to the provider: nothing to settle.
+      return null;
+    }
+    if (result?.status === 'NEEDS_REVIEW') {
+      throw new ConflictException(
+        'This invoice is on hold for review. Contact Counterbase support before starting another payment.',
+      );
+    }
+    return result?.status === 'PAID'
+      ? {
+          status: 'PAID',
+          invoiceId: invoice.id,
+          reference: invoice.reference,
+          amountKes: Number(invoice.amount),
+          currency: invoice.currency,
+        }
+      : null;
   }
 
   /** Verify through Paystack, then settle the invoice and extend the period. */
@@ -168,7 +220,7 @@ export class PaystackBillingService {
       where: { tenantId, reference, provider: 'PAYSTACK' },
     });
     if (!invoice) {
-      throw new BadRequestException('Paystack reference does not match an invoice for this company');
+      throw new BadRequestException('This payment reference does not match an invoice for this company');
     }
     return this.verifyAndSettle(invoice.id, reference, tenantId);
   }
@@ -189,7 +241,7 @@ export class PaystackBillingService {
     const invoice = await this.prisma.subscriptionInvoice.findFirst({
       where: { id: invoiceId, tenantId, reference, provider: 'PAYSTACK' },
     });
-    if (!invoice) throw new NotFoundException('Paystack invoice was not found');
+    if (!invoice) throw new NotFoundException('Invoice was not found');
     return this.verifyAndSettle(invoice.id, reference, tenantId);
   }
 
@@ -197,7 +249,7 @@ export class PaystackBillingService {
     const invoice = await this.prisma.subscriptionInvoice.findFirst({
       where: { id: invoiceId, tenantId, reference, provider: 'PAYSTACK' },
     });
-    if (!invoice) throw new NotFoundException('Paystack invoice was not found');
+    if (!invoice) throw new NotFoundException('Invoice was not found');
     if (invoice.status === 'PAID') {
       return { status: 'PAID', invoiceId: invoice.id, reference, paidAt: invoice.paidAt };
     }
@@ -207,7 +259,7 @@ export class PaystackBillingService {
 
     const charge = await this.paystack.verifyTransaction(reference);
     if (charge.reference !== reference) {
-      throw new BadRequestException('Paystack returned a different transaction reference');
+      throw new BadRequestException('The payment returned a different reference');
     }
     if (charge.status !== 'success') {
       if (['failed', 'abandoned'].includes(charge.status.toLowerCase())) {

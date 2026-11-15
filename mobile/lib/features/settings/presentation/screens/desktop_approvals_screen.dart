@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
@@ -16,7 +17,11 @@ import '../desktop/desktop_sub_page.dart';
 /// shows (or type its 6-digit code), check which computer is asking, then
 /// approve. The computer never learns a password.
 class DesktopApprovalsScreen extends ConsumerStatefulWidget {
-  const DesktopApprovalsScreen({super.key});
+  const DesktopApprovalsScreen({super.key, this.initialPayload});
+
+  /// The request carried by a "Sign in a computer?" notification. When set the
+  /// screen opens already showing which computer is asking.
+  final String? initialPayload;
 
   @override
   ConsumerState<DesktopApprovalsScreen> createState() =>
@@ -33,6 +38,17 @@ class _DesktopApprovalsScreenState
   bool _busy = false;
   String? _error;
   Map<String, dynamic>? _request;
+
+  @override
+  void initState() {
+    super.initState();
+    final payload = widget.initialPayload;
+    if (payload != null && payload.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _lookUp(payload: payload);
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -250,7 +266,16 @@ class _DesktopApprovalsScreenState
           const SizedBox(height: DesignSpacing.md),
           _Note(palette: palette, text: _error!, error: true),
         ],
+        const SizedBox(height: DesignSpacing.lg),
+        _linkedComputersLink(),
       ];
+
+  /// Where signed-in computers are listed and signed out.
+  Widget _linkedComputersLink() => TextButton.icon(
+        onPressed: () => context.push('/settings/linked-computers'),
+        icon: const Icon(Icons.devices_rounded, size: 18),
+        label: const Text('Linked computers'),
+      );
 
   bool get _cameraless => context.inDesktopShell;
 
@@ -400,6 +425,8 @@ class _DesktopApprovalsScreenState
           label: 'Sign in another computer',
           onPressed: _startOver,
         ),
+        const SizedBox(height: DesignSpacing.sm),
+        _linkedComputersLink(),
       ];
 
   static String _platformLabel(String platform) => switch (platform) {

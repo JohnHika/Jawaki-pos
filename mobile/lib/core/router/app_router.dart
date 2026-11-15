@@ -24,6 +24,7 @@ import '../../features/home/presentation/screens/staff_tour_screen.dart';
 import '../../features/home/presentation/screens/local_feature_unavailable_screen.dart';
 import '../../features/settings/presentation/screens/local_archive_history_screen.dart';
 import '../../features/settings/presentation/screens/desktop_approvals_screen.dart';
+import '../../features/settings/presentation/screens/linked_computers_screen.dart';
 import '../../features/billing/presentation/screens/subscription_billing_screen.dart';
 import '../../features/notifications/presentation/screens/notifications_screen.dart';
 import '../../features/partners/presentation/screens/partner_chat_screen.dart';
@@ -890,7 +891,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/settings/desktop-approvals',
             name: 'desktop-approvals',
-            builder: (context, state) => const DesktopApprovalsScreen(),
+            builder: (context, state) => DesktopApprovalsScreen(
+              initialPayload: state.uri.queryParameters['payload'],
+            ),
+          ),
+          // Computers this account signed in from a phone, with sign-out.
+          GoRoute(
+            path: '/settings/linked-computers',
+            name: 'linked-computers',
+            builder: (context, state) => const LinkedComputersScreen(),
           ),
           GoRoute(
             path: '/settings/archive-history/:archiveId',

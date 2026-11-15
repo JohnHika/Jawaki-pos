@@ -17,7 +17,29 @@ import '../../domain/billing_entitlement.dart';
 /// (signature re-verified with a small staleness allowance for clock skew).
 /// Never throws — without a cached snapshot it returns null; a cached
 /// licence without subscription details returns an UNKNOWN entitlement.
-Future<BillingEntitlement?> refreshEntitlement() async {
+Future<BillingEntitlement?> refreshEntitlement() {
+  // The home banner, the billing page and a resume can all ask at once. They
+  // share one request instead of racing three, and every caller gets the same
+  // answer.
+  return _entitlementInFlight ??= _refreshEntitlement().whenComplete(() {
+    _entitlementInFlight = null;
+  });
+}
+
+Future<BillingEntitlement?>? _entitlementInFlight;
+
+/// The last answer the server gave in this run. A failed refresh (offline, a
+/// 401 while the app is locked, a 5xx, a cancelled request) keeps showing it
+/// instead of replacing a good plan with "unknown".
+BillingEntitlement? _lastLiveEntitlement;
+
+/// Forget what this run learned (sign-out, switching shop).
+void resetEntitlementMemory() {
+  _lastLiveEntitlement = null;
+  _entitlementInFlight = null;
+}
+
+Future<BillingEntitlement?> _refreshEntitlement() async {
   // Standalone workspaces have no subscription server. Treat their modules as
   // device-owned and avoid waking the retired POS API just to render the home
   // shell or decide whether a local screen should open.
@@ -27,26 +49,28 @@ Future<BillingEntitlement?> refreshEntitlement() async {
   try {
     final map = await getIt<ApiClient>().getBillingEntitlement();
     final entitlement = BillingEntitlement.fromMap(map);
+    _lastLiveEntitlement = entitlement;
     if (entitlement.license != null) {
       await _cacheLicense(entitlement.license!);
     }
-    // Best-effort: cache the signed offline token so a future offline
-    // session can still resolve its own status. Failures here are silent.
+    // Keep the answer, signed by the app, so the next offline start can still
+    // resolve its own status. Never fails the refresh.
     try {
-      final token = await getIt<ApiClient>().getBillingEntitlementOffline();
-      if (token.isNotEmpty) await service.cacheSignedToken(token);
-    } catch (_) {
-      // Offline token is optional; the live snapshot above still applies.
-    }
+      await service.cacheLiveEntitlement(entitlement);
+    } catch (_) {}
     return entitlement;
   } on DioException catch (e) {
     debugPrint('[Entitlement] live fetch failed (${e.type}), using cache');
-    return _fallbackToCache(service);
+    return _lastKnown() ?? await _fallbackToCache(service);
   } catch (e) {
     debugPrint('[Entitlement] live fetch failed: $e');
-    return _fallbackToCache(service);
+    return _lastKnown() ?? await _fallbackToCache(service);
   }
 }
+
+/// This run's last live answer, marked as no longer confirmed.
+BillingEntitlement? _lastKnown() =>
+    _lastLiveEntitlement?.copyWith(source: EntitlementSource.offlineCache);
 
 Future<BillingEntitlement?> _fallbackToCache(EntitlementService service) async {
   try {

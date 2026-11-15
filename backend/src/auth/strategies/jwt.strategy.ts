@@ -38,6 +38,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User not found or inactive');
     }
 
+    // A computer the owner signed out from the phone stops working at its next
+    // request, not when its 15-minute access token runs out.
+    if (payload.sid) await this.assertComputerStillLinked(payload.sid, payload.sub);
+
     // Re-derived fresh on every request, same as role/tenantId above —
     // an admin editing a role or a user's overrides takes effect on the
     // user's very next request, no re-login required.
@@ -66,8 +70,27 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       tenantId: user.tenantId,
       branchId: payload.branchId,
       deviceId: payload.deviceId,
+      sid: payload.sid,
       permissions,
       activationStatus: user.tenant.activationStatus,
     };
   }
+
+  private async assertComputerStillLinked(id: string, userId: string): Promise<void> {
+    const computer = await this.prisma.linkedComputer.findUnique({
+      where: { id },
+      select: { userId: true, revokedAt: true, lastActiveAt: true },
+    });
+    if (!computer || computer.userId !== userId || computer.revokedAt) {
+      throw new UnauthorizedException('This computer was signed out from your phone');
+    }
+    // "Last active" on the phone's list; once in a while, not on every request.
+    if (Date.now() - computer.lastActiveAt.getTime() > LAST_ACTIVE_EVERY_MS) {
+      this.prisma.linkedComputer
+        .updateMany({ where: { id, revokedAt: null }, data: { lastActiveAt: new Date() } })
+        .catch(() => undefined);
+    }
+  }
 }
+
+const LAST_ACTIVE_EVERY_MS = 5 * 60 * 1000;

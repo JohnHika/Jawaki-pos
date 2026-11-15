@@ -47,6 +47,8 @@ export interface JwtPayload {
   tenantId: string;
   branchId?: string;
   deviceId?: string;
+  /** Set on a computer a phone signed in: its LinkedComputer id, so the phone can sign it out. */
+  sid?: string;
   permissions?: string[];
 }
 
@@ -142,7 +144,17 @@ export class AuthService {
    */
   async issueLinkedSession(
     userId: string,
-    options: { branchId?: string; deviceId?: string } = {},
+    options: {
+      branchId?: string;
+      deviceId?: string;
+      /** What the phone approved; recorded so the phone can list and revoke it. */
+      computer?: {
+        desktopName: string;
+        platform?: string | null;
+        place?: string | null;
+        ip?: string | null;
+      };
+    } = {},
   ): Promise<AuthResponseDto> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -178,7 +190,21 @@ export class AuthService {
       newValues: { method: 'desktop-link' },
     });
 
-    return this.generateTokens(user, branchId, options.deviceId);
+    const computer = options.computer
+      ? await this.prisma.linkedComputer.create({
+          data: {
+            userId: user.id,
+            desktopName: options.computer.desktopName,
+            platform: options.computer.platform ?? null,
+            place: options.computer.place ?? null,
+            ip: options.computer.ip ?? null,
+            deviceId: options.deviceId ?? null,
+          },
+          select: { id: true },
+        })
+      : null;
+
+    return this.generateTokens(user, branchId, options.deviceId, computer?.id);
   }
 
   async loginWithGoogle(dto: GoogleLoginDto): Promise<AuthResponseDto> {
@@ -503,11 +529,32 @@ export class AuthService {
       throw new UnauthorizedException('Account is disabled');
     }
 
+    // A computer the owner signed out from the phone keeps no session.
+    if (storedToken.linkedComputerId) {
+      const computer = await this.prisma.linkedComputer.findUnique({
+        where: { id: storedToken.linkedComputerId },
+        select: { revokedAt: true },
+      });
+      if (!computer || computer.revokedAt) {
+        await this.prisma.refreshToken.deleteMany({ where: { id: storedToken.id } });
+        throw new UnauthorizedException('This computer was signed out from your phone');
+      }
+      await this.prisma.linkedComputer.update({
+        where: { id: storedToken.linkedComputerId },
+        data: { lastActiveAt: new Date() },
+      });
+    }
+
     // Delete old token and issue new ones
     await this.prisma.refreshToken.delete({ where: { id: storedToken.id } });
 
     const branchId = this.resolveLoginBranchId(storedToken.user);
-    return this.generateTokens(storedToken.user, branchId, storedToken.deviceId || undefined);
+    return this.generateTokens(
+      storedToken.user,
+      branchId,
+      storedToken.deviceId || undefined,
+      storedToken.linkedComputerId || undefined,
+    );
   }
 
   async logout(userId: string, logoutDto?: LogoutDto): Promise<void> {
@@ -733,6 +780,7 @@ export class AuthService {
     user: any,
     branchId?: string,
     deviceId?: string,
+    linkedComputerId?: string,
   ): Promise<AuthResponseDto> {
     const payload: JwtPayload = {
       sub: user.id,
@@ -741,6 +789,7 @@ export class AuthService {
       tenantId: user.tenantId,
       branchId,
       deviceId,
+      ...(linkedComputerId ? { sid: linkedComputerId } : {}),
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -759,6 +808,7 @@ export class AuthService {
         userId: user.id,
         tokenHash,
         deviceId,
+        linkedComputerId: linkedComputerId ?? null,
         expiresAt: new Date(Date.now() + refreshExpiresIn * 1000),
       },
     });

@@ -110,4 +110,99 @@ describe("PaystackBillingService invoice safety", () => {
 
     expect(paystack.initializeTransaction).not.toHaveBeenCalled();
   });
+
+  describe("reopening a checkout link", () => {
+    const minutesAgo = (m: number) => new Date(Date.now() - m * 60 * 1000);
+
+    function buildForLink(issuedAt: Date | null, oldCharge: any = { status: "abandoned" }) {
+      const invoice = { ...paidInvoice, authorizationIssuedAt: issuedAt };
+      const ctx = build(invoice);
+      ctx.paystack.verifyTransaction.mockResolvedValue(oldCharge);
+      ctx.paystack.initializeTransaction.mockImplementation(async (input: any) => ({
+        reference: input.reference,
+        authorizationUrl: "https://checkout.paystack.com/fresh",
+      }));
+      ctx.prisma.subscriptionInvoice.update.mockImplementation(async ({ data }: any) => ({
+        ...invoice,
+        ...data,
+        reference: ctx.paystack.initializeTransaction.mock.calls[0]?.[0]?.reference,
+      }));
+      return ctx;
+    }
+
+    it("hands back a link issued a few minutes ago", async () => {
+      const { service, paystack } = buildForLink(minutesAgo(5));
+      const result: any = await service.initializeInvoicePayment("tenant-1", "user-1");
+      expect(result.authorizationUrl).toBe("https://checkout.paystack.com/example");
+      expect(result.reference).toBe(paidInvoice.reference);
+      expect(paystack.initializeTransaction).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["a link older than 30 minutes", minutesAgo(31)],
+      ["a link with no recorded issue time", null],
+    ])("opens a new checkout instead of reopening %s", async (_label, issuedAt) => {
+      const { service, paystack, prisma } = buildForLink(issuedAt as Date | null);
+      const result: any = await service.initializeInvoicePayment("tenant-1", "user-1");
+      expect(paystack.initializeTransaction).toHaveBeenCalledTimes(1);
+      expect(paystack.initializeTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({ amountKes: 3000 }),
+      );
+      expect(result.authorizationUrl).toBe("https://checkout.paystack.com/fresh");
+      expect(result.reference).not.toBe(paidInvoice.reference);
+      expect(prisma.subscriptionInvoice.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            provider: "PAYSTACK",
+            authorizationIssuedAt: expect.any(Date),
+          }),
+        }),
+      );
+    });
+
+    it("settles instead of replacing when the old link was paid after all", async () => {
+      const { service, paystack, prisma } = buildForLink(minutesAgo(90), {
+        status: "success",
+        reference: paidInvoice.reference,
+        amount: 300000,
+        currency: "KES",
+        metadata: {
+          product: "axon_subscription_invoice",
+          tenantId: paidInvoice.tenantId,
+          invoiceId: paidInvoice.id,
+        },
+      });
+      prisma.subscriptionInvoice.updateMany.mockResolvedValue({ count: 1 });
+      prisma.$transaction = jest.fn(async (fn: any) =>
+        fn({
+          subscriptionInvoice: {
+            updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+            findUnique: jest.fn().mockResolvedValue({ status: "PAID" }),
+          },
+          tenant: { update: jest.fn() },
+        }),
+      );
+      const result: any = await service.initializeInvoicePayment("tenant-1", "user-1");
+      expect(result.status).toBe("PAID");
+      expect(paystack.initializeTransaction).not.toHaveBeenCalled();
+    });
+
+    it("keeps an invoice on hold when the old link was paid with the wrong amount", async () => {
+      const { service, paystack } = buildForLink(minutesAgo(90), {
+        status: "success",
+        reference: paidInvoice.reference,
+        amount: 200000,
+        currency: "KES",
+        metadata: {
+          product: "axon_subscription_invoice",
+          tenantId: paidInvoice.tenantId,
+          invoiceId: paidInvoice.id,
+        },
+      });
+      await expect(
+        service.initializeInvoicePayment("tenant-1", "user-1"),
+      ).rejects.toThrow("on hold for review");
+      expect(paystack.initializeTransaction).not.toHaveBeenCalled();
+    });
+  });
 });

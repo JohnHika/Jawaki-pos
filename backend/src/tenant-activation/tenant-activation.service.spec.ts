@@ -113,6 +113,7 @@ describe('TenantActivationService durable attempts', () => {
           findUnique: jest.fn()
             .mockResolvedValueOnce(prior)
             .mockResolvedValue(null),
+          findFirst: jest.fn().mockResolvedValue(prior),
           create: jest.fn().mockResolvedValue({ id: 'new-attempt' }),
           update: jest.fn().mockResolvedValue({
             id: 'new-attempt', reference: 'AXON-NEW', status: 'PENDING', amount: 125000,
@@ -141,9 +142,35 @@ describe('TenantActivationService durable attempts', () => {
         expect.objectContaining({ where: { id: 'old-attempt' }, data: expect.objectContaining({ status: 'SUPERSEDED' }) }),
       );
       expect(prisma.tenantActivationAttempt.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ amount: 125000, idempotencyKey: 'k1:125000' }) }),
+        expect.objectContaining({ data: expect.objectContaining({ amount: 125000, idempotencyKey: expect.stringMatching(/^k1:/) }) }),
       );
       expect(paystack.initializeTransaction).toHaveBeenCalledWith(expect.objectContaining({ amountKes: 125000 }));
+    });
+
+    it.each([
+      ['a failed attempt', { status: 'FAILED', authorizationUrl: null }],
+      ['a superseded attempt', { status: 'SUPERSEDED', authorizationUrl: null }],
+      ['a half-created attempt', { status: 'INITIALIZED', authorizationUrl: null, createdAt: new Date(Date.now() - 10 * 60 * 1000) }],
+      ['a checkout link that is hours old', { status: 'PENDING', createdAt: new Date(Date.now() - 3 * 3600 * 1000) }],
+    ])('opens a new checkout instead of handing back %s', async (_name, state) => {
+      const { service, prisma, paystack } = buildInit(125000);
+      const prior = { id: 'old-attempt', reference: 'AXON-OLD', authorizationUrl: 'https://pay.example/old', amount: 125000, provider: 'PAYSTACK', verifiedAt: null, ...state };
+      prisma.tenantActivationAttempt.findUnique.mockReset().mockResolvedValueOnce(prior).mockResolvedValue(null);
+      prisma.tenantActivationAttempt.findFirst.mockResolvedValue(prior);
+      const result: any = await service.initialize('tenant-1', 'user-1', 'o@x.test', 'k1');
+      expect(paystack.initializeTransaction).toHaveBeenCalledTimes(1);
+      expect(result.reference).not.toBe('AXON-OLD');
+    });
+
+    it('hands back the replacement checkout on the next tap instead of opening yet another', async () => {
+      const { service, prisma, paystack } = buildInit(35000);
+      const superseded = { id: 'old-attempt', status: 'SUPERSEDED', amount: 35000, authorizationUrl: null, reference: 'AXON-OLD' };
+      const live = { id: 'new-attempt', status: 'PENDING', amount: 125000, authorizationUrl: 'https://pay.example/new', reference: 'AXON-NEW', createdAt: new Date() };
+      prisma.tenantActivationAttempt.findUnique.mockReset().mockResolvedValue(superseded);
+      prisma.tenantActivationAttempt.findFirst.mockResolvedValue(live);
+      const result: any = await service.initialize('tenant-1', 'user-1', 'o@x.test', 'k1');
+      expect(paystack.initializeTransaction).not.toHaveBeenCalled();
+      expect(result.reference).toBe('AXON-NEW');
     });
   });
 });

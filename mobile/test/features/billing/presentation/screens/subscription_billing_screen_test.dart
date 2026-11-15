@@ -10,8 +10,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
+import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/features/billing/domain/billing_entitlement.dart';
+import 'package:axon_pos/features/billing/domain/billing_snapshot.dart';
 import 'package:axon_pos/features/billing/domain/entitlement_service.dart';
+import 'package:axon_pos/features/billing/presentation/providers/entitlement_provider.dart';
 import 'package:axon_pos/features/billing/presentation/screens/subscription_billing_screen.dart';
+import 'package:axon_pos/features/subscription/domain/subscription_plans.dart';
 
 class _FakeAuthService extends Fake implements AuthService {
   @override
@@ -72,8 +77,64 @@ class _SpyApiClient extends ApiClient {
     return paystackVerificationResult;
   }
 
+  Map<String, dynamic> planData = {
+    'plan': 'CORE',
+    'subscriptionStatus': 'ACTIVE',
+    'pendingChange': null,
+    'availablePlans': [
+      {'planId': 'TRIAL', 'monthlyAmountKes': 0},
+      {'planId': 'CORE', 'monthlyAmountKes': 3000},
+      {'planId': 'BUSINESS', 'monthlyAmountKes': 5000},
+      {'planId': 'ENTERPRISE', 'monthlyAmountKes': 9999},
+    ],
+  };
+  int entitlementCalls = 0;
+  Completer<void>? entitlementGate;
+  Object? entitlementError;
+  final List<String> changedTo = [];
+  int cancelCalls = 0;
+
+  int checkoutRequests = 0;
+
+  @override
+  Future<Map<String, dynamic>> initializePaystackSubscriptionPayment() async {
+    checkoutRequests++;
+    // A link that is not the hosted checkout, as a dead one would be.
+    return {'status': 'PENDING', 'authorizationUrl': 'http://example.invalid/x'};
+  }
+
+  @override
+  Future<Map<String, dynamic>> getSubscriptionPlan() async => planData;
+
+  @override
+  Future<Map<String, dynamic>> acceptLegalPolicy({
+    required String policyType,
+    required String policyVersion,
+  }) async =>
+      {};
+
+  @override
+  Future<Map<String, dynamic>> changeSubscriptionPlan({
+    required String planId,
+  }) async {
+    changedTo.add(planId);
+    return {'pendingPlan': planId};
+  }
+
+  @override
+  Future<Map<String, dynamic>> cancelSubscriptionPlanChange() async {
+    cancelCalls++;
+    planData = {...planData, 'pendingChange': null};
+    return {'pendingChange': null};
+  }
+
   @override
   Future<Map<String, dynamic>> getBillingEntitlement() async {
+    entitlementCalls++;
+    final gate = entitlementGate;
+    if (gate != null) await gate.future;
+    final err = entitlementError;
+    if (err != null) throw err;
     return entitlementData;
   }
 
@@ -111,6 +172,8 @@ void main() {
     spyApi = _SpyApiClient();
     SubscriptionBillingScreen.overrideIsAdmin = true;
     SharedPreferences.setMockInitialValues({});
+    resetEntitlementMemory();
+    PlanPrices.reset();
     final getIt = GetIt.instance;
     if (getIt.isRegistered<ApiClient>()) getIt.unregister<ApiClient>();
     getIt.registerSingleton<ApiClient>(spyApi);
@@ -418,6 +481,297 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('PAID'), findsOneWidget);
       expect(find.text('KES 3,000'), findsWidgets);
+    });
+  });
+
+  group('loading without racing', () {
+    void tall(WidgetTester tester) {
+      tester.view.physicalSize = const Size(800, 2200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+    }
+
+    testWidgets(
+        'shows a skeleton, never "reconnect", while the first load is running',
+        (tester) async {
+      tall(tester);
+      spyApi.entitlementGate = Completer<void>();
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.byKey(const ValueKey('billing-skeleton')), findsOneWidget);
+      expect(find.textContaining('Reconnect'), findsNothing);
+      expect(find.textContaining('could not load your plan'), findsNothing);
+
+      spyApi.entitlementGate!.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('billing-skeleton')), findsNothing);
+      expect(find.text('CORE'), findsWidgets);
+      expect(find.textContaining('Reconnect'), findsNothing);
+    });
+
+    testWidgets('a failed refresh keeps the plan that was already on screen',
+        (tester) async {
+      tall(tester);
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester.pumpAndSettle();
+      expect(find.text('Active'), findsOneWidget);
+
+      spyApi.entitlementError = DioException(
+        requestOptions: RequestOptions(path: '/billing/entitlement'),
+        type: DioExceptionType.connectionError,
+      );
+      // Pull to refresh.
+      unawaited(tester
+          .state<RefreshIndicatorState>(find.byType(RefreshIndicator))
+          .show());
+      await tester.pumpAndSettle();
+      expect(spyApi.entitlementCalls, 2);
+
+      // Still the confirmed plan, now marked as saved, with a Retry.
+      expect(find.text('CORE'), findsWidgets);
+      expect(find.text('Active'), findsOneWidget);
+      expect(find.textContaining('last saved billing details'), findsOneWidget);
+      expect(find.byKey(const ValueKey('billing-notice-retry')), findsOneWidget);
+      expect(find.textContaining('could not load your plan'), findsNothing);
+    });
+
+    test('simultaneous refreshes share one request', () async {
+      spyApi.entitlementGate = Completer<void>();
+      final first = refreshEntitlement();
+      final second = refreshEntitlement();
+      spyApi.entitlementGate!.complete();
+      final results = await Future.wait([first, second]);
+
+      expect(spyApi.entitlementCalls, 1);
+      expect(results[0]!.plan, 'CORE');
+      expect(results[1]!.plan, 'CORE');
+    });
+
+    test('a failed refresh falls back to the last confirmed answer, not null',
+        () async {
+      await refreshEntitlement();
+      spyApi.entitlementError = DioException(
+        requestOptions: RequestOptions(path: '/billing/entitlement'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/billing/entitlement'),
+          statusCode: 401,
+        ),
+        type: DioExceptionType.badResponse,
+      );
+
+      final again = await refreshEntitlement();
+
+      expect(again, isNotNull);
+      expect(again!.plan, 'CORE');
+      expect(again.source, EntitlementSource.offlineCache);
+    });
+
+    test('the signed offline copy is readable after a live fetch', () async {
+      final now = DateTime.now();
+      spyApi.entitlementData = {
+        ...spyApi.entitlementData,
+        'paidUntil': now.add(const Duration(days: 13)).toUtc().toIso8601String(),
+        'graceUntil': now.add(const Duration(days: 16)).toUtc().toIso8601String(),
+      };
+      await refreshEntitlement();
+      // Cold start with the network down: nothing in memory, only the disk.
+      resetEntitlementMemory();
+      spyApi.entitlementError = DioException(
+        requestOptions: RequestOptions(path: '/billing/entitlement'),
+        type: DioExceptionType.connectionError,
+      );
+
+      final offline = await refreshEntitlement();
+
+      expect(offline, isNotNull);
+      expect(offline!.plan, 'CORE');
+      expect(offline.status, 'ACTIVE');
+      expect(offline.maxBranches, 3);
+      expect(offline.source, EntitlementSource.offlineCache);
+    });
+
+    testWidgets('a young saved copy paints at once and needs no request',
+        (tester) async {
+      tall(tester);
+      await const BillingSnapshotStore().save(
+        null,
+        BillingSnapshot(
+          savedAt: DateTime.now().subtract(const Duration(minutes: 1)),
+          entitlement: BillingEntitlement.fromMap(spyApi.entitlementData).toMap(),
+          plan: spyApi.planData,
+        ),
+      );
+      spyApi.entitlementGate = Completer<void>();
+
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('CORE'), findsWidgets);
+      expect(find.text('Active'), findsOneWidget);
+      expect(spyApi.entitlementCalls, 0);
+      await tester.pumpAndSettle();
+      expect(spyApi.entitlementCalls, 0);
+    });
+
+    testWidgets('an older saved copy shows first, then refreshes behind it',
+        (tester) async {
+      tall(tester);
+      await const BillingSnapshotStore().save(
+        null,
+        BillingSnapshot(
+          savedAt: DateTime.now().subtract(const Duration(minutes: 30)),
+          entitlement: BillingEntitlement.fromMap(spyApi.entitlementData).toMap(),
+          plan: spyApi.planData,
+        ),
+      );
+      spyApi.entitlementGate = Completer<void>();
+
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // On screen before the server has answered.
+      expect(find.text('CORE'), findsWidgets);
+      expect(find.byKey(const ValueKey('billing-skeleton')), findsNothing);
+      expect(spyApi.entitlementCalls, 1);
+
+      spyApi.entitlementGate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('CORE'), findsWidgets);
+    });
+  });
+
+  group('managing the plan', () {
+    void tall(WidgetTester tester) {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+    }
+
+    testWidgets('Manage plan opens the other plans on an active subscription',
+        (tester) async {
+      tall(tester);
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('manage-plan-tile')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Change your plan'), findsOneWidget);
+      expect(find.text('Current plan'), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-tile-business')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-tile-enterprise')), findsOneWidget);
+      // Prices come from the server's table.
+      expect(find.text('KES 5,000'), findsOneWidget);
+      expect(find.text('KES 9,999'), findsOneWidget);
+    });
+
+    testWidgets('an upgrade says when it takes effect and then confirms it',
+        (tester) async {
+      tall(tester);
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('manage-plan-tile')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('plan-tile-business')));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Takes effect at your next renewal on'),
+        findsOneWidget,
+      );
+      // Nothing is saved until the terms are accepted.
+      final confirm = find.byKey(const ValueKey('plan-change-confirm'));
+      expect(tester.widget<SettingsPrimaryButton>(confirm).onPressed, isNull);
+
+      await tester.tap(find.byKey(const ValueKey('plan-terms-checkbox')));
+      await tester.pumpAndSettle();
+      await tester.tap(confirm);
+      await tester.pumpAndSettle();
+
+      expect(spyApi.changedTo, ['BUSINESS']);
+      expect(find.byKey(const ValueKey('plan-change-done')), findsOneWidget);
+      expect(find.text('Upgrade to BUSINESS scheduled'), findsOneWidget);
+    });
+
+    testWidgets('a lower plan is offered as a downgrade', (tester) async {
+      tall(tester);
+      spyApi.entitlementData = {...spyApi.entitlementData, 'plan': 'BUSINESS'};
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('manage-plan-tile')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('plan-tile-core')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Downgrade to CORE'), findsOneWidget);
+      expect(find.textContaining('You keep BUSINESS until then'), findsOneWidget);
+    });
+
+    testWidgets('a scheduled change shows a banner that can be cancelled',
+        (tester) async {
+      tall(tester);
+      spyApi.entitlementData = {...spyApi.entitlementData, 'plan': 'BUSINESS'};
+      spyApi.planData = {
+        ...spyApi.planData,
+        'plan': 'BUSINESS',
+        'pendingChange': {
+          'plan': 'CORE',
+          'effectiveAt': '2026-12-01T00:00:00.000Z',
+          'direction': 'DOWNGRADE',
+        },
+      };
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('scheduled-change-banner')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Switching to CORE'), findsWidgets);
+
+      await tester.tap(find.byKey(const ValueKey('cancel-scheduled-change')));
+      await tester.pumpAndSettle();
+
+      expect(spyApi.cancelCalls, 1);
+      expect(
+        find.byKey(const ValueKey('scheduled-change-banner')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('a checkout that cannot be opened offers a fresh link',
+        (tester) async {
+      tall(tester);
+      spyApi.entitlementData = {
+        ...spyApi.entitlementData,
+        'status': 'PAST_DUE',
+        'restrictedMode': true,
+      };
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Pay subscription securely'));
+      await tester.pumpAndSettle();
+
+      expect(spyApi.checkoutRequests, 1);
+      expect(find.textContaining('could not open the secure checkout'),
+          findsOneWidget);
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+      // Asking again is what fetches the replacement link.
+      expect(spyApi.checkoutRequests, 2);
     });
   });
 }

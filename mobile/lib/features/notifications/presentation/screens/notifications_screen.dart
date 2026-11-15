@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/responsive/device_class.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
@@ -36,9 +37,12 @@ class NotificationsScreen extends ConsumerWidget {
             ),
         ],
       ),
-      body: DesktopRefresh(
-        onRefresh: controller.refresh,
-        child: _body(context, ref, inbox, controller),
+      body: TabletContent(
+        maxWidth: 760,
+        child: DesktopRefresh(
+          onRefresh: controller.refresh,
+          child: _body(context, ref, inbox, controller),
+        ),
       ),
     );
   }

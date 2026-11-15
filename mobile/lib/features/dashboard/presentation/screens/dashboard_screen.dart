@@ -14,6 +14,7 @@ import '../../../../core/services/sync_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/desktop/desktop_widgets.dart';
+import '../../../../core/responsive/device_class.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/theme/share_format_sheet.dart';
 import '../../../../core/services/export_document_service.dart';
@@ -36,7 +37,14 @@ import '../../../home/domain/shop_guidance.dart';
 import '../../../accountability/presentation/widgets/shop_attention_card.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/utils/load_error.dart';
+import '../../../../core/widgets/alive_feedback.dart';
+import '../../../../core/widgets/skeleton_kit.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
+import '../../../../core/services/haptic_service.dart';
+import '../../../auth/presentation/widgets/sign_in_kit.dart';
+import '../../../home/domain/home_quick_actions.dart';
+import '../../domain/dashboard_summary_cache.dart';
+import '../widgets/home_phone_widgets.dart';
 import '../../../notifications/presentation/widgets/notification_bell.dart';
 import '../../../../core/desktop/desktop_refresh.dart';
 
@@ -258,6 +266,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     decimalDigits: 0,
   );
   static final _timeFmt = DateFormat('hh:mm a');
+
+  /// Sales listed under "Recent sales"; the rest are one tap away in Receipts.
+  static const _phoneRecentRows = 4;
   static final _dateFmt = DateFormat('EEEE, d MMMM yyyy');
 
   Timer? _midnightTimer;
@@ -271,10 +282,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   HomeRange _homeRange = HomeRange.today;
   DateTime _updatedAt = DateTime.now();
 
+  // Phone Home: the last "Sold today" figures kept on this phone, shown while
+  // fresh ones load so the hero never flashes zeros.
+  final _summaryCache = DashboardSummaryCache();
+  Map<String, dynamic>? _savedSummary;
+
+  String _summaryKey() {
+    final auth = getIt<AuthService>();
+    return DashboardSummaryCache.keyFor(
+      tenantId: auth.currentUser?['tenantId']?.toString(),
+      branchId: auth.branchId,
+      day: _shownDay,
+    );
+  }
+
+  Future<void> _loadSavedSummary() async {
+    final key = _summaryKey();
+    final saved = await _summaryCache.read(key);
+    if (!mounted || saved == null || key != _summaryKey()) return;
+    if (_savedSummary == null) setState(() => _savedSummary = saved);
+  }
+
   @override
   void initState() {
     super.initState();
     _shownDay = _todayDate();
+    unawaited(_loadSavedSummary());
     WidgetsBinding.instance.addObserver(this);
     _scheduleMidnightRollover();
     // After first frame, offer to close the day if it's past the branch's
@@ -345,6 +378,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   /// streams were first created keeps yesterday's sales showing as "today".
   void _rolloverToNewDay() {
     _shownDay = _todayDate();
+    // Yesterday's saved figures must never stand in for today's.
+    _savedSummary = null;
+    unawaited(_loadSavedSummary());
     ref.invalidate(_dashboardSummaryProvider);
     ref.invalidate(_recentSalesProvider);
     ref.invalidate(_todaysCostProvider);
@@ -361,20 +397,31 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     ref.invalidate(_eodStatusProvider);
     ref.invalidate(_aiDailyBriefProvider);
 
-    // Wait for the visible dashboard data to refresh so pull-to-refresh gives
-    // useful feedback. Keep the gesture bounded if an optional network-backed
-    // card (such as the AI brief) is slow or unavailable.
+    // Wait for what is on screen so pull-to-refresh gives useful feedback. The
+    // cost figure and the AI brief sit behind "More for today" on a phone (and
+    // load when shown), so they are refreshed but never waited for: a slow
+    // brief must not hold the gesture open.
     final refreshes = <Future<void>>[
       pull,
       ref.read(_dashboardSummaryProvider.future),
       ref.read(_recentSalesProvider.future),
-      ref.read(_todaysCostProvider.future),
       ref.read(_eodStatusProvider.future),
-      ref.read(_aiDailyBriefProvider.future),
     ].map((future) => future.then<void>((_) {}).catchError((_) {}));
     await Future.wait(
       refreshes,
     ).timeout(const Duration(seconds: 12), onTimeout: () => const <void>[]);
+  }
+
+  /// Pull to refresh on a phone: refreshes, then says so.
+  Future<void> _refreshWithAck(WidgetRef ref) async {
+    await _refreshDashboard(ref);
+    if (!mounted) return;
+    Alive.done(
+      context,
+      'Up to date',
+      icon: Icons.refresh_rounded,
+      color: homeAccentFor(ref.read(businessLayoutProvider)),
+    );
   }
 
   /// The time of today's first sale, as "7:42", or null before the first one.
@@ -422,93 +469,216 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final showRecentSales = businessLayout.showsDashboardSection(
       'recent_sales',
     );
-    final needsSummary =
-        showDailyFigures || showBusinessBrief || showCostAndProfit;
     final todaysSales = salesAsync.asData?.value ?? const <PendingSale>[];
-    Widget takingsBlock(Map<String, dynamic> summary) {
-      final split = splitTakings(
-        todaysSales.map(
-          (sale) => (
-            method: sale.paymentMethod,
-            reference: sale.paymentReference,
-            total: sale.total,
-            status: sale.status,
-          ),
+    final accent = homeAccentFor(businessLayout);
+    final permissions = ref.watch(permissionsProvider);
+    // The live figures when they are known, the copy saved on the phone while
+    // they load, so the hero never flashes zeros or a spinner.
+    final liveSummary = summaryAsync.asData?.value;
+    final shownSummary = liveSummary ?? _savedSummary;
+    ref.listen<AsyncValue<Map<String, dynamic>>>(_dashboardSummaryProvider, (
+      _,
+      next,
+    ) {
+      final value = next.asData?.value;
+      if (value != null) {
+        unawaited(_summaryCache.write(_summaryKey(), value));
+      }
+    });
+    final split = splitTakings(
+      todaysSales.map(
+        (sale) => (
+          method: sale.paymentMethod,
+          reference: sale.paymentReference,
+          total: sale.total,
+          status: sale.status,
         ),
-      );
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          HomeTakingsCard(
-            revenue: _amountForDashboard(summary['totalRevenue']),
-            transactions: (summary['transactionCount'] as num?)?.toInt() ?? 0,
-            averageTicket: _amountForDashboard(summary['avgTicket']),
-            itemsSold: _amountForDashboard(summary['itemsSold']),
-            split: split,
-            dateLabel: DateFormat('EEE d MMM').format(DateTime.now()),
-            sellingSince: _firstSaleToday(todaysSales),
-          ),
-          const SizedBox(height: DesignSpacing.md),
-          HomeStartSaleButton(onPressed: () => context.go('/')),
-          if (split.recordedCount > 0) ...[
-            const SizedBox(height: DesignSpacing.md),
-            HomeRecordedReminder(
-              count: split.recordedCount,
-              onTap: () => context.push('/mpesa-match'),
-            ),
-          ],
-        ],
-      );
-    }
-
-    List<Widget> overviewCards(Map<String, dynamic> summary) {
-      final cards = <Widget>[];
-      void addCard(Widget card) => cards.add(card);
-
-      if (showBusinessBrief) {
-        addCard(_buildAiBrief(context, ref, summary));
-      }
-      if (showCostAndProfit) {
-        addCard(_buildCostAndProfitCard(context, ref, summary));
-      }
-      return cards;
-    }
-
-    final overviewContent = summaryAsync.when<List<Widget>>(
-      data: overviewCards,
-      loading: () => needsSummary
-          ? [
-              if (!showDailyFigures)
-                const Padding(
-                  padding: EdgeInsets.all(DesignSpacing.md),
-                  child: Center(
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
-                ),
-            ]
-          : const [],
-      error: (error, _) => needsSummary
-          ? [
-              Padding(
-                padding: const EdgeInsets.all(DesignSpacing.xl),
-                child: EmptyState(
-                  icon: Icons.error_outline_rounded,
-                  title: 'Couldn\'t load summary',
-                  subtitle: loadErrorSubtitle(error),
-                  iconColor: DesignColors.error,
-                  actionLabel: isPermissionDenied(error) ? null : 'Retry',
-                  onAction: isPermissionDenied(error)
-                      ? null
-                      : () => ref.invalidate(_dashboardSummaryProvider),
-                ),
-              ),
-            ]
-          : const [],
+      ),
     );
+
+    // Payment standing: only when it needs the owner.
+    Widget licenceBanner = const SizedBox.shrink();
+    final licence = ref.watch(licenceViewProvider).valueOrNull;
+    if (licence != null) {
+      final standing = licence.standing;
+      final kind = switch (standing.status) {
+        LicenceStatus.salesPaused => LicenceStatusKind.paused,
+        LicenceStatus.grace => LicenceStatusKind.late,
+        LicenceStatus.trial when standing.daysLeft <= 3 =>
+          LicenceStatusKind.trial,
+        LicenceStatus.active when standing.daysLeft <= 3 =>
+          LicenceStatusKind.due,
+        _ => null,
+      };
+      if (kind != null) {
+        licenceBanner = Padding(
+          padding: const EdgeInsets.only(bottom: DesignSpacing.xl),
+          child: HomeLicenceBanner(
+            status: kind,
+            daysLeft: standing.daysLeft,
+            onTap: () => context.push('/settings/plan'),
+          ),
+        );
+      }
+    }
+
+    // 1. The hero: today's takings, then the one thing Home is for.
+    Widget hero() {
+      final Widget card;
+      if (shownSummary != null) {
+        card = HomeTakingsCard(
+          revenue: _amountForDashboard(shownSummary['totalRevenue']),
+          transactions:
+              (shownSummary['transactionCount'] as num?)?.toInt() ?? 0,
+          averageTicket: _amountForDashboard(shownSummary['avgTicket']),
+          itemsSold: _amountForDashboard(shownSummary['itemsSold']),
+          split: split,
+          dateLabel: DateFormat('EEE d MMM').format(DateTime.now()),
+          sellingSince: _firstSaleToday(todaysSales),
+          accent: accent,
+          updating: liveSummary == null && !summaryAsync.hasError,
+        );
+      } else if (summaryAsync.hasError) {
+        card = EmptyState(
+          icon: Icons.error_outline_rounded,
+          title: 'Couldn\'t load today\'s sales',
+          subtitle: loadErrorSubtitle(summaryAsync.error!),
+          iconColor: DesignColors.error,
+          actionLabel:
+              isPermissionDenied(summaryAsync.error!) ? null : 'Retry',
+          onAction: isPermissionDenied(summaryAsync.error!)
+              ? null
+              : () => ref.invalidate(_dashboardSummaryProvider),
+        );
+      } else {
+        card = const HomeTakingsSkeleton();
+      }
+      return card;
+    }
+
+    final startSale = permissions.canSeePOS
+        ? HomeStartSaleButton(
+            accent: accent,
+            onPressed: () {
+              unawaited(HapticService().selection());
+              context.go('/');
+            },
+          )
+        : null;
+
+    // 2. Three or four shortcuts, in the order this kind of shop works.
+    final quickActions = homeQuickActions(
+      layout: businessLayout,
+      permissions: permissions,
+      localWorkspace: isLocalWorkspace,
+    );
+    final highlights = businessLayout.preset.highlights;
+
+    // 3. What needs doing now. At most three: recorded payments to match,
+    // today's close, and one of setup (device-only shops) or shop alerts.
+    final eodAsync = permissions.isAdmin && showEndOfDay
+        ? ref.watch(_eodStatusProvider)
+        : null;
+    final eodNeedsAction = eodAsync != null && _eodAttention(eodAsync) != null;
+    final eodClosed =
+        eodAsync != null && !eodAsync.isLoading && !eodNeedsAction;
+    final alertsPermitted = !isLocalWorkspace &&
+        permissions.has('accountability.view') &&
+        businessLayout.isActionVisible('/shop-alerts');
+    final alertsState = alertsPermitted ? ref.watch(alertsProvider) : null;
+    final alertsNeedLook = alertsState != null &&
+        alertsState.loadedOnce &&
+        alertsState.page.openCount > 0;
+    final setupPending = isLocalWorkspace &&
+        getIt<AuthService>().isLocalWorkspaceOwner &&
+        ref.watch(setupChecklistProvider).valueOrNull?.next != null;
+
+    // The setup and alert cards bring their own bottom gap; ours get one here
+    // so every group ends with the same space.
+    final urgent = <Widget>[
+      if (split.recordedCount > 0)
+        HomeRecordedReminder(
+          count: split.recordedCount,
+          onTap: () => context.push('/mpesa-match'),
+        ),
+      if (eodNeedsAction) _buildEndOfDayCard(context, ref),
+    ];
+    final selfPadded = <Widget>[
+      if (setupPending) const SetupProgressCard(),
+      if (alertsNeedLook) const ShopAttentionCard(),
+    ];
+    final attention = <Widget>[
+      for (var i = 0; i < urgent.length; i++)
+        Padding(
+          padding: EdgeInsets.only(
+            bottom: i == urgent.length - 1 && selfPadded.isEmpty
+                ? DesignSpacing.xl
+                : DesignSpacing.md,
+          ),
+          child: urgent[i],
+        ),
+      ...selfPadded,
+    ];
+
+    // 4. Everything else, folded away until asked for.
+    final more = <Widget>[
+      if (showCostAndProfit && shownSummary != null)
+        _buildCostAndProfitCard(context, ref, shownSummary),
+      if (showBusinessBrief && shownSummary != null)
+        _buildAiBrief(context, ref, shownSummary),
+      if (eodClosed) _buildEndOfDayCard(context, ref),
+      if (alertsPermitted && !alertsNeedLook) const ShopAttentionCard(),
+      if (!isLocalWorkspace) const StaffInviteNudge(),
+      ShopUpToDateCard(
+        profileId: businessLayout.preset.id,
+        profileName: businessLayout.preset.name,
+        onOpen: (path) => context.go(path),
+      ),
+    ];
+
+    // The hero, Start a sale and the shortcuts.
+    List<Widget> leftColumn() => [
+          if (showDailyFigures) ...[
+            hero(),
+            const SizedBox(height: DesignSpacing.md),
+          ],
+          if (startSale != null) ...[
+            startSale,
+            const SizedBox(height: DesignSpacing.xl),
+          ] else if (showDailyFigures)
+            const SizedBox(height: DesignSpacing.md),
+          if (quickActions.isNotEmpty) ...[
+            HomeGroupLabel(
+              'Quick actions',
+              trailing: highlights.isEmpty
+                  ? null
+                  : ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 190),
+                      child: Text(
+                        highlights.join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: SignInPalette.of(context).faint,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+            ),
+            HomeQuickActionsRow(
+              actions: quickActions,
+              accent: accent,
+              onOpen: (path) => context.go(path),
+            ),
+            const SizedBox(height: DesignSpacing.xl),
+          ],
+        ];
+
+    // What needs doing, then the latest sales.
+    List<Widget> rightColumn() => [
+          ...attention,
+          if (showRecentSales) _recentSalesSection(context),
+        ];
     return Scaffold(
       appBar: desktop
           ? null
@@ -538,7 +708,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   onSelected: (value) {
                     switch (value) {
                       case 'refresh':
-                        unawaited(_refreshDashboard(ref));
+                        unawaited(_refreshWithAck(ref));
                       case 'share':
                         _shareDashboardReport(context, ref);
                       case 'logout':
@@ -575,139 +745,96 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               ],
             ),
       body: DesktopRefresh(
-        onRefresh: () => _refreshDashboard(ref),
+        onRefresh: () => _refreshWithAck(ref),
         child: PageContainer(
           withScroll: true,
-          maxWidth: desktop ? 1280 : 960,
-          backgroundColor: desktop ? context.desktop.panel : null,
-          padding: desktop ? const EdgeInsets.fromLTRB(24, 8, 24, 28) : null,
+          maxWidth: context.isTabletLayout ? Breakpoints.tabletContentMaxWidth : 960,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (desktop)
-                DesktopPageHeader(
-                  title: 'Dashboard',
-                  subtitle: 'Today at your shop',
-                  padding: const EdgeInsets.fromLTRB(0, 12, 0, 20),
-                  actions: [
-                    OutlinedButton.icon(
-                      onPressed: () => _openDayPicker(context),
-                      icon: const Icon(Icons.calendar_month_rounded, size: 17),
-                      label: const Text('Choose day'),
-                    ),
-                    IconButton(
-                      tooltip: 'Refresh dashboard',
-                      onPressed: () => unawaited(_refreshDashboard(ref)),
-                      icon: const Icon(Icons.refresh_rounded),
-                    ),
-                  ],
-                ),
-              Builder(
-                builder: (context) {
-                  final licence = ref.watch(licenceViewProvider).valueOrNull;
-                  if (licence == null) return const SizedBox.shrink();
-                  final standing = licence.standing;
-                  final kind = switch (standing.status) {
-                    LicenceStatus.salesPaused => LicenceStatusKind.paused,
-                    LicenceStatus.grace => LicenceStatusKind.late,
-                    LicenceStatus.trial when standing.daysLeft <= 3 =>
-                      LicenceStatusKind.trial,
-                    LicenceStatus.active when standing.daysLeft <= 3 =>
-                      LicenceStatusKind.due,
-                    _ => null,
-                  };
-                  if (kind == null) return const SizedBox.shrink();
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: DesignSpacing.lg),
-                    child: HomeLicenceBanner(
-                      status: kind,
-                      daysLeft: standing.daysLeft,
-                      onTap: () => context.push('/settings/plan'),
-                    ),
+              licenceBanner,
+
+              // Two columns when the page has the room (a tablet, a fold
+              // opened, a phone on its side); one column on a phone.
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final left = leftColumn();
+                  final right = rightColumn();
+                  if (constraints.maxWidth < 600) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [...left, ...right],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 5,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: left,
+                        ),
+                      ),
+                      const SizedBox(width: DesignSpacing.xl),
+                      Expanded(
+                        flex: 6,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: right,
+                        ),
+                      ),
+                    ],
                   );
                 },
               ),
 
-              if (showDailyFigures) ...[
-                summaryAsync.when(
-                  data: takingsBlock,
-                  loading: () => takingsBlock(const {
-                    'transactionCount': 0,
-                    'totalRevenue': 0.0,
-                    'avgTicket': 0.0,
-                    'itemsSold': 0,
-                  }),
-                  error: (_, __) => const SizedBox.shrink(),
-                ),
-                const SizedBox(height: DesignSpacing.xl),
-              ],
+              HomeMoreForToday(accent: accent, children: more),
+              const SizedBox(height: DesignSpacing.xxl),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-              // Anything in the shop that needs the owner's eye (or an all-clear).
-              if (!isLocalWorkspace) const ShopAttentionCard(),
-
-              // Staff invite nudge — persistent across sessions until
-              // at least one staff invitation is accepted.
-              if (!isLocalWorkspace) const StaffInviteNudge(),
-
-              // The owner of a shop kept on this phone sees how far setup has
-              // got until every step is done or put off.
-              if (isLocalWorkspace &&
-                  getIt<AuthService>().isLocalWorkspaceOwner)
-                const SetupProgressCard(),
-
-              // End of Day — admin-only. Previously this lived only inside
-              // Finance › Cash Flow, several taps deep; admins asked for it
-              // to be reachable straight from the dashboard too. Staff
-              // never see this card at all (canCloseEndOfDay is itself
-              // sales.close_end_of_day, but the dashboard entry point is
-              // additionally gated on the Admin role so a store manager who
-              // was individually granted the permission still doesn't see
-              // it duplicated here — only Finance stays their route).
-              if (ref.watch(permissionsProvider).isAdmin && showEndOfDay) ...[
-                _buildEndOfDayCard(context, ref),
-                const SizedBox(height: DesignSpacing.xl),
-              ],
-
-              ShopUpToDateCard(
-                profileId: businessLayout.preset.id,
-                profileName: businessLayout.preset.name,
-                onOpen: (path) => context.go(path),
-              ),
-              const SizedBox(height: DesignSpacing.xl),
-
-              if (overviewContent.isNotEmpty) ...[
-                for (var index = 0;
-                    index < overviewContent.length;
-                    index++) ...[
-                  if (index > 0) const SizedBox(height: DesignSpacing.md),
-                  overviewContent[index],
-                ],
-              ],
-
-              if (showRecentSales) ...[
-                const SizedBox(height: DesignSpacing.sm),
-                SectionHeader(
-                  icon: Icons.receipt_long_rounded,
-                  title: 'Recent Sales',
-                  subtitle: 'Today\'s transactions',
-                  trailing: Text(
-                    'Last 10',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? DesignColors.darkTextTertiary
-                              : DesignColors.textTertiary,
-                        ),
+  /// The latest few sales of the day with a way to the full list. Nothing at
+  /// all before the first sale: the hero already says "No sales yet today".
+  Widget _recentSalesSection(BuildContext context) {
+    final salesAsync = ref.watch(_recentSalesProvider);
+    final businessLayout = ref.watch(businessLayoutProvider);
+    final canOpenReceipts = ref.watch(permissionsProvider).canSeeReceipts &&
+        businessLayout.isActionVisible('/receipts');
+    final hasSales = salesAsync.asData?.value.isNotEmpty ?? false;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+                if (hasSales || salesAsync.isLoading)
+                  HomeGroupLabel(
+                    'Recent sales',
+                    trailing: canOpenReceipts
+                        ? TextButton(
+                            onPressed: () => context.go('/receipts'),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: DesignSpacing.sm,
+                              ),
+                              minimumSize: const Size(48, 36),
+                              foregroundColor:
+                                  homeAccentFor(businessLayout),
+                              textStyle: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            child: const Text('See all'),
+                          )
+                        : null,
                   ),
-                ),
                 salesAsync.when(
                   data: (sales) {
-                    if (sales.isEmpty) {
-                      return const EmptyState(
-                        icon: Icons.receipt_long_rounded,
-                        title: 'No sales today yet',
-                        subtitle: 'Start selling to see transactions here',
-                      );
-                    }
+                    // Nothing before the first sale: the hero already says so.
+                    if (sales.isEmpty) return const SizedBox.shrink();
                     final isDark =
                         Theme.of(context).brightness == Brightness.dark;
                     final divider = isDark
@@ -721,10 +848,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                         ),
                       ),
                       child: Column(
-                        children: sales.take(10).toList().asMap().entries.map((
+                        children: sales
+                            .take(_phoneRecentRows)
+                            .toList()
+                            .asMap()
+                            .entries
+                            .map((
                           entry,
                         ) {
-                          final isLast = entry.key == sales.take(10).length - 1;
+                          final isLast = entry.key ==
+                              sales.take(_phoneRecentRows).length - 1;
                           final sale = entry.value;
                           return Material(
                             color: Colors.transparent,
@@ -842,9 +975,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       ),
                     );
                   },
+                  // Rows the shape of the real ones, not a spinner.
                   loading: () => const Padding(
-                    padding: EdgeInsets.all(DesignSpacing.xl),
-                    child: Center(child: CircularProgressIndicator()),
+                    padding: EdgeInsets.symmetric(horizontal: DesignSpacing.sm),
+                    child: Column(
+                      children: [
+                        SkeletonRow(leading: true),
+                        SkeletonRow(leading: true),
+                      ],
+                    ),
                   ),
                   error: (e, _) => Padding(
                     padding: const EdgeInsets.all(DesignSpacing.xl),
@@ -860,12 +999,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     ),
                   ),
                 ),
-              ],
-              const SizedBox(height: DesignSpacing.xl),
-            ],
-          ),
-        ),
-      ),
+        if (hasSales || salesAsync.isLoading)
+          const SizedBox(height: DesignSpacing.xl),
+      ],
     );
   }
 

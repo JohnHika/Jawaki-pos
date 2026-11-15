@@ -11,7 +11,10 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/providers/business_layout_provider.dart';
+import '../../../../core/widgets/alive_feedback.dart';
+import '../../../../core/widgets/master_detail.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
+import '../../../../core/widgets/skeleton_kit.dart';
 import '../../../finance/domain/finance_models.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../desktop/desktop_customers_view.dart';
@@ -232,12 +235,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     );
     if (customer == null || !mounted) return;
     _loadCustomers();
-    showGlassSnackBar(
-      context,
-      '${customer.name} added',
-      icon: Icons.check_circle_rounded,
-      color: DesignColors.success,
-    );
+    Alive.done(context, '${customer.name} added');
   }
 
   /// The computer layout: a list on the left, the profile on the right.
@@ -308,6 +306,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final customersLabel = businessLayout.customersLabel.toLowerCase();
 
     final pageTitle = businessLayout.actionLabel('/customers', 'Customers');
+    // Tablets and unfolded fold phones show the picked customer beside the list.
+    final selectedId = _selectedId ??
+        (_customers.isEmpty ? null : _customers.first['id']?.toString());
 
     return Scaffold(
       appBar: BrandedAppBar(
@@ -322,7 +323,20 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             ),
         ],
       ),
-      body: PageContainer(
+      body: MasterDetail(
+        masterWidth: 400,
+        emptyIcon: Icons.people_outline_rounded,
+        emptyTitle: 'Pick a $customerSingular',
+        emptyBody: 'Their history, balance and payments show here.',
+        detail: selectedId == null
+            ? null
+            : CustomerProfileView(
+                key: ValueKey(selectedId),
+                customerId: selectedId,
+                embedded: true,
+                onChanged: () => _loadCustomers(query: _searchController.text),
+              ),
+        masterBuilder: (context, twoPane) => PageContainer(
         padding: EdgeInsets.zero,
         maxWidth: 960,
         child: Column(
@@ -461,9 +475,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             // Customer list
             Expanded(
               child: _isLoading
-                  ? const Center(
-                      child:
-                          CircularProgressIndicator(color: DesignColors.brand))
+                  ? const SkeletonList(rows: 7, leading: true)
                   : _loadError != null
                       ? EmptyState(
                           icon: Icons.cloud_off_rounded,
@@ -521,8 +533,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                                 borderRadius:
                                                     BorderRadius.circular(
                                                         DesignSpacing.radiusMd),
-                                                onTap: () => context.push(
-                                                    '/customers/${c['id']}'),
+                                                onTap: () => twoPane
+                                                    ? setState(() =>
+                                                        _selectedId =
+                                                            c['id']?.toString())
+                                                    : context.push(
+                                                        '/customers/${c['id']}'),
                                                 child: Container(
                                                   padding:
                                                       const EdgeInsets.all(14),
@@ -533,7 +549,16 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                                             DesignSpacing
                                                                 .radiusMd),
                                                     border: Border.all(
-                                                      color: balance > 0
+                                                      width: twoPane &&
+                                                              c['id']?.toString() ==
+                                                                  selectedId
+                                                          ? 2
+                                                          : 1,
+                                                      color: twoPane &&
+                                                              c['id']?.toString() ==
+                                                                  selectedId
+                                                          ? DesignColors.brand
+                                                          : balance > 0
                                                           ? DesignColors.error
                                                               .withValues(
                                                                   alpha: 0.35)
@@ -680,6 +705,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

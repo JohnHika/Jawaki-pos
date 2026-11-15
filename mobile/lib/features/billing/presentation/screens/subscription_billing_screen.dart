@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/desktop/desktop_layout.dart';
@@ -19,7 +21,9 @@ import '../../../../core/widgets/motion.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../subscription/domain/subscription_plans.dart';
 import '../../domain/billing_entitlement.dart';
+import '../../domain/billing_snapshot.dart';
 import '../desktop/desktop_billing_view.dart';
+import '../widgets/plan_compare_sheet.dart';
 import '../../../finance/presentation/desktop/desktop_figures_row.dart';
 import '../providers/entitlement_provider.dart';
 import '../../../../core/desktop/adaptive_sheet.dart';
@@ -95,12 +99,22 @@ class _SubscriptionBillingScreenState
     extends ConsumerState<SubscriptionBillingScreen> {
   BillingEntitlement? _entitlement;
   Map<String, dynamic>? _settings;
+
+  /// `GET /subscription/plan`: the plan in force, any change scheduled for the
+  /// next renewal, and the prices invoices use.
+  Map<String, dynamic>? _plan;
   List<dynamic> _invoices = [];
   String? _invoiceError;
   bool _isLoadingEntitlement = true;
   bool _isLoadingInvoices = true;
+  bool _invoicesLoadedOnce = false;
   bool _isChangingPlan = false;
   String? _error;
+
+  /// One load at a time: pull-to-refresh, a payment return and a retry all
+  /// join the load already running instead of starting another.
+  Future<void>? _loading;
+  final _snapshotStore = const BillingSnapshotStore();
   String? _paystackInvoiceBusyId;
   final Map<String, String> _mpesaInvoiceStatuses = {};
   final AppLinks _appLinks = AppLinks();
@@ -117,11 +131,39 @@ class _SubscriptionBillingScreenState
   SubscriptionPlan? get _billingPlan {
     final entitlementPlan = planById(_entitlement?.plan);
     if (entitlementPlan != null) return entitlementPlan;
-    return planById(_settings?['plan']?.toString());
+    final fromSettings = planById(_settings?['plan']?.toString());
+    if (fromSettings != null) return fromSettings;
+    return planById(_plan?['plan']?.toString());
   }
 
   SubscriptionPlan? get _pendingPlan =>
-      planById(_settings?['pendingPlan']?.toString());
+      planById(_settings?['pendingPlan']?.toString() ??
+          _plan?['pendingPlan']?.toString());
+
+  /// A change to a different plan that starts at the next renewal.
+  ScheduledPlanChange? get _scheduledChange {
+    final raw = _plan?['pendingChange'] ?? _settings?['pendingChange'];
+    if (raw is! Map) return null;
+    final id = raw['plan']?.toString().toLowerCase();
+    if (id == null || planById(id) == null || id == 'trial') return null;
+    return ScheduledPlanChange(
+      planId: id,
+      effectiveAt: DateTime.tryParse(raw['effectiveAt']?.toString() ?? ''),
+    );
+  }
+
+  /// True only while there is genuinely nothing to show yet.
+  bool get _showSkeleton =>
+      _entitlement == null && _plan == null && (_isLoadingEntitlement || _loading != null);
+
+  /// Calm status line while a saved copy is on screen and a refresh runs.
+  bool get _isRefreshing => _loading != null;
+
+  String? get _tenantId {
+    if (!getIt.isRegistered<AuthService>()) return null;
+    final user = getIt<AuthService>().currentUser;
+    return (user?['tenantId'] ?? (user?['tenant'] as Map?)?['id'])?.toString();
+  }
 
   @override
   void initState() {
@@ -131,7 +173,37 @@ class _SubscriptionBillingScreenState
       onError: (_) {},
     );
     unawaited(_readInitialPaystackLink());
-    _loadData();
+    unawaited(_startWithSnapshot());
+  }
+
+  /// Paint the saved copy at once (stale-while-revalidate), then refresh
+  /// behind it. A copy younger than five minutes needs no refresh.
+  Future<void> _startWithSnapshot() async {
+    await PlanPrices.restore();
+    final snapshot = await _snapshotStore.load(_tenantId);
+    if (!mounted) return;
+    final fresh = snapshot?.isFresh() ?? false;
+    if (snapshot != null) {
+      setState(() {
+        // Snapshots are only written from a live answer, so a young one still
+        // counts as live; an older one is shown as saved until refreshed.
+        _entitlement = snapshot.entitlement == null
+            ? null
+            : BillingEntitlement.fromMap(
+                snapshot.entitlement!,
+                source: fresh
+                    ? EntitlementSource.live
+                    : EntitlementSource.offlineCache,
+              );
+        _plan = snapshot.plan;
+        _invoices = snapshot.invoices;
+        _invoicesLoadedOnce = true;
+        _settings = snapshot.settings;
+        _isLoadingEntitlement = false;
+        _isLoadingInvoices = false;
+      });
+    }
+    if (!fresh) unawaited(_loadData());
   }
 
   @override
@@ -159,53 +231,128 @@ class _SubscriptionBillingScreenState
     await _verifyPaystackPayment(reference);
   }
 
-  Future<void> _loadData() async {
-    await Future.wait([_loadEntitlement(), _loadInvoices()]);
+  /// Loads everything the page shows. Calls made while a load is running join
+  /// it, so two triggers never race to overwrite each other.
+  Future<void> _loadData() {
+    final running = _loading;
+    if (running != null) return running;
+    late final Future<void> run;
+    run = _runLoad().whenComplete(() {
+      if (identical(_loading, run)) _loading = null;
+      if (mounted) setState(() {});
+    });
+    _loading = run;
+    if (mounted) setState(() {});
+    return run;
+  }
+
+  /// Loads again after something changed (a payment, a plan change): waits for
+  /// any load already running, whose answer may predate the change.
+  Future<void> _reload() async {
+    final running = _loading;
+    if (running != null) await running;
+    await _loadData();
+  }
+
+  Future<void> _runLoad() async {
+    await Future.wait([_loadEntitlement(), _loadInvoices(), _loadPlan()]);
     if (_isAdmin) {
       await _loadSettings();
     }
+    await _saveSnapshot();
+  }
+
+  /// Keep the latest live answer so the next visit paints at once. A failed
+  /// refresh never reaches here with anything but the last good values.
+  Future<void> _saveSnapshot() async {
+    final entitlement = _entitlement;
+    if (entitlement == null || entitlement.source != EntitlementSource.live) {
+      return;
+    }
+    await _snapshotStore.save(
+      _tenantId,
+      BillingSnapshot(
+        savedAt: DateTime.now(),
+        entitlement: entitlement.toMap(),
+        plan: _plan,
+        invoices: _invoices,
+        settings: _settings,
+      ),
+    );
   }
 
   Future<void> _loadEntitlement() async {
-    setState(() {
-      _isLoadingEntitlement = true;
-      _error = null;
-    });
+    // A saved copy is already on screen: refresh behind it, no spinner.
+    if (_entitlement == null && mounted) {
+      setState(() {
+        _isLoadingEntitlement = true;
+        _error = null;
+      });
+    }
     try {
-      // Live fetch (falls back to the offline cache on failure).
+      // Live fetch (falls back to the last known answer or the offline cache).
       final entitlement = await refreshEntitlement();
       if (!mounted) return;
       setState(() {
-        _entitlement = entitlement;
+        // Never replace something we can show with nothing, and never replace
+        // a confirmed answer with an older saved one.
+        final current = _entitlement;
+        if (entitlement != null &&
+            entitlement.source != EntitlementSource.live &&
+            current?.source == EntitlementSource.live) {
+          // Keep the confirmed details, but say they are no longer confirmed.
+          _entitlement = current!.copyWith(source: EntitlementSource.offlineCache);
+        } else if (entitlement != null) {
+          _entitlement = entitlement;
+        }
         _isLoadingEntitlement = false;
+        _error = null;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _isLoadingEntitlement = false;
-        _error = _friendlyError(error);
+        // Only worth an error card when there is nothing else to show.
+        _error = _entitlement == null ? _friendlyError(error) : null;
       });
     }
   }
 
   Future<void> _loadInvoices() async {
-    setState(() {
-      _isLoadingInvoices = true;
-      _invoiceError = null;
-    });
+    if (!_invoicesLoadedOnce && mounted) {
+      setState(() {
+        _isLoadingInvoices = true;
+        _invoiceError = null;
+      });
+    }
     try {
       final invoices = await _apiClient.getBillingInvoices();
       if (!mounted) return;
       setState(() {
         _invoices = invoices;
         _isLoadingInvoices = false;
+        _invoicesLoadedOnce = true;
+        _invoiceError = null;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _isLoadingInvoices = false;
-        _invoiceError = _friendlyError(error);
+        // Keep the invoices already shown; only say so when there are none.
+        _invoiceError = _invoices.isEmpty ? _friendlyError(error) : null;
       });
+    }
+  }
+
+  Future<void> _loadPlan() async {
+    try {
+      final plan = await _apiClient.getSubscriptionPlan();
+      await PlanPrices.apply(plan['availablePlans']);
+      if (!mounted) return;
+      setState(() => _plan = plan);
+    } catch (_) {
+      // The plan and its prices are refinements; the entitlement drives the
+      // page, and a saved copy or the bundled prices stand in.
     }
   }
 
@@ -225,14 +372,41 @@ class _SubscriptionBillingScreenState
     return apiErrorMessage(error);
   }
 
-  void _showChangePlanSheet() {
-    final currentPlan = (_billingPlan?.id ?? 'core').toLowerCase();
-    String selectedPlan = currentPlan == 'trial'
-        ? (_pendingPlan?.id ?? 'core').toLowerCase()
-        : currentPlan;
-    bool acceptedBillingTerms = false;
+  // ── Plan changes ────────────────────────────────────────────────────
 
-    showAdaptiveModalSheet(
+  String? get _statusUpper => _entitlement?.status.toUpperCase();
+
+  /// A trial, an active plan or an overdue one can be changed. A suspended or
+  /// lapsed one is settled by paying first.
+  bool get _canManagePlan {
+    final status = _statusUpper;
+    return _isAdmin &&
+        _billingPlan != null &&
+        (status == 'TRIAL' ||
+            status == 'ACTIVE' ||
+            status == 'PAST_DUE' ||
+            status == 'GRACE_PERIOD');
+  }
+
+  bool get _isOverdue {
+    final status = _statusUpper;
+    return status == 'PAST_DUE' || status == 'GRACE_PERIOD';
+  }
+
+  DateTime? get _renewsOn => DateTime.tryParse(_entitlement?.paidUntil ?? '');
+
+  /// Manage plan: every plan side by side, with upgrade, downgrade and keep.
+  Future<void> _openManagePlan() async {
+    if (!_canManagePlan) {
+      _showPaymentMessage(
+        _billingPlan == null
+            ? 'Your plan is still loading. Try again in a moment.'
+            : 'Plan changes open again once your subscription payment is confirmed.',
+      );
+      return;
+    }
+    final current = (_billingPlan?.id ?? 'core').toLowerCase();
+    final saved = await showAdaptiveModalSheet<bool>(
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,
@@ -242,153 +416,46 @@ class _SubscriptionBillingScreenState
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       clipBehavior: Clip.antiAlias,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (sheetContext, setSheetState) => Padding(
-          padding: EdgeInsets.only(
-              bottom: MediaQuery.viewInsetsOf(sheetContext).bottom),
-          child: SafeArea(
-            top: false,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(
-                DesignSpacing.xl,
-                DesignSpacing.lg,
-                DesignSpacing.xl,
-                DesignSpacing.xxl,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: context.themed(DesignColors.darkBorder),
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusFull),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: DesignSpacing.lg),
-                  Text(
-                    'Choose your plan',
-                    style: Theme.of(sheetContext)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(
-                          color: context.themed(DesignColors.darkTextPrimary),
-                          fontWeight: FontWeight.w800,
-                        ),
-                  ),
-                  const SizedBox(height: DesignSpacing.xs),
-                  Text(
-                    'Choose the plan for after your trial. Paid features start only after the subscription payment is confirmed.',
-                    style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                          color: context.themed(DesignColors.darkTextSecondary),
-                          height: 1.35,
-                        ),
-                  ),
-                  const SizedBox(height: DesignSpacing.lg),
-                  for (final plan in kAvailablePlans) ...[
-                    _PlanRadioTile(
-                      name: plan.name,
-                      priceLabel: '${formatKes(plan.priceKes)}/month',
-                      tagline: plan.tagline,
-                      isCurrent: plan.id == currentPlan,
-                      isSelected: selectedPlan == plan.id,
-                      onTap: _isChangingPlan
-                          ? null
-                          : () => setSheetState(() {
-                                if (selectedPlan != plan.id) {
-                                  acceptedBillingTerms = false;
-                                }
-                                selectedPlan = plan.id;
-                              }),
-                    ),
-                    if (plan != kAvailablePlans.last)
-                      const SizedBox(height: DesignSpacing.sm),
-                  ],
-                  const SizedBox(height: DesignSpacing.lg),
-                  CheckboxListTile(
-                    value: acceptedBillingTerms,
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    onChanged: _isChangingPlan
-                        ? null
-                        : (value) => setSheetState(
-                              () => acceptedBillingTerms = value ?? false,
-                            ),
-                    title: const TermsConsentText(
-                      before:
-                          'I agree to the subscription, billing and refund ',
-                      linkText: 'terms',
-                      after: ' for the plan shown above.',
-                      route: '/legal/billing',
-                    ),
-                  ),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: LegalLinkText(
-                      text: 'Read subscription and billing terms',
-                      route: '/legal/billing',
-                    ),
-                  ),
-                  const SizedBox(height: DesignSpacing.sm),
-                  SizedBox(
-                    width: double.infinity,
-                    child: SettingsPrimaryButton(
-                      label: _isChangingPlan
-                          ? 'Saving plan…'
-                          : 'Continue with ${planDisplayName(selectedPlan)}',
-                      isLoading: _isChangingPlan,
-                      onPressed: selectedPlan == currentPlan ||
-                              !acceptedBillingTerms ||
-                              _isChangingPlan
-                          ? null
-                          : () async {
-                              setState(() => _isChangingPlan = true);
-                              try {
-                                await _apiClient.acceptLegalPolicy(
-                                  policyType: 'BILLING_TERMS',
-                                  policyVersion: policyVersion('BILLING_TERMS'),
-                                );
-                                await _apiClient.changeSubscriptionPlan(
-                                  planId: selectedPlan.toUpperCase(),
-                                );
-                                if (!mounted || !sheetContext.mounted) return;
-                                Navigator.of(sheetContext).pop();
-                                await _loadData();
-                                if (!mounted) return;
-                                showGlassSnackBar(
-                                  context,
-                                  '${planDisplayName(selectedPlan)} saved for after your trial',
-                                  icon: Icons.check_circle_rounded,
-                                  color: DesignColors.success,
-                                );
-                              } catch (error) {
-                                if (!mounted) return;
-                                showGlassSnackBar(
-                                  context,
-                                  _friendlyError(error),
-                                  icon: Icons.error_outline_rounded,
-                                  color: DesignColors.error,
-                                );
-                              } finally {
-                                if (mounted) {
-                                  setState(() => _isChangingPlan = false);
-                                }
-                              }
-                            },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+      builder: (sheetContext) => PlanCompareSheet(
+        currentPlanId: current,
+        isTrial: _statusUpper == 'TRIAL',
+        overdue: _isOverdue,
+        renewsOn: _renewsOn,
+        scheduled: _scheduledChange,
+        errorText: _friendlyError,
+        onChange: _saveChosenPlan,
+        onCancelChange: _cancelScheduledChange,
       ),
     );
+    if (!mounted) return;
+    if (saved == true) {
+      showGlassSnackBar(
+        context,
+        'Plan change saved',
+        icon: Icons.check_circle_rounded,
+        color: DesignColors.success,
+      );
+    }
+  }
+
+  Future<void> _saveChosenPlan(String planId) async {
+    setState(() => _isChangingPlan = true);
+    try {
+      await _apiClient.acceptLegalPolicy(
+        policyType: 'BILLING_TERMS',
+        policyVersion: policyVersion('BILLING_TERMS'),
+      );
+      await _apiClient.changeSubscriptionPlan(planId: planId.toUpperCase());
+      // Refresh the page behind the sheet while it shows the confirmation.
+      unawaited(_reload());
+    } finally {
+      if (mounted) setState(() => _isChangingPlan = false);
+    }
+  }
+
+  Future<void> _cancelScheduledChange() async {
+    await _apiClient.cancelSubscriptionPlanChange();
+    unawaited(_reload());
   }
 
   @override
@@ -414,13 +481,28 @@ class _SubscriptionBillingScreenState
               DesignSpacing.xxxl,
             ),
             children: [
-              if (_error != null) ...[
+              // A refresh behind saved details: a hairline, not a spinner.
+              if (_isRefreshing && _entitlement != null) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
+                  child: const LinearProgressIndicator(
+                    key: ValueKey('billing-refreshing'),
+                    minHeight: 2,
+                    color: DesignColors.accent,
+                    backgroundColor: Colors.transparent,
+                  ),
+                ),
+                const SizedBox(height: DesignSpacing.sm),
+              ],
+              if (_error != null && _entitlement == null) ...[
                 _buildErrorCard(_error!),
                 const SizedBox(height: DesignSpacing.lg),
               ],
-              if (_entitlement?.source == EntitlementSource.offlineCache) ...[
+              if (_entitlement?.source == EntitlementSource.offlineCache &&
+                  !_isRefreshing) ...[
                 _buildBillingNotice(
-                  'Showing saved billing details. Reconnect to confirm your current status.',
+                  'Showing your last saved billing details. We could not confirm them just now.',
+                  onRetry: _loadData,
                 ),
                 const SizedBox(height: DesignSpacing.md),
               ],
@@ -450,6 +532,8 @@ class _SubscriptionBillingScreenState
                   index: 1,
                   child: _buildRenewalPaymentAction(),
                 )
+              else if (_showSkeleton)
+                const _SkeletonBlock(height: 76)
               else
                 _buildPayUnavailableCard(),
               const SizedBox(height: DesignSpacing.md),
@@ -477,14 +561,11 @@ class _SubscriptionBillingScreenState
                 _buildInvoiceError(_invoiceError!),
                 const SizedBox(height: DesignSpacing.md),
               ],
-              if (_isLoadingInvoices && _invoices.isEmpty)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(DesignSpacing.xxl),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              else if (_invoices.isEmpty && _invoiceError == null)
+              if (_isLoadingInvoices && _invoices.isEmpty) ...const [
+                _SkeletonBlock(height: 64),
+                SizedBox(height: DesignSpacing.sm),
+                _SkeletonBlock(height: 64),
+              ] else if (_invoices.isEmpty && _invoiceError == null)
                 _buildEmptyInvoices()
               else if (_invoices.isNotEmpty)
                 ..._invoices.asMap().entries.map(
@@ -559,12 +640,15 @@ class _SubscriptionBillingScreenState
     ];
 
     final notices = <DesktopBillingNotice>[
-      if (_error != null)
+      if (_error != null && entitlement == null)
         DesktopBillingNotice(_error!, tone: DesktopBillingTone.error),
-      if (entitlement?.source == EntitlementSource.offlineCache)
+      if (entitlement?.source == EntitlementSource.offlineCache &&
+          !_isRefreshing)
         const DesktopBillingNotice(
-          'Showing saved billing details. Reconnect to confirm your current status.',
+          'Showing your last saved billing details. We could not confirm them just now; use Refresh to try again.',
         ),
+      if (_scheduledChange != null && _isAdmin)
+        DesktopBillingNotice(_scheduledChangeSentence()),
       if (entitlement?.state == EntitlementState.grace)
         const DesktopBillingNotice(
           'Payment overdue — you’re in the 3-day grace period. '
@@ -573,9 +657,10 @@ class _SubscriptionBillingScreenState
       if (entitlement != null &&
           (entitlement.state == EntitlementState.unknown ||
               billingPlan == null) &&
-          entitlement.source != EntitlementSource.offlineCache)
+          entitlement.source != EntitlementSource.offlineCache &&
+          !_isRefreshing)
         const DesktopBillingNotice(
-          'Reconnect to confirm your plan and renewal date.',
+          'We could not confirm your plan and renewal date yet.',
         ),
     ];
 
@@ -594,20 +679,18 @@ class _SubscriptionBillingScreenState
 
     return Scaffold(
       body: DesktopBillingView(
-        loading: _isLoadingEntitlement && entitlement == null,
+        loading: entitlement == null && (_isLoadingEntitlement || _isRefreshing),
         unavailable: entitlement == null,
         figures: figures,
         notices: notices,
         onRefresh: _loadData,
         renewal: _desktopRenewal(),
         planSummary: admin ? _planSummary() : null,
-        choosePlan: admin && isTrial
+        choosePlan: admin && _canManagePlan
             ? DesktopBillingAction(
-                label: 'Choose plan',
+                label: isTrial ? 'Choose plan' : 'Change plan',
                 icon: Icons.tune_rounded,
-                onPressed: _isChangingPlan || billingPlan == null
-                    ? null
-                    : _showChangePlanSheet,
+                onPressed: _isChangingPlan ? null : _openManagePlan,
               )
             : null,
         licence: admin && license != null
@@ -652,7 +735,9 @@ class _SubscriptionBillingScreenState
   DesktopBillingRenewal _desktopRenewal() {
     if (_billingPlan == null) {
       return DesktopBillingRenewal(
-        message: 'Reconnect to load your plan before making a payment.',
+        message: _showSkeleton || _isRefreshing
+            ? 'Loading your plan…'
+            : 'We could not load your plan yet, so a payment cannot start. Check your connection and retry.',
         secondary: DesktopBillingAction(
           label: 'Retry',
           icon: Icons.refresh_rounded,
@@ -776,12 +861,12 @@ class _SubscriptionBillingScreenState
 
   Widget _buildEntitlementCard() {
     final theme = Theme.of(context);
-    if (_isLoadingEntitlement && _entitlement == null) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(DesignSpacing.huge),
-          child: CircularProgressIndicator(),
-        ),
+    if (_entitlement == null && (_isLoadingEntitlement || _isRefreshing)) {
+      // Same footprint as the card it becomes, so nothing jumps when it lands.
+      return const _SkeletonBlock(
+        key: ValueKey('billing-skeleton'),
+        height: 244,
+        radius: DesignSpacing.radiusXl,
       );
     }
 
@@ -797,13 +882,20 @@ class _SubscriptionBillingScreenState
         ),
         child: Column(
           children: [
-            Icon(Icons.error_outline_rounded,
+            Icon(Icons.cloud_off_rounded,
                 color: context.themed(DesignColors.darkTextTertiary), size: 40),
             const SizedBox(height: DesignSpacing.md),
             Text(
-              'Could not load subscription details',
+              'We could not load your plan yet',
               style: theme.textTheme.bodyMedium?.copyWith(
                   color: context.themed(DesignColors.darkTextSecondary)),
+            ),
+            const SizedBox(height: DesignSpacing.sm),
+            TextButton.icon(
+              key: const ValueKey('billing-retry'),
+              onPressed: _loadData,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Try again'),
             ),
           ],
         ),
@@ -930,6 +1022,8 @@ class _SubscriptionBillingScreenState
               Icons.calendar_today_rounded,
               'Next payment: ${_formatDate(nextPayment)}',
             ),
+          if (_scheduledChange != null)
+            _buildInfoRow(Icons.swap_horiz_rounded, _scheduledChangeSentence()),
           // The progress bar below already shows the days left.
           if (days != null && days <= 0)
             _buildInfoRow(
@@ -1154,31 +1248,106 @@ class _SubscriptionBillingScreenState
 
   Widget _buildManagePlanTile() {
     final plan = _billingPlan;
-    final isTrial = _entitlement?.status.toUpperCase() == 'TRIAL';
-    final planSummary = _planSummary();
-    return _manageTile(plan, isTrial, planSummary);
+    final isTrial = _statusUpper == 'TRIAL';
+    final scheduled = _scheduledChange;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _manageTile(plan, isTrial, _planSummary()),
+        if (scheduled != null) ...[
+          const SizedBox(height: DesignSpacing.sm),
+          _buildScheduledChangeBanner(),
+        ],
+      ],
+    );
+  }
+
+  /// "Switching to Core on 1 Dec 2026" for a change waiting on the renewal.
+  String _scheduledChangeSentence() {
+    final s = _scheduledChange!;
+    final when =
+        s.effectiveAt == null ? 'your next renewal' : _formatDate(s.effectiveAt!.toIso8601String());
+    return 'Switching to ${planDisplayName(s.planId)} on $when';
+  }
+
+  Widget _buildScheduledChangeBanner() {
+    return Container(
+      key: const ValueKey('scheduled-change-banner'),
+      padding: const EdgeInsets.symmetric(
+        horizontal: DesignSpacing.md,
+        vertical: DesignSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: DesignColors.accent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        border: Border.all(color: DesignColors.accent.withValues(alpha: 0.30)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.schedule_rounded, size: 18, color: DesignColors.accent),
+          const SizedBox(width: DesignSpacing.sm),
+          Expanded(
+            child: Text(
+              _scheduledChangeSentence(),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: context.themed(DesignColors.darkTextPrimary),
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
+          TextButton(
+            key: const ValueKey('cancel-scheduled-change'),
+            onPressed: _isChangingPlan ? null : _cancelScheduledFromBanner,
+            child: const Text('Cancel change'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _cancelScheduledFromBanner() async {
+    setState(() => _isChangingPlan = true);
+    try {
+      await _cancelScheduledChange();
+      if (!mounted) return;
+      showGlassSnackBar(
+        context,
+        'Change cancelled. You are staying on ${_billingPlan?.name ?? 'your plan'}.',
+        icon: Icons.check_circle_rounded,
+        color: DesignColors.success,
+      );
+    } catch (error) {
+      if (mounted) _showPaymentMessage(_friendlyError(error), isError: true);
+    } finally {
+      if (mounted) setState(() => _isChangingPlan = false);
+    }
   }
 
   /// The "Manage plan" sentence, shared by the phone tile and the computer panel.
   String _planSummary() {
     final plan = _billingPlan;
-    final status = _entitlement?.status.toUpperCase();
+    final status = _statusUpper;
     final isTrial = status == 'TRIAL';
     final isActive = status == 'ACTIVE';
     final String planSummary;
     if (plan == null) {
-      planSummary = 'Reconnect to load your current plan';
+      planSummary = _showSkeleton || _isRefreshing
+          ? 'Loading your plan…'
+          : 'We could not load your plan yet. Pull down to try again';
     } else if (_entitlement == null || status == null || status == 'UNKNOWN') {
-      planSummary = 'Reconnect to confirm your subscription status';
+      planSummary = 'We could not confirm your subscription status yet';
     } else if (_entitlement!.source != EntitlementSource.live) {
-      planSummary =
-          'Saved status: ${_statusLabel(status)} · reconnect to confirm';
+      planSummary = _isRefreshing
+          ? '${plan.name} · checking the latest…'
+          : 'Saved status: ${_statusLabel(status)} · not confirmed just now';
     } else if (isTrial) {
       planSummary = _pendingPlan == null
           ? '${plan.name} · choose the plan for after your trial'
           : '${plan.name} · ${_pendingPlan!.name} selected for after your trial';
     } else if (isActive) {
-      planSummary = '${plan.name} · active subscription';
+      planSummary = _scheduledChange == null
+          ? '${plan.name} · active · tap to see other plans'
+          : '${plan.name} · ${_scheduledChangeSentence().toLowerCase()}';
     } else {
       planSummary = '${plan.name} · ${_statusLabel(status)}';
     }
@@ -1186,54 +1355,72 @@ class _SubscriptionBillingScreenState
   }
 
   Widget _manageTile(SubscriptionPlan? plan, bool isTrial, String planSummary) {
-    return Container(
-      padding: const EdgeInsets.all(DesignSpacing.md),
-      decoration: BoxDecoration(
+    final canTap = _canManagePlan && !_isChangingPlan;
+    return TapScale(
+      enabled: canTap,
+      child: Material(
         color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-        border: Border.all(color: context.themed(DesignColors.darkBorder)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: DesignColors.brand.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-            ),
-            child: const Icon(Icons.tune_rounded,
-                color: DesignColors.brand, size: 20),
-          ),
-          const SizedBox(width: DesignSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+          side: BorderSide(color: context.themed(DesignColors.darkBorder)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          key: const ValueKey('manage-plan-tile'),
+          onTap: canTap ? _openManagePlan : null,
+          child: Padding(
+            padding: const EdgeInsets.all(DesignSpacing.md),
+            child: Row(
               children: [
-                Text(
-                  'Manage plan',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: context.themed(DesignColors.darkTextPrimary),
-                        fontWeight: FontWeight.w700,
-                      ),
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: DesignColors.brand.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                  ),
+                  child: const Icon(Icons.tune_rounded,
+                      color: DesignColors.brand, size: 20),
                 ),
-                const SizedBox(height: DesignSpacing.xs),
-                Text(
-                  planSummary,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: context.themed(DesignColors.darkTextSecondary),
+                const SizedBox(width: DesignSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Manage plan',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              color: context.themed(DesignColors.darkTextPrimary),
+                              fontWeight: FontWeight.w700,
+                            ),
                       ),
+                      const SizedBox(height: DesignSpacing.xs),
+                      Text(
+                        planSummary,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color:
+                                  context.themed(DesignColors.darkTextSecondary),
+                            ),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: DesignSpacing.sm),
+                if (canTap)
+                  Text(
+                    isTrial ? 'Choose' : 'Change',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: DesignColors.accent,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                if (canTap)
+                  Icon(Icons.chevron_right_rounded,
+                      color: context.themed(DesignColors.darkTextTertiary)),
               ],
             ),
           ),
-          if (isTrial)
-            TextButton(
-              onPressed:
-                  _isChangingPlan || plan == null ? null : _showChangePlanSheet,
-              child: const Text('Choose'),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -1308,7 +1495,10 @@ class _SubscriptionBillingScreenState
   /// What the renewal area should say or offer right now. The phone and the
   /// computer layouts both render this one decision.
   _Renewal _renewalDecision() {
-    if (_isLoadingEntitlement || _isLoadingInvoices) {
+    // Only the very first look has nothing to go on; after that a refresh
+    // happens behind what is already shown.
+    if ((_isLoadingEntitlement && _entitlement == null) ||
+        (_isLoadingInvoices && !_invoicesLoadedOnce)) {
       return const _Renewal(
         _RenewalKind.notice,
         'Checking whether a subscription payment is due…',
@@ -1316,12 +1506,20 @@ class _SubscriptionBillingScreenState
     }
 
     final entitlement = _entitlement;
+    if (entitlement != null &&
+        entitlement.source != EntitlementSource.live &&
+        _isRefreshing) {
+      return const _Renewal(
+        _RenewalKind.notice,
+        'Checking your latest billing details…',
+      );
+    }
     if (entitlement == null ||
         entitlement.source != EntitlementSource.live ||
         entitlement.status.toUpperCase() == 'UNKNOWN') {
       return const _Renewal(
         _RenewalKind.preparing,
-        'Reconnect to verify your subscription before starting a payment.',
+        'We could not confirm your subscription just now. Refresh before starting a payment.',
       );
     }
     final openInvoice = _openInvoiceForPayment();
@@ -1472,7 +1670,7 @@ class _SubscriptionBillingScreenState
       });
       if (invoiceStatus == 'PAID') {
         ref.read(entitlementRefreshTickProvider.notifier).state++;
-        await _loadData();
+        await _reload();
         if (mounted) {
           _showPaymentMessage('Monthly subscription payment confirmed.');
         }
@@ -1507,26 +1705,40 @@ class _SubscriptionBillingScreenState
     try {
       final checkout = await _apiClient.initializePaystackSubscriptionPayment();
       if (checkout['status'] == 'PAID') {
-        await _loadData();
+        await _reload();
         if (mounted) _showPaymentMessage('This invoice is already paid.');
         return;
       }
       final url = checkout['authorizationUrl']?.toString();
-      if (url == null || url.isEmpty) {
-        throw Exception('The payment partner did not return a checkout link.');
-      }
-      final uri = Uri.tryParse(url);
+      final uri = url == null || url.isEmpty ? null : Uri.tryParse(url);
       if (uri == null ||
           uri.scheme != 'https' ||
           uri.host != 'checkout.paystack.com') {
-        throw Exception(
-            'The payment partner returned an invalid checkout link.');
+        throw const _CheckoutUnavailable();
       }
       if (!await launchUrl(uri, mode: LaunchMode.inAppBrowserView)) {
-        throw Exception('Could not open secure checkout page.');
+        throw const _CheckoutUnavailable();
       }
     } catch (error) {
-      if (mounted) _showPaymentMessage(_friendlyError(error), isError: true);
+      if (!mounted) return;
+      if (error is _CheckoutUnavailable) {
+        // Every tap asks for a link again, and links that have gone stale are
+        // replaced on the server, so trying again gets a fresh one.
+        _showPaymentMessage(
+          'We could not open the secure checkout. Try again for a fresh link.',
+          isError: true,
+          retry: _startPaystackInvoicePayment,
+        );
+      } else {
+        final held = error is DioException &&
+            (error.response?.statusCode == 409 ||
+                error.response?.statusCode == 403);
+        _showPaymentMessage(
+          _friendlyError(error),
+          isError: true,
+          retry: held ? null : _startPaystackInvoicePayment,
+        );
+      }
     } finally {
       if (mounted) setState(() => _paystackInvoiceBusyId = null);
     }
@@ -1542,7 +1754,7 @@ class _SubscriptionBillingScreenState
       final status = result['status']?.toString().toUpperCase();
       if (status == 'PAID') {
         ref.read(entitlementRefreshTickProvider.notifier).state++;
-        await _loadData();
+        await _reload();
         if (mounted) {
           _showPaymentMessage('Monthly subscription payment confirmed.');
         }
@@ -1565,11 +1777,27 @@ class _SubscriptionBillingScreenState
     }
   }
 
-  void _showPaymentMessage(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
+  void _showPaymentMessage(
+    String message, {
+    bool isError = false,
+    Future<void> Function()? retry,
+  }) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: isError ? DesignColors.error : DesignColors.success,
+        duration: retry == null
+            ? const Duration(seconds: 4)
+            : const Duration(seconds: 8),
+        action: retry == null
+            ? null
+            : SnackBarAction(
+                label: 'Try again',
+                textColor: Colors.white,
+                onPressed: () => unawaited(retry()),
+              ),
       ),
     );
   }
@@ -1588,7 +1816,8 @@ class _SubscriptionBillingScreenState
               color: context.themed(DesignColors.darkTextSecondary)),
           const SizedBox(width: DesignSpacing.md),
           const Expanded(
-            child: Text('Reconnect to load your plan before making a payment.'),
+            child: Text(
+                'We could not load your plan yet, so a payment cannot start. Check your connection and retry.'),
           ),
           TextButton(onPressed: _loadData, child: const Text('Retry')),
         ],
@@ -1915,7 +2144,7 @@ class _SubscriptionBillingScreenState
     );
   }
 
-  Widget _buildBillingNotice(String message) {
+  Widget _buildBillingNotice(String message, {VoidCallback? onRetry}) {
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
@@ -1930,6 +2159,12 @@ class _SubscriptionBillingScreenState
               color: DesignColors.warning, size: 18),
           const SizedBox(width: DesignSpacing.sm),
           Expanded(child: Text(message)),
+          if (onRetry != null)
+            TextButton(
+              key: const ValueKey('billing-notice-retry'),
+              onPressed: onRetry,
+              child: const Text('Retry'),
+            ),
         ],
       ),
     );
@@ -1974,129 +2209,41 @@ class _Renewal {
 /// reminder banner and tests reuse the same palette.
 Color statusColor(String? status) => _statusColor(status);
 
-// ═══════════════════════════════════════════════════════════════════
-//  CHANGE PLAN SHEET
-// ═══════════════════════════════════════════════════════════════════
+/// The checkout page could not be opened (no usable link, or the device
+/// refused to open it). Not an error worth showing raw; the owner just retries.
+class _CheckoutUnavailable implements Exception {
+  const _CheckoutUnavailable();
+}
 
-/// A single selectable plan row inside the change-plan sheet. Deliberately
-/// a plain tappable Container rather than RadioListTile — Flutter 3.32+
-/// deprecated RadioListTile's groupValue/onChanged in favor of an ancestor
-/// RadioGroup, which is unnecessary ceremony for one simple sheet-local
-/// selection like this.
-class _PlanRadioTile extends StatelessWidget {
-  const _PlanRadioTile({
-    required this.name,
-    required this.priceLabel,
-    required this.tagline,
-    required this.isSelected,
-    required this.isCurrent,
-    required this.onTap,
+/// A placeholder with the footprint of what is loading, so the page does not
+/// jump when the real card arrives. Pulses softly; still when motion is off.
+class _SkeletonBlock extends StatelessWidget {
+  const _SkeletonBlock({
+    super.key,
+    required this.height,
+    this.radius = DesignSpacing.radiusLg,
   });
 
-  final String name;
-  final String priceLabel;
-  final String tagline;
-  final bool isSelected;
-  final bool isCurrent;
-  final VoidCallback? onTap;
+  final double height;
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Material(
-      color: isSelected
-          ? DesignColors.accent.withValues(alpha: 0.1)
-          : context.themed(DesignColors.darkSurfaceElevated),
-      borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-        child: Container(
-          padding: const EdgeInsets.all(DesignSpacing.md + 2),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-            border: Border.all(
-              color: isSelected
-                  ? DesignColors.accent
-                  : context.themed(DesignColors.darkBorder),
-              width: isSelected ? 1.6 : 1,
-            ),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Icon(
-                  isSelected
-                      ? Icons.radio_button_checked_rounded
-                      : Icons.radio_button_unchecked_rounded,
-                  color: isSelected
-                      ? DesignColors.accent
-                      : context.themed(DesignColors.darkTextTertiary),
-                ),
-              ),
-              const SizedBox(width: DesignSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          name,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            color: context.themed(DesignColors.darkTextPrimary),
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        if (isCurrent) ...[
-                          const SizedBox(width: DesignSpacing.sm),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: DesignSpacing.sm, vertical: 2),
-                            decoration: BoxDecoration(
-                              color:
-                                  DesignColors.success.withValues(alpha: 0.14),
-                              borderRadius: BorderRadius.circular(
-                                  DesignSpacing.radiusFull),
-                            ),
-                            child: Text(
-                              'Current',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: context.readable(DesignColors.success),
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      priceLabel,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: isSelected
-                            ? DesignColors.accentDark
-                            : context.themed(DesignColors.darkTextPrimary),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      tagline,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: context.themed(DesignColors.darkTextSecondary),
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+    final base = context.themed(DesignColors.darkSurface);
+    final shape = Container(
+      height: height,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: base,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: context.themed(DesignColors.darkBorder)),
       ),
+    );
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) return shape;
+    return Shimmer.fromColors(
+      baseColor: base,
+      highlightColor: context.themed(DesignColors.darkSurfaceElevated),
+      child: shape,
     );
   }
 }

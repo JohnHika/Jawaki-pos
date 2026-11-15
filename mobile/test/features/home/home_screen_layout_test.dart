@@ -12,6 +12,7 @@ import 'package:axon_pos/features/billing/presentation/providers/entitlement_pro
 import 'package:axon_pos/features/billing/presentation/widgets/subscription_restricted_banner.dart';
 import 'package:axon_pos/features/home/presentation/screens/home_nav_keys.dart';
 import 'package:axon_pos/features/home/presentation/screens/home_screen.dart';
+import 'package:axon_pos/features/home/presentation/widgets/adaptive_nav.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -58,6 +59,44 @@ void main() {
     await tester.tap(find.byKey(HomeNavKeys.more));
     await tester.pumpAndSettle();
     expect(find.text('Customers').hitTestable(), findsOneWidget);
+  });
+
+  testWidgets('a tablet swaps the bottom bar for a side rail with every destination',
+      (tester) async {
+    final harness = await _pumpHome(
+      tester,
+      entitlement: _active,
+      size: const Size(820, 600),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(FloatingNavBar), findsNothing);
+    expect(find.byType(SideNavRail), findsOneWidget);
+    // No More sheet: Customers is on the rail itself.
+    expect(find.byKey(HomeNavKeys.more), findsNothing);
+    final rail = find.byType(SideNavRail);
+    for (final label in ['Sell', 'Products', 'Customers', 'Settings']) {
+      expect(
+        find.descendant(of: rail, matching: find.text(label)),
+        findsOneWidget,
+        reason: '$label is on the rail',
+      );
+    }
+
+    await tester.tap(find.descendant(of: rail, matching: find.text('Products')));
+    await tester.pumpAndSettle();
+    expect(harness.router.routeInformationProvider.value.uri.path, '/products');
+    expect(tester.takeException(), isNull);
+    // Let the one-off notification prompt timer run out.
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('a phone keeps the floating bottom bar', (tester) async {
+    await _pumpHome(tester, entitlement: _active);
+
+    expect(find.byType(FloatingNavBar), findsOneWidget);
+    expect(find.byType(SideNavRail), findsNothing);
+    await tester.pump(const Duration(seconds: 3));
   });
 
   testWidgets(
@@ -115,8 +154,9 @@ Future<_HomeHarness> _pumpHome(
   WidgetTester tester, {
   required BillingEntitlement? entitlement,
   ConnectionStatus status = ConnectionStatus.online,
+  Size size = const Size(390, 844),
 }) async {
-  tester.view.physicalSize = const Size(390, 844);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);

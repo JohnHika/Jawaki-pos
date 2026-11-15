@@ -9,6 +9,7 @@ import '../../core/theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../state/session.dart';
 import '../account/account_screen.dart';
+import '../layout_requests/layout_requests_screen.dart';
 import '../security/audit_screen.dart';
 import '../team/team_screen.dart';
 
@@ -65,6 +66,15 @@ class MoreScreen extends StatelessWidget {
             padding: EdgeInsets.zero,
             child: Column(
               children: [
+                Gate(
+                  permission: Perm.tenantsView,
+                  child: _Row(
+                    icon: Icons.dashboard_customize_rounded,
+                    title: 'Layout requests',
+                    subtitle: 'Shops asking to change business type',
+                    onTap: () => open(const LayoutRequestsScreen()),
+                  ),
+                ),
                 Gate(
                   permission: Perm.teamView,
                   child: _Row(

@@ -543,6 +543,11 @@ class CartScreen extends ConsumerWidget {
     );
   }
 
+  /// The discount sheet, for the ticket beside the products on a tablet.
+  static Future<void> openDiscountSheet(
+          BuildContext context, WidgetRef ref, CartState cart) =>
+      const CartScreen()._showDiscountSheet(context, ref, cart);
+
   Future<void> _showDiscountSheet(
       BuildContext context, WidgetRef ref, CartState cart) async {
     if (!ref.read(permissionsProvider).canApplyDiscount) {

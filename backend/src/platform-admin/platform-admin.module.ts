@@ -4,6 +4,8 @@ import { ConfigModule } from '@nestjs/config';
 import { AuditModule } from '../audit/audit.module';
 import { LicenseModule } from '../license/license.module';
 import { ReferralsModule } from '../referrals/referrals.module';
+import { BranchesModule } from '../branches/branches.module';
+import { PlatformLayoutRequestsController } from './platform-layout-requests.controller';
 import { ThrottlerProvidersModule } from '../common/throttler/throttler-providers.module';
 import { PlatformAuditService } from './audit/platform-audit.service';
 import { PlatformAdminController } from './platform-admin.controller';
@@ -26,6 +28,7 @@ import { PlatformTenantSupportService } from './platform-tenant-support.service'
     AuditModule,
     LicenseModule,
     ReferralsModule,
+    BranchesModule,
     // Re-exports the throttler options/storage so ThrottlerGuard on the
     // controller's login route can resolve its dependencies.
     ThrottlerProvidersModule,
@@ -35,6 +38,7 @@ import { PlatformTenantSupportService } from './platform-tenant-support.service'
     PlatformTeamController,
     PlatformSecurityController,
     PlatformTenantSupportController,
+    PlatformLayoutRequestsController,
   ],
   providers: [
     PlatformAdminGuard,

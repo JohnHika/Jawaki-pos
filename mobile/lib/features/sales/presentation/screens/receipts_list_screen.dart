@@ -12,7 +12,9 @@ import '../../../../core/services/sync_service.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/load_error.dart';
+import '../../../../core/widgets/master_detail.dart';
 import '../../../../core/widgets/motion.dart';
+import '../../../../core/widgets/skeleton_kit.dart';
 import '../../domain/receipt_search.dart';
 import '../../../../core/utils/format.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -42,6 +44,9 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
   String? _error;
   int? _rangeDays = 30;
   int _loadGeneration = 0;
+
+  // Tablets and unfolded fold phones: the receipt shown beside the list.
+  String? _selectedSaleId;
 
   @override
   void initState() {
@@ -252,9 +257,44 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: DesignColors.accent))
+      body: MasterDetail(
+        masterWidth: 420,
+        emptyIcon: Icons.receipt_long_rounded,
+        emptyTitle: 'Pick a receipt',
+        emptyBody: 'Its items, payment, print and share options show here.',
+        detail: _selectedSale == null
+            ? null
+            : _ReceiptInspectorHost(
+                key: ValueKey(_selectedSale!.id),
+                sale: _selectedSale!,
+                onClose: () => setState(() => _selectedSaleId = null),
+                onChanged: _loadSales,
+              ),
+        masterBuilder: (context, twoPane) => _buildPhoneBody(
+          isDark: isDark,
+          canViewCustomerDetails: canViewCustomerDetails,
+          twoPane: twoPane,
+        ),
+      ),
+    );
+  }
+
+  PendingSale? get _selectedSale {
+    final id = _selectedSaleId;
+    if (id == null) return null;
+    for (final sale in _sales) {
+      if (sale.id == id) return sale;
+    }
+    return null;
+  }
+
+  Widget _buildPhoneBody({
+    required bool isDark,
+    required bool canViewCustomerDetails,
+    required bool twoPane,
+  }) {
+    return _isLoading
+          ? const SkeletonList(rows: 8, leading: true)
           : _error != null
               ? EmptyState(
                   icon: Icons.error_outline_rounded,
@@ -345,6 +385,12 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                                   sale,
                                   isDark,
                                   canViewCustomerDetails,
+                                  onSelect: twoPane
+                                      ? () => setState(
+                                          () => _selectedSaleId = sale.id)
+                                      : null,
+                                  selected: twoPane &&
+                                      sale.id == _selectedSaleId,
                                 ),
                               );
                             }),
@@ -352,8 +398,7 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                           ],
                         ),
                       ),
-                    ),
-    );
+                    );
   }
 
   void _reload() {
@@ -487,8 +532,10 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
   Widget _buildReceiptCard(
     PendingSale sale,
     bool isDark,
-    bool canViewCustomerDetails,
-  ) {
+    bool canViewCustomerDetails, {
+    VoidCallback? onSelect,
+    bool selected = false,
+  }) {
     final customer =
         canViewCustomerDetails ? _customersById[sale.customerId] : null;
     // Show the same number the receipt, dashboard and reports use.
@@ -509,12 +556,14 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: DesignSpacing.md - 2),
       child: GlassCard(
-        onTap: () => context.go('/receipt/${sale.id}'),
+        onTap: onSelect ?? () => context.go('/receipt/${sale.id}'),
         padding: const EdgeInsets.all(DesignSpacing.md + 2),
         borderRadius: DesignSpacing.radiusMd + 2,
         blur: 10,
-        tint: Colors.transparent,
-        borderColor: border,
+        tint: selected
+            ? DesignColors.accent.withValues(alpha: 0.08)
+            : Colors.transparent,
+        borderColor: selected ? DesignColors.accent : border,
         child: Row(
           children: [
             // Leading icon
@@ -631,6 +680,7 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
 /// receipt page uses and reuses that page's print, share and void handlers.
 class _ReceiptInspectorHost extends ConsumerWidget {
   const _ReceiptInspectorHost({
+    super.key,
     required this.sale,
     required this.onClose,
     required this.onChanged,

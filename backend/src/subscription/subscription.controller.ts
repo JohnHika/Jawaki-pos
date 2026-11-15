@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Post,
   Req,
@@ -39,6 +40,23 @@ export class SubscriptionController {
   @ApiOperation({ summary: 'Select a paid plan for after the trial; access changes only after verified payment' })
   changePlan(@Req() req: any, @Body('plan') plan: string) {
     return this.subscriptionService.changePlan(req.user.tenantId, plan);
+  }
+
+  @Delete('change-plan')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(LegacyUserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Cancel a plan change scheduled for the next renewal' })
+  cancelPlanChange(@Req() req: any) {
+    return this.subscriptionService.cancelPlanChange(req.user.tenantId);
+  }
+
+  @Get('plans')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Plans on offer with their monthly price and limits' })
+  listPlans() {
+    return this.subscriptionService.listPlans();
   }
 
   @Get('invoices')

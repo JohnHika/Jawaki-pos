@@ -73,6 +73,23 @@ void main() {
           findsOneWidget);
     });
 
+    testWidgets('says so when the phone signed this computer out', (tester) async {
+      auth.signOutNotice = AuthService.computerSignedOutMessage;
+      await pumpLogin(tester);
+      expect(find.text(AuthService.computerSignedOutMessage), findsOneWidget);
+    });
+
+    testWidgets('the same notice shows on the phone layout', (tester) async {
+      auth.signOutNotice = AuthService.computerSignedOutMessage;
+      await pumpLogin(tester, size: const Size(430, 900));
+      expect(find.text(AuthService.computerSignedOutMessage), findsOneWidget);
+    });
+
+    testWidgets('shows no notice after an ordinary sign-out', (tester) async {
+      await pumpLogin(tester);
+      expect(find.textContaining('signed out from your phone'), findsNothing);
+    });
+
     testWidgets('a narrow window keeps the phone layout', (tester) async {
       await pumpLogin(tester, size: const Size(430, 900));
       expect(find.byType(AuthDesktopShell), findsNothing);

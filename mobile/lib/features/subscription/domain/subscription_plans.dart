@@ -1,4 +1,8 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Subscription plan ladder — single source of truth for every plan surface
 /// in the app (onboarding plan selection, settings subscription screen,
@@ -6,21 +10,100 @@ import 'package:intl/intl.dart';
 ///
 /// Three purchasable tiers: CORE → BUSINESS → ENTERPRISE.
 ///
-/// Prices MUST mirror the backend `PLAN_PRICING` map in
-/// `backend/src/subscription/subscription.service.ts` — change both
-/// together. The backend is the billing source of truth; this catalog only
-/// drives UI copy and the change-plan request.
+/// The backend `PLAN_PRICING` map in
+/// `backend/src/subscription/subscription.service.ts` is the price the
+/// invoices charge, so it is the one the owner is shown. The app reads it
+/// from `GET /subscription/plan` ([PlanPrices.apply]) and remembers the last
+/// copy. The prices written below are only the last resort for a phone that
+/// has never reached the server; keep them equal to the backend's.
 ///
 /// Feature copy rules: every line describes something the app actually does
 /// today, written in shop-owner language (what it does FOR the owner), not
 /// technical jargon. Do not list a capability that is not implemented.
+
+/// Where the prices on screen came from.
+enum PlanPriceSource { bundled, saved, live }
+
+/// The prices shown to the owner: the server's when known, the bundled
+/// fallback otherwise. Process-wide so every plan surface agrees.
+class PlanPrices {
+  PlanPrices._();
+
+  static const _prefsKey = 'plan_prices_v1';
+  static final Map<String, double> _byId = {};
+  static PlanPriceSource _source = PlanPriceSource.bundled;
+
+  static PlanPriceSource get source => _source;
+
+  /// True when the numbers are not from this session's server answer.
+  static bool get isLastKnown => _source != PlanPriceSource.live;
+
+  static double? of(String planId) => _byId[planId.toLowerCase()];
+
+  /// Takes the server's `availablePlans` (or `plans`) list.
+  static Future<void> apply(Object? plans) async {
+    final parsed = _parse(plans);
+    if (parsed.isEmpty) return;
+    _byId
+      ..clear()
+      ..addAll(parsed);
+    _source = PlanPriceSource.live;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefsKey, jsonEncode(parsed));
+    } catch (_) {}
+  }
+
+  /// Loads the copy saved by the last successful [apply]; never overrides
+  /// live prices.
+  static Future<void> restore() async {
+    if (_source == PlanPriceSource.live) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_prefsKey);
+      if (raw == null) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      final saved = <String, double>{
+        for (final e in decoded.entries)
+          if (e.value is num) e.key.toString(): (e.value as num).toDouble(),
+      };
+      if (saved.isEmpty) return;
+      _byId
+        ..clear()
+        ..addAll(saved);
+      _source = PlanPriceSource.saved;
+    } catch (_) {}
+  }
+
+  @visibleForTesting
+  static void reset() {
+    _byId.clear();
+    _source = PlanPriceSource.bundled;
+  }
+
+  static Map<String, double> _parse(Object? plans) {
+    if (plans is! List) return const {};
+    final out = <String, double>{};
+    for (final p in plans) {
+      if (p is! Map) continue;
+      final id = p['planId']?.toString().toLowerCase();
+      final price = p['monthlyAmountKes'];
+      if (id == null || id == 'trial' || price is! num) continue;
+      out[id] = price.toDouble();
+    }
+    return out;
+  }
+}
 
 /// Represents a subscription plan option.
 class SubscriptionPlan {
   final String id;
   final String name;
   final String tagline;
-  final double priceKes;
+
+  /// The last-resort price written in this file; screens read [priceKes].
+  final double bundledPriceKes;
   final List<PlanFeature> features;
   final bool isPopular;
 
@@ -28,10 +111,13 @@ class SubscriptionPlan {
     required this.id,
     required this.name,
     required this.tagline,
-    required this.priceKes,
+    required double priceKes,
     required this.features,
     this.isPopular = false,
-  });
+  }) : bundledPriceKes = priceKes;
+
+  /// The monthly price to show: the server's when known.
+  double get priceKes => PlanPrices.of(id) ?? bundledPriceKes;
 }
 
 /// A feature row used in the plan comparison table.
@@ -337,22 +423,16 @@ const kAvailablePlans = [
   ),
 ];
 
-/// Monthly price for a plan id (lowercase or uppercase). Falls back to the
-/// CORE price for unknown ids, mirroring the backend's `?? PLAN_PRICING.CORE`
-/// behaviour.
+/// Monthly price for a plan id (lowercase or uppercase): the server's price
+/// when known. Falls back to the CORE price for unknown ids, mirroring the
+/// backend's `?? PLAN_PRICING.CORE` behaviour.
 double planPriceKes(String planId) {
-  switch (planId.toLowerCase()) {
-    case 'trial':
-      return 0;
-    case 'core':
-      return 3000;
-    case 'business':
-      return 5000;
-    case 'enterprise':
-      return 9999;
-    default:
-      return 3000;
+  final id = planId.toLowerCase();
+  if (id == 'trial') return 0;
+  for (final plan in kAvailablePlans) {
+    if (plan.id == id) return plan.priceKes;
   }
+  return kAvailablePlans.first.priceKes;
 }
 
 /// The in-trial plan — every paid plan starts with it. Not purchasable, so

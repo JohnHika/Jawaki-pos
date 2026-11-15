@@ -79,7 +79,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(sync.pullCalls, 1);
-    expect(find.text('No sales today yet'), findsOneWidget);
+    // Before the first sale the hero says so; the list stays out of the way.
+    expect(find.text('No sales yet today'), findsOneWidget);
+    expect(find.text('Recent sales'), findsNothing);
 
     final refresh = tester.widget<RefreshIndicator>(
       find.byType(RefreshIndicator),

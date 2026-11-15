@@ -11,7 +11,10 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/format.dart';
+import '../../../../core/responsive/device_class.dart';
+import '../../../../core/widgets/alive_feedback.dart';
 import '../../../../core/widgets/form_kit.dart';
+import '../../../../core/widgets/skeleton_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
 import '../../../finance/presentation/desktop/desktop_finance_tabs.dart';
@@ -87,15 +90,12 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
         recordedBy: auth.currentUser?['name']?.toString() ?? 'Owner',
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            'Saved: ${formatMoney(entry.amount)} for ${entry.category.toLowerCase()}.'),
-      ));
+      Alive.done(context,
+          'Saved: ${formatMoney(entry.amount)} for ${entry.category.toLowerCase()}.');
       _reload();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(apiErrorMessage(error))));
+      Alive.failed(context, apiErrorMessage(error));
     }
   }
 
@@ -174,10 +174,10 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
         removedBy: auth.currentUser?['name']?.toString() ?? 'Owner',
       );
       _reload();
+      if (mounted) Alive.done(context, 'Expense removed');
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(apiErrorMessage(error))));
+      Alive.failed(context, apiErrorMessage(error));
     }
   }
 
@@ -201,7 +201,9 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
             style: DesignType.display.copyWith(
                 color: palette.ink, fontSize: 18, fontWeight: FontWeight.w700)),
       ),
-      body: Column(
+      body: TabletContent(
+        maxWidth: 820,
+        child: Column(
         children: [
           Expanded(
             child: DesktopRefresh(
@@ -239,9 +241,16 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                       }
                       final data = snapshot.data;
                       if (data == null) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 48),
-                          child: Center(child: CircularProgressIndicator()),
+                        return Column(
+                          children: [
+                            const ShimmerWidget(
+                                width: double.infinity,
+                                height: 132,
+                                borderRadius: 18),
+                            const SizedBox(height: 20),
+                            for (var i = 0; i < 4; i++)
+                              const SkeletonRow(leading: true),
+                          ],
                         );
                       }
                       return Column(
@@ -286,6 +295,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

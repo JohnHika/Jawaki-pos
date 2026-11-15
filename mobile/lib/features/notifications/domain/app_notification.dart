@@ -74,6 +74,16 @@ String routeForNotification(String type, Map<String, dynamic> data) {
     case 'statement_viewed':
       return '/statements/replies';
     case 'desktop_link_request':
+      // The prompt carries the request itself, so the phone opens straight on
+      // "Sign in <computer>?" with Approve and Refuse.
+      final payload = data['payload']?.toString();
+      if (payload != null && payload.isNotEmpty) {
+        return Uri(
+          path: '/settings/desktop-approvals',
+          queryParameters: {'payload': payload},
+        ).toString();
+      }
+      return '/settings/desktop-approvals';
     case 'desktop_link_claimed':
     case 'desktop_link_denied':
       return '/settings/desktop-approvals';

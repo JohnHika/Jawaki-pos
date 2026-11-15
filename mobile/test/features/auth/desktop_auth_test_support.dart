@@ -115,6 +115,15 @@ class FakeAuthService implements AuthService {
   @override
   String? get pinThrottleMessage => null;
 
+  /// Why the last session ended, shown once on the sign-in screen.
+  String? signOutNotice;
+  @override
+  String? takeSignOutNotice() {
+    final notice = signOutNotice;
+    signOutNotice = null;
+    return notice;
+  }
+
   @override
   Future<bool> isBiometricAvailable() async => false;
   @override

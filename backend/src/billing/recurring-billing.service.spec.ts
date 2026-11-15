@@ -72,10 +72,10 @@ describe('RecurringBillingService', () => {
       });
 
       await service.settleCardRenewal(
-        'tenant-1', 'pesapal-charge-1', 3200, 'KES',
+        'tenant-1', 'pesapal-charge-1', 3000, 'KES',
       );
       await service.settleCardRenewal(
-        'tenant-1', 'pesapal-charge-2', 3200, 'KES',
+        'tenant-1', 'pesapal-charge-2', 3000, 'KES',
       );
 
       const references = prisma.subscriptionInvoice.create.mock.calls.map(
@@ -178,7 +178,7 @@ describe('RecurringBillingService', () => {
       expect(prisma.subscriptionInvoice.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ plan: 'BUSINESS', amount: expect.anything() }),
       });
-      expect(Number(prisma.subscriptionInvoice.create.mock.calls[0][0].data.amount)).toBe(6500);
+      expect(Number(prisma.subscriptionInvoice.create.mock.calls[0][0].data.amount)).toBe(5000);
     });
 
     it('creates the new period invoice once and reuses it on the next tick', async () => {
@@ -251,7 +251,7 @@ describe('RecurringBillingService', () => {
       });
       const created = prisma.subscriptionInvoice.create.mock.calls[0][0].data;
       expect(created.periodStart).toEqual(new Date('2026-09-07T00:00:00Z')); // startOfDay(now) in UTC
-      expect(Number(created.amount)).toBe(3200); // CORE monthly price
+      expect(Number(created.amount)).toBe(3000); // CORE monthly price
     });
   });
 
@@ -473,6 +473,8 @@ describe('RecurringBillingService', () => {
 
       const token = await service.buildOfflineEntitlement('tenant-8');
       expect(token.signature).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+      // The app reads `token`; it must be the same signed string.
+      expect(token.token).toBe(token.signature);
 
       const payload = RecurringBillingService.verifyOfflineEntitlement(
         { tenantId: token.tenantId },

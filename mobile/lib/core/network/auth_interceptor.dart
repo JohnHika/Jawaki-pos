@@ -106,6 +106,13 @@ class AuthInterceptor extends Interceptor {
       return handler.next(err);
     }
 
+    // The phone signed this computer out. Refreshing would only fail, so go
+    // back to sign-in now, with the reason.
+    if (AuthService.isComputerSignedOut(err)) {
+      await _authService.endSessionSignedOutFromPhone();
+      return handler.next(err);
+    }
+
     // Refresh (or wait for the refresh already in flight), then retry.
     // We retry the refresh itself on transient failures so a cold-starting
     // backend (e.g. Render free tier) doesn't kill a live session.
@@ -132,7 +139,11 @@ class AuthInterceptor extends Interceptor {
 
         // Server explicitly rejected the refresh token → session is dead.
         if (refreshStatus == 401 || refreshStatus == 403) {
-          await _authService.logout();
+          if (AuthService.isComputerSignedOut(e)) {
+            await _authService.endSessionSignedOutFromPhone();
+          } else {
+            await _authService.logout();
+          }
           return handler.next(err);
         }
 

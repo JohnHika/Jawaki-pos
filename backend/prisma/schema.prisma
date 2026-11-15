@@ -56,7 +56,8 @@ model Tenant {
   paymentClaims          SubscriptionPaymentClaim[]
   subscriptionCardToken  SubscriptionCardToken?
   platformNotes          PlatformTenantNote[]
-  retailReceivables      RetailReceivable[]
+  layoutChangeRequests   LayoutChangeRequest[]
+  retailReceivables     RetailReceivable[]
   peerDebtors            PeerDebtor[]
   peerReceivables        PeerReceivable[]
   partnershipsRequested  TradePartnership[]         @relation("PartnershipRequester")
@@ -154,6 +155,8 @@ model SubscriptionInvoice {
   provider         String?
   reference        String?   @unique
   authorizationUrl String?
+  // When the hosted checkout link above was issued; an old link is replaced.
+  authorizationIssuedAt DateTime?
   periodStart      DateTime?
   periodEnd        DateTime?
   paidAt           DateTime?
@@ -314,6 +317,30 @@ model PlatformTenantNote {
 
   @@index([tenantId, createdAt])
   @@map("platform_tenant_notes")
+}
+
+/// A paid shop's business type is locked to what it paid for. To change it the
+/// owner asks, with a reason; the Counterbase team approves or declines.
+model LayoutChangeRequest {
+  id                   String    @id @default(uuid())
+  tenantId             String
+  requestedByUserId    String?
+  fromProfileId        String?
+  toProfileId          String
+  additionalProfileIds Json?
+  reason               String
+  status               String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
+  decisionNote         String?
+  decidedBy            String?
+  decidedAt            DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([status, createdAt])
+  @@map("layout_change_requests")
 }
 
 model Branch {
@@ -494,6 +521,7 @@ model User {
   peerReceivablePayments     PeerReceivablePayment[]   @relation("PeerReceivablePaymentCreatedBy")
   appNotifications           AppNotification[]
   desktopLinkChallenges      DesktopLinkChallenge[]
+  linkedComputers            LinkedComputer[]
 
   @@unique([tenantId, email])
   @@map("users")
@@ -615,11 +643,39 @@ model RefreshToken {
   deviceFingerprint String? // Device binding for theft detection
   expiresAt         DateTime
   createdAt         DateTime @default(now())
+  // Set when this session belongs to a computer a phone signed in. It is
+  // carried forward every time the token is rotated.
+  linkedComputerId  String?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  linkedComputer LinkedComputer? @relation(fields: [linkedComputerId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([linkedComputerId])
   @@map("refresh_tokens")
+}
+
+// A computer signed in by approving on the owner's phone. One row per
+// sign-in; the name, kind and place come from the request the phone approved.
+// Revoking sets revokedAt and removes the computer's refresh tokens; its
+// access token is refused at once because it carries this row's id.
+model LinkedComputer {
+  id           String    @id @default(uuid())
+  userId       String
+  desktopName  String
+  platform     String?
+  place        String?
+  ip           String?
+  deviceId     String?
+  linkedAt     DateTime  @default(now())
+  lastActiveAt DateTime  @default(now())
+  revokedAt    DateTime?
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+
+  @@index([userId, revokedAt])
+  @@map("linked_computers")
 }
 
 // A computer asking to be signed in by a phone that is already signed in.

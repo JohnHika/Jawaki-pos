@@ -7,6 +7,7 @@ import 'package:axon_pos/core/config/google_auth_config.dart';
 import 'package:axon_pos/core/desktop/desktop_layout.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
+import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
@@ -49,9 +50,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isFetchingCompany = false;
   Timer? _debounceTimer;
 
+  // Why the last session ended, when the person should be told (for example
+  // the phone signed this computer out). Shown until they try to sign in.
+  String? _signOutNotice;
+
   @override
   void initState() {
     super.initState();
+    _signOutNotice = getIt.isRegistered<AuthService>()
+        ? getIt<AuthService>().takeSignOutNotice()
+        : null;
     _loadRememberedLogin();
     _checkBiometric();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -649,7 +657,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       rememberMe: _rememberMe,
       onRememberChanged: (value) => setState(() => _rememberMe = value),
       loading: authState.isLoading,
-      errorMessage: authState.error,
+      errorMessage: authState.error ?? _signOutNotice,
       onSubmit: () {
         if (!ref.read(authControllerProvider).isLoading) _handleLogin();
       },
@@ -866,9 +874,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ],
         ),
-        if (authState.error != null) ...[
+        if ((authState.error ?? _signOutNotice) != null) ...[
           const SizedBox(height: DesignSpacing.sm),
-          SignInError(message: authState.error!),
+          SignInError(message: (authState.error ?? _signOutNotice)!),
         ],
         const SizedBox(height: DesignSpacing.lg),
         SignInButton(

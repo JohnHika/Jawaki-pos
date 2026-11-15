@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/desktop/desktop_table.dart';
 import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/widgets/form_kit.dart';
+import '../../domain/price_history.dart';
 import '../../domain/price_list_builder.dart';
 import '../../../catalog/presentation/desktop/desktop_button_styles.dart';
+import '../widgets/price_detail_sheet.dart' show PriceChangeStyle;
 
 /// The price-list workspace on a computer. The routed screen owns its data,
 /// filters and actions; this view presents the current rows and reports edits.
@@ -31,6 +34,11 @@ class DesktopPriceListView extends StatelessWidget {
     required this.onSharePdf,
     required this.onCopy,
     this.loading = false,
+    this.onRefresh,
+    this.refreshing = false,
+    this.freshness,
+    this.savedNote,
+    this.onOpenItem,
   });
 
   final String title;
@@ -52,9 +60,24 @@ class DesktopPriceListView extends StatelessWidget {
   final VoidCallback? onCopy;
   final bool loading;
 
+  /// Pulls the shop's prices from the server. Null hides the Refresh button.
+  final Future<void> Function()? onRefresh;
+  final bool refreshing;
+
+  /// "Updated 5 min ago", or null when the shop has no server to ask.
+  final String? freshness;
+
+  /// Shown above the table while the prices on screen are the saved ones.
+  final String? savedNote;
+
+  /// Double click or Enter on a row.
+  final ValueChanged<PriceListItem>? onOpenItem;
+
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final p = context.desktop;
+    final refresh = onRefresh;
+    final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         DesktopPageHeader(
@@ -62,6 +85,32 @@ class DesktopPriceListView extends StatelessWidget {
           subtitle:
               'Choose what to include. Prices use the latest values on your till.',
           padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+          actions: [
+            if (freshness != null || refreshing)
+              Text(
+                refreshing ? 'Updating prices…' : freshness!,
+                key: const ValueKey('price-list-freshness'),
+                style: GoogleFonts.plusJakartaSans(
+                  color: p.textMuted,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            if (refresh != null)
+              OutlinedButton.icon(
+                key: const ValueKey('price-list-refresh'),
+                style: desktopSecondaryButton(context),
+                onPressed: refreshing ? null : () => refresh(),
+                icon: refreshing
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('Refresh'),
+              ),
+          ],
         ),
         Expanded(
           child: DesktopContent(
@@ -93,6 +142,23 @@ class DesktopPriceListView extends StatelessWidget {
           ),
         ),
       ],
+    );
+    if (refresh == null) return body;
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.f5): () {
+          if (!refreshing) refresh();
+        },
+        const SingleActivator(LogicalKeyboardKey.keyR, control: true): () {
+          if (!refreshing) refresh();
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        skipTraversal: true,
+        debugLabel: 'PriceListRefresh',
+        child: body,
+      ),
     );
   }
 
@@ -132,6 +198,43 @@ class DesktopPriceListView extends StatelessWidget {
                   ),
                 ],
               ),
+              if (savedNote != null)
+                Container(
+                  key: const ValueKey('price-list-saved-note'),
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: p.panelAlt,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.history_rounded, size: 15, color: p.textMuted),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          savedNote!,
+                          style: GoogleFonts.plusJakartaSans(
+                            color: p.textMuted,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (onRefresh != null)
+                        TextButton(
+                          key: const ValueKey('price-list-retry'),
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            minimumSize: const Size(48, 28),
+                          ),
+                          onPressed: refreshing ? null : () => onRefresh!(),
+                          child: const Text('Retry'),
+                        ),
+                    ],
+                  ),
+                ),
               if (categories.isNotEmpty) ...[
                 Padding(
                   padding: const EdgeInsets.only(top: 2, bottom: 7),
@@ -190,11 +293,28 @@ class DesktopPriceListView extends StatelessWidget {
                     ),
                     DesktopColumn<PriceListItem>(
                       label: 'Price',
-                      width: 116,
+                      width: 140,
                       numeric: true,
                       sortBy: (item) => item.price,
-                      cell: (context, item) =>
-                          DesktopCellText(priceKes(item.price), numeric: true),
+                      cell: (context, item) {
+                        final change = item.change;
+                        final text =
+                            DesktopCellText(priceKes(item.price), numeric: true);
+                        if (change == null) return text;
+                        final style = PriceChangeStyle.of(change);
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Tooltip(
+                              message: priceChangeLabel(change, priceKes),
+                              child: Icon(style.icon,
+                                  size: 13, color: style.color),
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(child: text),
+                          ],
+                        );
+                      },
                     ),
                     DesktopColumn<PriceListItem>(
                       label: 'Bulk (KES)',
@@ -209,7 +329,8 @@ class DesktopPriceListView extends StatelessWidget {
                   ],
                   rows: items,
                   rowId: (item) => '${item.categoryName}:${item.name}',
-                  minWidth: 503,
+                  onRowActivated: onOpenItem,
+                  minWidth: 527,
                   loading: loading,
                   empty: const DesktopEmptyState(
                     icon: Icons.filter_list_off_rounded,

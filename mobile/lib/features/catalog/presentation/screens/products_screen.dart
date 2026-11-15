@@ -18,6 +18,9 @@ import '../../../../core/services/storage_service.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/utils/business_layout_search.dart';
+import '../../../../core/widgets/alive_feedback.dart';
+import '../../../../core/widgets/master_detail.dart';
+import '../../../../core/widgets/skeleton_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../sales/presentation/providers/catalog_provider.dart'
     as catalog_cache;
@@ -34,6 +37,7 @@ import '../desktop/desktop_product_inspector.dart';
 import '../desktop/desktop_products_view.dart';
 import '../desktop/product_actions.dart';
 import '../providers/product_history_provider.dart';
+import 'product_detail_screen.dart' show ProductDetailScreen;
 import '../../../../core/utils/format.dart';
 import '../../../../core/desktop/adaptive_sheet.dart';
 import '../../../../core/desktop/desktop_refresh.dart';
@@ -274,7 +278,20 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
           ),
         ],
       ),
-      body: PageContainer(
+      body: MasterDetail(
+        masterWidth: 420,
+        emptyIcon: Icons.inventory_2_outlined,
+        emptyTitle: 'Pick a ${productSingular.toLowerCase()}',
+        emptyBody: 'Its price, stock and history show here.',
+        detail: _selectedProductId == null
+            ? null
+            : ProductDetailScreen(
+                key: ValueKey(_selectedProductId),
+                productId: _selectedProductId!,
+                embedded: true,
+                onGone: () => setState(() => _selectedProductId = null),
+              ),
+        masterBuilder: (context, twoPane) => PageContainer(
         padding: EdgeInsets.zero,
         maxWidth: 960,
         child: Column(
@@ -364,7 +381,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                           in categoriesAsync.valueOrNull ?? const <Category>[])
                         category.id: category.name,
                     };
-                    final results = gridView
+                    final results = gridView && !twoPane
                             ? GridView.builder(
                                 padding:
                                     const EdgeInsets.fromLTRB(20, 4, 20, 16),
@@ -393,6 +410,11 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                 products: filtered,
                                 categoryMap: categoryMap,
                                 quantities: quantities,
+                                selectedId: twoPane ? _selectedProductId : null,
+                                onSelect: twoPane
+                                    ? (id) => setState(
+                                        () => _selectedProductId = id)
+                                    : null,
                               );
 
                     return DesktopRefresh(
@@ -404,13 +426,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                           );
                         } catch (_) {
                           if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Could not refresh the catalog. Your saved products are still available.',
-                              ),
-                            ),
-                          );
+                          Alive.failed(context,
+                              'Could not refresh the catalog. Your saved products are still available.');
                         }
                       },
                       color: DesignColors.brand,
@@ -451,8 +468,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                       ),
                     );
                   },
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
+                  loading: () => const SkeletonList(rows: 8, leading: true),
                   error: (e, _) => EmptyState(
                     icon: Icons.inventory_2_outlined,
                     title: 'Couldn\'t load products',
@@ -469,6 +485,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
             bottomAction(),
           ],
         ),
+      ),
       ),
     );
   }
@@ -1393,6 +1410,8 @@ class _ProductList extends StatelessWidget {
     required this.products,
     required this.categoryMap,
     required this.quantities,
+    this.onSelect,
+    this.selectedId,
   });
 
   static const double rowHeight = 64;
@@ -1400,6 +1419,10 @@ class _ProductList extends StatelessWidget {
   final List<Product> products;
   final Map<String, String> categoryMap;
   final Map<String, double> quantities;
+
+  /// Tablet two-pane: a tap picks the product for the pane beside the list.
+  final ValueChanged<String>? onSelect;
+  final String? selectedId;
 
   @override
   Widget build(BuildContext context) {
@@ -1434,6 +1457,8 @@ class _ProductList extends StatelessWidget {
                       categoryMap[product.categoryId] ?? 'Uncategorized',
                   quantity: quantities[product.id],
                   showDivider: index != products.length - 1,
+                  selected: product.id == selectedId,
+                  onSelect: onSelect,
                 );
               },
             ),
@@ -1450,12 +1475,16 @@ class _ProductListTile extends StatelessWidget {
     required this.categoryName,
     required this.quantity,
     required this.showDivider,
+    this.selected = false,
+    this.onSelect,
   });
 
   final Product product;
   final String categoryName;
   final double? quantity;
   final bool showDivider;
+  final bool selected;
+  final ValueChanged<String>? onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -1470,10 +1499,13 @@ class _ProductListTile extends StatelessWidget {
       label: '${product.name}, ${formatMoney(product.price)}, '
           '${stockWords(level, quantity)}',
       child: InkWell(
-        onTap: () => context.push('/products/${product.id}'),
+        onTap: () => onSelect != null
+            ? onSelect!(product.id)
+            : context.push('/products/${product.id}'),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
+            color: selected ? DesignColors.brand.withValues(alpha: 0.10) : null,
             border: showDivider
                 ? Border(bottom: BorderSide(color: palette.line))
                 : null,

@@ -9,8 +9,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// Answers every request with the status [statusFor] picks for its path.
 class _Adapter implements HttpClientAdapter {
-  _Adapter(this.statusFor);
+  _Adapter(this.statusFor, {this.failureMessage = 'nope', this.refreshMessage});
   final int Function(String path) statusFor;
+
+  /// What the server says when it refuses a request.
+  final String failureMessage;
+
+  /// What it says when it refuses the refresh itself, if different.
+  final String? refreshMessage;
   final seen = <String>[];
 
   @override
@@ -21,7 +27,11 @@ class _Adapter implements HttpClientAdapter {
     return ResponseBody.fromString(
       jsonEncode(status == 200
           ? {'accessToken': 'new', 'refreshToken': 'new-refresh'}
-          : {'message': 'nope'}),
+          : {
+              'message': options.path == '/auth/refresh'
+                  ? refreshMessage ?? failureMessage
+                  : failureMessage,
+            }),
       status,
       headers: {
         Headers.contentTypeHeader: ['application/json'],
@@ -39,6 +49,7 @@ class _FakeAuth extends Fake implements AuthService {
   _FakeAuth(this.dio);
   final Dio dio;
   int logouts = 0;
+  int signedOutFromPhone = 0;
   String? _token = 'old';
 
   @override
@@ -66,7 +77,14 @@ class _FakeAuth extends Fake implements AuthService {
   Future<void> logout({bool allDevices = false}) async {
     logouts++;
   }
+
+  @override
+  Future<void> endSessionSignedOutFromPhone() async {
+    signedOutFromPhone++;
+  }
 }
+
+const _signedOutMessage = 'This computer was signed out from your phone';
 
 void main() {
   test('a rejected refresh token logs out immediately instead of hanging',
@@ -106,5 +124,69 @@ void main() {
     expect(res.statusCode, 200);
     expect(auth.logouts, 0);
     expect(salesCalls, 2);
+  });
+
+  test('a computer the phone signed out goes to sign-in at once, with the reason',
+      () async {
+    final dio = Dio(BaseOptions(baseUrl: 'http://x'));
+    final adapter = _Adapter((_) => 401, failureMessage: _signedOutMessage);
+    dio.httpClientAdapter = adapter;
+    final auth = _FakeAuth(dio);
+    dio.interceptors.add(AuthInterceptor(auth, dio));
+
+    await expectLater(
+      dio.get('/sales').timeout(const Duration(seconds: 5)),
+      throwsA(isA<DioException>()),
+    );
+
+    expect(auth.signedOutFromPhone, 1);
+    expect(auth.logouts, 0);
+    // No pointless refresh attempt first.
+    expect(adapter.seen, ['/sales']);
+  });
+
+  test('the same reason is kept when it comes back on the refresh instead',
+      () async {
+    final dio = Dio(BaseOptions(baseUrl: 'http://x'));
+    // The access token simply expired; the refresh says why it cannot continue.
+    final adapter = _Adapter(
+      (_) => 401,
+      failureMessage: 'Unauthorized',
+      refreshMessage: _signedOutMessage,
+    );
+    dio.httpClientAdapter = adapter;
+    final auth = _FakeAuth(dio);
+    dio.interceptors.add(AuthInterceptor(auth, dio));
+
+    await expectLater(
+      dio.get('/sales').timeout(const Duration(seconds: 5)),
+      throwsA(isA<DioException>()),
+    );
+
+    expect(auth.signedOutFromPhone, 1);
+    expect(auth.logouts, 0);
+    expect(adapter.seen, ['/sales', '/auth/refresh']);
+  });
+
+  test('an ordinary rejected session still just logs out', () {
+    final plain = DioException(
+      requestOptions: RequestOptions(path: '/sales'),
+      response: Response(
+        requestOptions: RequestOptions(path: '/sales'),
+        statusCode: 401,
+        data: {'message': 'Invalid refresh token'},
+      ),
+    );
+    final other = DioException(
+      requestOptions: RequestOptions(path: '/sales'),
+      response: Response(
+        requestOptions: RequestOptions(path: '/sales'),
+        statusCode: 500,
+        data: {'message': _signedOutMessage},
+      ),
+    );
+    expect(AuthService.isComputerSignedOut(plain), isFalse);
+    expect(AuthService.isComputerSignedOut(other), isFalse);
+    expect(AuthService.isComputerSignedOut(StateError('x')), isFalse);
   });
 }

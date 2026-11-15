@@ -23,6 +23,8 @@ import '../widgets/category_chips.dart';
 import '../widgets/product_grid.dart';
 import '../widgets/search_bar_widget.dart';
 import '../widgets/cart_summary_bar.dart';
+import '../widgets/sell_ticket_pane.dart';
+import '../../../../core/responsive/two_pane.dart';
 import '../desktop/checkout_support.dart' show CheckoutResult;
 import '../desktop/held_sales_list.dart';
 import '../desktop/sell_workspace.dart';
@@ -415,7 +417,19 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       ],
                     ),
                   ),
-                // ── Main top bar (simplified) ──
+                // One column on a phone (or a foldable folded shut); the
+                // products beside a live sale ticket on a tablet, a till
+                // terminal, a phone on its side or a foldable opened up.
+                Expanded(
+                  child: AdaptiveTwoPane(
+                    secondaryMinWidth: 280,
+                    secondary: SellTicketPane(
+                      heldSalesCount: parkedSales.length,
+                      onHold: () => _parkCurrentSale(context),
+                      onOpenHeldSales: () => _showParkedSalesSheet(context),
+                    ),
+                    narrowBuilder: (narrowContext, primary) => Column(
+                      children: [
                 if (permissions.canSeeCustomers && cart.customerName != null)
                   Container(
                     width: double.infinity,
@@ -455,6 +469,12 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       ],
                     ),
                   ),
+                        Expanded(child: primary),
+                        if (cart.itemCount > 0) const CartSummaryBar(),
+                      ],
+                    ),
+                    primary: Column(
+                      children: [
                 if (showFavorites || selectedProductPage != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(
@@ -489,7 +509,10 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 if (!showFavorites && businessLayout.posProductPages.isNotEmpty)
                   _productPagePicker(businessLayout),
                 Expanded(child: productGrid()),
-                if (cart.itemCount > 0) const CartSummaryBar(),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
     );

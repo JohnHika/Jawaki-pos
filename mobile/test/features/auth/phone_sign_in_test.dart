@@ -19,6 +19,7 @@ class _FakeApi extends ApiClient {
   _FakeApi() : super(Dio());
 
   String? claimChallenge;
+  String? hint;
   String status = 'pending';
   Map<String, dynamic> preview = const {};
   final decisions = <Map<String, dynamic>>[];
@@ -29,8 +30,10 @@ class _FakeApi extends ApiClient {
     required String desktopName,
     required String platform,
     required String claimChallenge,
+    String? hint,
   }) async {
     this.claimChallenge = claimChallenge;
+    this.hint = hint;
     return {
       'linkId': 'link-1',
       'code': '123456',

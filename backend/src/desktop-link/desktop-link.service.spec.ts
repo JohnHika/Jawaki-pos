@@ -23,8 +23,9 @@ describe('DesktopLinkService', () => {
   const SHOP_WIFI = { ip: '41.90.10.20', city: 'Nairobi', country: 'KE' };
   const MOBILE_DATA = { ip: '105.160.1.2' };
 
-  const build = async (opts: { pin?: string } = {}) => {
+  const build = async (opts: { pin?: string; recentPrompts?: number } = {}) => {
     const store = new Map<string, any>();
+    const computers = new Map<string, any>();
     const pinHash = opts.pin ? await bcrypt.hash(opts.pin, 4) : null;
 
     const matches = (row: any, where: any): boolean =>
@@ -86,6 +87,34 @@ describe('DesktopLinkService', () => {
       },
       user: {
         findUnique: jest.fn(async () => ({ pin: pinHash, isActive: true })),
+        findMany: jest.fn(async ({ where }: any) =>
+          where.email === 'ada@shop.co' ? [{ id: 'owner-1', tenantId: 'tenant-1' }] : [],
+        ),
+      },
+      appNotification: {
+        count: jest.fn(async () => opts.recentPrompts ?? 0),
+      },
+      linkedComputer: {
+        findMany: jest.fn(async ({ where }: any) =>
+          [...computers.values()].filter(
+            (row) =>
+              (!where.userId || row.userId === where.userId) &&
+              (!where.id || row.id === where.id) &&
+              row.revokedAt === null,
+          ),
+        ),
+        findFirst: jest.fn(async ({ where }: any) => {
+          const row = computers.get(where.id);
+          return row && row.userId === where.userId && row.revokedAt === null ? row : null;
+        }),
+        updateMany: jest.fn(async ({ where, data }: any) => {
+          let count = 0;
+          for (const id of where.id.in as string[]) {
+            Object.assign(computers.get(id), data);
+            count++;
+          }
+          return { count };
+        }),
       },
     };
 
@@ -102,8 +131,20 @@ describe('DesktopLinkService', () => {
     };
 
     const service = new DesktopLinkService(prisma, authService, notifications);
-    return { service, store, authService, notifications };
+    return { service, store, authService, notifications, computers };
   };
+
+  const linked = (id: string, userId: string, over: Record<string, any> = {}) => ({
+    id,
+    userId,
+    desktopName: 'FRONT-DESK',
+    platform: 'windows',
+    place: 'Nairobi, KE',
+    linkedAt: new Date('2026-11-10T08:00:00Z'),
+    lastActiveAt: new Date('2026-11-15T09:30:00Z'),
+    revokedAt: null,
+    ...over,
+  });
 
   const approver = { userId: 'owner-1', branchId: 'branch-main' };
 
@@ -121,6 +162,53 @@ describe('DesktopLinkService', () => {
     expect(new Date(start.expiresAt).getTime() - Date.now()).toBeLessThanOrEqual(
       CHALLENGE_TTL_MS,
     );
+  });
+
+  describe('asking the persons phone', () => {
+    it('sends a tap-to-review prompt to that person when the computer says who is signing in', async () => {
+      const { service, notifications } = await build();
+      const start = await service.start(
+        { desktopName: 'FRONT-DESK', claimChallenge: sha256(VERIFIER), hint: 'Ada@Shop.co' },
+        SHOP_WIFI,
+      );
+      expect(notifications.sendToUser).toHaveBeenCalledWith(
+        'owner-1',
+        expect.objectContaining({
+          data: { type: 'desktop_link_request', linkId: start.linkId, payload: start.qr },
+        }),
+        { tenantId: 'tenant-1' },
+      );
+    });
+
+    it('answers the computer the same way when nobody has that email', async () => {
+      const { service, notifications } = await build();
+      const start = await service.start(
+        { claimChallenge: sha256(VERIFIER), hint: 'nobody@shop.co' },
+        SHOP_WIFI,
+      );
+      expect(notifications.sendToUser).not.toHaveBeenCalled();
+      expect(start.code).toMatch(/^\d{6}$/);
+    });
+
+    it('stops prompting a person who was already asked three times in ten minutes', async () => {
+      const { service, notifications } = await build({ recentPrompts: 3 });
+      const start = await service.start(
+        { claimChallenge: sha256(VERIFIER), hint: 'ada@shop.co' },
+        SHOP_WIFI,
+      );
+      expect(notifications.sendToUser).not.toHaveBeenCalled();
+      expect(start.linkId).toBeTruthy();
+    });
+
+    it('still gives the computer its code when sending the prompt fails', async () => {
+      const { service, notifications } = await build();
+      notifications.sendToUser.mockRejectedValue(new Error('push down'));
+      const start = await service.start(
+        { claimChallenge: sha256(VERIFIER), hint: 'ada@shop.co' },
+        SHOP_WIFI,
+      );
+      expect(start.code).toMatch(/^\d{6}$/);
+    });
   });
 
   it('refuses to start without a claim challenge', async () => {
@@ -160,6 +248,13 @@ describe('DesktopLinkService', () => {
     expect(authService.issueLinkedSession).toHaveBeenCalledWith('owner-1', {
       branchId: 'branch-main',
       deviceId: 'pc-device-1',
+      // What the phone approved is kept, so the phone can list and revoke it.
+      computer: {
+        desktopName: 'FRONT-DESK',
+        platform: 'windows',
+        place: 'Nairobi, KE',
+        ip: SHOP_WIFI.ip,
+      },
     });
     expect(notifications.sendToUser).toHaveBeenCalledWith(
       'owner-1',
@@ -298,6 +393,68 @@ describe('DesktopLinkService', () => {
     await expect(
       service.preview(approver.userId, { payload: 'https://example.com/pay' }, SHOP_WIFI),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  describe('linked computers', () => {
+    it('lists only this person\'s computers, newest activity first, marking the asking one', async () => {
+      const { service, computers } = await build();
+      computers.set('c1', linked('c1', 'owner-1'));
+      computers.set(
+        'c2',
+        linked('c2', 'owner-1', { desktopName: 'BACK-OFFICE', lastActiveAt: new Date('2026-11-16T10:00:00Z') }),
+      );
+      computers.set('c3', linked('c3', 'someone-else'));
+      computers.set('c4', linked('c4', 'owner-1', { revokedAt: new Date() }));
+
+      const list = await service.listComputers('owner-1', 'c1');
+
+      expect(list.map((c) => c.id).sort()).toEqual(['c1', 'c2']);
+      expect(list.find((c) => c.id === 'c1')).toMatchObject({
+        name: 'FRONT-DESK',
+        platform: 'windows',
+        place: 'Nairobi, KE',
+        isThisDevice: true,
+      });
+      expect(list.find((c) => c.id === 'c2')?.isThisDevice).toBe(false);
+    });
+
+    it('revoking ends that computer and no other', async () => {
+      const { service, computers } = await build();
+      computers.set('c1', linked('c1', 'owner-1'));
+      computers.set('c2', linked('c2', 'owner-1'));
+
+      expect(await service.revokeComputer('owner-1', 'c1')).toEqual({ revoked: 1 });
+
+      expect(computers.get('c1').revokedAt).toBeInstanceOf(Date);
+      expect(computers.get('c2').revokedAt).toBeNull();
+      // It leaves the list at once.
+      expect((await service.listComputers('owner-1')).map((c) => c.id)).toEqual(['c2']);
+    });
+
+    it('cannot revoke a computer that belongs to someone else or is already gone', async () => {
+      const { service, computers } = await build();
+      computers.set('c3', linked('c3', 'someone-else'));
+      computers.set('c4', linked('c4', 'owner-1', { revokedAt: new Date() }));
+
+      await expect(service.revokeComputer('owner-1', 'c3')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.revokeComputer('owner-1', 'c4')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.revokeComputer('owner-1', 'nope')).rejects.toBeInstanceOf(BadRequestException);
+      expect(computers.get('c3').revokedAt).toBeNull();
+    });
+
+    it('sign out all ends every computer of this person and nobody else\'s', async () => {
+      const { service, computers } = await build();
+      computers.set('c1', linked('c1', 'owner-1'));
+      computers.set('c2', linked('c2', 'owner-1'));
+      computers.set('c3', linked('c3', 'someone-else'));
+
+      expect(await service.revokeAllComputers('owner-1')).toEqual({ revoked: 2 });
+
+      expect(computers.get('c1').revokedAt).toBeInstanceOf(Date);
+      expect(computers.get('c2').revokedAt).toBeInstanceOf(Date);
+      expect(computers.get('c3').revokedAt).toBeNull();
+      expect(await service.revokeAllComputers('owner-1')).toEqual({ revoked: 0 });
+    });
   });
 
   it('reads the caller address and place from the proxy headers', () => {

@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/desktop/adaptive_overlays.dart';
 import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/alive_feedback.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
@@ -1474,10 +1475,11 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
         }
         if (another) {
           _resetForNext();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Saved. Add the next one.')),
-          );
+          Alive.done(context, 'Saved. Add the next one.');
           return;
+        }
+        if (stockProblem == null) {
+          Alive.done(context, '${_nameController.text.trim()} saved');
         }
         Navigator.pop(context);
         return;
@@ -1540,6 +1542,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
         ref.invalidate(catalog_cache.filteredProductsProvider);
         ref.invalidate(catalog_cache.favoriteProductsProvider);
         ref.invalidate(catalog_cache.categoriesProvider);
+        Alive.done(context, '${_nameController.text.trim()} saved');
         Navigator.pop(context);
       }
     } catch (e) {

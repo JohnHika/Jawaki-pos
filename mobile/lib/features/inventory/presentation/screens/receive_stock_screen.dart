@@ -12,7 +12,9 @@ import '../../../../core/services/storage_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/format.dart';
+import '../../../../core/widgets/alive_feedback.dart';
 import '../../../../core/widgets/form_kit.dart';
+import '../../../../core/widgets/skeleton_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
 import '../../../catalog/domain/stock_status.dart';
@@ -268,12 +270,8 @@ class _ReceiveStockScreenState extends ConsumerState<ReceiveStockScreen> {
       ref.invalidate(catalog_cache.filteredProductsProvider);
       ref.invalidate(catalog_cache.favoriteProductsProvider);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'Saved. ${stockNumber(_totalBase)} received across ${valid.length} ${valid.length == 1 ? 'product' : 'products'}.'),
-        ),
-      );
+      Alive.done(context,
+          'Saved. ${stockNumber(_totalBase)} received across ${valid.length} ${valid.length == 1 ? 'product' : 'products'}.');
       if (context.canPop()) {
         context.pop(true);
       } else {
@@ -697,7 +695,7 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
                 future: _products,
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const SkeletonList(rows: 7, leading: true);
                   }
                   final q = _query.text.trim().toLowerCase();
                   final shown = snapshot.data!

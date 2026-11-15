@@ -35,6 +35,9 @@ export const CHALLENGE_TTL_MS = 2 * 60 * 1000;
  * so approving in the last seconds of a code still signs the computer in.
  */
 export const CLAIM_WINDOW_MS = 60 * 1000;
+/** Prompts one person can be sent, so a stranger cannot flood their phone. */
+const MAX_PROMPTS = 3;
+const PROMPT_WINDOW_MS = 10 * 60 * 1000;
 /** Wrong verifiers or PINs before a request is burned. */
 const MAX_ATTEMPTS = 5;
 
@@ -87,6 +90,18 @@ export interface DesktopLinkPreviewResponse {
   expiresAt: string;
 }
 
+/** One row of the phone's "Linked computers" list. */
+export interface LinkedComputerView {
+  id: string;
+  name: string;
+  platform: string | null;
+  place: string | null;
+  linkedAt: string;
+  lastActiveAt: string;
+  /** The device asking is this very computer. */
+  isThisDevice: boolean;
+}
+
 @Injectable()
 export class DesktopLinkService {
   private readonly logger = new Logger(DesktopLinkService.name);
@@ -99,7 +114,12 @@ export class DesktopLinkService {
 
   /** Computer: open a request and get the QR and code to show. */
   async start(
-    input: { desktopName?: string; platform?: string; claimChallenge?: string },
+    input: {
+      desktopName?: string;
+      platform?: string;
+      claimChallenge?: string;
+      hint?: string;
+    },
     origin: RequestOrigin,
   ): Promise<DesktopLinkStartResponse> {
     const challenge = (input.claimChallenge ?? '').trim().toLowerCase();
@@ -135,6 +155,14 @@ export class DesktopLinkService {
     });
 
     const qr = JSON.stringify({ v: 2, app: 'counterbase', id, code });
+    // Ask the person's own phones, if the computer said who is signing in. The
+    // answer to the computer is the same whether or not anyone was found.
+    await this.promptPhones(input.hint, {
+      linkId: id,
+      qr,
+      desktopName: cleanLabel(input.desktopName) ?? 'A computer',
+      place: placeLabel(origin),
+    });
     return {
       linkId: id,
       code,
@@ -142,6 +170,45 @@ export class DesktopLinkService {
       expiresAt: expiresAt.toISOString(),
       expiresIn: CHALLENGE_TTL_MS / 1000,
     };
+  }
+
+  /**
+   * Phone prompt: "<computer> wants to sign in as you". Tapping it opens the
+   * approval screen on that request. Failures are swallowed on purpose: the
+   * QR and code still work, and nothing here may reveal whether an email has
+   * an account.
+   */
+  private async promptPhones(
+    hint: string | undefined,
+    request: { linkId: string; qr: string; desktopName: string; place: string | null },
+  ): Promise<void> {
+    const email = (hint ?? '').trim().toLowerCase();
+    if (!email) return;
+    try {
+      const people = await this.prisma.user.findMany({
+        where: { email, isActive: true },
+        select: { id: true, tenantId: true },
+        take: 3,
+      });
+      const since = new Date(Date.now() - PROMPT_WINDOW_MS);
+      for (const person of people) {
+        const recent = await this.prisma.appNotification.count({
+          where: { userId: person.id, type: 'desktop_link_request', createdAt: { gte: since } },
+        });
+        if (recent >= MAX_PROMPTS) continue;
+        await this.notifications.sendToUser(
+          person.id,
+          {
+            title: 'Sign in a computer?',
+            body: `${request.desktopName}${request.place ? ` in ${request.place}` : ''} is asking to sign in as you. Tap to review.`,
+            data: { type: 'desktop_link_request', linkId: request.linkId, payload: request.qr },
+          },
+          { tenantId: person.tenantId },
+        );
+      }
+    } catch (e) {
+      this.logger.warn(`desktop-link prompt failed: ${e}`);
+    }
   }
 
   /** Computer: poll while the QR is on screen. */
@@ -292,6 +359,12 @@ export class DesktopLinkService {
     const session = await this.authService.issueLinkedSession(row.userId, {
       branchId: row.branchId ?? undefined,
       deviceId: input.deviceId?.slice(0, 120) || undefined,
+      computer: {
+        desktopName: row.desktopName ?? 'A computer',
+        platform: row.platform,
+        place: row.place,
+        ip: row.ip,
+      },
     });
 
     this.notifications
@@ -303,6 +376,67 @@ export class DesktopLinkService {
       .catch((e) => this.logger.warn(`desktop-link notice failed: ${e}`));
 
     return session;
+  }
+
+  /** Phone: the computers this person's phone has signed in and not since signed out. */
+  async listComputers(
+    userId: string,
+    currentComputerId?: string,
+  ): Promise<LinkedComputerView[]> {
+    const rows = await this.prisma.linkedComputer.findMany({
+      where: { userId, revokedAt: null },
+      orderBy: { lastActiveAt: 'desc' },
+      take: 50,
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.desktopName,
+      platform: row.platform,
+      place: row.place,
+      linkedAt: row.linkedAt.toISOString(),
+      lastActiveAt: row.lastActiveAt.toISOString(),
+      isThisDevice: row.id === currentComputerId,
+    }));
+  }
+
+  /**
+   * Phone: sign one computer out everywhere. Its access token is refused from
+   * the next request (JwtStrategy) and its refresh token is refused, and
+   * removed, the next time it is used (AuthService.refreshToken). The tokens
+   * stay until then so the computer is told why, not just "invalid token".
+   */
+  async revokeComputer(userId: string, computerId: string): Promise<{ revoked: number }> {
+    // Not a 404: on signed-in routes TransformInterceptor turns that into 401,
+    // which the phone reads as its own session ending.
+    const row = await this.prisma.linkedComputer.findFirst({
+      where: { id: computerId ?? '', userId, revokedAt: null },
+      select: { id: true, desktopName: true },
+    });
+    if (!row) {
+      throw new BadRequestException('That computer is not signed in any more');
+    }
+    await this.endSessions({ id: row.id, userId });
+    this.logger.log(`computer ${row.id} signed out by its owner`);
+    return { revoked: 1 };
+  }
+
+  /** Phone: sign every computer out. */
+  async revokeAllComputers(userId: string): Promise<{ revoked: number }> {
+    return { revoked: await this.endSessions({ userId }) };
+  }
+
+  private async endSessions(where: { id?: string; userId: string }): Promise<number> {
+    const ended = await this.prisma.linkedComputer.findMany({
+      where: { ...where, revokedAt: null },
+      select: { id: true },
+    });
+    if (ended.length === 0) return 0;
+    const ids = ended.map((row) => row.id);
+    await this.prisma.linkedComputer.updateMany({
+      where: { id: { in: ids } },
+      data: { revokedAt: new Date() },
+    });
+    return ids.length;
   }
 
   // ------------------------------------------------------------------

@@ -2,6 +2,8 @@
 // WhatsApp: grouped by category, one line per item, bulk prices underneath.
 // Pure so the wording and ordering are tested without a phone.
 
+import 'price_history.dart';
+
 class PriceTierLine {
   const PriceTierLine({
     required this.unit,
@@ -21,6 +23,8 @@ class PriceListItem {
     required this.price,
     required this.categoryName,
     this.tiers = const [],
+    this.id = '',
+    this.change,
   });
 
   final String name;
@@ -28,6 +32,13 @@ class PriceListItem {
   final double price;
   final String categoryName;
   final List<PriceTierLine> tiers;
+
+  /// The till's id for the product, when known (used to track price moves).
+  final String id;
+
+  /// A recent move in this price, shown as a mark on the list. It is never
+  /// part of the message that goes out to customers.
+  final PriceChange? change;
 }
 
 String priceKes(double value) {

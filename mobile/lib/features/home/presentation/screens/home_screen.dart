@@ -7,7 +7,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/theme/design_system.dart';
-import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/auth_service.dart';
@@ -20,6 +19,8 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../billing/presentation/widgets/subscription_entitlement_host.dart';
 import '../../../../core/services/haptic_service.dart';
 import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/responsive/device_class.dart';
+import '../widgets/adaptive_nav.dart';
 import '../../../../core/services/desktop_update_service.dart';
 import '../desktop/desktop_command_palette.dart';
 import '../desktop/desktop_nav.dart';
@@ -639,7 +640,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             .toList()
         : <_NavItem>[];
     _latestMoreItems = moreItems;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     // Selection is worked out against what the bar actually shows, so Settings
     // lights its own tab. More lights only for a page that lives inside it.
     final currentIndex = _resolveCurrentIndex(visibleNavItems);
@@ -650,6 +650,55 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ? LocalWorkspaceCapabilities.homePathFor(perms, businessLayout)
         : businessLayout.homePathFor(perms);
     final atHome = GoRouterState.of(context).uri.path == homePath;
+
+    // Phone: floating bottom bar. Tablet / till terminal (600 and up, computer
+    // window narrower than the shell): side rail with every destination.
+    final tablet = context.deviceClass == DeviceClass.tablet;
+    final logoUrl = ref.watch(tenantIdentityProvider).logoUrl;
+    NavDestination destinationFor(_NavItem item) {
+      final isAi = item.path == '/ai';
+      return NavDestination(
+        icon: item.icon,
+        activeIcon: item.activeIcon,
+        label: item.label,
+        path: item.path,
+        primary: isAi && !tablet,
+        semanticLabel: isAi ? 'AI assistant' : null,
+        iconBuilder: isAi
+            ? (_) => AxonAiIcon(tenantLogoUrl: logoUrl, size: tablet ? 26 : 28)
+            : null,
+        itemKey: item.path == '/' ? HomeNavKeys.pos : null,
+      );
+    }
+
+    Widget withRail(Widget content) {
+      if (!tablet) return content;
+      final railItems = [
+        for (final item in pinnedItems)
+          if (item.path != settingsItem.path) item,
+      ];
+      final railIndex = _resolveCurrentIndex(railItems);
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SideNavRail(
+            items: [for (final item in railItems) destinationFor(item)],
+            selectedIndex: railIndex,
+            onSelect: (i) {
+              if (i != railIndex) HapticService().selection();
+              context.go(railItems[i].path);
+            },
+            settings: destinationFor(settingsItem),
+            settingsSelected: _resolveCurrentIndex([settingsItem]) == 0,
+            onSettings: () {
+              HapticService().selection();
+              context.go(settingsItem.path);
+            },
+          ),
+          Expanded(child: content),
+        ],
+      );
+    }
 
     // Tabs are reached with context.go, so the stack holds a single page and
     // the system Back would close the app from every screen (go_router skips
@@ -683,7 +732,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // Always distinguish device-local workspaces from cloud
           // workspaces. Internet connectivity does not enable syncing in
           // the standalone edition.
-          body: StreamBuilder<ConnectionStatus>(
+          body: withRail(StreamBuilder<ConnectionStatus>(
             stream: connectivity.statusStream,
             initialData: connectivity.currentStatus,
             builder: (context, snapshot) {
@@ -752,78 +801,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: MediaQuery.removePadding(
                       context: context,
                       removeTop: showStrip,
-                      child: SubscriptionEntitlementHost(child: widget.child),
+                      child: TabletContent(
+                        child: SubscriptionEntitlementHost(child: widget.child),
+                      ),
                     ),
                   ),
                 ],
               );
             },
-          ),
-          // Floating pill bar: the active tab is an orange chip that springs in,
-          // the bar itself hovers above the page on a soft warm shadow.
-          bottomNavigationBar: Container(
-            color: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
-            padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
-            child: SafeArea(
-              top: false,
-              minimum: const EdgeInsets.only(bottom: 10),
-              child: Container(
-                height: 66,
-                decoration: BoxDecoration(
-                  color: isDark ? DesignColors.darkSurface : Colors.white,
-                  borderRadius: BorderRadius.circular(26),
-                  border: Border.all(
-                    color: isDark
-                        ? DesignColors.darkBorder
-                        : DesignColors.surfaceBorderLight,
-                  ),
-                  boxShadow: DesignShadows.soft(isDark),
+          )),
+          // Phone only: the tablet has its side rail instead. A floating bar
+          // with a light that slides to the chosen tab.
+          bottomNavigationBar: tablet
+              ? null
+              : FloatingNavBar(
+                  items: [for (final item in visibleNavItems) destinationFor(item)],
+                  selectedIndex: currentIndex,
+                  onSelect: (i) {
+                    if (i != currentIndex) HapticService().selection();
+                    context.go(visibleNavItems[i].path);
+                  },
+                  moreKey: HomeNavKeys.more,
+                  moreSelected: moreSelected,
+                  onMore: hasMore
+                      ? () {
+                          HapticService().selection();
+                          _showMoreSheet(moreItems);
+                        }
+                      : null,
                 ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    ...visibleNavItems.asMap().entries.map((entry) {
-                      final idx = entry.key;
-                      final item = entry.value;
-                      final isSelected = currentIndex == idx;
-                      return Expanded(
-                          child: KeyedSubtree(
-                        key: item.path == '/' ? HomeNavKeys.pos : null,
-                        child: _NavItemWidget(
-                            item: item,
-                            isSelected: isSelected,
-                            isPrimary: item.path == '/ai',
-                            onTap: () {
-                              if (!isSelected) HapticService().selection();
-                              context.go(item.path);
-                            },
-                            isDark: isDark),
-                      ));
-                    }),
-                    if (hasMore)
-                      Expanded(
-                          child: KeyedSubtree(
-                        key: HomeNavKeys.more,
-                        child: _NavItemWidget(
-                          item: _NavItem(
-                              icon: Icons.apps_outlined,
-                              activeIcon: Icons.apps_rounded,
-                              label: 'More',
-                              path: ''),
-                          isSelected: moreSelected,
-                          isPrimary: false,
-                          onTap: () {
-                            HapticService().selection();
-                            _showMoreSheet(moreItems);
-                          },
-                          isDark: isDark,
-                        ),
-                      )),
-                  ],
-                ),
-              ),
-            ),
-          ),
         ));
   }
 }
@@ -845,151 +851,6 @@ class _NavItem {
         label: value,
         path: path,
       );
-}
-
-class _NavItemWidget extends ConsumerWidget {
-  final _NavItem item;
-  final bool isSelected;
-  final bool isPrimary;
-  final VoidCallback onTap;
-  final bool isDark;
-
-  const _NavItemWidget(
-      {required this.item,
-      required this.isSelected,
-      required this.isPrimary,
-      required this.onTap,
-      required this.isDark});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final inactiveColor =
-        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-
-    // The primary (AI) tab is a solid raised block that sits above the
-    // rest of the row instead of matching their pill highlight — it is
-    // meant to be found by shape alone, not just by color when active.
-    if (isPrimary) {
-      final tenantLogoUrl = ref.watch(tenantIdentityProvider).logoUrl;
-      return Semantics(
-        button: true,
-        label: 'AI assistant',
-        selected: isSelected,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
-            child: Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.topCenter,
-              children: [
-                Positioned(
-                  top: -14,
-                  child: BreathingGlow(
-                      radius: 18,
-                      child: AnimatedContainer(
-                        duration: DesignAnimation.fast,
-                        curve: DesignAnimation.smooth,
-                        width: 54,
-                        height: 54,
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? DesignColors.accent
-                              : (isDark
-                                  ? DesignColors.darkSurfaceElevated
-                                  : Colors.white),
-                          borderRadius: BorderRadius.circular(27),
-                          border: isSelected
-                              ? null
-                              : Border.all(
-                                  color: isDark
-                                      ? DesignColors.darkBorder
-                                      : DesignColors.surfaceBorder,
-                                  width: 1.2,
-                                ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: DesignColors.accent
-                                  .withValues(alpha: isSelected ? 0.35 : 0.0),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
-                            ),
-                            if (!isDark && !isSelected)
-                              const BoxShadow(
-                                color: Color(0x228A6B45),
-                                blurRadius: 14,
-                                offset: Offset(0, 5),
-                              ),
-                          ],
-                        ),
-                        child: Center(
-                          child: AxonAiIcon(
-                            tenantLogoUrl: tenantLogoUrl,
-                            size: 28,
-                          ),
-                        ),
-                      )),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              GlowOnSelect(
-                selected: isSelected,
-                radius: 16,
-                child: AnimatedContainer(
-                  duration: DesignAnimation.normal,
-                  curve: Curves.easeOutBack,
-                  width: isSelected ? 54 : 38,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color:
-                        isSelected ? DesignColors.accent : Colors.transparent,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Center(
-                    child: SpringIcon(
-                      icon: isSelected ? item.activeIcon : item.icon,
-                      color: isSelected ? Colors.white : inactiveColor,
-                      size: 21,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 3),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: AnimatedDefaultTextStyle(
-                  duration: DesignAnimation.fast,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                    color: isSelected ? DesignColors.accent : inactiveColor,
-                  ),
-                  child: Text(item.label),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// "Update ready" chip in the desktop top bar. Opens the update window.
