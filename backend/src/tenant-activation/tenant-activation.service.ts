@@ -12,8 +12,15 @@ import { publicApiBase } from '../common/public-api-url';
 import { PaystackService } from '../ai-billing/paystack.service';
 import { ReferralsService } from '../referrals/referrals.service';
 
-export const AXON_STARTUP_FEE_KES = 35000;
+/**
+ * One-time setup fee, per the owner-approved terms (2026-11-04). It was
+ * KES 35,000 before; shops that already paid keep that amount on record.
+ */
+export const AXON_STARTUP_FEE_KES = 125000;
 const ACTIVATION_PRODUCT = 'axon_startup_activation';
+/** Attempts opened at an older price, or paid with a different amount, wait here. */
+const NEEDS_REVIEW = 'NEEDS_REVIEW';
+const SUPERSEDED = 'SUPERSEDED';
 
 @Injectable()
 export class TenantActivationService {
@@ -52,11 +59,28 @@ export class TenantActivationService {
     if (!tenant) throw new NotFoundException('Company not found');
     if (tenant.activationStatus === 'ACTIVE') return this.getStatus(tenantId);
 
-    const key = idempotencyKey?.trim() || `legacy:${userId}`;
+    let key = idempotencyKey?.trim() || `legacy:${userId}`;
     const prior = await this.prisma.tenantActivationAttempt.findUnique({
       where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } },
     });
-    if (prior) return this.formatStatus(tenant, prior);
+    if (prior) {
+      // An unpaid checkout opened at an older price must not be reused at the
+      // new one: close it and open a fresh attempt. A paid or held attempt is
+      // never touched.
+      const unpaid = ['INITIALIZED', 'PENDING', 'FAILED'].includes(prior.status);
+      if (!unpaid || Number(prior.amount ?? AXON_STARTUP_FEE_KES) === AXON_STARTUP_FEE_KES) {
+        return this.formatStatus(tenant, prior);
+      }
+      await this.prisma.tenantActivationAttempt.update({
+        where: { id: prior.id },
+        data: { status: SUPERSEDED, authorizationUrl: null },
+      });
+      key = `${key}:${AXON_STARTUP_FEE_KES}`;
+      const renewed = await this.prisma.tenantActivationAttempt.findUnique({
+        where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } },
+      });
+      if (renewed) return this.formatStatus(tenant, renewed);
+    }
 
     const reference = `AXON-${tenant.id.slice(0, 8).toUpperCase()}-${randomUUID()}`;
     let attempt: any;
@@ -121,11 +145,26 @@ export class TenantActivationService {
 
   private async activateFromCharge(reference: string, charge: any) {
     if (charge?.status !== 'success') throw new BadRequestException('Activation payment has not completed successfully');
-    if (Number(charge.amount) !== AXON_STARTUP_FEE_KES * 100) {
-      throw new BadRequestException('Activation payment amount does not match KES 35,000');
-    }
     const attempt = await this.prisma.tenantActivationAttempt.findUnique({ where: { reference } });
     if (!attempt) throw new NotFoundException('Activation payment reference not found');
+    if (attempt.status === NEEDS_REVIEW) {
+      return this.heldStatus(attempt);
+    }
+
+    // The payment must match both what this checkout was opened for and the
+    // current setup fee. Anything else is real money that must not be lost or
+    // silently accepted: hold it for a person to review, activate nothing.
+    const quoted = Number(attempt.amount ?? AXON_STARTUP_FEE_KES);
+    if (
+      attempt.status !== 'PAID' &&
+      (Number(charge.amount) !== quoted * 100 || quoted !== AXON_STARTUP_FEE_KES)
+    ) {
+      const held = await this.prisma.tenantActivationAttempt.update({
+        where: { id: attempt.id },
+        data: { status: NEEDS_REVIEW, authorizationUrl: null, providerResponse: charge as any },
+      });
+      return this.heldStatus(held);
+    }
 
     // The webhook and the app's own verify call both land here for the same
     // payment. The second one must not restart the trial, or any bonus days
@@ -184,10 +223,31 @@ export class TenantActivationService {
     return `${apiPrefix}/tenant-activation/paystack/callback`;
   }
 
+  /** The payment went through but needs a person to check it; nothing activates. */
+  private heldStatus(attempt: any) {
+    return {
+      status: 'PENDING',
+      amountKes: AXON_STARTUP_FEE_KES,
+      currency: 'KES',
+      attemptId: attempt?.id,
+      reference: attempt?.reference,
+      provider: attempt?.provider,
+      attemptStatus: NEEDS_REVIEW,
+      paidAt: null,
+      product: ACTIVATION_PRODUCT,
+    };
+  }
+
   private formatStatus(tenant: any, attempt: any) {
     return {
       status: tenant.activationStatus,
-      amountKes: Number(tenant.activationAmount ?? AXON_STARTUP_FEE_KES),
+      // A shop that has paid keeps the amount it paid on record (35,000 for
+      // the early shops). A shop that has not paid is quoted today's fee,
+      // whatever default was stored when its row was created.
+      amountKes:
+        tenant.activationStatus === 'ACTIVE'
+          ? Number(tenant.activationAmount ?? AXON_STARTUP_FEE_KES)
+          : AXON_STARTUP_FEE_KES,
       currency: 'KES',
       attemptId: attempt?.id,
       reference: attempt?.reference,

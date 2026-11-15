@@ -34,6 +34,13 @@ describe("AppUpdatesService", () => {
       apkUrl: "https://downloads.example.com/app-release.apk",
       releaseNotes: "Local fallback manifest",
       publishedAt: "2026-06-02T12:00:00Z",
+      updateSources: [
+        {
+          name: "APK download",
+          priority: "primary",
+          url: "https://downloads.example.com/app-release.apk",
+        },
+      ],
     });
   });
 

@@ -5,7 +5,7 @@ describe('TenantActivationService durable attempts', () => {
   it('returns a prior attempt for the same idempotency key instead of initializing another checkout', async () => {
     const existingAttempt = {
       id: 'attempt-1', reference: 'AXON-ONE', authorizationUrl: 'https://pay.example/one',
-      status: 'PENDING', amount: 50000, provider: 'PAYSTACK', verifiedAt: null,
+      status: 'PENDING', amount: 125000, provider: 'PAYSTACK', verifiedAt: null,
     };
     const prisma: any = {
       user: { findFirst: jest.fn().mockResolvedValue({ identityVerifiedAt: new Date() }) },
@@ -25,8 +25,8 @@ describe('TenantActivationService durable attempts', () => {
   });
 
   describe('confirming the activation payment', () => {
-    const build = (attemptStatus: string) => {
-      const attempt: any = { id: 'attempt-1', tenantId: 'tenant-1', reference: 'AXON-ONE', status: attemptStatus, provider: 'PAYSTACK' };
+    const build = (attemptStatus: string, quoted = 125000, paidAmountKes = 125000) => {
+      const attempt: any = { id: 'attempt-1', tenantId: 'tenant-1', reference: 'AXON-ONE', status: attemptStatus, provider: 'PAYSTACK', amount: quoted };
       const prisma: any = {
         tenant: {
           findUnique: jest.fn().mockResolvedValue({ activationStatus: 'ACTIVE', activationAmount: 35000, activationPaidAt: new Date() }),
@@ -38,7 +38,7 @@ describe('TenantActivationService durable attempts', () => {
           update: jest.fn().mockResolvedValue({ ...attempt, status: 'PAID' }),
         },
       };
-      const paystack = { verifyTransaction: jest.fn().mockResolvedValue({ status: 'success', amount: 3_500_000 }) };
+      const paystack = { verifyTransaction: jest.fn().mockResolvedValue({ status: 'success', amount: paidAmountKes * 100 }) };
       const referrals = { onActivated: jest.fn().mockResolvedValue(undefined) };
       const service = new TenantActivationService(prisma, paystack as any, {} as ConfigService, referrals as any);
       return { service, prisma, referrals };
@@ -58,6 +58,92 @@ describe('TenantActivationService durable attempts', () => {
       await service.verify('tenant-1', 'AXON-ONE');
       expect(prisma.tenant.update).not.toHaveBeenCalled();
       expect(referrals.onActivated).not.toHaveBeenCalled();
+    });
+
+    it('holds a checkout opened at the old KES 35,000 price instead of activating', async () => {
+      const { service, prisma, referrals } = build('PENDING', 35000, 35000);
+      const result: any = await service.verify('tenant-1', 'AXON-ONE');
+      expect(prisma.tenantActivationAttempt.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'NEEDS_REVIEW', authorizationUrl: null }) }),
+      );
+      expect(prisma.tenant.update).not.toHaveBeenCalled();
+      expect(referrals.onActivated).not.toHaveBeenCalled();
+      expect(result.attemptStatus).toBe('NEEDS_REVIEW');
+      expect(result.status).toBe('PENDING');
+    });
+
+    it('holds a payment whose amount is not what the checkout was opened for', async () => {
+      const { service, prisma } = build('PENDING', 125000, 80000);
+      const result: any = await service.verify('tenant-1', 'AXON-ONE');
+      expect(prisma.tenant.update).not.toHaveBeenCalled();
+      expect(result.attemptStatus).toBe('NEEDS_REVIEW');
+    });
+
+    it('does not re-check a payment that is already on hold', async () => {
+      const { service, prisma } = build('NEEDS_REVIEW');
+      const result: any = await service.verify('tenant-1', 'AXON-ONE');
+      expect(prisma.tenantActivationAttempt.update).not.toHaveBeenCalled();
+      expect(prisma.tenant.update).not.toHaveBeenCalled();
+      expect(result.attemptStatus).toBe('NEEDS_REVIEW');
+    });
+
+    it('activates at KES 125,000 and records that amount', async () => {
+      const { service, prisma } = build('PENDING');
+      await service.verify('tenant-1', 'AXON-ONE');
+      expect(prisma.tenant.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ activationAmount: 125000 }) }),
+      );
+    });
+  });
+
+  describe('quoting the setup fee', () => {
+    const buildInit = (priorAmount: number | null) => {
+      const prior = priorAmount == null ? null : {
+        id: 'old-attempt', reference: 'AXON-OLD', authorizationUrl: 'https://pay.example/old',
+        status: 'PENDING', amount: priorAmount, provider: 'PAYSTACK', verifiedAt: null,
+      };
+      const prisma: any = {
+        user: { findFirst: jest.fn().mockResolvedValue({ id: 'user-1' }) },
+        tenant: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'tenant-1', name: 'Acme', activationStatus: 'PENDING', activationAmount: 35000,
+          }),
+        },
+        tenantActivationAttempt: {
+          findUnique: jest.fn()
+            .mockResolvedValueOnce(prior)
+            .mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'new-attempt' }),
+          update: jest.fn().mockResolvedValue({
+            id: 'new-attempt', reference: 'AXON-NEW', status: 'PENDING', amount: 125000,
+            provider: 'PAYSTACK', authorizationUrl: 'https://pay.example/new',
+          }),
+        },
+      };
+      const paystack = {
+        initializeTransaction: jest.fn().mockResolvedValue({ authorizationUrl: 'https://pay.example/new' }),
+      };
+      const config = { get: jest.fn().mockReturnValue(undefined) } as unknown as ConfigService;
+      return { service: new TenantActivationService(prisma, paystack as any, config), prisma, paystack };
+    };
+
+    it('quotes a shop that has not paid KES 125,000 even if its row still holds the old default', async () => {
+      const { service, paystack } = buildInit(null);
+      const result: any = await service.initialize('tenant-1', 'user-1', 'o@x.test', 'k1');
+      expect(paystack.initializeTransaction).toHaveBeenCalledWith(expect.objectContaining({ amountKes: 125000 }));
+      expect(result.amountKes).toBe(125000);
+    });
+
+    it('closes an unpaid checkout opened at 35,000 and opens a new one at 125,000', async () => {
+      const { service, prisma, paystack } = buildInit(35000);
+      await service.initialize('tenant-1', 'user-1', 'o@x.test', 'k1');
+      expect(prisma.tenantActivationAttempt.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'old-attempt' }, data: expect.objectContaining({ status: 'SUPERSEDED' }) }),
+      );
+      expect(prisma.tenantActivationAttempt.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ amount: 125000, idempotencyKey: 'k1:125000' }) }),
+      );
+      expect(paystack.initializeTransaction).toHaveBeenCalledWith(expect.objectContaining({ amountKes: 125000 }));
     });
   });
 });

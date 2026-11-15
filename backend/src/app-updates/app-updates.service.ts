@@ -29,7 +29,7 @@ const defaultAndroidReleaseNotes = `What's new in this release
 - Checkout: clearer cart totals and a cleaner payment experience, including M-Pesa in split payments with STK confirmation.
 - Customers: faster customer search and a clearer add-customer form with credit-sale details and due-date validation.
 - Reports: payment and inventory reports now reflow cleanly on phones and handle numeric data consistently.
-- Subscription: activation is KES 35,000, followed by a seven-day trial and monthly billing after the trial.
+- Subscription: setup is KES 125,000 once, followed by a seven-day trial and monthly billing after the trial.
 - Updates: release notes now show the actual recent changes, and installing an update requires a fresh sign-in.
 `.trim();
 
