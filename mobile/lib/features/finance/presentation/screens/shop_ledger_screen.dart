@@ -2,16 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../domain/collections_ledger.dart';
 import '../../domain/finance_models.dart';
+import '../desktop/desktop_shop_ledger_view.dart';
 import '../providers/finance_hub_controller.dart';
 import '../widgets/shop_installment_sheet.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../statements/presentation/widgets/send_statement_button.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// Everything one other shop owes us and has paid back: the running balance,
 /// each debt with its progress, and a dated list of every instalment received.
@@ -32,6 +35,41 @@ class ShopLedgerScreen extends ConsumerWidget {
       for (final d in snapshot.peerDebtors) {
         if (d.id == shopId) shop = d;
       }
+    }
+    if (context.inDesktopShell) {
+      ShopStatement? statement;
+      if (snapshot != null && shop != null) {
+        statement = shopStatement(snapshot, shop);
+      }
+      return Scaffold(
+        body: DesktopShopLedgerView(
+          title: shop?.name ?? 'Shop account',
+          statement: statement,
+          instalments: statement == null
+              ? const <CollectionEntry>[]
+              : mergeInstalments(statement.collections),
+          canRecord: canManageReceivables,
+          loading: snapshot == null && hub.isRefreshing,
+          errorMessage: snapshot == null
+              ? (hub.errorMessage ?? 'Refresh Finance and try again.')
+              : null,
+          notFound: snapshot != null && shop == null,
+          onRetry: hub.canRetry ? controller.refresh : null,
+          onRefresh: controller.refresh,
+          onBack: () => Navigator.of(context).maybePop(),
+          onRecord: statement == null || snapshot == null
+              ? null
+              : () => _record(context, statement!, snapshot.branchId,
+                  controller),
+          statementAction: shop == null
+              ? null
+              : SendStatementButton(
+                  debtorId: shop.id,
+                  name: shop.name,
+                  phone: shop.phone,
+                ),
+        ),
+      );
     }
     if (snapshot == null) {
       return Scaffold(
@@ -80,7 +118,7 @@ class ShopLedgerScreen extends ConsumerWidget {
               ),
             )
           : null,
-      body: RefreshIndicator(
+      body: DesktopRefresh(
         onRefresh: controller.refresh,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(

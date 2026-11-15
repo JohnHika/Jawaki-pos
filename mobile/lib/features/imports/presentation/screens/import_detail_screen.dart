@@ -18,6 +18,8 @@ import '../desktop/desktop_import_detail_view.dart';
 import '../../domain/import_models.dart';
 import '../providers/imports_provider.dart';
 import 'imports_screen.dart' show importStatusColor;
+import '../../../../core/desktop/adaptive_sheet.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// One container: the goods, every cost on top, what each item really costs
 /// to land, and who in a shared container owes what.
@@ -75,7 +77,7 @@ class _ImportDetailScreenState extends ConsumerState<ImportDetailScreen> {
         ),
       );
     }
-    return showModalBottomSheet<T>(
+    return showAdaptiveModalSheet<T>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
@@ -274,7 +276,7 @@ class _ImportDetailScreenState extends ConsumerState<ImportDetailScreen> {
     final color = importStatusColor(d.status);
     final editable = d.isOpen && canManage;
 
-    return RefreshIndicator(
+    return DesktopRefresh(
       onRefresh: () async => _refresh(),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(

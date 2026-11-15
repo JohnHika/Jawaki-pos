@@ -11,6 +11,9 @@ import '../../../../core/widgets/business_layout_preview.dart';
 import '../../../../core/widgets/business_layout_profile_picker.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/widgets/modal_disposal.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../desktop/desktop_sub_page.dart';
 
 class BusinessLayoutScreen extends ConsumerStatefulWidget {
   const BusinessLayoutScreen({super.key});
@@ -153,15 +156,14 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
       return businessLayoutProfileMatchesSearch(preset, profileQuery);
     }).toList(growable: false);
 
-    return Scaffold(
-      appBar: const BrandedAppBar(title: 'Layout actions'),
-      body: SafeArea(
-        top: false,
-        child: Column(
+    final desktop = context.inDesktopShell;
+    final layoutBody = Column(
           children: [
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+                padding: desktop
+                    ? const EdgeInsets.symmetric(vertical: 16)
+                    : const EdgeInsets.fromLTRB(18, 12, 18, 24),
                 children: [
                   Text(
                     'Make Counterbase fit the way your shop works.',
@@ -1462,17 +1464,30 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                   label: Text(_saving ? 'Saving layout…' : 'Save shop layout'),
                   style: FilledButton.styleFrom(
                     backgroundColor: DesignColors.accent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    foregroundColor:
+                        desktop ? const Color(0xFF1C1917) : Colors.white,
+                    padding: EdgeInsets.symmetric(vertical: desktop ? 12 : 16),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
+                        borderRadius: BorderRadius.circular(desktop ? 8 : 16)),
                   ),
                 ),
               ),
             ),
           ],
+        );
+    if (desktop) {
+      return Scaffold(
+        body: DesktopSubPage(
+          title: 'Layout actions',
+          subtitle: 'Make Counterbase fit the way your shop works',
+          maxWidth: 1000,
+          child: layoutBody,
         ),
-      ),
+      );
+    }
+    return Scaffold(
+      appBar: const BrandedAppBar(title: 'Layout actions'),
+      body: SafeArea(top: false, child: layoutBody),
     );
   }
 
@@ -1732,7 +1747,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
       additionalProfileIds: _additionalProfileIds,
       priorityPaths: _priorityPaths,
     );
-    final result = await showModalBottomSheet<List<String>>(
+    final result = await showAdaptiveModalSheet<List<String>>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,

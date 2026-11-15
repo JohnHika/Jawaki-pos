@@ -22,6 +22,7 @@ import '../../../sales/presentation/providers/catalog_provider.dart'
     as catalog_cache;
 import '../desktop/desktop_inventory_tabs.dart';
 import '../desktop/desktop_receive_document.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 /// One product in a delivery.
 class _Line {
@@ -135,7 +136,7 @@ class _ReceiveStockScreenState extends ConsumerState<ReceiveStockScreen> {
         builder: (_) => _ProductPickerSheet(desktop: true, initialQuery: query),
       );
     } else {
-      product = await showModalBottomSheet<Product>(
+      product = await showAdaptiveModalSheet<Product>(
         context: context,
         useRootNavigator: true,
         isScrollControlled: true,

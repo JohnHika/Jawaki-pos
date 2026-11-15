@@ -33,6 +33,7 @@ import '../desktop/desktop_inventory_tabs.dart';
 import '../desktop/desktop_stock_view.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../../core/widgets/modal_disposal.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key});
@@ -1760,7 +1761,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             .where((item) => ((item['stock'] as num?)?.toDouble() ?? 0) > 0)
             .toList();
 
-        return RefreshIndicator(
+        return DesktopRefresh(
           onRefresh: _loadTransfers,
           child: ListView(
             padding: const EdgeInsets.fromLTRB(

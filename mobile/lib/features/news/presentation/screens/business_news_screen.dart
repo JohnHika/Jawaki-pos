@@ -11,6 +11,7 @@ import '../../domain/news_models.dart';
 import '../desktop/desktop_news_page.dart';
 import '../providers/news_provider.dart';
 import 'business_news_article_screen.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// What is happening in the country that can touch a trader's money: customs
 /// and tax changes, import rules, the dollar, county notices, fuel prices.
@@ -68,7 +69,7 @@ class _BusinessNewsScreenState extends ConsumerState<BusinessNewsScreen> {
             .actionLabel('/news', 'Business News'),
         showBackButton: GoRouter.of(context).canPop(),
       ),
-      body: RefreshIndicator(
+      body: DesktopRefresh(
         onRefresh: _refresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),

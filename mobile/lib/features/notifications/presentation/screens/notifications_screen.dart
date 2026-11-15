@@ -9,6 +9,7 @@ import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../domain/app_notification.dart';
 import '../desktop/desktop_notifications_page.dart';
 import '../providers/notifications_provider.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// The notification inbox: everything the app told the user (partner
 /// requests and messages, stock decisions, reminders), newest first, with
@@ -35,7 +36,7 @@ class NotificationsScreen extends ConsumerWidget {
             ),
         ],
       ),
-      body: RefreshIndicator(
+      body: DesktopRefresh(
         onRefresh: controller.refresh,
         child: _body(context, ref, inbox, controller),
       ),

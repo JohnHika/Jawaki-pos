@@ -141,7 +141,7 @@ const kPolicyDocuments = <PolicyDocument>[
         'Activation, trial, monthly prices, invoice payment, and refund requests.',
     sections: [
       PolicySection('Activation and trial',
-          'The one-time workspace activation payment is KES 35,000. After activation, the workspace receives a seven-day trial. Choosing a plan records which service tier continues after the trial; the app displays the plan price before you confirm.'),
+          'The one-time workspace activation payment is KES 125,000. After activation, the workspace receives a seven-day trial. Choosing a plan records which service tier continues after the trial; the app displays the plan price before you confirm.'),
       PolicySection('Monthly plan prices',
           'Current monthly prices are Core — KES 3,000; Business — KES 5,000; and Enterprise — KES 9,999. Prices are in Kenyan shillings. The invoice shows the selected plan, amount, and billing period. We will show any changed price before it applies to a future billing period.'),
       PolicySection('Invoice payment',
@@ -184,7 +184,7 @@ const kPolicyDocuments = <PolicyDocument>[
         'Terms for routing shop M-Pesa sales through secure checkout to your bank.',
     sections: [
       PolicySection('Separate from your Counterbase plan',
-          'Product-sale payments belong to your shop and are separate from the KES 35,000 Counterbase activation fee and the monthly Counterbase subscription. Connecting a payout account does not pay or change your Counterbase plan.'),
+          'Product-sale payments belong to your shop and are separate from the KES 125,000 Counterbase activation fee and the monthly Counterbase subscription. Connecting a payout account does not pay or change your Counterbase plan.'),
       PolicySection('Your payout account',
           'An authorized owner must select a supported Kenyan bank, enter the business account number, and confirm that the account belongs to the business. The full account number is sent to the payment partner to create a merchant subaccount. Counterbase stores the subaccount code, bank and account name when returned, and the last four digits only. Never enter a bank password, M-Pesa PIN, or OTP.'),
       PolicySection('Payment processing and settlement',

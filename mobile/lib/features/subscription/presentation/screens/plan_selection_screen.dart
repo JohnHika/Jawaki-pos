@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/legal/policy_catalog.dart';
@@ -10,13 +11,15 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/legal_link.dart';
 import '../../../../core/widgets/motion.dart';
+import '../../../licence/domain/setup_pricing.dart';
 import '../../domain/subscription_plans.dart';
+import '../desktop/desktop_plan_selection_view.dart';
 
 /// One-time setup fee (KES) charged during onboarding, before the 7-day
 /// trial starts. Mirrors the backend onboarding fee — change both together.
-const double _setupFeeKes = 35000;
+final double _setupFeeKes = kSetupFeeKes.toDouble();
 
-/// "KSh 35,000" — [formatKes] digits with the KSh prefix used in prose copy.
+/// "KSh 125,000" — [formatKes] digits with the KSh prefix used in prose copy.
 String _setupFeeKsh() => formatKes(_setupFeeKes).replaceFirst('KES ', 'KSh ');
 
 class PlanSelectionScreen extends ConsumerStatefulWidget {
@@ -104,8 +107,40 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
     return 'Something went wrong. Please try again.';
   }
 
+  /// This page sits outside the desktop shell, so it checks the window itself.
+  Widget _buildDesktop() {
+    return DesktopPlanSelectionView(
+      companyName: widget.companyName,
+      selectedPlanId: _selectedPlanId,
+      onSelectPlan: (id) => setState(() {
+        if (_selectedPlanId != id) _acceptedBillingTerms = false;
+        _selectedPlanId = id;
+      }),
+      acceptedTerms: _acceptedBillingTerms,
+      onAcceptTerms: (value) => setState(() => _acceptedBillingTerms = value),
+      termsLabel: const TermsConsentText(
+        before: 'I agree to the subscription, billing and refund ',
+        linkText: 'terms',
+        after: ' for the plan shown.',
+        route: '/legal/billing',
+      ),
+      termsLink: const LegalLinkText(
+        text: 'Read subscription and billing terms',
+        route: '/legal/billing',
+      ),
+      setupFeeLabel: _setupFeeKsh(),
+      submitting: _isSubmitting,
+      error: _error,
+      onContinue:
+          _selectedPlanId != null && _acceptedBillingTerms && !_isSubmitting
+              ? _continueWithPlan
+              : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (DesktopLayout.wantsShell(context)) return _buildDesktop();
     return Theme(
       data: Theme.of(context).copyWith(
         splashFactory: InkRipple.splashFactory,
@@ -195,7 +230,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'The KSh 35,000 activation payment is complete. Your first 7 days are free; monthly billing begins when the trial ends.',
+                    'The KSh 125,000 activation payment is complete. Your first 7 days are free; monthly billing begins when the trial ends.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: context.themed(DesignColors.darkTextTertiary),

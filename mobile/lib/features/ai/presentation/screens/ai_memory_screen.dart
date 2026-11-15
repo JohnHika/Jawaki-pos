@@ -8,6 +8,8 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 const _memoryTypes = ['fact', 'preference', 'customer', 'policy'];
 const _memoryTypeLabels = {
@@ -60,7 +62,7 @@ class _AiMemoryScreenState extends State<AiMemoryScreen> {
   }
 
   Future<void> _addMemory() async {
-    final result = await showModalBottomSheet<bool>(
+    final result = await showAdaptiveModalSheet<bool>(
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,
@@ -152,7 +154,7 @@ class _AiMemoryScreenState extends State<AiMemoryScreen> {
     }
     return Scaffold(
       appBar: const BrandedAppBar(title: 'Workspace Memory'),
-      body: RefreshIndicator(
+      body: DesktopRefresh(
         onRefresh: _load,
         child: _buildBody(isDark),
       ),

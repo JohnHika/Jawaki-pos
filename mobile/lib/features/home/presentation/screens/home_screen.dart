@@ -25,6 +25,7 @@ import '../desktop/desktop_command_palette.dart';
 import '../desktop/desktop_nav.dart';
 import '../desktop/desktop_shell.dart';
 import 'home_nav_keys.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   final Widget child;
@@ -403,7 +404,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _isMoreSheetOpen = true;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-    showModalBottomSheet(
+    showAdaptiveModalSheet(
       useRootNavigator: true,
       context: context,
       backgroundColor: Colors.transparent,

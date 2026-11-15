@@ -7,6 +7,7 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../catalog/presentation/widgets/add_edit_product_sheet.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 typedef OnboardingLoader = Future<Map<String, dynamic>> Function();
 typedef OnboardingUpdater = Future<Map<String, dynamic>> Function(
@@ -281,7 +282,7 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
     return Scaffold(
       backgroundColor: context.themed(DesignColors.darkBg),
       body: SafeArea(
-        child: RefreshIndicator(
+        child: DesktopRefresh(
           onRefresh: _loadOnboarding,
           child: ListView(
             padding: const EdgeInsets.fromLTRB(DesignSpacing.xl,

@@ -3,11 +3,12 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../../domain/cash_tender.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 /// Asks the cashier how much cash the customer handed over and shows the change
 /// to give back. Resolves to the amount received, or null if cancelled.
 Future<double?> showCashTenderSheet(BuildContext context, {required double total}) {
-  return showModalBottomSheet<double>(
+  return showAdaptiveModalSheet<double>(
     useRootNavigator: true,
     context: context,
     isScrollControlled: true,

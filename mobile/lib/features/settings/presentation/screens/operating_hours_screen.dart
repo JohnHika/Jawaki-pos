@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
+import '../desktop/desktop_operating_hours_view.dart';
+import '../desktop/desktop_sub_page.dart';
 
 /// Per-branch operating hours editor. The user controls, for each day of the
 /// week, whether the shop is open, its open/close times, and an optional
@@ -105,8 +108,10 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
         throw Exception('No branch selected');
       }
       final branch = await _api.getBranch(_branchId);
-      final settings = (branch['settings'] as Map?)?.cast<String, dynamic>() ?? {};
-      final hours = (settings['operatingHours'] as Map?)?.cast<String, dynamic>();
+      final settings =
+          (branch['settings'] as Map?)?.cast<String, dynamic>() ?? {};
+      final hours =
+          (settings['operatingHours'] as Map?)?.cast<String, dynamic>();
       final daysJson = (hours?['days'] as Map?)?.cast<String, dynamic>() ?? {};
 
       _weekStartDay = _dayKeys.contains(hours?['weekStartDay'])
@@ -114,7 +119,8 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
           : 'mon';
       for (final key in _dayKeys) {
         _days[key] = hours != null
-            ? _DayHours.fromJson((daysJson[key] as Map?)?.cast<String, dynamic>())
+            ? _DayHours.fromJson(
+                (daysJson[key] as Map?)?.cast<String, dynamic>())
             : _DayHours.defaults();
       }
     } catch (e) {
@@ -188,6 +194,8 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
     final secondary =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
 
+    if (context.inDesktopShell) return _buildDesktop(context);
+
     return Scaffold(
       appBar: const BrandedAppBar(title: 'Operating Hours'),
       body: _loading
@@ -206,88 +214,157 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
                     ),
                   ),
                 )
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              children: [
-                StaggeredItem(
-                  itemKey: 'hours-intro',
-                  index: 0,
-                  child: Text(
-                    'Set when this branch is open. The assistant uses these hours '
-                    'to know your trading window each day.',
-                    style: TextStyle(color: secondary, fontSize: 13, height: 1.4),
-                  ),
-                ),
-                const SizedBox(height: DesignSpacing.lg),
-                const SettingsGroupLabel('Week starts on'),
-                StaggeredItem(
-                  itemKey: 'hours-weekstart',
-                  index: 1,
-                  child: GroupedCard(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(DesignSpacing.md),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: Wrap(
-                          spacing: DesignSpacing.sm,
-                          runSpacing: DesignSpacing.sm,
-                          children: _dayKeys.map((key) {
-                            final selected = _weekStartDay == key;
-                            // Full-height (>=44px) tap target + ink ripple.
-                            return ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                minHeight: DesignSpacing.xl + 24,
-                              ),
-                              child: ChoiceChip(
-                                label: Text(_dayLabels[key]!.substring(0, 3)),
-                                selected: selected,
-                                onSelected: (_) =>
-                                    setState(() => _weekStartDay = key),
-                                selectedColor: isDark
-                                    ? DesignColors.accent.withValues(alpha: 0.2)
-                                    : DesignColors.peach,
-                                labelStyle: TextStyle(
-                                  color: selected
-                                      ? DesignColors.accentDark
-                                      : (isDark
-                                          ? DesignColors.darkTextPrimary
-                                          : DesignColors.textPrimary),
-                                  fontWeight:
-                                      selected ? FontWeight.w700 : FontWeight.w500,
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        )),
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  children: [
+                    StaggeredItem(
+                      itemKey: 'hours-intro',
+                      index: 0,
+                      child: Text(
+                        'Set when this branch is open. The assistant uses these hours '
+                        'to know your trading window each day.',
+                        style: TextStyle(
+                            color: secondary, fontSize: 13, height: 1.4),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: DesignSpacing.lg),
+                    const SettingsGroupLabel('Week starts on'),
+                    StaggeredItem(
+                      itemKey: 'hours-weekstart',
+                      index: 1,
+                      child: GroupedCard(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(DesignSpacing.md),
+                            child: SizedBox(
+                                width: double.infinity,
+                                child: Wrap(
+                                  spacing: DesignSpacing.sm,
+                                  runSpacing: DesignSpacing.sm,
+                                  children: _dayKeys.map((key) {
+                                    final selected = _weekStartDay == key;
+                                    // Full-height (>=44px) tap target + ink ripple.
+                                    return ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                        minHeight: DesignSpacing.xl + 24,
+                                      ),
+                                      child: ChoiceChip(
+                                        label: Text(
+                                            _dayLabels[key]!.substring(0, 3)),
+                                        selected: selected,
+                                        onSelected: (_) =>
+                                            setState(() => _weekStartDay = key),
+                                        selectedColor: isDark
+                                            ? DesignColors.accent
+                                                .withValues(alpha: 0.2)
+                                            : DesignColors.peach,
+                                        labelStyle: TextStyle(
+                                          color: selected
+                                              ? DesignColors.accentDark
+                                              : (isDark
+                                                  ? DesignColors.darkTextPrimary
+                                                  : DesignColors.textPrimary),
+                                          fontWeight: selected
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                )),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: DesignSpacing.lg),
+                    const SettingsGroupLabel('Daily hours'),
+                    StaggeredItem(
+                      itemKey: 'hours-days',
+                      index: 2,
+                      child: GroupedCard(
+                        children: [
+                          for (final key in _dayKeys)
+                            _buildDayRow(key, isDark, secondary),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: DesignSpacing.xxl),
+                    StaggeredItem(
+                      itemKey: 'hours-save',
+                      index: 3,
+                      child: SettingsPrimaryButton(
+                        label: 'Save hours',
+                        isLoading: _saving,
+                        onPressed: _save,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: DesignSpacing.lg),
-                const SettingsGroupLabel('Daily hours'),
-                StaggeredItem(
-                  itemKey: 'hours-days',
-                  index: 2,
-                  child: GroupedCard(
-                    children: [
-                      for (final key in _dayKeys)
-                        _buildDayRow(key, isDark, secondary),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: DesignSpacing.xxl),
-                StaggeredItem(
-                  itemKey: 'hours-save',
-                  index: 3,
-                  child: SettingsPrimaryButton(
-                    label: 'Save hours',
-                    isLoading: _saving,
-                    onPressed: _save,
-                  ),
-                ),
-              ],
+    );
+  }
+
+  Widget _buildDesktop(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (_loadError != null) {
+      return Scaffold(
+        body: DesktopSubPage(
+          title: 'Operating hours',
+          child: Center(
+            child: EmptyState(
+              icon: Icons.error_outline_rounded,
+              title: 'Could not load operating hours',
+              subtitle: _loadError,
+              iconColor: DesignColors.error,
+              actionLabel: 'Retry',
+              onAction: _load,
             ),
+          ),
+        ),
+      );
+    }
+    return Scaffold(
+      body: DesktopOperatingHoursView(
+        days: [
+          for (final key in _dayKeys)
+            DesktopHoursDay(
+              key: key,
+              label: _dayLabels[key]!,
+              closed: _days[key]!.closed,
+              open: _days[key]!.open,
+              close: _days[key]!.close,
+              hasBreak: _days[key]!.hasBreak,
+              breakStart: _days[key]!.breakStart,
+              breakEnd: _days[key]!.breakEnd,
+            ),
+        ],
+        weekStartDay: _weekStartDay,
+        weekStartOptions: [
+          for (final key in _dayKeys) (key, _dayLabels[key]!.substring(0, 3)),
+        ],
+        saving: _saving,
+        onWeekStart: (key) => setState(() => _weekStartDay = key),
+        onOpenChanged: (key, open) =>
+            setState(() => _days[key]!.closed = !open),
+        onBreakChanged: (key, value) =>
+            setState(() => _days[key]!.hasBreak = value),
+        onPickTime: (key, field) {
+          final day = _days[key]!;
+          switch (field) {
+            case DesktopHoursField.open:
+              _pickTime(day.open, (v) => setState(() => day.open = v));
+            case DesktopHoursField.close:
+              _pickTime(day.close, (v) => setState(() => day.close = v));
+            case DesktopHoursField.breakStart:
+              _pickTime(
+                  day.breakStart, (v) => setState(() => day.breakStart = v));
+            case DesktopHoursField.breakEnd:
+              _pickTime(day.breakEnd, (v) => setState(() => day.breakEnd = v));
+          }
+        },
+        onSave: _save,
+      ),
     );
   }
 
@@ -335,11 +412,19 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
             const SizedBox(height: DesignSpacing.xs),
             Row(
               children: [
-                _timeChip('Opens', day.open,
-                    () => _pickTime(day.open, (v) => setState(() => day.open = v)), isDark),
+                _timeChip(
+                    'Opens',
+                    day.open,
+                    () => _pickTime(
+                        day.open, (v) => setState(() => day.open = v)),
+                    isDark),
                 const SizedBox(width: DesignSpacing.sm),
-                _timeChip('Closes', day.close,
-                    () => _pickTime(day.close, (v) => setState(() => day.close = v)), isDark),
+                _timeChip(
+                    'Closes',
+                    day.close,
+                    () => _pickTime(
+                        day.close, (v) => setState(() => day.close = v)),
+                    isDark),
               ],
             ),
             const SizedBox(height: DesignSpacing.xs),
@@ -359,8 +444,7 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
                               setState(() => day.hasBreak = v ?? false),
                         ),
                         Text('Midday break',
-                            style:
-                                TextStyle(color: secondary, fontSize: 13)),
+                            style: TextStyle(color: secondary, fontSize: 13)),
                       ],
                     ),
                   ),
@@ -373,11 +457,19 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
                     left: DesignSpacing.sm, bottom: DesignSpacing.xs),
                 child: Row(
                   children: [
-                    _timeChip('Break from', day.breakStart,
-                        () => _pickTime(day.breakStart, (v) => setState(() => day.breakStart = v)), isDark),
+                    _timeChip(
+                        'Break from',
+                        day.breakStart,
+                        () => _pickTime(day.breakStart,
+                            (v) => setState(() => day.breakStart = v)),
+                        isDark),
                     const SizedBox(width: DesignSpacing.sm),
-                    _timeChip('to', day.breakEnd,
-                        () => _pickTime(day.breakEnd, (v) => setState(() => day.breakEnd = v)), isDark),
+                    _timeChip(
+                        'to',
+                        day.breakEnd,
+                        () => _pickTime(day.breakEnd,
+                            (v) => setState(() => day.breakEnd = v)),
+                        isDark),
                   ],
                 ),
               ),
@@ -387,8 +479,10 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
     );
   }
 
-  Widget _timeChip(String label, String value, VoidCallback onTap, bool isDark) {
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+  Widget _timeChip(
+      String label, String value, VoidCallback onTap, bool isDark) {
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final textColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final secondary =
@@ -414,8 +508,7 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: TextStyle(color: secondary, fontSize: 11)),
+                Text(label, style: TextStyle(color: secondary, fontSize: 11)),
                 const SizedBox(height: 2),
                 Text(
                   value,

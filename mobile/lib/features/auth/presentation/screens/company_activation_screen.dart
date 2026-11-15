@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
@@ -17,6 +18,8 @@ import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../referrals/presentation/widgets/activation_code_card.dart';
 import '../../../subscription/domain/subscription_plans.dart';
+import '../desktop/company_activation_desktop_view.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 class CompanyActivationScreen extends ConsumerStatefulWidget {
   const CompanyActivationScreen({super.key, this.companyName});
@@ -205,7 +208,7 @@ class _CompanyActivationScreenState
         return 'Secure checkout is not available on the server yet. Please contact Counterbase support before attempting payment.';
       }
       if (error.response?.statusCode == 402) {
-        return 'Complete the KSh 35,000 activation payment to continue.';
+        return 'Complete the KSh 125,000 activation payment to continue.';
       }
       return loadErrorSubtitle(error);
     }
@@ -214,7 +217,7 @@ class _CompanyActivationScreenState
       return 'Secure checkout is not available on the server yet. Please contact Counterbase support before attempting payment.';
     }
     if (text.contains('402')) {
-      return 'Complete the KSh 35,000 activation payment to continue.';
+      return 'Complete the KSh 125,000 activation payment to continue.';
     }
     if (text.contains('secure checkout link')) {
       return 'Secure checkout did not return a payment link. Please try again.';
@@ -225,11 +228,33 @@ class _CompanyActivationScreenState
     return 'We could not load the activation payment. Please try again.';
   }
 
+  /// Outside the desktop shell, so the window width decides the layout.
+  Widget _buildDesktop(bool hasCheckout) {
+    return CompanyActivationDesktopView(
+      priceLabel: 'KSh 125,000',
+      companyName: widget.companyName,
+      loading: _isLoading,
+      startingCheckout: _isStartingCheckout,
+      verifying: _isVerifying,
+      hasCheckout: hasCheckout,
+      error: _error,
+      codeCard: const ActivationCodeCard(),
+      onPay: _startCheckout,
+      onVerify: _verifyPayment,
+      onSwitchAccount: () async {
+        final router = GoRouter.of(context);
+        await getIt<AuthService>().logout();
+        router.go('/login');
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final companyName = widget.companyName?.trim();
     final reference = _status?['reference'] as String?;
     final hasCheckout = reference != null && reference.isNotEmpty;
+    if (DesktopLayout.wantsShell(context)) return _buildDesktop(hasCheckout);
 
     return Scaffold(
       backgroundColor: context.themed(DesignColors.darkBg),
@@ -237,7 +262,7 @@ class _CompanyActivationScreenState
         child: Stack(
           children: [
             _buildAmbientField(),
-            RefreshIndicator(
+            DesktopRefresh(
               color: DesignColors.brand,
               onRefresh: _loadStatus,
               child: ListView(
@@ -315,7 +340,7 @@ class _CompanyActivationScreenState
                           ? 'Opening secure checkout…'
                           : hasCheckout
                               ? 'Open payment checkout again'
-                              : 'Pay KSh 35,000 to activate',
+                              : 'Pay KSh 125,000 to activate',
                       icon: Icons.lock_rounded,
                       onPressed: _isStartingCheckout ? null : _startCheckout,
                       height: 58,
@@ -472,7 +497,7 @@ class _CompanyActivationScreenState
                 ),
               ),
               Text(
-                'KSh 35,000',
+                'KSh 125,000',
                 style: DesignType.numeric(
                   color: context.themed(DesignColors.darkTextPrimary),
                   fontWeight: FontWeight.w900,
@@ -540,7 +565,7 @@ class _CompanyActivationScreenState
           ),
           const SizedBox(height: 8),
           Text(
-            'The KSh 35,000 payment above is one-time. Choose a monthly plan '
+            'The KSh 125,000 payment above is one-time. Choose a monthly plan '
             'after activation. Your selected plan starts with a 7-day trial; '
             'monthly billing begins when the trial ends.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(

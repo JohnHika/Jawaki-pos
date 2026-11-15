@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:axon_pos/core/desktop/desktop_layout.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
 import 'package:axon_pos/features/sales/domain/recorded_payment.dart';
+import 'package:axon_pos/features/settings/presentation/desktop/desktop_recorded_rules_view.dart';
 
 /// The shop's rules for payments it records itself, such as M-Pesa paid to its
 /// own till or a bank transfer. Only the owner can change them.
@@ -73,6 +75,28 @@ class _RecordedPaymentRulesScreenState
 
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) {
+      return Scaffold(
+        body: DesktopRecordedRulesView(
+          enabled: _rules.enabled,
+          requireMessage: _rules.requireMessage,
+          isOwner: _isOwner,
+          saved: _saved,
+          limitController: _limitController,
+          tillController: _tillController,
+          onEnabledChanged: (value) => setState(() {
+            _rules = _rules.copyWith(enabled: value);
+            _saved = false;
+          }),
+          onRequireMessageChanged: (value) => setState(() {
+            _rules = _rules.copyWith(requireMessage: value);
+            _saved = false;
+          }),
+          onFieldChanged: () => setState(() => _saved = false),
+          onSave: _save,
+        ),
+      );
+    }
     final palette = SignInPalette.of(context);
     return Scaffold(
       backgroundColor: palette.page,
@@ -103,7 +127,8 @@ class _RecordedPaymentRulesScreenState
                 children: [
                   Text(
                     'Money your customers send to your own till or bank can be recorded at checkout. Counterbase cannot check it with the bank, so these payments are marked "recorded" and follow your rules.',
-                    style: TextStyle(color: palette.soft, fontSize: 14, height: 1.45),
+                    style: TextStyle(
+                        color: palette.soft, fontSize: 14, height: 1.45),
                   ),
                   const SizedBox(height: 20),
                   if (!_isOwner)
@@ -141,18 +166,22 @@ class _RecordedPaymentRulesScreenState
                       children: [
                         Text('A manager must approve above',
                             style: TextStyle(
-                                color: palette.ink, fontWeight: FontWeight.w700)),
+                                color: palette.ink,
+                                fontWeight: FontWeight.w700)),
                         const SizedBox(height: 4),
                         Text(
                           'A recorded payment over this amount needs a manager or owner PIN. Enter 0 to need one every time.',
-                          style: TextStyle(color: palette.soft, fontSize: 13, height: 1.4),
+                          style: TextStyle(
+                              color: palette.soft, fontSize: 13, height: 1.4),
                         ),
                         const SizedBox(height: 10),
                         TextField(
                           controller: _limitController,
                           enabled: _isOwner,
                           keyboardType: TextInputType.number,
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly
+                          ],
                           onChanged: (_) => setState(() => _saved = false),
                           decoration: const InputDecoration(prefixText: 'KES '),
                         ),
@@ -191,7 +220,8 @@ class _RecordedPaymentRulesScreenState
                       children: [
                         Text('Your till, paybill or phone number',
                             style: TextStyle(
-                                color: palette.ink, fontWeight: FontWeight.w700)),
+                                color: palette.ink,
+                                fontWeight: FontWeight.w700)),
                         const SizedBox(height: 4),
                         Text(
                           'Shown at checkout so customers pay the right place.',
@@ -203,7 +233,8 @@ class _RecordedPaymentRulesScreenState
                           enabled: _isOwner,
                           keyboardType: TextInputType.phone,
                           onChanged: (_) => setState(() => _saved = false),
-                          decoration: const InputDecoration(hintText: '5 123 456'),
+                          decoration:
+                              const InputDecoration(hintText: '5 123 456'),
                         ),
                       ],
                     ),
@@ -211,7 +242,8 @@ class _RecordedPaymentRulesScreenState
                   const SizedBox(height: 12),
                   Text(
                     'A code can only be recorded once. Every recorded payment saves who recorded it, who approved it and the message that was pasted. Receipts and reports always say "recorded".',
-                    style: TextStyle(color: palette.faint, fontSize: 12.5, height: 1.45),
+                    style: TextStyle(
+                        color: palette.faint, fontSize: 12.5, height: 1.45),
                   ),
                   const SizedBox(height: 20),
                   SignInButton(

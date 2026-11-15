@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../domain/billing_entitlement.dart';
 import '../providers/entitlement_provider.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 /// Returns true when [feature] is part of this company's licence. Otherwise
 /// shows the "not included in your plan" sheet and returns false, so a tap
@@ -23,7 +24,7 @@ Future<bool> ensureFeature(
 }
 
 Future<void> showFeatureLockedSheet(BuildContext context, String feature) {
-  return showModalBottomSheet<void>(
+  return showAdaptiveModalSheet<void>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,

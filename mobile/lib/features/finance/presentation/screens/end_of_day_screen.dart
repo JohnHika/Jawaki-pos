@@ -14,7 +14,12 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../desktop/desktop_end_of_day_view.dart';
+import '../desktop/desktop_figures_row.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/utils/format.dart' show formatMoney;
 import '../../../../core/widgets/modal_disposal.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 final _currencyFmt =
     NumberFormat.currency(locale: 'en_KE', symbol: 'KES ', decimalDigits: 0);
@@ -202,8 +207,16 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
   Widget build(BuildContext context) {
     final permissions = ref.watch(permissionsProvider);
     final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
+    final desktop = context.inDesktopShell;
+    void goBack() =>
+        context.canPop() ? context.pop() : context.go('/cash-flow');
 
     if (!permissions.canCloseEndOfDay) {
+      if (desktop) {
+        return Scaffold(
+          body: DesktopEndOfDayView(restricted: true, onBack: goBack),
+        );
+      }
       return const Scaffold(
         appBar: BrandedAppBar(title: 'End of Day'),
         body: EmptyState(
@@ -220,19 +233,28 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     final eodAsync = ref.watch(_eodProvider);
 
     return Scaffold(
-      appBar: BrandedAppBar(
-        title: 'End of Day',
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: () => ref.invalidate(_eodProvider),
-          ),
-        ],
-      ),
+      appBar: desktop
+          ? null
+          : BrandedAppBar(
+              title: 'End of Day',
+              actions: [
+                IconButton(
+                  tooltip: 'Refresh',
+                  icon: const Icon(Icons.refresh_rounded),
+                  onPressed: () => ref.invalidate(_eodProvider),
+                ),
+              ],
+            ),
       body: eodAsync.when(
         data: (data) {
           if (data['noBranch'] == true) {
+            if (desktop) {
+              return DesktopEndOfDayView(
+                onBack: goBack,
+                emptyTitle: 'No branch selected',
+                emptyMessage: 'Select a branch to close the day.',
+              );
+            }
             return const EmptyState(
               icon: Icons.error_outline_rounded,
               title: 'No branch selected',
@@ -258,8 +280,19 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
             localOnly: data['localOnly'] == true,
           );
         },
-        loading: () => const _EodSkeletonList(),
-        error: (e, _) => EmptyState(
+        loading: () => desktop
+            ? DesktopEndOfDayView(onBack: goBack, loading: true)
+            : const _EodSkeletonList(),
+        error: (e, _) => desktop
+            ? DesktopEndOfDayView(
+                onBack: goBack,
+                onRefresh: () => ref.invalidate(_eodProvider),
+                errorMessage: isLocalWorkspace
+                    ? 'Couldn’t read the sales records stored on this device. Check the selected shop and branch, then retry.'
+                    : apiErrorMessage(e),
+                onRetry: () => ref.invalidate(_eodProvider),
+              )
+            : EmptyState(
           icon: Icons.error_outline_rounded,
           title: "Couldn't load today's figures",
           subtitle: isLocalWorkspace
@@ -326,6 +359,239 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     final canClose = localOnly
         ? validBusinessDate && !summaryUnavailable && localCloseStatusKnown
         : closeStatusKnown && cashStatusKnown && validBusinessDate;
+
+    if (context.inDesktopShell) {
+      String money(double v) =>
+          summaryUnavailable ? 'Unavailable' : _currencyFmt.format(v);
+      String out(double v) => summaryUnavailable ? 'Unavailable' : _outflow(v);
+      final status = localOnly
+          ? !localCloseStatusKnown
+              ? 'Close status unavailable'
+              : closeNeedsReconciliation
+                  ? 'New activity since till close'
+                  : closed
+                      ? 'Day closed${_closedAtSuffix(close)}'
+                      : 'On-device sales summary'
+          : closed
+              ? 'Day closed${close['closedByName'] != null ? ' by ${close['closedByName']}' : ''}'
+                  '${_closedAtSuffix(close)}'
+              : closeStatusKnown
+                  ? 'Today is still open'
+                  : 'Close status unavailable';
+      final notices = <DesktopEodNotice>[
+        if (localOnly) ...[
+          if (summaryError != null || closeError != null)
+            DesktopEodNotice(summaryUnavailable
+                ? 'Sales saved on this device could not be read. Check the selected shop and branch, then refresh. ${apiErrorMessage(localSummaryError ?? summaryError!)}'
+                : 'Sales are available, but the saved till-close status could not be verified. Refresh before closing so an existing close is not overwritten. ${apiErrorMessage(closeError ?? summaryError!)}'),
+          DesktopEodNotice(closeNeedsReconciliation
+              ? 'A sale changed or a debt collection was recorded after the last close. Reconcile the till and close the day again.'
+              : 'Figures come from this computer. When you close, enter your opening float and any cash you added or took out, and explain it in the notes.'),
+          if (otherPaymentMethods.isNotEmpty)
+            DesktopEodNotice(
+                'Some sales use an older payment label or have incomplete split details. They stay in total sales, are excluded from cash totals, and are listed here: '
+                '${otherPaymentMethods.map((m) => '${m['method']} ${_currencyFmt.format(asDouble(m['amount']))}').join(', ')}. '
+                'Check whether any belong in the till and record that adjustment in the close notes.'),
+        ] else if (summaryError != null ||
+            cashError != null ||
+            closeError != null)
+          DesktopEodNotice(summaryError != null
+              ? summaryUnavailable
+                  ? 'Sales totals could not be loaded from the cloud or this device. Refresh before closing. ${apiErrorMessage(localSummaryError ?? summaryError)}'
+                  : summaryFromDevice
+                      ? 'Cloud sales totals are unavailable. Showing sales saved on this device; reconnect and refresh before closing so the report includes every device. ${apiErrorMessage(summaryError)}'
+                      : 'Sales totals could not be verified. ${apiErrorMessage(summaryError)} Reconnect and refresh before closing.'
+              : closeError != null
+                  ? localServer
+                      ? 'Sales are saved on this device, but the local server cannot verify or record an end-of-day close. Reconnect to the cloud workspace and refresh before closing.'
+                      : 'Sales loaded, but close status could not be checked. ${apiErrorMessage(closeError)} Refresh before closing to avoid changing an existing close.'
+                  : localServer
+                      ? 'Sales are available on this device, but expected till cash is only available from the cloud workspace.'
+                      : 'Sales loaded, but expected till cash could not be fetched. ${apiErrorMessage(cashError!)} You can still review today’s sales.'),
+        if (recordedCount > 0)
+          DesktopEodNotice(
+            '$recordedCount recorded ${recordedCount == 1 ? 'payment' : 'payments'} to check against your own M-Pesa or bank statement. Counterbase has not verified them.',
+            icon: Icons.fact_check_outlined,
+          ),
+      ];
+      double closeMoney(String key) => asDouble(close?[key]);
+      return DesktopEndOfDayView(
+        dateLabel: businessDate != null && validBusinessDate
+            ? DateFormat('EEEE, d MMMM').format(DateTime.parse(businessDate))
+            : null,
+        closed: closed,
+        statusLabel: status,
+        notices: notices,
+        figures: summaryUnavailable
+            ? const []
+            : [
+                DesktopFigure(
+                  label: 'Total sales',
+                  value: formatMoney(totalSales),
+                  hint: '$txns ${txns == 1 ? 'sale' : 'sales'}',
+                ),
+                DesktopFigure(
+                  label: 'Average sale',
+                  value: formatMoney(txns > 0 ? totalSales / txns : 0),
+                ),
+                DesktopFigure(
+                  label: 'Cash sales',
+                  value: formatMoney(cashSales),
+                ),
+                DesktopFigure(
+                  label: closeNeedsReconciliation && localOnly
+                      ? 'Expected at last close'
+                      : 'Expected cash in till',
+                  value: expectedCash == null
+                      ? 'Unknown'
+                      : formatMoney(expectedCash),
+                ),
+              ],
+        salesRows: [
+          DesktopEodRow('Total sales', money(totalSales), strong: true),
+          DesktopEodRow(
+              'Transactions', summaryUnavailable ? 'Unavailable' : '$txns'),
+          DesktopEodRow('Cash sales', money(cashSales)),
+          if (localOnly)
+            DesktopEodRow('Cash debt collections', money(cashCollections)),
+          if (localOnly && (summaryUnavailable || voidedCashReceived > 0))
+            DesktopEodRow(
+                'Cash received on voided sales', money(voidedCashReceived)),
+          if (localOnly && (summaryUnavailable || cashRefunds > 0))
+            DesktopEodRow('Cash refunds from till', out(cashRefunds)),
+          if (localOnly)
+            DesktopEodRow('Supplier payments from till', out(cashPayouts)),
+          if (localOnly && (summaryUnavailable || cashExpenses > 0))
+            DesktopEodRow('Expenses paid from till', out(cashExpenses)),
+          DesktopEodRow('M-Pesa', money(mpesaSales)),
+          if (recordedMpesaSales > 0)
+            DesktopEodRow('M-Pesa to your till, recorded',
+                _currencyFmt.format(recordedMpesaSales)),
+          if (recordedBankSales > 0)
+            DesktopEodRow('Bank transfers, recorded',
+                _currencyFmt.format(recordedBankSales)),
+          DesktopEodRow('Card', money(cardSales)),
+          DesktopEodRow('Credit', money(creditSales)),
+          if (otherSales > 0)
+            DesktopEodRow(
+                'Other payment methods', _currencyFmt.format(otherSales)),
+          if (expectedCash != null)
+            DesktopEodRow(
+              localOnly && closeNeedsReconciliation
+                  ? 'Expected at last close'
+                  : 'Expected cash in till',
+              _currencyFmt.format(expectedCash),
+              strong: true,
+            ),
+        ],
+        closeTitle: close == null
+            ? 'Close the day'
+            : (localOnly ? 'Latest till close' : 'Close details'),
+        closeRows: close == null
+            ? const []
+            : [
+                if (localOnly)
+                  DesktopEodRow('Opening float',
+                      _currencyFmt.format(closeMoney('openingFloat'))),
+                if (localOnly)
+                  DesktopEodRow('Recorded cash sales',
+                      _currencyFmt.format(closeMoney('cashSales'))),
+                if (localOnly)
+                  DesktopEodRow('Cash debt collections',
+                      _currencyFmt.format(closeMoney('cashCollections'))),
+                if (localOnly && closeMoney('voidedCashReceived') > 0)
+                  DesktopEodRow('Cash received on voided sales',
+                      _currencyFmt.format(closeMoney('voidedCashReceived'))),
+                if (localOnly && closeMoney('cashRefunds') > 0)
+                  DesktopEodRow('Cash refunds from till',
+                      _outflow(closeMoney('cashRefunds'))),
+                if (localOnly)
+                  DesktopEodRow('Supplier payments from till',
+                      _outflow(closeMoney('cashPayouts'))),
+                if (localOnly && closeMoney('cashExpenses') > 0)
+                  DesktopEodRow('Expenses paid from till',
+                      _outflow(closeMoney('cashExpenses'))),
+                if (localOnly)
+                  DesktopEodRow('Net cash movement',
+                      _currencyFmt.format(closeMoney('netCashMovement'))),
+                if (localOnly)
+                  DesktopEodRow('Expected cash',
+                      _currencyFmt.format(closeMoney('expectedCash'))),
+                DesktopEodRow('Counted cash',
+                    _currencyFmt.format(closeMoney('countedCash'))),
+                DesktopEodRow(
+                  'Discrepancy',
+                  _currencyFmt.format(asDouble(
+                      close['cashDiscrepancy'] ?? close['discrepancy'])),
+                ),
+              ],
+        closeNote: close != null
+            ? (localOnly && closeNeedsReconciliation
+                ? 'This close is out of date. Reconcile the new activity to keep the till record accurate.'
+                : 'The day is already closed. Re-close only if you re-counted the till.')
+            : null,
+        actions: [
+          if (localOnly && !closed)
+            DesktopEodAction(
+              cashExpenses > 0
+                  ? 'Expenses: ${_currencyFmt.format(cashExpenses)} in cash'
+                  : 'Add an expense paid today',
+              Icons.request_quote_outlined,
+              () async {
+                await context.push('/expenses');
+                if (mounted) ref.invalidate(_eodProvider);
+              },
+            ),
+          if (recordedCount > 0)
+            DesktopEodAction(
+              'Match M-Pesa statement',
+              Icons.fact_check_outlined,
+              () => context.push('/mpesa-match'),
+            ),
+        ],
+        primaryLabel: localOnly
+            ? _isClosing
+                ? 'Saving close…'
+                : !localCloseStatusKnown
+                    ? 'Refresh to verify close'
+                    : closeNeedsReconciliation
+                        ? 'Reconcile and re-close'
+                        : close != null
+                            ? 'Re-close day'
+                            : 'Close end of day'
+            : _isClosing
+                ? 'Closing…'
+                : summaryError != null
+                    ? 'Reconnect to verify sales'
+                    : closeError != null
+                        ? 'Connect to check close status'
+                        : !cashStatusKnown
+                            ? 'Reconnect to verify till cash'
+                            : closed
+                                ? 'Re-close day'
+                                : 'Close end of day',
+        onPrimary: canClose && !_isClosing
+            ? () => localOnly
+                ? _showLocalCloseSheet(
+                    cashSales,
+                    cashCollections: cashCollections,
+                    cashPayouts: cashPayouts,
+                    cashRefunds: cashRefunds,
+                    cashExpenses: cashExpenses,
+                    voidedCashReceived: voidedCashReceived,
+                    businessDate: businessDate,
+                    existingClose: close,
+                  )
+                : _showCloseSheet(
+                    expectedCash,
+                    businessDate: businessDate,
+                  )
+            : null,
+        onBack: () =>
+            context.canPop() ? context.pop() : context.go('/cash-flow'),
+        onRefresh: () => ref.invalidate(_eodProvider),
+      );
+    }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.lg,
@@ -888,7 +1154,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     double? countedCash;
     String? closeNotes;
     try {
-      confirmed = await showModalBottomSheet<bool>(
+      confirmed = await showAdaptiveModalSheet<bool>(
         useRootNavigator: true,
         context: context,
         isScrollControlled: true,
@@ -1182,7 +1448,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     double? countedCash;
     String? closeNotes;
     try {
-      confirmed = await showModalBottomSheet<bool>(
+      confirmed = await showAdaptiveModalSheet<bool>(
         useRootNavigator: true,
         context: context,
         isScrollControlled: true,

@@ -8,6 +8,7 @@ import '../desktop/desktop_layout.dart';
 import '../widgets/motion.dart';
 import '../widgets/motion_kit.dart';
 import '../widgets/workspace_image.dart';
+import '../desktop/adaptive_sheet.dart';
 
 /// ═══════════════════════════════════════════════════════════════
 /// AXON POS DESIGN SYSTEM — v2
@@ -2551,7 +2552,7 @@ Future<bool> showConfirmDialog(
   String cancelLabel = 'Cancel',
   Color? confirmColor,
 }) async {
-  final result = await showModalBottomSheet<bool>(
+  final result = await showAdaptiveModalSheet<bool>(
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,

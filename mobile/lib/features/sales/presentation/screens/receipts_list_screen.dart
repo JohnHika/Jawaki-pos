@@ -21,6 +21,7 @@ import '../receipts_desktop/desktop_receipt_inspector.dart';
 import '../receipts_desktop/desktop_receipts_view.dart';
 import '../receipts_desktop/receipt_thermal_text.dart';
 import 'receipt_screen.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// Receipts List Screen - Shows all sales/receipts from the local database
 class ReceiptsListScreen extends ConsumerStatefulWidget {
@@ -281,7 +282,7 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                         unawaited(_refreshSales());
                       },
                     )
-                  : RefreshIndicator(
+                  : DesktopRefresh(
                       color: DesignColors.accent,
                       onRefresh: _refreshSales,
                       child: PageContainer(

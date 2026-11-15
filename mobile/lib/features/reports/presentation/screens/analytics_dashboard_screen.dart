@@ -17,6 +17,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../domain/analytics_mapping.dart';
 import '../desktop/desktop_report_tabs.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 class AnalyticsDashboardScreen extends ConsumerStatefulWidget {
   const AnalyticsDashboardScreen({super.key});
@@ -224,7 +225,7 @@ class _AnalyticsDashboardScreenState
           ? const Center(
               child: CircularProgressIndicator(color: DesignColors.brand))
           : _loadError != null
-              ? RefreshIndicator(
+              ? DesktopRefresh(
                   onRefresh: _loadAnalyticsData,
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
@@ -241,7 +242,7 @@ class _AnalyticsDashboardScreenState
                     ],
                   ),
                 )
-              : RefreshIndicator(
+              : DesktopRefresh(
                   onRefresh: _loadAnalyticsData,
                   child: PageContainer(
                     withScroll: true,

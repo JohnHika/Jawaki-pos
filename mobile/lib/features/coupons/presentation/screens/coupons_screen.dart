@@ -17,6 +17,8 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/coupon_models.dart';
 import '../desktop/desktop_coupons_view.dart';
 import '../providers/coupon_provider.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// Discount codes the shop gives its customers. Each use is recorded against
 /// the cashier who took it, so a code can be a reason to come back without
@@ -84,7 +86,7 @@ class CouponsScreen extends ConsumerWidget {
               label: const Text('New coupon'),
             )
           : null,
-      body: RefreshIndicator(
+      body: DesktopRefresh(
         onRefresh: refresh,
         child: coupons.when(
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -144,7 +146,7 @@ class CouponsScreen extends ConsumerWidget {
         ),
       );
     }
-    return showModalBottomSheet<void>(
+    return showAdaptiveModalSheet<void>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,

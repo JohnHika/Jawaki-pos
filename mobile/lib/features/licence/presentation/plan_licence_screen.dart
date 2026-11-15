@@ -4,11 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/desktop/desktop_layout.dart';
+import '../../../core/desktop/desktop_widgets.dart';
 import '../../../core/theme/design_system.dart';
 import '../../auth/presentation/widgets/sign_in_kit.dart';
 import '../domain/licence_codec.dart';
 import '../domain/licence_standing.dart';
 import '../domain/setup_pricing.dart';
+import 'desktop/desktop_plan_licence_view.dart';
 import 'licence_providers.dart';
 
 /// Where a shop sees how it stands with its payments to Arche Axon and enters
@@ -75,6 +78,7 @@ class _PlanLicenceScreenState extends ConsumerState<PlanLicenceScreen> {
   Widget build(BuildContext context) {
     final palette = SignInPalette.of(context);
     final view = ref.watch(licenceViewProvider);
+    if (context.inDesktopShell) return _buildDesktop(view);
     return Scaffold(
       backgroundColor: palette.page,
       appBar: AppBar(
@@ -111,8 +115,67 @@ class _PlanLicenceScreenState extends ConsumerState<PlanLicenceScreen> {
     );
   }
 
-  Widget _content(SignInPalette palette, LicenceView data) {
-    final standing = data.standing;
+  /// The page inside the desktop shell: the same data, laid out as a computer
+  /// page (figures, code box beside the steps, shop ID on the side).
+  Widget _buildDesktop(AsyncValue<LicenceView?> view) {
+    final p = context.desktop;
+    return Scaffold(
+      backgroundColor: p.panel,
+      body: view.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (_, __) => const DesktopEmptyState(
+          icon: Icons.error_outline_rounded,
+          title: 'Could not read your plan',
+          message: 'Close and open this page again.',
+        ),
+        data: (data) {
+          if (data == null) {
+            return const DesktopEmptyState(
+              icon: Icons.workspace_premium_outlined,
+              title: 'Plans are not switched on yet',
+            );
+          }
+          final standing = data.standing;
+          final (label, color, detail) = _describe(standing);
+          final plan = data.claims?.plan;
+          return DesktopPlanLicenceView(
+            statusLabel: label,
+            statusColor: color,
+            sellingOn: standing.canSell,
+            detail: detail,
+            planLabel: plan == null ? 'Free trial' : _title(plan),
+            dueCaption: switch (standing.status) {
+              LicenceStatus.trial => 'Free trial ends',
+              LicenceStatus.active => 'Next payment due',
+              _ => 'Payment was due',
+            },
+            dueLabel: _dateFmt.format(standing.dueAt.toLocal()),
+            timeLeft: standing.status == LicenceStatus.salesPaused
+                ? 'None'
+                : _days(standing.daysLeft),
+            shopId: _shopId,
+            codeController: _code,
+            graceDays: kGraceDays,
+            error: _error,
+            busy: _busy,
+            onPaste: _paste,
+            onApply: _apply,
+            onCopyShopId: () async {
+              await Clipboard.setData(ClipboardData(text: _shopId));
+              if (!mounted) return;
+              showGlassSnackBar(context, 'Shop ID copied',
+                  icon: Icons.check_circle_rounded,
+                  color: DesignColors.success);
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  /// The label, colour and one-sentence detail for a standing, shared by the
+  /// phone page and the computer page.
+  (String, Color, String) _describe(LicenceStanding standing) {
     final (label, color) = switch (standing.status) {
       LicenceStatus.trial => ('Free trial', MoneyColors.verified),
       LicenceStatus.active => ('Active', MoneyColors.cash),
@@ -130,6 +193,12 @@ class _PlanLicenceScreenState extends ConsumerState<PlanLicenceScreen> {
       LicenceStatus.salesPaused =>
         'Pay to start selling again. Your records are safe and you can still view and export them.',
     };
+    return (label, color, detail);
+  }
+
+  Widget _content(SignInPalette palette, LicenceView data) {
+    final standing = data.standing;
+    final (label, color, detail) = _describe(standing);
     final plan = data.claims?.plan;
 
     return ListView(

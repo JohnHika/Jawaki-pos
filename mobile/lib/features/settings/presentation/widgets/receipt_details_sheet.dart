@@ -11,6 +11,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
 import '../../../sales/presentation/providers/sales_provider.dart'
     show localReceiptContact, receiptHeaderName;
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 typedef ReceiptDetails = ({String address, String phone});
 
@@ -73,7 +74,7 @@ Future<ReceiptDetails?> showReceiptDetailsSheet(
   required String address,
   required String phone,
 }) {
-  return showModalBottomSheet<ReceiptDetails>(
+  return showAdaptiveModalSheet<ReceiptDetails>(
     context: context,
     isScrollControlled: true,
     useRootNavigator: true,

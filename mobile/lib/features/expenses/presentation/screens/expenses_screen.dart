@@ -18,6 +18,7 @@ import '../../../finance/presentation/desktop/desktop_finance_tabs.dart';
 import '../../domain/expenses.dart';
 import '../desktop/desktop_expenses_view.dart';
 import '../widgets/add_expense_sheet.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 typedef _ExpenseData = ({
   ExpenseSummary summary,
@@ -203,7 +204,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
       body: Column(
         children: [
           Expanded(
-            child: RefreshIndicator(
+            child: DesktopRefresh(
               onRefresh: () async {
                 _reload();
                 await _data.catchError((_) => _emptyData);

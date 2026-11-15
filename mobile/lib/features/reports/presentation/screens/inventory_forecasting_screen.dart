@@ -19,6 +19,7 @@ import '../../../../core/utils/load_error.dart';
 import '../../../../core/utils/format.dart';
 import '../../domain/analytics_mapping.dart';
 import '../desktop/desktop_report_tabs.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 class InventoryForecastingScreen extends ConsumerStatefulWidget {
   const InventoryForecastingScreen({super.key});
@@ -194,7 +195,7 @@ class _InventoryForecastingScreenState
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(color: DesignColors.brand))
-          : RefreshIndicator(
+          : DesktopRefresh(
               onRefresh: _loadInventoryData,
               child: PageContainer(
                 withScroll: true,

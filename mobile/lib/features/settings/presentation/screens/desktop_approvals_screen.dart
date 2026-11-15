@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
@@ -9,6 +10,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
 import '../../../catalog/presentation/screens/barcode_scan_screen.dart';
+import '../desktop/desktop_sub_page.dart';
 
 /// Signs a computer in with this phone's account: scan the QR the computer
 /// shows (or type its 6-digit code), check which computer is asking, then
@@ -118,6 +120,20 @@ class _DesktopApprovalsScreenState
   Widget build(BuildContext context) {
     final palette = SignInPalette.of(context);
     final auth = getIt<AuthService>();
+    final desktop = context.inDesktopShell;
+    if (desktop) {
+      return Scaffold(
+        body: DesktopSubPage(
+          title: 'Sign in a computer',
+          subtitle: 'Let another computer open this shop with your account',
+          maxWidth: 560,
+          child: ListView(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            children: _body(palette, auth),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: palette.page,
       appBar: AppBar(
@@ -131,35 +147,7 @@ class _DesktopApprovalsScreenState
             constraints: const BoxConstraints(maxWidth: 480),
             child: ListView(
               padding: const EdgeInsets.all(DesignSpacing.lg),
-              children: [
-                if (auth.isLocalWorkspace)
-                  _Note(
-                    palette: palette,
-                    text: 'This shop is kept on this phone only, so a '
-                        'computer cannot sign in to it. Computers sign in '
-                        'to shops that have an online account.',
-                  )
-                else
-                  ...switch (_step) {
-                    _Step.find => _find(palette),
-                    _Step.confirm => _confirm(palette, auth),
-                    _Step.approved => _finished(
-                        palette,
-                        icon: Icons.check_circle_rounded,
-                        color: DesignColors.success,
-                        title: 'Approved',
-                        body:
-                            '${_request?['desktopName'] ?? 'The computer'} is opening Counterbase with your account now.',
-                      ),
-                    _Step.refused => _finished(
-                        palette,
-                        icon: Icons.block_rounded,
-                        color: DesignColors.error,
-                        title: 'Refused',
-                        body: 'The computer was not signed in.',
-                      ),
-                  },
-              ],
+              children: _body(palette, auth),
             ),
           ),
         ),
@@ -167,31 +155,72 @@ class _DesktopApprovalsScreenState
     );
   }
 
+  List<Widget> _body(SignInPalette palette, AuthService auth) => [
+        if (auth.isLocalWorkspace)
+          _Note(
+            palette: palette,
+            text: 'This shop is kept on this phone only, so a '
+                'computer cannot sign in to it. Computers sign in '
+                'to shops that have an online account.',
+          )
+        else
+          ...switch (_step) {
+            _Step.find => _find(palette),
+            _Step.confirm => _confirm(palette, auth),
+            _Step.approved => _finished(
+                palette,
+                icon: Icons.check_circle_rounded,
+                color: DesignColors.success,
+                title: 'Approved',
+                body:
+                    '${_request?['desktopName'] ?? 'The computer'} is opening Counterbase with your account now.',
+              ),
+            _Step.refused => _finished(
+                palette,
+                icon: Icons.block_rounded,
+                color: DesignColors.error,
+                title: 'Refused',
+                body: 'The computer was not signed in.',
+              ),
+          },
+      ];
+
   List<Widget> _find(SignInPalette palette) => [
         Text(
-          'On the computer, open Counterbase and choose Sign in with your '
-          'phone. Then scan the code it shows.',
+          'On the other computer, open Counterbase and choose Sign in with '
+          'your phone. Then ${_cameraless ? 'type' : 'scan'} the code it shows.',
           style: TextStyle(color: palette.soft, height: 1.45),
         ),
         const SizedBox(height: DesignSpacing.lg),
-        SignInButton(
-          label: "Scan the computer's code",
-          loading: _busy,
-          onPressed: _busy ? null : _scan,
-        ),
-        const SizedBox(height: DesignSpacing.lg),
-        Row(
-          children: [
-            Expanded(child: Divider(color: palette.line)),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text('or type the 6-digit code',
-                  style: TextStyle(color: palette.faint, fontSize: 12)),
-            ),
-            Expanded(child: Divider(color: palette.line)),
-          ],
-        ),
-        const SizedBox(height: DesignSpacing.md),
+        // A computer has no camera to scan with; it types the code.
+        if (!_cameraless) ...[
+          SignInButton(
+            label: "Scan the computer's code",
+            loading: _busy,
+            onPressed: _busy ? null : _scan,
+          ),
+          const SizedBox(height: DesignSpacing.lg),
+          Row(
+            children: [
+              Expanded(child: Divider(color: palette.line)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text('or type the 6-digit code',
+                    style: TextStyle(color: palette.faint, fontSize: 12)),
+              ),
+              Expanded(child: Divider(color: palette.line)),
+            ],
+          ),
+          const SizedBox(height: DesignSpacing.md),
+        ] else
+          Padding(
+            padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
+            child: Text('The 6-digit code',
+                style: TextStyle(
+                    color: palette.ink,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13)),
+          ),
         TextField(
           controller: _code,
           keyboardType: TextInputType.number,
@@ -222,6 +251,8 @@ class _DesktopApprovalsScreenState
           _Note(palette: palette, text: _error!, error: true),
         ],
       ];
+
+  bool get _cameraless => context.inDesktopShell;
 
   void _lookUpCode() {
     final code = _code.text.trim();
@@ -405,11 +436,15 @@ class _Note extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon ?? (error ? Icons.info_outline_rounded : Icons.check_rounded),
-              color: tone, size: 20),
+          Icon(
+              icon ??
+                  (error ? Icons.info_outline_rounded : Icons.check_rounded),
+              color: tone,
+              size: 20),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(text, style: TextStyle(color: palette.ink, height: 1.4)),
+            child:
+                Text(text, style: TextStyle(color: palette.ink, height: 1.4)),
           ),
         ],
       ),

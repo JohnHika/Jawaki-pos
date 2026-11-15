@@ -13,6 +13,7 @@ import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../ai/presentation/screens/ai_chat_service.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// Everything the calendar day-detail screen needs for one date. A local
 /// workspace uses its device database; a connected workspace uses the server
@@ -124,7 +125,7 @@ class DaySummaryScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: RefreshIndicator(
+      body: DesktopRefresh(
         onRefresh: () => _refreshDaySummary(ref, date),
         child: dataAsync.when(
           data: (data) => _buildContent(context, ref, data),

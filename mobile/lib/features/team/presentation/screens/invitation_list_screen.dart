@@ -12,6 +12,7 @@ import '../../../users/presentation/desktop/team_desktop_widgets.dart';
 import '../../data/services/invitation_cache_service.dart';
 import '../desktop/invitations_desktop_page.dart';
 import '../desktop/invite_staff_panel.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// Displays all staff invitations with their status (PENDING / ACCEPTED /
 /// EXPIRED) and who created them.  Lets the admin track who has accepted
@@ -146,7 +147,7 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
     if (_invitations.isEmpty) {
       return _emptyState(isDark, textPrimary, textSecondary);
     }
-    return RefreshIndicator(
+    return DesktopRefresh(
       onRefresh: () => _load(showCacheFirst: false),
       color: DesignColors.accent,
       child: ListView.builder(

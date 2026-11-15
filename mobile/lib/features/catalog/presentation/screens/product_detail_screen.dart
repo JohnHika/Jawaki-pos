@@ -28,6 +28,7 @@ import '../../domain/stock_status.dart';
 import '../widgets/add_edit_product_sheet.dart';
 import '../widgets/stock_kit.dart';
 import 'products_screen.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 /// The route for one product. On a phone it is the full product page; inside
 /// the desktop shell the Products table opens that product in its inspector
@@ -162,7 +163,7 @@ class _ProductDetailScreenState extends ConsumerState<_ProductDetailPhone> {
     final palette = SignInPalette.of(context);
     final isLocal = getIt<AuthService>().isLocalWorkspace;
     final bringBack = isLocal && !product.isActive;
-    final go = await showModalBottomSheet<bool>(
+    final go = await showAdaptiveModalSheet<bool>(
       context: context,
       useRootNavigator: true,
       backgroundColor: palette.card,

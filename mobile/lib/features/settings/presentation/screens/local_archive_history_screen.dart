@@ -8,6 +8,10 @@ import '../../../../core/services/local_archive_import_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/format.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
+import '../desktop/desktop_sub_page.dart';
 
 class LocalArchiveHistoryScreen extends StatefulWidget {
   const LocalArchiveHistoryScreen({super.key});
@@ -41,105 +45,115 @@ class _LocalArchiveHistoryScreenState extends State<LocalArchiveHistoryScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: const BrandedAppBar(title: 'Imported archive history'),
-        body: RefreshIndicator(
-          onRefresh: _refresh,
-          child: FutureBuilder<List<LocalArchiveHistorySummary>>(
-            future: _archives,
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return ListView(
-                  padding: const EdgeInsets.all(DesignSpacing.lg),
-                  children: [
-                    InlineRetryNotice(
-                      message: _safeArchiveError(snapshot.error),
-                      onRetry: () => setState(
-                          () => _archives = _service.listPreservedHistory()),
-                    ),
-                  ],
-                );
-              }
-              if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final archives = snapshot.data!;
-              if (archives.isEmpty) {
-                return ListView(
-                  children: const [
-                    SizedBox(height: 72),
-                    EmptyState(
-                      icon: Icons.inventory_2_outlined,
-                      title: 'No imported archive history',
-                      subtitle:
-                          'Import a legacy .cbarchive from Settings → Local data. Any history not yet available in live screens will be kept here for the shop owner.',
-                    ),
-                  ],
-                );
-              }
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  DesignSpacing.lg,
-                  DesignSpacing.md,
-                  DesignSpacing.lg,
-                  DesignSpacing.xxl,
+  Widget build(BuildContext context) {
+    final body = DesktopRefresh(
+      onRefresh: _refresh,
+      child: FutureBuilder<List<LocalArchiveHistorySummary>>(
+        future: _archives,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return ListView(
+              padding: const EdgeInsets.all(DesignSpacing.lg),
+              children: [
+                InlineRetryNotice(
+                  message: _safeArchiveError(snapshot.error),
+                  onRetry: () => setState(
+                      () => _archives = _service.listPreservedHistory()),
                 ),
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(DesignSpacing.md),
-                    decoration: BoxDecoration(
-                      color: DesignColors.info.withValues(alpha: 0.08),
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusMd),
-                      border: Border.all(
-                        color: DesignColors.info.withValues(alpha: 0.2),
-                      ),
-                    ),
-                    child: const Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.lock_outline_rounded,
-                            color: DesignColors.info),
-                        SizedBox(width: DesignSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            'Read-only history from the encrypted archive. These records are not added to current stock or financial totals.',
-                          ),
-                        ),
-                      ],
-                    ),
+              ],
+            );
+          }
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final archives = snapshot.data!;
+          if (archives.isEmpty) {
+            return ListView(
+              children: const [
+                SizedBox(height: 72),
+                EmptyState(
+                  icon: Icons.inventory_2_outlined,
+                  title: 'No imported archive history',
+                  subtitle:
+                      'Import a legacy .cbarchive from Settings → Local data. Any history not yet available in live screens will be kept here for the shop owner.',
+                ),
+              ],
+            );
+          }
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg,
+              DesignSpacing.md,
+              DesignSpacing.lg,
+              DesignSpacing.xxl,
+            ),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(DesignSpacing.md),
+                decoration: BoxDecoration(
+                  color: DesignColors.info.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                  border: Border.all(
+                    color: DesignColors.info.withValues(alpha: 0.2),
                   ),
-                  const SizedBox(height: DesignSpacing.lg),
-                  for (final archive in archives)
-                    Card(
-                      margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: DesignSpacing.md,
-                          vertical: DesignSpacing.xs,
-                        ),
-                        leading: const CircleAvatar(
-                          backgroundColor: DesignColors.accentSubtle,
-                          child: Icon(Icons.archive_outlined,
-                              color: DesignColors.accent),
-                        ),
-                        title: Text(archive.tenantName,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w700)),
-                        subtitle: Text(
-                          'Imported ${_formatDate(archive.importedAt)} · View preserved records',
-                        ),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: () => context.push(
-                            '/settings/archive-history/${archive.archiveId}'),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.lock_outline_rounded, color: DesignColors.info),
+                    SizedBox(width: DesignSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        'Read-only history from the encrypted archive. These records are not added to current stock or financial totals.',
                       ),
                     ),
-                ],
-              );
-            },
-          ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: DesignSpacing.lg),
+              for (final archive in archives)
+                Card(
+                  margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: DesignSpacing.md,
+                      vertical: DesignSpacing.xs,
+                    ),
+                    leading: const CircleAvatar(
+                      backgroundColor: DesignColors.accentSubtle,
+                      child: Icon(Icons.archive_outlined,
+                          color: DesignColors.accent),
+                    ),
+                    title: Text(archive.tenantName,
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text(
+                      'Imported ${_formatDate(archive.importedAt)} · View preserved records',
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => context
+                        .push('/settings/archive-history/${archive.archiveId}'),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+    if (context.inDesktopShell) {
+      return Scaffold(
+        body: DesktopSubPage(
+          title: 'Imported archive history',
+          subtitle: 'Read-only records kept from a legacy archive',
+          maxWidth: 820,
+          child: body,
         ),
       );
+    }
+    return Scaffold(
+      appBar: const BrandedAppBar(title: 'Imported archive history'),
+      body: body,
+    );
+  }
 }
 
 class LocalArchiveHistoryDetailScreen extends StatefulWidget {
@@ -172,86 +186,97 @@ class _LocalArchiveHistoryDetailScreenState
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: const BrandedAppBar(title: 'Preserved shop records'),
-        body: FutureBuilder<LocalArchiveHistoryDetail>(
-          future: _detail,
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return ListView(
-                padding: const EdgeInsets.all(DesignSpacing.lg),
-                children: [
-                  InlineRetryNotice(
-                    message: _safeArchiveError(snapshot.error),
-                    onRetry: () => setState(() {
-                      _detail = _service.loadPreservedHistory(widget.archiveId);
-                    }),
-                  ),
-                ],
-              );
-            }
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final detail = snapshot.data!;
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(
-                DesignSpacing.lg,
-                DesignSpacing.md,
-                DesignSpacing.lg,
-                DesignSpacing.xxl,
+  Widget build(BuildContext context) {
+    final body = FutureBuilder<LocalArchiveHistoryDetail>(
+      future: _detail,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return ListView(
+            padding: const EdgeInsets.all(DesignSpacing.lg),
+            children: [
+              InlineRetryNotice(
+                message: _safeArchiveError(snapshot.error),
+                onRetry: () => setState(() {
+                  _detail = _service.loadPreservedHistory(widget.archiveId);
+                }),
               ),
-              children: [
-                Text(detail.summary.tenantName,
-                    style: Theme.of(context).textTheme.headlineSmall),
-                const SizedBox(height: DesignSpacing.xs),
-                Text(
-                  'Archive imported ${_formatDate(detail.summary.importedAt)}',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: DesignColors.textSecondary,
-                      ),
-                ),
-                const SizedBox(height: DesignSpacing.lg),
-                if (detail.sections.isEmpty)
-                  const EmptyState(
-                    icon: Icons.inventory_2_outlined,
-                    title: 'All imported history is available',
-                    subtitle:
-                        'This archive has no additional preserved-only records.',
-                  )
-                else ...[
-                  const Text(
-                    'Preserved history',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ],
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final detail = snapshot.data!;
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(
+            DesignSpacing.lg,
+            DesignSpacing.md,
+            DesignSpacing.lg,
+            DesignSpacing.xxl,
+          ),
+          children: [
+            Text(detail.summary.tenantName,
+                style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: DesignSpacing.xs),
+            Text(
+              'Archive imported ${_formatDate(detail.summary.importedAt)}',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: DesignColors.textSecondary,
                   ),
-                  const SizedBox(height: DesignSpacing.sm),
-                  for (final section in detail.sections)
-                    Card(
-                      margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
-                      child: ListTile(
-                        leading: const Icon(Icons.history_rounded,
-                            color: DesignColors.accent),
-                        title: Text(section.label,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w700)),
-                        subtitle:
-                            Text('${section.rows.length} read-only records'),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: () => _showSection(context, section),
-                      ),
-                    ),
-                ],
-              ],
-            );
-          },
+            ),
+            const SizedBox(height: DesignSpacing.lg),
+            if (detail.sections.isEmpty)
+              const EmptyState(
+                icon: Icons.inventory_2_outlined,
+                title: 'All imported history is available',
+                subtitle:
+                    'This archive has no additional preserved-only records.',
+              )
+            else ...[
+              const Text(
+                'Preserved history',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: DesignSpacing.sm),
+              for (final section in detail.sections)
+                Card(
+                  margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
+                  child: ListTile(
+                    leading: const Icon(Icons.history_rounded,
+                        color: DesignColors.accent),
+                    title: Text(section.label,
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text('${section.rows.length} read-only records'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => _showSection(context, section),
+                  ),
+                ),
+            ],
+          ],
+        );
+      },
+    );
+    if (context.inDesktopShell) {
+      return Scaffold(
+        body: DesktopSubPage(
+          title: 'Preserved shop records',
+          maxWidth: 820,
+          backTo: '/settings/archive-history',
+          child: body,
         ),
       );
+    }
+    return Scaffold(
+      appBar: const BrandedAppBar(title: 'Preserved shop records'),
+      body: body,
+    );
+  }
 
   Future<void> _showSection(
     BuildContext context,
     LocalArchiveHistorySection section,
   ) =>
-      showModalBottomSheet<void>(
+      showAdaptiveModalSheet<void>(
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
@@ -476,7 +501,7 @@ Future<void> _showArchivedRecordDetails(
   required Map<String, dynamic> row,
   required String title,
 }) =>
-    showModalBottomSheet<void>(
+    showAdaptiveModalSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,

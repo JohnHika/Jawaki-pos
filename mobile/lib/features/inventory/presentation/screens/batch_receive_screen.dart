@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
 import '../widgets/unit_selector_widget.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../desktop/desktop_batch_receive_view.dart';
 import '../../../../core/providers/api_provider.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/di/injection.dart';
@@ -530,6 +532,68 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
     );
   }
 
+  /// The computer layout: a grid of batches with a summary side panel.
+  Widget _buildDesktop(BuildContext context) {
+    final config = _unitConfig!;
+    final total = _totalBaseUnits;
+    return Scaffold(
+      backgroundColor: context.desktop.panel,
+      body: DesktopBatchReceiveView(
+        formKey: _formKey,
+        productName: _resolvedProductName ?? 'Selected product',
+        baseUnit: config.baseUnit,
+        units: [for (final u in config.availableUnits) u.name],
+        onHandLabel: _onHand == null
+            ? 'Counted in ${config.baseUnit}'
+            : 'On hand now: ${kitCount(_onHand!, config.baseUnit)}',
+        packSizes: [
+          for (final u in config.availableUnits)
+            if (u.conversionFactor != 1.0)
+              '1 ${u.name} = ${u.conversionFactor} ${config.baseUnit}',
+        ],
+        totalLabel:
+            total > 0 ? 'Adding ${kitCount(total, config.baseUnit)}' : null,
+        afterLabel: total > 0 && _onHand != null
+            ? '${kitNumber(_onHand! + total)} on hand after'
+            : null,
+        busy: _isLoading,
+        rows: [
+          for (final b in _batches)
+            DesktopBatchRow(
+              quantity: b.quantityController,
+              cost: b.costPriceController,
+              supplierRef: b.supplierRefController,
+              notes: b.notesController,
+              unit: b.selectedUnit,
+              expiry: b.expiryDate,
+              manufactured: b.manufactureDate,
+              conversion: _desktopConversion(b),
+            ),
+        ],
+        onAdd: _addBatch,
+        onRemove: _removeBatch,
+        onUnit: (i, unit) => setState(() => _batches[i].selectedUnit = unit),
+        onPickDate: (i, {required expiry}) =>
+            _selectDate(context, _batches[i], isExpiry: expiry),
+        onChanged: () => setState(() {}),
+        onSave: _submitBatches,
+        onCancel: () => Navigator.of(context).maybePop(),
+      ),
+    );
+  }
+
+  /// "= 240 piece" for a batch counted in a pack, null otherwise.
+  String? _desktopConversion(BatchEntry batch) {
+    final qty = double.tryParse(batch.quantityController.text);
+    if (qty == null || batch.selectedUnit == _unitConfig!.baseUnit) return null;
+    final factor = _unitConfig!.availableUnits
+            .where((u) => u.name == batch.selectedUnit)
+            .map((u) => u.conversionFactor)
+            .firstOrNull ??
+        1.0;
+    return '= ${kitNumber(qty * factor)} ${_unitConfig!.baseUnit}';
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoadingConfig || _unitConfig == null) {
@@ -540,6 +604,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
         ),
       );
     }
+    if (context.inDesktopShell) return _buildDesktop(context);
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor =

@@ -21,6 +21,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/statement_models.dart';
 import '../../domain/statement_sync_recovery.dart';
 import '../../../../core/widgets/modal_disposal.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 /// Opens the "send a statement" sheet for a customer or a peer shop that owes.
 ///
@@ -34,7 +35,7 @@ Future<void> showStatementSheet(
   required String name,
   String? phone,
 }) {
-  return showModalBottomSheet<void>(
+  return showAdaptiveModalSheet<void>(
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,

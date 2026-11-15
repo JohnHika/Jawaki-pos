@@ -7,6 +7,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
 import '../../domain/expenses.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 typedef NewExpense = ({
   double amount,
@@ -26,7 +27,7 @@ Future<NewExpense?> showAddExpenseSheet(BuildContext context) {
       builder: (_) => const _AddExpenseSheet(),
     );
   }
-  return showModalBottomSheet<NewExpense>(
+  return showAdaptiveModalSheet<NewExpense>(
     context: context,
     isScrollControlled: true,
     useRootNavigator: true,

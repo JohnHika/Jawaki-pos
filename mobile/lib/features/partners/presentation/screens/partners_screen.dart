@@ -15,6 +15,8 @@ import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../domain/partner_models.dart';
 import '../desktop/desktop_partners_page.dart';
 import '../providers/partners_provider.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// "Trade Partners": the businesses this shop trades with. Connect using the
 /// other business's company code, accept requests, and chat.
@@ -44,7 +46,7 @@ class PartnersScreen extends ConsumerWidget {
         icon: const Icon(Icons.add_link_rounded),
         label: const Text('Connect'),
       ),
-      body: RefreshIndicator(
+      body: DesktopRefresh(
         onRefresh: controller.refresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -117,7 +119,7 @@ Future<void> showPartnerConnectSheet(BuildContext context, WidgetRef ref) {
       ),
     );
   }
-  return showModalBottomSheet<void>(
+  return showAdaptiveModalSheet<void>(
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,

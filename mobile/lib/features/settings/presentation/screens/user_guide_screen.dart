@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
+import '../desktop/desktop_user_guide_view.dart';
 
 class _GuideStep {
   const _GuideStep(this.text);
@@ -70,12 +72,27 @@ class UserGuideScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) {
+      return Scaffold(
+        body: DesktopUserGuideView(
+          topics: [
+            for (final t in _topics)
+              DesktopGuideTopic(
+                icon: t.icon,
+                title: t.title,
+                steps: [for (final step in t.steps) step.text],
+              ),
+          ],
+        ),
+      );
+    }
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Scaffold(
@@ -97,20 +114,24 @@ class UserGuideScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
                 ),
                 child: Theme(
-                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  data: Theme.of(context)
+                      .copyWith(dividerColor: Colors.transparent),
                   child: ExpansionTile(
                     initiallyExpanded: index == 0,
                     leading: Container(
                       padding: const EdgeInsets.all(DesignSpacing.sm),
                       decoration: BoxDecoration(
                         color: DesignColors.brand.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
                       ),
-                      child: Icon(topic.icon, color: DesignColors.brand, size: 20),
+                      child:
+                          Icon(topic.icon, color: DesignColors.brand, size: 20),
                     ),
                     title: Text(
                       topic.title,
-                      style: TextStyle(fontWeight: FontWeight.w700, color: titleColor),
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700, color: titleColor),
                     ),
                     iconColor: secondaryColor,
                     collapsedIconColor: secondaryColor,
@@ -118,7 +139,8 @@ class UserGuideScreen extends StatelessWidget {
                     children: [
                       for (final step in topic.steps)
                         Padding(
-                          padding: const EdgeInsets.only(bottom: DesignSpacing.sm + 2),
+                          padding: const EdgeInsets.only(
+                              bottom: DesignSpacing.sm + 2),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -131,7 +153,10 @@ class UserGuideScreen extends StatelessWidget {
                               Expanded(
                                 child: Text(
                                   step.text,
-                                  style: TextStyle(color: secondaryColor, fontSize: 14, height: 1.4),
+                                  style: TextStyle(
+                                      color: secondaryColor,
+                                      fontSize: 14,
+                                      height: 1.4),
                                 ),
                               ),
                             ],

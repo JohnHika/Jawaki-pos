@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
@@ -12,6 +13,8 @@ import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../desktop/desktop_reconciliation_view.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 final _reconciliationHistoryProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
@@ -57,6 +60,15 @@ class _CashReconciliationScreenState
             ? _localReconciliationHistoryProvider
             : _reconciliationHistoryProvider)
         : null;
+
+    if (context.inDesktopShell) {
+      return _buildDesktop(
+        canViewHistory: canViewHistory,
+        canCreate: canCreateReconciliation,
+        local: isLocalWorkspace,
+        history: historyAsync,
+      );
+    }
 
     if (!canViewHistory && !canCreateReconciliation) {
       return const Scaffold(
@@ -167,6 +179,84 @@ class _CashReconciliationScreenState
     );
   }
 
+  /// The history as a table with the selected count in a side panel. The
+  /// same providers and the same count sheet as the phone page.
+  Widget _buildDesktop({
+    required bool canViewHistory,
+    required bool canCreate,
+    required bool local,
+    required AsyncValue<Map<String, dynamic>>? history,
+  }) {
+    final provider = local
+        ? _localReconciliationHistoryProvider
+        : _reconciliationHistoryProvider;
+    final hasBranch = getIt<AuthService>().branchId?.isNotEmpty == true;
+    var records = const <DesktopCountRecord>[];
+    String? emptyTitle;
+    String? emptyMessage;
+    String? error;
+    VoidCallback? onRetry;
+    final data = history?.valueOrNull;
+    if (history != null && history.hasError && data == null) {
+      final e = history.error!;
+      error = loadErrorSubtitle(e);
+      onRetry = isPermissionDenied(e) ? null : () => ref.invalidate(provider);
+    } else if (data != null) {
+      if (data.isEmpty) {
+        emptyTitle = 'No branch selected';
+        emptyMessage = 'Select a branch to reconcile cash.';
+      } else {
+        final items =
+            (data['items'] as List<dynamic>).cast<Map<String, dynamic>>();
+        records = [
+          for (var i = 0; i < items.length; i++)
+            DesktopCountRecord(
+              id: '${items[i]['id'] ?? i}',
+              at: DateTime.tryParse(items[i]['createdAt'] as String? ?? '')
+                  ?.toLocal(),
+              expected: (items[i]['expectedCash'] as num).toDouble(),
+              counted: (items[i]['countedCash'] as num).toDouble(),
+              difference: (items[i]['discrepancy'] as num).toDouble(),
+              countedBy: items[i]['countedByName'] as String?,
+              notes: items[i]['notes'] as String?,
+            ),
+        ];
+        if (records.isEmpty) {
+          emptyTitle =
+              local ? 'No till closes yet' : 'No reconciliations yet';
+          emptyMessage = canCreate
+              ? local
+                  ? 'Close the day to save your first expected and counted cash record.'
+                  : 'Choose "Count cash" to record your first cash count.'
+              : 'No cash counts have been recorded for this branch yet.';
+        }
+      }
+    }
+    return Scaffold(
+      body: DesktopReconciliationView(
+        title: 'Cash reconciliation',
+        subtitle: local
+            ? 'Expected and counted cash at each till close'
+            : 'Expected against counted cash, most recent first',
+        records: records,
+        countLabel: local ? 'Close the day' : 'Count cash',
+        onCount: canCreate && hasBranch ? _showCountSheet : null,
+        onBack: () =>
+            context.canPop() ? context.pop() : context.go('/cash-flow'),
+        onRefresh: canViewHistory ? () => ref.invalidate(provider) : null,
+        loading: canViewHistory && history != null && history.isLoading &&
+            data == null,
+        errorMessage: error,
+        onRetry: onRetry,
+        emptyTitle: emptyTitle,
+        emptyMessage: emptyMessage,
+        restricted: !canViewHistory && !canCreate,
+        historyHidden: !canViewHistory && canCreate,
+        dateLabel: _dateFmt.format,
+      ),
+    );
+  }
+
   Future<void> _showCountSheet() async {
     if (!ref.read(permissionsProvider).canReconcileCash) return;
     if (getIt<AuthService>().isLocalWorkspace) {
@@ -192,7 +282,7 @@ class _CashReconciliationScreenState
     final notesController = TextEditingController();
 
     if (!mounted) return;
-    final confirmed = await showModalBottomSheet<bool>(
+    final confirmed = await showAdaptiveModalSheet<bool>(
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,

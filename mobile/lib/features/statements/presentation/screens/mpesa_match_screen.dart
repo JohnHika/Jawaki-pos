@@ -13,7 +13,11 @@ import '../../../../core/theme/design_system.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
 import '../../../sales/domain/recorded_payment.dart';
 import '../../domain/statement_match.dart';
+import '../desktop/desktop_match_view.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/widgets/modal_disposal.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 /// Checks the payments the shop recorded today against the owner's own M-Pesa
 /// or bank statement. Counterbase never reads texts: the owner pastes the
@@ -105,7 +109,7 @@ class _RecordedMatchViewState extends State<_RecordedMatchView> {
 
   Future<void> _markChecked(RecordedItem item) async {
     final controller = TextEditingController();
-    final note = await showModalBottomSheet<String>(
+    final note = await showAdaptiveModalSheet<String>(
       context: context,
       isScrollControlled: true,
       useRootNavigator: true,
@@ -163,9 +167,13 @@ class _RecordedMatchViewState extends State<_RecordedMatchView> {
     );
     disposeAfterModalCloses([controller]);
     if (note == null || !mounted) return;
+    await _recordCheck(item.saleId, note);
+  }
+
+  Future<void> _recordCheck(String saleId, String note) async {
     final by = getIt<AuthService>().currentUser?['name']?.toString() ?? '';
     setState(() {
-      _checks[item.saleId] = {
+      _checks[saleId] = {
         'note': note,
         'by': by,
         'at': DateTime.now().toIso8601String(),
@@ -174,8 +182,74 @@ class _RecordedMatchViewState extends State<_RecordedMatchView> {
     await _saveChecks();
   }
 
+  /// The plain rows the computer layout draws, matched against the statement.
+  List<DesktopMatchRow> _desktopRows(List<RecordedItem> items) {
+    final hasStatement = _statement.text.trim().isNotEmpty;
+    final results = matchRecorded(items, _statement.text);
+    return [
+      for (final result in results)
+        () {
+          final item = result.item;
+          final check = _checks[item.saleId];
+          final checked = check is Map;
+          final DesktopMatchState state;
+          if (!hasStatement) {
+            state = DesktopMatchState.waiting;
+          } else if (result.status == MatchStatus.matched) {
+            state = DesktopMatchState.matched;
+          } else if (checked) {
+            state = DesktopMatchState.checked;
+          } else if (result.status == MatchStatus.amountDiffers) {
+            state = DesktopMatchState.differs;
+          } else {
+            state = DesktopMatchState.notFound;
+          }
+          return DesktopMatchRow(
+            saleId: item.saleId,
+            code: item.code,
+            amount: item.amount,
+            isBank: item.isBank,
+            state: state,
+            time: _times[item.saleId],
+            recordedBy: _details[item.saleId]?.recordedByName ?? '',
+            statementAmounts: result.statementAmounts,
+            checkNote: checked ? check['note']?.toString() : null,
+            checkedBy: checked ? check['by']?.toString() : null,
+          );
+        }(),
+    ];
+  }
+
+  Widget _buildDesktop(BuildContext context) {
+    return Scaffold(
+      body: FutureBuilder<List<RecordedItem>>(
+        future: _items,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return const DesktopEmptyState(
+              icon: Icons.error_outline_rounded,
+              title: "Couldn't read today's recorded payments",
+              message: 'Close this page and open it again.',
+            );
+          }
+          return DesktopMatchView(
+            rows: _desktopRows(snapshot.data ?? const <RecordedItem>[]),
+            statement: _statement,
+            onStatementChanged: () => setState(() {}),
+            onPaste: _paste,
+            onSaveCheck: (row, note) => _recordCheck(row.saleId, note),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) return _buildDesktop(context);
     final palette = SignInPalette.of(context);
     return Scaffold(
       backgroundColor: palette.page,
@@ -506,6 +580,14 @@ class _CloudNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) {
+      return Scaffold(
+        body: DesktopMatchCloudNotice(
+          onOpenFinance: () => context.push('/finance'),
+          onOpenSetup: () => context.push('/payments/setup'),
+        ),
+      );
+    }
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'M-Pesa verification',

@@ -10,6 +10,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 final customerCreditProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, customerId) async {
@@ -151,7 +152,7 @@ class CreditLimitCard extends ConsumerWidget {
 
   Future<void> _edit(
       BuildContext context, WidgetRef ref, double? current) async {
-    final result = await showModalBottomSheet<Map<String, dynamic>>(
+    final result = await showAdaptiveModalSheet<Map<String, dynamic>>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,

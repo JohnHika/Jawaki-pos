@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
@@ -16,6 +17,7 @@ import '../../../../core/services/supplier_receipt_ocr_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/motion.dart';
+import '../desktop/desktop_invoice_review_view.dart';
 
 /// Cash till vs credit — mirrors CashFundingSource on the backend.
 enum InvoiceFundingSource { cashTill, creditSupplier }
@@ -163,8 +165,73 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
     );
   }
 
+  /// The same review as a computer page: details, an editable lines table,
+  /// totals beside it. Same controllers, same [_save].
+  Widget _buildDesktop(BuildContext context) {
+    final scan = widget.scan;
+    Widget? receipt;
+    if (scan.imagePath.startsWith('http')) {
+      receipt = Image.network(scan.imagePath,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const SizedBox.shrink());
+    } else if (scan.imagePath.isNotEmpty) {
+      receipt = Image.file(File(scan.imagePath),
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const SizedBox.shrink());
+    }
+    return Scaffold(
+      body: DesktopInvoiceReviewView(
+        supplier: _supplierController,
+        invoiceNumber: _invoiceController,
+        terms: _termsController,
+        paid: _paidController,
+        dueLabel: _dueDate == null
+            ? 'No due date'
+            : DateFormat('dd MMM yyyy').format(_dueDate!),
+        fundingCredit: _fundingSource == InvoiceFundingSource.creditSupplier,
+        lines: [
+          for (final item in _itemRows)
+            DesktopInvoiceLine(
+              name: item.nameController,
+              sku: item.skuController,
+              quantity: item.quantityController,
+              unitCost: item.unitCostController,
+              lineTotal: item.lineTotal,
+            ),
+        ],
+        total: _total,
+        paidAmount: _paid,
+        balanceDue: _due,
+        canSave: _canSave,
+        saving: _isSaving,
+        aiLabel: scan.readByAi
+            ? (scan.documentTypeLabel == null
+                ? 'Read by Axon AI'
+                : 'Axon AI · ${scan.documentTypeLabel}')
+            : null,
+        summary: scan.summary,
+        receipt: receipt,
+        onBack: () => Navigator.of(context).maybePop(),
+        onSave: _save,
+        onAddLine: () => setState(() => _itemRows.add(_InvoiceItemDraft())),
+        onRemoveLine: _itemRows.length == 1
+            ? null
+            : (index) => setState(() {
+                  _itemRows[index].dispose();
+                  _itemRows.removeAt(index);
+                }),
+        onPickDue: () => _pickDueDate(context),
+        onFundingChanged: (credit) => setState(() => _fundingSource = credit
+            ? InvoiceFundingSource.creditSupplier
+            : InvoiceFundingSource.cashTill),
+        onChanged: () => setState(() {}),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) return _buildDesktop(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;

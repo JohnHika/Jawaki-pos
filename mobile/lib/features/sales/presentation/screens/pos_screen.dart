@@ -24,6 +24,7 @@ import '../widgets/product_grid.dart';
 import '../widgets/search_bar_widget.dart';
 import '../widgets/cart_summary_bar.dart';
 import '../desktop/checkout_support.dart' show CheckoutResult;
+import '../desktop/held_sales_list.dart';
 import '../desktop/sell_workspace.dart';
 import '../../../../core/utils/format.dart';
 import '../../../accountability/data/till_guard_service.dart';
@@ -1202,6 +1203,31 @@ class _POSScreenState extends ConsumerState<POSScreen> {
               ref.watch(permissionsProvider).canSeeCustomers;
           final restoreWarning = ref.watch(parkedSalesRestoreWarningProvider);
           final restoring = ref.watch(parkedSalesIsRestoringProvider);
+          if (ctx.inDesktopShell) {
+            return HeldSalesList(
+              rows: [
+                for (final h in parked)
+                  HeldSaleRowData(
+                    id: h.id,
+                    label: canViewCustomerDetails ? h.label : 'Held sale',
+                    itemCount: h.cart.itemCount,
+                    total: h.cart.total.toDouble(),
+                    parkedAt: h.parkedAt,
+                  ),
+              ],
+              restoring: restoring,
+              warning: restoreWarning,
+              busyId: _resumingHeldSaleId,
+              onResume: (id) {
+                final sale = parked.where((h) => h.id == id).firstOrNull;
+                if (sale != null) _resumeHeldSale(ctx, ref, sale);
+              },
+              onDiscard: (id) {
+                final sale = parked.where((h) => h.id == id).firstOrNull;
+                if (sale != null) _discardHeldSale(ctx, ref, sale);
+              },
+            );
+          }
           final isDark = Theme.of(ctx).brightness == Brightness.dark;
           return Padding(
             padding: EdgeInsets.fromLTRB(
@@ -1274,8 +1300,6 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                     final elapsed = DateTime.now().difference(s.parkedAt);
                     final heldSaleLabel =
                         canViewCustomerDetails ? s.label : 'Held sale';
-                    const discardMessage =
-                        'Discard this held sale? This sale will be permanently removed.';
                     return Padding(
                       padding: const EdgeInsets.only(top: DesignSpacing.sm),
                       child: ListCard(
@@ -1324,33 +1348,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                       restoreWarning != null ||
                                       _resumingHeldSaleId != null
                                   ? null
-                                  : () async {
-                                      final confirmed = await showConfirmDialog(
-                                        ctx,
-                                        title: 'Discard Held Sale',
-                                        message: discardMessage,
-                                        confirmLabel: 'Discard',
-                                        confirmColor: DesignColors.error,
-                                      );
-                                      if (confirmed == true && ctx.mounted) {
-                                        try {
-                                          await ref
-                                              .read(
-                                                parkedSalesProvider.notifier,
-                                              )
-                                              .remove(s.id);
-                                        } catch (error) {
-                                          if (ctx.mounted) {
-                                            showGlassSnackBar(
-                                              ctx,
-                                              'Could not discard the held sale. It is still saved. ${apiErrorMessage(error)}',
-                                              icon: Icons.error_outline_rounded,
-                                              color: DesignColors.error,
-                                            );
-                                          }
-                                        }
-                                      }
-                                    },
+                                  : () => _discardHeldSale(ctx, ref, s),
                             ),
                           ],
                         ),
@@ -1366,6 +1364,37 @@ class _POSScreenState extends ConsumerState<POSScreen> {
         },
       ),
     );
+  }
+
+  /// Asks before throwing a held sale away, then removes it. A failed removal
+  /// leaves the sale saved and says so.
+  Future<void> _discardHeldSale(
+    BuildContext ctx,
+    WidgetRef ref,
+    ParkedSale sale,
+  ) async {
+    final confirmed = await showConfirmDialog(
+      ctx,
+      title: 'Discard Held Sale',
+      message:
+          'Discard this held sale? This sale will be permanently removed.',
+      confirmLabel: 'Discard',
+      confirmColor: DesignColors.error,
+    );
+    if (confirmed == true && ctx.mounted) {
+      try {
+        await ref.read(parkedSalesProvider.notifier).remove(sale.id);
+      } catch (error) {
+        if (ctx.mounted) {
+          showGlassSnackBar(
+            ctx,
+            'Could not discard the held sale. It is still saved. ${apiErrorMessage(error)}',
+            icon: Icons.error_outline_rounded,
+            color: DesignColors.error,
+          );
+        }
+      }
+    }
   }
 
   Future<void> _resumeHeldSale(

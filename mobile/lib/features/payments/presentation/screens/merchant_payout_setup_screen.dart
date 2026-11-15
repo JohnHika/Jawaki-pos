@@ -8,6 +8,9 @@ import '../../../../core/legal/policy_catalog.dart';
 import '../../../../core/widgets/legal_link.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
+import '../desktop/desktop_payout_setup_view.dart';
 
 class _LoadAttempt<T> {
   const _LoadAttempt.success(this.value) : error = null;
@@ -230,6 +233,72 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
             _account?['accountHolderVerified'] == true);
     final ready = _account?['status'] == 'ACTIVE' && paystackVerified;
     final needsVerification = _account?['status'] == 'PENDING_VERIFICATION';
+    if (context.inDesktopShell) {
+      return Scaffold(
+        body: _loading && !_initialLoadComplete
+            ? const Center(child: CircularProgressIndicator())
+            : DesktopPayoutSetupView(
+                status: ready
+                    ? DesktopPayoutStatus.verified
+                    : needsVerification
+                        ? DesktopPayoutStatus.pending
+                        : DesktopPayoutStatus.needed,
+                banks: [
+                  for (final bank in _banks)
+                    DesktopBank(
+                      code: bank['code']?.toString() ?? '',
+                      name: bank['name']?.toString() ?? '',
+                    ),
+                ],
+                bankCode: _bankCode,
+                accountController: _accountNumber,
+                ownsAccount: _ownsAccount,
+                acceptedTerms: _acceptedPaymentTerms,
+                termsLabel: const TermsConsentText(
+                  before: 'I agree to the merchant payment and settlement ',
+                  linkText: 'terms',
+                  after: '.',
+                  route: '/legal/merchant-payments',
+                ),
+                termsLink: const LegalLinkText(
+                  text: 'Read merchant payment terms',
+                  route: '/legal/merchant-payments',
+                ),
+                changing: _isChangingPayout,
+                saving: _saving,
+                canSave: !(_saving ||
+                    _loading ||
+                    !_accountLoaded ||
+                    _banksLoadError != null ||
+                    _banks.isEmpty),
+                onBank: (value) => setState(() {
+                  _bankCode = value;
+                  _showAccountNumber = false;
+                }),
+                onOwnsAccount: (value) => setState(() => _ownsAccount = value),
+                onAcceptedTerms: (value) =>
+                    setState(() => _acceptedPaymentTerms = value),
+                onSave: _save,
+                onRefresh: _load,
+                savedBankName: _account?['bankName']?.toString() ??
+                    _bankNameForCode(_bankCode),
+                savedLast4: savedAccountLast4,
+                savedHolder: savedAccountHolder,
+                error: _error,
+                accountLoadError: _accountLoadError,
+                banksLoadError: _banksLoadError,
+                noBanksMessage: _api.baseUrl.contains('preview.invalid')
+                    ? 'This offline preview does not use sample banks. The connected app loads all supported Kenyan banks from the payment partner.'
+                    : 'No banks were returned. Refresh to try loading the bank list again.',
+                onChange: () => setState(() => _isChangingPayout = true),
+                onCancelChange: () => setState(() {
+                  _isChangingPayout = false;
+                  _error = null;
+                }),
+                onDone: () => context.pop(true),
+              ),
+      );
+    }
     return Scaffold(
       appBar:
           const BrandedAppBar(title: 'Customer payments', showBackButton: true),
@@ -239,7 +308,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
               builder: (context, constraints) {
                 final horizontalPadding =
                     constraints.maxWidth >= 640 ? 28.0 : 16.0;
-                return RefreshIndicator(
+                return DesktopRefresh(
                   onRefresh: _load,
                   child: Center(
                     child: ConstrainedBox(

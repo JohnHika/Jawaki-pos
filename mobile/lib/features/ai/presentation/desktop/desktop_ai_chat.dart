@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/desktop/desktop_layout.dart';
@@ -90,87 +91,99 @@ class DesktopAiPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        DesktopPageHeader(
-          title: title,
-          subtitle: subtitle,
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 10),
-          actions: [
-            if (onExport != null)
-              IconButton(
-                tooltip: 'Export conversation',
-                onPressed: onExport,
-                icon: const Icon(Icons.ios_share_rounded, size: 19),
-              ),
-            if (onMemory != null)
-              OutlinedButton.icon(
-                style: desktopSecondaryButton(context),
-                onPressed: onMemory,
-                icon: const Icon(Icons.psychology_alt_outlined, size: 17),
-                label: const Text('Workspace memory'),
-              ),
-            if (onNewConversation != null)
-              OutlinedButton.icon(
-                style: desktopSecondaryButton(context),
-                onPressed: onNewConversation,
-                icon: const Icon(Icons.add_comment_outlined, size: 17),
-                label: const Text('New conversation'),
-              ),
-          ],
-        ),
-        Divider(height: 1, color: context.desktop.border),
-        Expanded(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: desktopAiColumnWidth),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (todos != null) todos!,
-                    Expanded(child: conversation),
-                    if (slashSuggestions != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: slashSuggestions!,
-                      )
-                    else if (chips.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: _ChipRow(chips: chips, enabled: chipsEnabled),
-                      ),
-                    if (isGenerating && onStop != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: Tooltip(
-                            message: 'Stop generation',
-                            child: OutlinedButton.icon(
-                              key: const ValueKey('desktop-ai-stop-generation'),
-                              style: desktopSecondaryButton(context),
-                              onPressed: onStop,
-                              icon: const Icon(Icons.stop_rounded, size: 17),
-                              label: const Text('Stop generating'),
+    final stoppable = isGenerating && onStop != null;
+    return CallbackShortcuts(
+      // Esc halts a reply that is being written. The message box is locked
+      // meanwhile, so the Stop button takes focus and Esc bubbles from it.
+      bindings: {
+        if (stoppable)
+          const SingleActivator(LogicalKeyboardKey.escape): onStop!,
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DesktopPageHeader(
+            title: title,
+            subtitle: subtitle,
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 10),
+            actions: [
+              if (onExport != null)
+                IconButton(
+                  tooltip: 'Export conversation',
+                  onPressed: onExport,
+                  icon: const Icon(Icons.ios_share_rounded, size: 19),
+                ),
+              if (onMemory != null)
+                OutlinedButton.icon(
+                  style: desktopSecondaryButton(context),
+                  onPressed: onMemory,
+                  icon: const Icon(Icons.psychology_alt_outlined, size: 17),
+                  label: const Text('Workspace memory'),
+                ),
+              if (onNewConversation != null)
+                OutlinedButton.icon(
+                  style: desktopSecondaryButton(context),
+                  onPressed: onNewConversation,
+                  icon: const Icon(Icons.add_comment_outlined, size: 17),
+                  label: const Text('New conversation'),
+                ),
+            ],
+          ),
+          Divider(height: 1, color: context.desktop.border),
+          Expanded(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints:
+                    const BoxConstraints(maxWidth: desktopAiColumnWidth),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (todos != null) todos!,
+                      Expanded(child: conversation),
+                      if (slashSuggestions != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: slashSuggestions!,
+                        )
+                      else if (chips.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _ChipRow(chips: chips, enabled: chipsEnabled),
+                        ),
+                      if (isGenerating && onStop != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Tooltip(
+                              message: 'Stop generation',
+                              child: OutlinedButton.icon(
+                                key: const ValueKey(
+                                    'desktop-ai-stop-generation'),
+                                autofocus: true,
+                                style: desktopSecondaryButton(context),
+                                onPressed: onStop,
+                                icon: const Icon(Icons.stop_rounded, size: 17),
+                                label: const Text('Stop generating'),
+                              ),
                             ),
                           ),
                         ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: composer,
                       ),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 14),
-                      child: composer,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

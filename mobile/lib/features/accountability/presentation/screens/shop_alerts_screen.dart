@@ -12,6 +12,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/accountability_models.dart';
 import '../desktop/desktop_shop_alerts_page.dart';
 import '../providers/accountability_provider.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// The owner's watch-list: what happened in the shop that deserves a second
 /// look (sales below cost, voids, stock written off, credit over the limit,
@@ -61,7 +62,7 @@ class _ShopAlertsScreenState extends ConsumerState<ShopAlertsScreen> {
             ),
         ],
       ),
-      body: RefreshIndicator(
+      body: DesktopRefresh(
         onRefresh: controller.refresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),

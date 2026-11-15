@@ -12,6 +12,9 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/statement_models.dart';
 import '../../domain/statement_sync_recovery.dart';
 import '../providers/statement_provider.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../desktop/desktop_statement_replies_view.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// Customer responses to a statement link. A customer's "I have paid" claim
 /// stays informational until a provider-confirmed payment settles the debt.
@@ -21,6 +24,11 @@ class StatementRepliesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final layout = ref.watch(businessLayoutProvider);
+    if (context.inDesktopShell) {
+      return _DesktopRepliesPage(
+        title: layout.actionLabel('/statements/replies', 'Debt Replies'),
+      );
+    }
     if (getIt<AuthService>().isLocalWorkspace) {
       return Scaffold(
         appBar: BrandedAppBar(
@@ -55,7 +63,7 @@ class StatementRepliesScreen extends ConsumerWidget {
         title: layout.actionLabel('/statements/replies', 'Debt Replies'),
         showBackButton: GoRouter.of(context).canPop(),
       ),
-      body: RefreshIndicator(
+      body: DesktopRefresh(
         onRefresh: () async => ref.invalidate(statementClaimsProvider),
         child: claims.when(
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -114,6 +122,96 @@ class StatementRepliesScreen extends ConsumerWidget {
                   itemBuilder: (context, i) => _ReplyCard(claim: rows[i]),
                 ),
         ),
+      ),
+    );
+  }
+}
+
+/// The computer page: the same claims and the same approve / reject call,
+/// shown as a table with the open reply beside it.
+class _DesktopRepliesPage extends ConsumerStatefulWidget {
+  const _DesktopRepliesPage({required this.title});
+
+  final String title;
+
+  @override
+  ConsumerState<_DesktopRepliesPage> createState() =>
+      _DesktopRepliesPageState();
+}
+
+class _DesktopRepliesPageState extends ConsumerState<_DesktopRepliesPage> {
+  String? _busyId;
+
+  Future<void> _decide(StatementClaim claim, {required bool confirm}) async {
+    setState(() => _busyId = claim.id);
+    try {
+      final result = await getIt<ApiClient>()
+          .decideStatementClaim(claim.id, confirm: confirm);
+      if (!mounted) return;
+      if (result['message'] is String) {
+        showGlassSnackBar(context, result['message'] as String,
+            icon: Icons.info_outline_rounded);
+      }
+      ref.invalidate(statementClaimsProvider);
+    } catch (e) {
+      if (!mounted) return;
+      showGlassSnackBar(
+        context,
+        apiErrorMessage(e),
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
+      );
+    } finally {
+      if (mounted) setState(() => _busyId = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canDecide =
+        ref.watch(permissionsProvider).has('finance.manage_receivables');
+    void refresh() => ref.invalidate(statementClaimsProvider);
+    void openFinance() => context.push('/finance');
+
+    DesktopStatementRepliesView view({
+      List<StatementClaim> claims = const [],
+      bool loading = false,
+      DesktopRepliesNotice? notice,
+      String? message,
+    }) =>
+        DesktopStatementRepliesView(
+          title: widget.title,
+          claims: claims,
+          loading: loading,
+          notice: notice,
+          noticeMessage: message,
+          canDecide: canDecide,
+          busyId: _busyId,
+          onDecide: _decide,
+          onOpenFinance: openFinance,
+          onOpenCustomers: () => context.push('/customers'),
+          onRefresh: refresh,
+        );
+
+    if (getIt<AuthService>().isLocalWorkspace) {
+      return Scaffold(
+        body: view(notice: DesktopRepliesNotice.localWorkspace),
+      );
+    }
+    final claims = ref.watch(statementClaimsProvider);
+    return Scaffold(
+      body: claims.when(
+        loading: () => view(loading: true),
+        error: (e, _) => view(
+          notice: statementNeedsOnlineWorkspace(e)
+              ? DesktopRepliesNotice.needsOnline
+              : DesktopRepliesNotice.failed,
+          message: statementServiceNeedsUpdate(e)
+              ? 'Customer replies could not be reached. Your sales and debts '
+                  'are safe. Try again shortly.'
+              : apiErrorMessage(e),
+        ),
+        data: (rows) => view(claims: rows),
       ),
     );
   }

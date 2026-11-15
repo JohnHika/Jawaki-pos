@@ -38,6 +38,7 @@ import '../../../../core/utils/format.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../notifications/presentation/widgets/notification_bell.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((ref) {
   final db = getIt<AppDatabase>();
@@ -573,7 +574,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 ),
               ],
             ),
-      body: RefreshIndicator(
+      body: DesktopRefresh(
         onRefresh: () => _refreshDashboard(ref),
         child: PageContainer(
           withScroll: true,

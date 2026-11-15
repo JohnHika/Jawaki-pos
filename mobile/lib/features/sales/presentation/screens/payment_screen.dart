@@ -28,6 +28,7 @@ import '../widgets/record_payment_sheet.dart';
 import '../../domain/recorded_payment.dart';
 import '../../../../core/widgets/modal_disposal.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 enum PaymentMethod {
   cash,
@@ -142,7 +143,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                     ? 'The payment partner has marked this payout account inactive. Review it in Customer payments.'
                     : 'Counterbase could not confirm your payout status. Check your connection and try again.';
 
-    await showModalBottomSheet<void>(
+    await showAdaptiveModalSheet<void>(
       context: context,
       useRootNavigator: true,
       showDragHandle: true,
@@ -709,7 +710,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     final bankName = payoutAccount['bankName']?.toString().trim() ?? '';
     final accountName = payoutAccount['accountName']?.toString().trim() ?? '';
     final accountLast4 = payoutAccount['accountLast4']?.toString().trim() ?? '';
-    return await showModalBottomSheet<bool>(
+    return await showAdaptiveModalSheet<bool>(
           useRootNavigator: true,
           context: context,
           isScrollControlled: true,
@@ -881,7 +882,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
   Future<_CustomerChoice?> _showCustomerPicker() async {
     final layout = ref.read(businessLayoutProvider);
-    final customer = await showModalBottomSheet<_CustomerChoice>(
+    final customer = await showAdaptiveModalSheet<_CustomerChoice>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
@@ -1259,7 +1260,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       _TenderRow(method: 'CREDIT', amountController: TextEditingController()),
     ];
 
-    final confirmed = await showModalBottomSheet<bool>(
+    final confirmed = await showAdaptiveModalSheet<bool>(
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,

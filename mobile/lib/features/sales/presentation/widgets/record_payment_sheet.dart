@@ -8,6 +8,7 @@ import 'package:axon_pos/features/subscription/domain/subscription_plans.dart'
     show formatKes;
 import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
 import 'package:axon_pos/features/sales/domain/recorded_payment.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 /// Records a payment the shop received itself, such as an M-Pesa payment to the
 /// shop's own till or a bank transfer. Returns the details to save with the
@@ -46,7 +47,7 @@ Future<RecordedPaymentDetails?> showRecordPaymentSheet(
       ),
     );
   }
-  return showModalBottomSheet<RecordedPaymentDetails>(
+  return showAdaptiveModalSheet<RecordedPaymentDetails>(
     context: context,
     isScrollControlled: true,
     useRootNavigator: true,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'design_system.dart';
+import '../desktop/adaptive_sheet.dart';
 
 enum ShareFormat { pdf, csv, plainText }
 
@@ -49,7 +50,7 @@ Future<ShareFormat?> showShareFormatSheet(
   String? subtitle,
   required List<ShareFormatOption> formats,
 }) {
-  return showModalBottomSheet<ShareFormat>(
+  return showAdaptiveModalSheet<ShareFormat>(
     useRootNavigator: true,
     context: context,
     shape: const RoundedRectangleBorder(

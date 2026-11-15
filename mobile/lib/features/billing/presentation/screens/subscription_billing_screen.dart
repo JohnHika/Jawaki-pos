@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/legal/policy_catalog.dart';
 import '../../../../core/widgets/legal_link.dart';
@@ -18,7 +19,11 @@ import '../../../../core/widgets/motion.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../subscription/domain/subscription_plans.dart';
 import '../../domain/billing_entitlement.dart';
+import '../desktop/desktop_billing_view.dart';
+import '../../../finance/presentation/desktop/desktop_figures_row.dart';
 import '../providers/entitlement_provider.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// Status badge colors for billing states (mirrors the subscription
 /// screen's palette; GRACE_PERIOD added).
@@ -227,7 +232,7 @@ class _SubscriptionBillingScreenState
         : currentPlan;
     bool acceptedBillingTerms = false;
 
-    showModalBottomSheet(
+    showAdaptiveModalSheet(
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,
@@ -388,6 +393,7 @@ class _SubscriptionBillingScreenState
 
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) return _buildDesktop();
     return Theme(
       data: Theme.of(context).copyWith(
         splashFactory: InkRipple.splashFactory,
@@ -397,7 +403,7 @@ class _SubscriptionBillingScreenState
         appBar: const BrandedAppBar(
           title: 'Plan & Billing',
         ),
-        body: RefreshIndicator(
+        body: DesktopRefresh(
           onRefresh: _loadData,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -493,6 +499,276 @@ class _SubscriptionBillingScreenState
           ),
         ),
       ),
+    );
+  }
+
+  // ── Computer layout ─────────────────────────────────────────────────
+
+  /// Plan & Billing inside the desktop shell: the same state and payment
+  /// calls as the phone page, drawn as figures, two panels and a table.
+  Widget _buildDesktop() {
+    final entitlement = _entitlement;
+    final billingPlan = _billingPlan;
+    final days = entitlement?.daysRemaining;
+    final overdue = entitlement?.daysOverdue ?? 0;
+    final nextPayment = entitlement?.paidUntil;
+
+    String? daysHint;
+    if (days != null) {
+      if (days <= 0) {
+        daysHint = overdue > 0
+            ? 'Overdue by $overdue ${overdue == 1 ? 'day' : 'days'}'
+            : 'Due for renewal';
+      } else {
+        daysHint = '$days ${days == 1 ? 'day' : 'days'} left';
+      }
+    }
+
+    final figures = <DesktopFigure>[
+      DesktopFigure(
+        label: 'Plan',
+        value: billingPlan?.name ?? 'Unavailable',
+        hint: billingPlan == null
+            ? null
+            : billingPlan.id == 'trial'
+                ? 'Free trial'
+                : 'KES ${_formatAmount(billingPlan.priceKes)} a month',
+      ),
+      DesktopFigure(
+        label: 'Status',
+        value: entitlement == null ? '—' : _statusLabel(entitlement.status),
+        hint: entitlement?.source == EntitlementSource.offlineCache
+            ? 'Saved on this computer'
+            : null,
+      ),
+      DesktopFigure(
+        label: 'Next payment',
+        value: nextPayment == null ? '—' : _formatDate(nextPayment),
+        hint: daysHint,
+        valueColor: days != null && days <= 0 ? DesignColors.error : null,
+      ),
+      DesktopFigure(
+        label: 'Branches and users',
+        value: entitlement?.maxBranches == null
+            ? '—'
+            : '${formatLimit(entitlement!.maxBranches)} branches',
+        hint: entitlement?.maxUsers == null
+            ? null
+            : '${formatLimit(entitlement!.maxUsers)} users',
+      ),
+    ];
+
+    final notices = <DesktopBillingNotice>[
+      if (_error != null)
+        DesktopBillingNotice(_error!, tone: DesktopBillingTone.error),
+      if (entitlement?.source == EntitlementSource.offlineCache)
+        const DesktopBillingNotice(
+          'Showing saved billing details. Reconnect to confirm your current status.',
+        ),
+      if (entitlement?.state == EntitlementState.grace)
+        const DesktopBillingNotice(
+          'Payment overdue — you’re in the 3-day grace period. '
+          'Pay now to keep creating sales.',
+        ),
+      if (entitlement != null &&
+          (entitlement.state == EntitlementState.unknown ||
+              billingPlan == null) &&
+          entitlement.source != EntitlementSource.offlineCache)
+        const DesktopBillingNotice(
+          'Reconnect to confirm your plan and renewal date.',
+        ),
+    ];
+
+    final admin = _isAdmin;
+    final isTrial = entitlement?.status.toUpperCase() == 'TRIAL';
+    final license = entitlement?.license;
+    final settings = _settings;
+    final autoRenew = settings?['autoRenewEnabled'] == true;
+    final phone = settings?['billingPhone']?.toString() ?? '';
+
+    String seats(int? n) => n == null
+        ? '—'
+        : n >= 1000
+            ? 'Unlimited'
+            : '$n';
+
+    return Scaffold(
+      body: DesktopBillingView(
+        loading: _isLoadingEntitlement && entitlement == null,
+        unavailable: entitlement == null,
+        figures: figures,
+        notices: notices,
+        onRefresh: _loadData,
+        renewal: _desktopRenewal(),
+        planSummary: admin ? _planSummary() : null,
+        choosePlan: admin && isTrial
+            ? DesktopBillingAction(
+                label: 'Choose plan',
+                icon: Icons.tune_rounded,
+                onPressed: _isChangingPlan || billingPlan == null
+                    ? null
+                    : _showChangePlanSheet,
+              )
+            : null,
+        licence: admin && license != null
+            ? DesktopBillingLicence(
+                modules: [
+                  for (final key in LicensedFeature.labels.keys)
+                    (
+                      label: LicensedFeature.labels[key]!,
+                      allowed: (license.planFeatures[key] ?? true) &&
+                          license.allows(key),
+                    ),
+                ],
+                limits:
+                    'Up to ${seats(license.maxBranches)} branches · ${seats(license.maxUsers)} users',
+                licenceKey: license.licenseKey,
+                expired: license.expired,
+              )
+            : null,
+        autoRenew: admin
+            ? DesktopBillingAutoRenew(
+                enabled: autoRenew,
+                summary: autoRenew
+                    ? (phone.isEmpty
+                        ? 'Add a billing phone so we can charge it'
+                        : 'On — $phone')
+                    : 'Off — pay each invoice through secure checkout',
+                onConfigure: _showAutoRenewSheet,
+              )
+            : null,
+        onFreeDays: admin ? () => context.push('/referrals') : null,
+        invoices: [
+          for (final raw in _invoices)
+            _desktopInvoice(Map<String, dynamic>.from(raw as Map)),
+        ],
+        invoicesLoading: _isLoadingInvoices,
+        invoiceError: _invoiceError,
+        onRetryInvoices: _loadInvoices,
+      ),
+    );
+  }
+
+  DesktopBillingRenewal _desktopRenewal() {
+    if (_billingPlan == null) {
+      return DesktopBillingRenewal(
+        message: 'Reconnect to load your plan before making a payment.',
+        secondary: DesktopBillingAction(
+          label: 'Retry',
+          icon: Icons.refresh_rounded,
+          onPressed: _loadData,
+        ),
+      );
+    }
+    final renewal = _renewalDecision();
+    switch (renewal.kind) {
+      case _RenewalKind.notice:
+        return DesktopBillingRenewal(message: renewal.message);
+      case _RenewalKind.preparing:
+        return DesktopBillingRenewal(
+          message: renewal.message,
+          secondary: DesktopBillingAction(
+            label: 'Refresh status',
+            icon: Icons.refresh_rounded,
+            onPressed: _loadData,
+          ),
+        );
+      case _RenewalKind.pendingMpesa:
+        final invoice = renewal.invoice!;
+        final invoiceId = invoice['id']?.toString() ?? '';
+        final needsReview = _mpesaInvoiceStatuses[invoiceId] == 'NEEDS_REVIEW';
+        return DesktopBillingRenewal(
+          message: renewal.message,
+          secondary: DesktopBillingAction(
+            label: 'Check M-Pesa status',
+            icon: Icons.refresh_rounded,
+            busy: invoiceId.isNotEmpty && _paystackInvoiceBusyId == invoiceId,
+            onPressed: invoiceId.isEmpty ||
+                    _paystackInvoiceBusyId != null ||
+                    needsReview
+                ? null
+                : () => _checkMpesaRenewalStatus(invoiceId),
+          ),
+        );
+      case _RenewalKind.pay:
+        final busy = _paystackInvoiceBusyId == 'current';
+        return DesktopBillingRenewal(
+          message: 'A subscription payment is due. '
+              'Pay securely by card or M-Pesa to keep every feature on.',
+          primary: DesktopBillingAction(
+            label: busy ? 'Opening secure checkout…' : 'Pay subscription securely',
+            icon: Icons.lock_rounded,
+            busy: busy,
+            onPressed: busy ? null : _startPaystackInvoicePayment,
+          ),
+          note: _payerNote,
+        );
+    }
+  }
+
+  DesktopBillingInvoice _desktopInvoice(Map<String, dynamic> invoice) {
+    final amount = parseBillingAmount(invoice['amount']);
+    final currency = invoice['currency'] as String? ?? 'KES';
+    final status = invoice['status'] as String? ?? '';
+    final date =
+        invoice['date'] as String? ?? invoice['createdAt'] as String? ?? '';
+    final description = invoice['description'] as String? ??
+        (invoice['plan'] != null
+            ? '${invoice['plan']} subscription'
+            : 'Subscription');
+    final reference =
+        invoice['reference'] as String? ?? invoice['mpesaReference'] as String?;
+    final provider = invoice['provider']?.toString().toUpperCase() ?? '';
+    final invoiceId = invoice['id']?.toString() ?? '';
+    final mpesaCheckoutId = invoice['mpesaCheckoutId']?.toString() ?? '';
+    final hasReference = reference != null && reference.isNotEmpty;
+
+    DesktopBillingAction? check;
+    if (status.toUpperCase() == 'PENDING' &&
+        provider == 'PAYSTACK' &&
+        hasReference) {
+      check = DesktopBillingAction(
+        label: 'Check payment',
+        icon: Icons.refresh_rounded,
+        busy: _paystackInvoiceBusyId == reference,
+        onPressed: _paystackInvoiceBusyId == reference
+            ? null
+            : () => _verifyPaystackPayment(reference),
+      );
+    } else if (status.toUpperCase() != 'PAID' &&
+        provider == 'JENGA_STK' &&
+        mpesaCheckoutId.isNotEmpty &&
+        invoiceId.isNotEmpty) {
+      check = DesktopBillingAction(
+        label: 'Check M-Pesa status',
+        icon: Icons.refresh_rounded,
+        busy: _paystackInvoiceBusyId == invoiceId,
+        onPressed: _paystackInvoiceBusyId == null
+            ? () => _checkMpesaRenewalStatus(invoiceId)
+            : null,
+      );
+    }
+
+    return DesktopBillingInvoice(
+      id: invoiceId.isNotEmpty ? invoiceId : '$description-$date',
+      description: description,
+      dateLabel: date.isNotEmpty ? _formatDate(date) : '—',
+      date: DateTime.tryParse(date),
+      amount: amount.toDouble(),
+      amountLabel: '$currency ${_formatAmount(amount)}',
+      statusLabel: status.isEmpty
+          ? '—'
+          : (_statusLabel(status) == status
+              ? status.replaceAll('_', ' ')
+              : _statusLabel(status)),
+      statusColor: statusColor(status),
+      method: !hasReference
+          ? ''
+          : provider == 'PAYSTACK'
+              ? 'Card'
+              : 'M-Pesa',
+      reference: hasReference ? reference : null,
+      check: check,
     );
   }
 
@@ -878,6 +1154,14 @@ class _SubscriptionBillingScreenState
 
   Widget _buildManagePlanTile() {
     final plan = _billingPlan;
+    final isTrial = _entitlement?.status.toUpperCase() == 'TRIAL';
+    final planSummary = _planSummary();
+    return _manageTile(plan, isTrial, planSummary);
+  }
+
+  /// The "Manage plan" sentence, shared by the phone tile and the computer panel.
+  String _planSummary() {
+    final plan = _billingPlan;
     final status = _entitlement?.status.toUpperCase();
     final isTrial = status == 'TRIAL';
     final isActive = status == 'ACTIVE';
@@ -898,6 +1182,10 @@ class _SubscriptionBillingScreenState
     } else {
       planSummary = '${plan.name} · ${_statusLabel(status)}';
     }
+    return planSummary;
+  }
+
+  Widget _manageTile(SubscriptionPlan? plan, bool isTrial, String planSummary) {
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
@@ -952,12 +1240,16 @@ class _SubscriptionBillingScreenState
 
   // ── Actions ─────────────────────────────────────────────────────────
 
+  String get _payerEmail {
+    if (!getIt.isRegistered<AuthService>()) return '';
+    return getIt<AuthService>().currentUser?['email']?.toString().trim() ?? '';
+  }
+
+  String get _payerNote => _payerEmail.isEmpty
+      ? 'The payment partner uses the signed-in shop account email for the subscription checkout.'
+      : 'Subscription payer email: $_payerEmail. This is the signed-in shop account email.';
+
   Widget _buildPayWithMpesaButton() {
-    var payerEmail = '';
-    if (getIt.isRegistered<AuthService>()) {
-      payerEmail =
-          getIt<AuthService>().currentUser?['email']?.toString().trim() ?? '';
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -982,9 +1274,7 @@ class _SubscriptionBillingScreenState
             const SizedBox(width: DesignSpacing.xs),
             Expanded(
               child: Text(
-                payerEmail.isEmpty
-                    ? 'The payment partner uses the signed-in shop account email for the subscription checkout.'
-                    : 'Subscription payer email: $payerEmail. This is the signed-in shop account email.',
+                _payerNote,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: DesignColors.textSecondary,
                       height: 1.35,
@@ -998,45 +1288,76 @@ class _SubscriptionBillingScreenState
   }
 
   Widget _buildRenewalPaymentAction() {
+    final renewal = _renewalDecision();
+    return switch (renewal.kind) {
+      _RenewalKind.notice => _buildBillingNotice(renewal.message),
+      _RenewalKind.preparing => _buildInvoicePreparationNotice(renewal.message),
+      _RenewalKind.pendingMpesa => _buildPendingMpesaRenewal(renewal.invoice!),
+      _RenewalKind.pay => _buildPayWithMpesaButton(),
+    };
+  }
+
+  String _mpesaPendingMessage(Map<String, dynamic> invoice) {
+    final invoiceId = invoice['id']?.toString() ?? '';
+    final needsReview = _mpesaInvoiceStatuses[invoiceId] == 'NEEDS_REVIEW';
+    return needsReview
+        ? 'The provider reported an amount mismatch. This invoice is held for review; contact support before retrying.'
+        : 'An M-Pesa renewal prompt is still being confirmed. Approve it on the billing phone, then check its status here.';
+  }
+
+  /// What the renewal area should say or offer right now. The phone and the
+  /// computer layouts both render this one decision.
+  _Renewal _renewalDecision() {
     if (_isLoadingEntitlement || _isLoadingInvoices) {
-      return _buildBillingNotice(
-          'Checking whether a subscription payment is due…');
+      return const _Renewal(
+        _RenewalKind.notice,
+        'Checking whether a subscription payment is due…',
+      );
     }
 
     final entitlement = _entitlement;
     if (entitlement == null ||
         entitlement.source != EntitlementSource.live ||
         entitlement.status.toUpperCase() == 'UNKNOWN') {
-      return _buildInvoicePreparationNotice(
+      return const _Renewal(
+        _RenewalKind.preparing,
         'Reconnect to verify your subscription before starting a payment.',
       );
     }
     final openInvoice = _openInvoiceForPayment();
     final invoiceStatus = openInvoice?['status']?.toString().toUpperCase();
     if (invoiceStatus == 'NEEDS_REVIEW') {
-      return _buildBillingNotice(
+      return const _Renewal(
+        _RenewalKind.notice,
         'This invoice is on hold for a payment review. Do not retry it; contact support@archeaxon.com with the invoice reference.',
       );
     }
     final provider = openInvoice?['provider']?.toString().toUpperCase();
     if (provider == 'JENGA_STK_INITIALIZING') {
-      return _buildInvoicePreparationNotice(
+      return const _Renewal(
+        _RenewalKind.preparing,
         'The M-Pesa renewal request is being prepared. Refresh in a moment before starting another payment.',
       );
     }
     if (provider == 'JENGA_STK' &&
         openInvoice?['mpesaCheckoutId']?.toString().isNotEmpty == true) {
-      return _buildPendingMpesaRenewal(openInvoice!);
+      return _Renewal(
+        _RenewalKind.pendingMpesa,
+        _mpesaPendingMessage(openInvoice!),
+        invoice: openInvoice,
+      );
     }
     if (provider == 'JENGA_STK') {
-      return _buildInvoicePreparationNotice(
+      return const _Renewal(
+        _RenewalKind.preparing,
         'An M-Pesa renewal is reserved but its status reference is unavailable. Refresh the invoice before retrying.',
       );
     }
     if (provider == 'PAYSTACK_INITIALIZING' ||
         (provider == 'PAYSTACK' &&
             openInvoice?['authorizationUrl']?.toString().isNotEmpty != true)) {
-      return _buildInvoicePreparationNotice(
+      return const _Renewal(
+        _RenewalKind.preparing,
         'Secure checkout is being prepared. Refresh in a moment before trying again.',
       );
     }
@@ -1053,10 +1374,11 @@ class _SubscriptionBillingScreenState
         status == 'PAST_DUE' ||
         status == 'SUSPENDED';
 
-    if (paymentDue) return _buildPayWithMpesaButton();
+    if (paymentDue) return const _Renewal(_RenewalKind.pay, '');
     if (status == 'TRIAL') {
       final end = entitlement.paidUntil;
-      return _buildBillingNotice(
+      return _Renewal(
+        _RenewalKind.notice,
         end == null
             ? 'Your free trial is active. No subscription payment is due yet.'
             : 'Your free trial is active through ${_formatDate(end)}. No subscription payment is due yet.',
@@ -1064,13 +1386,14 @@ class _SubscriptionBillingScreenState
     }
     if (status == 'ACTIVE') {
       final end = entitlement.paidUntil;
-      return _buildBillingNotice(
+      return _Renewal(
+        _RenewalKind.notice,
         end == null
             ? 'Your subscription is active. No payment is due now.'
             : 'Your subscription is active through ${_formatDate(end)}. No payment is due now.',
       );
     }
-    return _buildPayWithMpesaButton();
+    return const _Renewal(_RenewalKind.pay, '');
   }
 
   Map<String, dynamic>? _openInvoiceForPayment() {
@@ -1107,9 +1430,7 @@ class _SubscriptionBillingScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildBillingNotice(needsReview
-            ? 'The provider reported an amount mismatch. This invoice is held for review; contact support before retrying.'
-            : 'An M-Pesa renewal prompt is still being confirmed. Approve it on the billing phone, then check its status here.'),
+        _buildBillingNotice(_mpesaPendingMessage(invoice)),
         Align(
           alignment: Alignment.centerRight,
           child: TextButton.icon(
@@ -1340,7 +1661,7 @@ class _SubscriptionBillingScreenState
   // ── Pay sheet ───────────────────────────────────────────────────────
 
   void _showAutoRenewSheet() {
-    showModalBottomSheet(
+    showAdaptiveModalSheet(
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,
@@ -1636,6 +1957,17 @@ class _SubscriptionBillingScreenState
     }
     return amount.toStringAsFixed(2);
   }
+}
+
+enum _RenewalKind { notice, preparing, pendingMpesa, pay }
+
+/// The renewal area's current state, shared by the phone and computer layouts.
+class _Renewal {
+  const _Renewal(this.kind, this.message, {this.invoice});
+
+  final _RenewalKind kind;
+  final String message;
+  final Map<String, dynamic>? invoice;
 }
 
 /// Status badge colors shared with the banner tests — public because the

@@ -7,6 +7,9 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/modal_disposal.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../desktop/desktop_local_staff_view.dart';
 
 class LocalStaffScreen extends ConsumerStatefulWidget {
   const LocalStaffScreen({super.key});
@@ -27,6 +30,36 @@ class _LocalStaffScreenState extends ConsumerState<LocalStaffScreen> {
       ..sort((a, b) => (a['name'] ?? '').toString().toLowerCase().compareTo(
             (b['name'] ?? '').toString().toLowerCase(),
           ));
+
+    if (context.inDesktopShell) {
+      Map<String, dynamic> accountOf(DesktopLocalStaff s) =>
+          accounts.firstWhere((a) => a['id'].toString() == s.id);
+      return Scaffold(
+        body: DesktopLocalStaffView(
+          isOwner: isOwner,
+          saving: _saving,
+          staff: [
+            for (final a in accounts)
+              DesktopLocalStaff(
+                id: a['id'].toString(),
+                name: a['name']?.toString() ?? 'Unnamed staff',
+                role: a['role']?.toString() ?? 'Staff',
+                active: a['isActive'] != false,
+              ),
+          ],
+          roles: [
+            for (final r in LocalStaffRoles.names)
+              DesktopStaffRole(
+                name: r,
+                description: LocalStaffRoles.descriptionFor(r),
+              ),
+          ],
+          onAdd: () => _editStaff(),
+          onEdit: (s) => _editStaff(account: accountOf(s)),
+          onToggle: (s) => _toggleActive(accountOf(s)),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: BrandedAppBar(
@@ -203,7 +236,7 @@ class _LocalStaffScreenState extends ConsumerState<LocalStaffScreen> {
         ? account!['role'].toString()
         : LocalStaffRoles.names.first;
     var obscurePin = true;
-    final result = await showModalBottomSheet<Map<String, dynamic>>(
+    final result = await showAdaptiveModalSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,

@@ -17,6 +17,7 @@ import '../../../../core/services/auth_service.dart';
 import '../../domain/stocktake_models.dart';
 import '../desktop/desktop_stock_count_views.dart';
 import '../providers/stocktake_provider.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// Counting the shelf and comparing it with the system: the way a loss shows
 /// up before it becomes a habit.
@@ -66,7 +67,7 @@ class StockCountsScreen extends ConsumerWidget {
               label: const Text('New count'),
             )
           : null,
-      body: RefreshIndicator(
+      body: DesktopRefresh(
         onRefresh: () async => ref.invalidate(stockCountsProvider),
         child: counts.when(
           loading: () => const Center(child: CircularProgressIndicator()),

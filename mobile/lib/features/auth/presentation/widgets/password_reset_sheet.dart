@@ -9,6 +9,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/company_code.dart';
 import 'sign_in_kit.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 Future<bool?> showPasswordResetSheet(
   BuildContext context, {
@@ -26,7 +27,7 @@ Future<bool?> showPasswordResetSheet(
       ),
     );
   }
-  return showModalBottomSheet<bool>(
+  return showAdaptiveModalSheet<bool>(
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,

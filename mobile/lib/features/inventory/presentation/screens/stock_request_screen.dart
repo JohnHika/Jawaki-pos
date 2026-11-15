@@ -12,6 +12,8 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/form_kit.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../desktop/desktop_stock_request_form.dart';
 import '../widgets/product_picker_dialog.dart';
 import '../../../../core/utils/device_features.dart';
 
@@ -209,8 +211,66 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
     }
   }
 
+  /// Back out of the form: pops when pushed, otherwise returns to Inventory.
+  void _leave() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/inventory');
+    }
+  }
+
+  /// The computer layout: one centred form with a Send button in the header.
+  Widget _buildDesktop(BuildContext context) {
+    final quantity = double.tryParse(_quantityController.text.trim());
+    final hasProduct = _selectedProductId != null;
+    final photos = [
+      for (final image in _images)
+        DesktopRequestPhoto(id: image, thumbnail: _buildRequestImage(image)),
+    ];
+    return Scaffold(
+      backgroundColor: context.desktop.panel,
+      body: DesktopStockRequestForm(
+        formKey: _formKey,
+        quantity: _quantityController,
+        reason: _reasonController,
+        unit: _unit,
+        priority: _priority,
+        priorities: [
+          for (final (value, label, _) in _priorities)
+            DesktopRequestPriority(value, label),
+        ],
+        quickReasons: _quickReasons,
+        photos: photos,
+        productName: _selectedProductName,
+        onHand: !hasProduct || _onHand == null
+            ? null
+            : 'You have ${kitCount(_onHand!, _unit)} now',
+        onHandIsEmpty: hasProduct && _onHand != null && _onHand! <= 0,
+        summary: (hasProduct && quantity != null && quantity > 0)
+            ? 'Requesting ${kitCount(quantity, _unit)} of $_selectedProductName'
+            : null,
+        busy: _isLoading,
+        sentMessage: _showSuccess
+            ? 'Your request for $_selectedProductName is with the manager for approval.'
+            : null,
+        onPickProduct: _pickProduct,
+        onPriority: (v) => setState(() => _priority = v),
+        onReason: (r) => setState(() {
+          _reasonController.text = _reasonController.text.trim() == r ? '' : r;
+        }),
+        onChanged: () => setState(() {}),
+        onAddPhoto: _addPhoto,
+        onRemovePhoto: (id) => setState(() => _images.remove(id)),
+        onSubmit: _submitRequest,
+        onCancel: _leave,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) return _buildDesktop(context);
     return Scaffold(
       appBar: const BrandedAppBar(title: 'Request Stock'),
       body: PageContainer(

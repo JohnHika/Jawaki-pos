@@ -8,6 +8,7 @@ import '../../../../core/utils/format.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
 import '../../domain/finance_models.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 /// What the owner chose to pay in one go.
 typedef SupplierBatch = ({
@@ -24,11 +25,14 @@ Future<bool> showPaySuppliersSheet(
   required List<FinancePayable> payables,
   required Future<void> Function(SupplierBatch batch) onPay,
 }) async {
-  final paid = await showModalBottomSheet<bool>(
+  final paid = await showAdaptiveModalSheet<bool>(
     context: context,
     isScrollControlled: true,
     useRootNavigator: true,
     useSafeArea: true,
+    // A tall list of payables: a right-hand panel on a computer.
+    desktopStyle: DesktopSheetStyle.sidePanel,
+    desktopWidth: 560,
     backgroundColor: SignInPalette.of(context).page,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),

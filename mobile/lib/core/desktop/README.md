@@ -29,6 +29,8 @@ page, branch on `context.inDesktopShell` (true only below the shell).
 | `desktop_widgets.dart` | `DesktopPageHeader`, `DesktopPanel`, `DesktopMetricStrip`, `DesktopSearchField`, `DesktopFilterChip`, `DesktopEmptyState` |
 | `desktop_table.dart` | `DesktopDataTable<T>` (sticky header, sort, hover, arrow keys, virtualised), `DesktopColumn`, `DesktopCellText`, `DesktopStatusChip` |
 | `desktop_split.dart` | `DesktopInspectorLayout` + `DesktopInspector` (row click opens a right panel, Esc closes), `DesktopListDetail` |
+| `adaptive_sheet.dart` | `showAdaptiveModalSheet`: drop-in for `showModalBottomSheet` (same arguments, phone untouched); dialog or side panel in the shell |
+| `desktop_refresh.dart` | `DesktopRefresh`: drop-in for `RefreshIndicator`; adds a Refresh button and F5 / Ctrl+R in the shell |
 | `adaptive_overlays.dart` | `showAdaptiveSheet` (bottom sheet on phone, dialog or side panel on desktop), `DesktopSheetFrame` |
 | `desktop_theme.dart` | the theme transform the shell applies |
 | `../../features/home/presentation/desktop/desktop_command_palette.dart` | `DesktopKeyCap` and the palette |
@@ -36,8 +38,8 @@ page, branch on `context.inDesktopShell` (true only below the shell).
 ## Rules for a desktop page
 
 1. **No phone chrome inside the shell**: no `FloatingActionButton`, no bottom
-   action bars, no pull-to-refresh, no swipe-only actions, no `showModalBottomSheet`
-   (use `showAdaptiveSheet`), no big collapsing app bars, no haptics needed.
+   action bars, no bare pull-to-refresh (use `DesktopRefresh`), no swipe-only actions, no `showModalBottomSheet`
+   (use `showAdaptiveModalSheet` / `showAdaptiveSheet`; `GlassBottomSheet.show` is already adaptive), no big collapsing app bars, no haptics needed.
 2. **Header**: use `DesktopPageHeader` (title, subtitle, primary actions at the
    right). If the page keeps a `Scaffold`, pass `appBar: null` when
    `context.inDesktopShell`. Primary action = one filled orange button.

@@ -8,6 +8,7 @@ import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../sales/presentation/providers/cart_provider.dart';
 import '../../data/coupon_service.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 /// "Add a coupon" on the cart, and the applied coupon once it is on. The value
 /// is recomputed from the cart every time, so removing an item can switch a
@@ -88,7 +89,7 @@ class CouponRow extends ConsumerWidget {
 /// Asks for a code, finds it in the shop's coupons (cached, so this works with
 /// no signal) and puts it on the cart if it qualifies.
 Future<void> showCouponSheet(BuildContext context, WidgetRef ref) async {
-  await showModalBottomSheet<void>(
+  await showAdaptiveModalSheet<void>(
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,

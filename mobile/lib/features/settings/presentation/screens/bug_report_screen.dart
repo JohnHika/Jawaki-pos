@@ -1,14 +1,18 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../../core/widgets/motion.dart';
+import '../../../catalog/presentation/desktop/desktop_button_styles.dart';
+import '../desktop/desktop_sub_page.dart';
 
 class BugReportScreen extends StatefulWidget {
   const BugReportScreen({super.key});
@@ -35,7 +39,8 @@ class _BugReportScreenState extends State<BugReportScreen> {
 
   Future<void> _pickScreenshot() async {
     final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1920);
+    final image =
+        await picker.pickImage(source: ImageSource.gallery, maxWidth: 1920);
     if (!mounted) return;
     if (image != null) {
       setState(() => _screenshot = File(image.path));
@@ -78,11 +83,28 @@ class _BugReportScreenState extends State<BugReportScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    if (context.inDesktopShell) {
+      return Scaffold(
+        body: CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.enter, control: true): () {
+              if (_result == null && !_isSubmitting) _submit();
+            },
+          },
+          child: DesktopSubPage(
+            title: 'Report a bug',
+            subtitle: 'Tell us what went wrong. Ctrl+Enter sends the report.',
+            child: _result != null ? _buildResult(isDark) : _buildForm(isDark),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surface,
       appBar: const BrandedAppBar(
-          title: 'Report a Bug',
-        ),
+        title: 'Report a Bug',
+      ),
       body: SafeArea(
         top: false,
         child: _result != null ? _buildResult(isDark) : _buildForm(isDark),
@@ -102,7 +124,9 @@ class _BugReportScreenState extends State<BugReportScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              success ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+              success
+                  ? Icons.check_circle_rounded
+                  : Icons.error_outline_rounded,
               color: success ? DesignColors.success : DesignColors.error,
               size: 64,
             ),
@@ -112,7 +136,9 @@ class _BugReportScreenState extends State<BugReportScreen> {
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
-                color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
+                color: isDark
+                    ? DesignColors.darkTextPrimary
+                    : DesignColors.textPrimary,
               ),
             ),
             const SizedBox(height: DesignSpacing.md),
@@ -123,7 +149,9 @@ class _BugReportScreenState extends State<BugReportScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
-                color: isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary,
+                color: isDark
+                    ? DesignColors.darkTextSecondary
+                    : DesignColors.textSecondary,
                 height: 1.4,
               ),
             ),
@@ -131,12 +159,22 @@ class _BugReportScreenState extends State<BugReportScreen> {
             StaggeredItem(
               itemKey: 'bug-result-action',
               index: 0,
-              child: GradientButton(
-                label: success ? 'Done' : 'Try Again',
-                onPressed: () => success ? context.pop() : setState(() => _result = null),
-                height: DesignSpacing.xl + 28,
-                borderRadius: DesignSpacing.radiusMd,
-              ),
+              child: context.inDesktopShell
+                  ? FilledButton(
+                      style: desktopPrimaryButton(context),
+                      onPressed: () => success
+                          ? context.pop()
+                          : setState(() => _result = null),
+                      child: Text(success ? 'Done' : 'Try again'),
+                    )
+                  : GradientButton(
+                      label: success ? 'Done' : 'Try Again',
+                      onPressed: () => success
+                          ? context.pop()
+                          : setState(() => _result = null),
+                      height: DesignSpacing.xl + 28,
+                      borderRadius: DesignSpacing.radiusMd,
+                    ),
             ),
           ],
         ),
@@ -147,12 +185,14 @@ class _BugReportScreenState extends State<BugReportScreen> {
   Widget _buildForm(bool isDark) {
     return SingleChildScrollView(
       // Keyboard-safe: lift the form above the keyboard as fields focus.
-      padding: EdgeInsets.fromLTRB(
-        DesignSpacing.lg,
-        DesignSpacing.lg,
-        DesignSpacing.lg,
-        DesignSpacing.lg + MediaQuery.viewInsetsOf(context).bottom,
-      ),
+      padding: context.inDesktopShell
+          ? const EdgeInsets.symmetric(vertical: 20)
+          : EdgeInsets.fromLTRB(
+              DesignSpacing.lg,
+              DesignSpacing.lg,
+              DesignSpacing.lg,
+              DesignSpacing.lg + MediaQuery.viewInsetsOf(context).bottom,
+            ),
       child: Form(
         key: _formKey,
         child: Column(
@@ -163,8 +203,13 @@ class _BugReportScreenState extends State<BugReportScreen> {
               controller: _titleController,
               decoration: kitFieldDecoration(context,
                   label: 'Title', hint: 'Brief summary of the issue'),
-              style: TextStyle(color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Please enter a title' : null,
+              style: TextStyle(
+                  color: isDark
+                      ? DesignColors.darkTextPrimary
+                      : DesignColors.textPrimary),
+              validator: (v) => (v == null || v.trim().isEmpty)
+                  ? 'Please enter a title'
+                  : null,
             ),
             const SizedBox(height: DesignSpacing.lg),
 
@@ -174,7 +219,9 @@ class _BugReportScreenState extends State<BugReportScreen> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary,
+                color: isDark
+                    ? DesignColors.darkTextSecondary
+                    : DesignColors.textSecondary,
               ),
             ),
             const SizedBox(height: DesignSpacing.sm),
@@ -190,8 +237,13 @@ class _BugReportScreenState extends State<BugReportScreen> {
               minLines: 5,
               maxLines: 8,
               textCapitalization: TextCapitalization.sentences,
-              style: TextStyle(color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Please describe the issue' : null,
+              style: TextStyle(
+                  color: isDark
+                      ? DesignColors.darkTextPrimary
+                      : DesignColors.textPrimary),
+              validator: (v) => (v == null || v.trim().isEmpty)
+                  ? 'Please describe the issue'
+                  : null,
             ),
             const SizedBox(height: DesignSpacing.lg),
 
@@ -201,11 +253,15 @@ class _BugReportScreenState extends State<BugReportScreen> {
                 OutlinedButton.icon(
                   onPressed: _pickScreenshot,
                   icon: const Icon(Icons.camera_alt_rounded, size: 18),
-                  label: Text(_screenshot != null ? 'Change Screenshot' : 'Add Screenshot'),
+                  label: Text(_screenshot != null
+                      ? 'Change Screenshot'
+                      : 'Add Screenshot'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: DesignColors.accent,
                     side: const BorderSide(color: DesignColors.accent),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DesignSpacing.radiusMd)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd)),
                     minimumSize: const Size(64, DesignSpacing.xl + 24),
                   ),
                 ),
@@ -217,7 +273,9 @@ class _BugReportScreenState extends State<BugReportScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary,
+                        color: isDark
+                            ? DesignColors.darkTextTertiary
+                            : DesignColors.textTertiary,
                       ),
                     ),
                   ),
@@ -228,7 +286,8 @@ class _BugReportScreenState extends State<BugReportScreen> {
                         minWidth: DesignSpacing.xl + 24,
                         minHeight: DesignSpacing.xl + 24),
                     padding: EdgeInsets.zero,
-                    icon: const Icon(Icons.close_rounded, size: 18, color: DesignColors.error),
+                    icon: const Icon(Icons.close_rounded,
+                        size: 18, color: DesignColors.error),
                     onPressed: () => setState(() => _screenshot = null),
                   ),
                 ],
@@ -237,17 +296,29 @@ class _BugReportScreenState extends State<BugReportScreen> {
             const SizedBox(height: DesignSpacing.xxl),
 
             // Submit
-            StaggeredItem(
-              itemKey: 'bug-submit',
-              index: 0,
-              child: GradientButton(
-                label: _isSubmitting ? 'Submitting…' : 'Submit Bug Report',
-                icon: _isSubmitting ? null : Icons.bug_report_rounded,
-                onPressed: _isSubmitting ? null : _submit,
-                height: DesignSpacing.xxl + 28,
-                borderRadius: DesignSpacing.radiusLg,
+            if (context.inDesktopShell)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton.icon(
+                  key: const ValueKey('bug-submit'),
+                  style: desktopPrimaryButton(context),
+                  onPressed: _isSubmitting ? null : _submit,
+                  icon: const Icon(Icons.bug_report_rounded, size: 18),
+                  label: Text(_isSubmitting ? 'Submitting…' : 'Submit report'),
+                ),
+              )
+            else
+              StaggeredItem(
+                itemKey: 'bug-submit',
+                index: 0,
+                child: GradientButton(
+                  label: _isSubmitting ? 'Submitting…' : 'Submit Bug Report',
+                  icon: _isSubmitting ? null : Icons.bug_report_rounded,
+                  onPressed: _isSubmitting ? null : _submit,
+                  height: DesignSpacing.xxl + 28,
+                  borderRadius: DesignSpacing.radiusLg,
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -280,14 +351,21 @@ class _BugReportScreenState extends State<BugReportScreen> {
                     minHeight: DesignSpacing.xl + 24,
                   ),
                   alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(vertical: DesignSpacing.sm),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: DesignSpacing.sm),
                   decoration: BoxDecoration(
                     color: selected
                         ? (s['color'] as Color).withValues(alpha: 0.15)
-                        : (isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceMuted),
+                        : (isDark
+                            ? DesignColors.darkSurfaceElevated
+                            : DesignColors.surfaceMuted),
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     border: Border.all(
-                      color: selected ? s['color'] as Color : (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+                      color: selected
+                          ? s['color'] as Color
+                          : (isDark
+                              ? DesignColors.darkBorder
+                              : DesignColors.surfaceBorder),
                       width: selected ? 1.5 : 1,
                     ),
                   ),
@@ -297,7 +375,11 @@ class _BugReportScreenState extends State<BugReportScreen> {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: selected ? context.readable(s['color'] as Color) : (isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary),
+                      color: selected
+                          ? context.readable(s['color'] as Color)
+                          : (isDark
+                              ? DesignColors.darkTextSecondary
+                              : DesignColors.textSecondary),
                     ),
                   ),
                 ),

@@ -17,6 +17,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../desktop/desktop_customers_view.dart';
 import '../widgets/add_customer_sheet.dart';
 import 'customer_profile_screen.dart' show CustomerProfileView;
+import '../../../../core/desktop/desktop_refresh.dart';
 
 class CustomersScreen extends ConsumerStatefulWidget {
   const CustomersScreen({super.key, this.initialCustomerId});
@@ -493,7 +494,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                   ? null
                                   : _showAddCustomerSheet,
                             )
-                          : RefreshIndicator(
+                          : DesktopRefresh(
                                   onRefresh: () => _loadCustomers(),
                                   child: ListView.builder(
                                     padding: const EdgeInsets.fromLTRB(

@@ -3,15 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../auth/presentation/widgets/sign_in_kit.dart';
+import '../../../settings/presentation/desktop/desktop_sub_page.dart';
 import '../../../settings/presentation/widgets/receipt_details_sheet.dart';
 import '../../domain/setup_checklist.dart';
 import '../setup_providers.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// The owner's setup checklist. Each step opens the place where it is done,
 /// and ticks itself once the phone can see it done.
@@ -70,6 +73,18 @@ class SetupScreen extends ConsumerWidget {
     final palette = SignInPalette.of(context);
     final shop = ref.watch(tenantIdentityProvider).companyName;
     final checklist = ref.watch(setupChecklistProvider);
+    final desktop = context.inDesktopShell;
+    if (desktop) {
+      return Scaffold(
+        body: DesktopSubPage(
+          title: 'Set up your shop',
+          subtitle: 'The few things to do before the first sale',
+          backTo: '/dashboard',
+          maxWidth: 820,
+          child: _body(context, ref, palette, shop, checklist, desktop: true),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: palette.page,
       appBar: AppBar(
@@ -86,69 +101,82 @@ class SetupScreen extends ConsumerWidget {
             style: DesignType.display.copyWith(
                 color: palette.ink, fontSize: 18, fontWeight: FontWeight.w700)),
       ),
-      body: checklist.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'Could not read the checklist. ${apiErrorMessage(error)}',
-            style: TextStyle(color: palette.soft),
-          ),
+      body: _body(context, ref, palette, shop, checklist, desktop: false),
+    );
+  }
+
+  Widget _body(
+    BuildContext context,
+    WidgetRef ref,
+    SignInPalette palette,
+    String shop,
+    AsyncValue<SetupChecklist> checklist, {
+    required bool desktop,
+  }) {
+    return checklist.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          'Could not read the checklist. ${apiErrorMessage(error)}',
+          style: TextStyle(color: palette.soft),
         ),
-        data: (list) => RefreshIndicator(
-          onRefresh: () async => ref.invalidate(setupChecklistProvider),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
-            children: [
-              _ProgressHeader(shop: shop, checklist: list),
-              const SizedBox(height: 20),
-              if (list.next case final next?) ...[
-                _NextStepCard(
-                  step: next,
-                  onOpen: () => _open(context, ref, next),
-                  onSkip: next.canSkip ? () => _skip(ref, next, context) : null,
-                ),
-                const SizedBox(height: 24),
-              ] else ...[
-                _FinishedCard(onOpenShop: () => context.go('/')),
-                const SizedBox(height: 24),
-              ],
-              Text('ALL STEPS',
-                  style: TextStyle(
-                      color: palette.faint,
-                      fontSize: 11.5,
-                      letterSpacing: 1.1,
-                      fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: palette.card,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: palette.line),
-                ),
-                child: Column(
-                  children: [
-                    for (var i = 0; i < list.steps.length; i++) ...[
-                      if (i > 0) Divider(height: 1, color: palette.line),
-                      _StepRow(
-                        number: i + 1,
-                        step: list.steps[i],
-                        onOpen: () => _open(context, ref, list.steps[i]),
-                        onReopen: () => _reopen(ref, list.steps[i], context),
-                      ),
-                    ],
-                  ],
-                ),
+      ),
+      data: (list) => DesktopRefresh(
+        onRefresh: () async => ref.invalidate(setupChecklistProvider),
+        child: ListView(
+          padding: desktop
+              ? const EdgeInsets.symmetric(vertical: 20)
+              : const EdgeInsets.fromLTRB(20, 4, 20, 32),
+          children: [
+            _ProgressHeader(shop: shop, checklist: list),
+            const SizedBox(height: 20),
+            if (list.next case final next?) ...[
+              _NextStepCard(
+                step: next,
+                onOpen: () => _open(context, ref, next),
+                onSkip: next.canSkip ? () => _skip(ref, next, context) : null,
               ),
-              const SizedBox(height: 20),
-              Center(
-                child: SignInTextLink(
-                  label: 'See the welcome tour again',
-                  onPressed: () => context.push('/welcome'),
-                ),
-              ),
+              const SizedBox(height: 24),
+            ] else ...[
+              _FinishedCard(onOpenShop: () => context.go('/')),
+              const SizedBox(height: 24),
             ],
-          ),
+            Text('ALL STEPS',
+                style: TextStyle(
+                    color: palette.faint,
+                    fontSize: 11.5,
+                    letterSpacing: 1.1,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Container(
+              decoration: BoxDecoration(
+                color: palette.card,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: palette.line),
+              ),
+              child: Column(
+                children: [
+                  for (var i = 0; i < list.steps.length; i++) ...[
+                    if (i > 0) Divider(height: 1, color: palette.line),
+                    _StepRow(
+                      number: i + 1,
+                      step: list.steps[i],
+                      onOpen: () => _open(context, ref, list.steps[i]),
+                      onReopen: () => _reopen(ref, list.steps[i], context),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Center(
+              child: SignInTextLink(
+                label: 'See the welcome tour again',
+                onPressed: () => context.push('/welcome'),
+              ),
+            ),
+          ],
         ),
       ),
     );

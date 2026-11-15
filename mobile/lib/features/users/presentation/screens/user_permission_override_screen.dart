@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/di/injection.dart';
+import '../desktop/desktop_user_permissions_view.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/load_error.dart';
@@ -80,6 +83,10 @@ class _UserPermissionOverrideScreenState
     final rolesAsync = ref.watch(tenantRolesProvider);
     final catalogAsync = ref.watch(permissionCatalogProvider);
 
+    if (context.inDesktopShell) {
+      return _buildDesktop(breakdownAsync, rolesAsync, catalogAsync);
+    }
+
     return Scaffold(
       appBar: const BrandedAppBar(title: 'User Permissions', showBackButton: true),
       body: AbsorbPointer(
@@ -118,6 +125,92 @@ class _UserPermissionOverrideScreenState
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  /// The computer layout: roles on the left, every permission with an
+  /// Inherit / Grant / Revoke control on the right. Same calls as the phone.
+  Widget _buildDesktop(
+    AsyncValue<Map<String, dynamic>> breakdownAsync,
+    AsyncValue<List<Map<String, dynamic>>> rolesAsync,
+    AsyncValue<List<PermissionFeatureGroup>> catalogAsync,
+  ) {
+    Widget failure(String title, Object err, VoidCallback retry) =>
+        Scaffold(
+          body: DesktopEmptyState(
+            icon: Icons.error_outline_rounded,
+            title: title,
+            message: loadErrorSubtitle(err),
+            action: OutlinedButton(
+              onPressed: retry,
+              child: const Text('Retry'),
+            ),
+          ),
+        );
+    const loading = Scaffold(body: Center(child: CircularProgressIndicator()));
+
+    if (breakdownAsync.hasError) {
+      return failure(
+        'Could not load user permissions',
+        breakdownAsync.error!,
+        () => ref.invalidate(userPermissionBreakdownProvider(widget.userId)),
+      );
+    }
+    if (rolesAsync.hasError) {
+      return failure('Could not load roles', rolesAsync.error!,
+          () => ref.invalidate(tenantRolesProvider));
+    }
+    if (catalogAsync.hasError) {
+      return failure('Could not load permission catalog', catalogAsync.error!,
+          () => ref.invalidate(permissionCatalogProvider));
+    }
+    final breakdown = breakdownAsync.valueOrNull;
+    final allRoles = rolesAsync.valueOrNull;
+    final groups = catalogAsync.valueOrNull;
+    if (breakdown == null || allRoles == null || groups == null) return loading;
+
+    Set<String> ids(String key) =>
+        (breakdown[key] as List<dynamic>? ?? []).cast<String>().toSet();
+    final assigned = (breakdown['roles'] as List<dynamic>? ?? [])
+        .map((r) => (r as Map<String, dynamic>)['id'] as String)
+        .toSet();
+
+    final users =
+        ref.watch(managedUsersProvider).valueOrNull ?? const <Map<String, dynamic>>[];
+    String label = '';
+    for (final u in users) {
+      if (u['id'] != widget.userId) continue;
+      final name = '${u['firstName'] ?? ''} ${u['lastName'] ?? ''}'.trim();
+      final email = u['email'] as String? ?? '';
+      label = name.isEmpty || email.isEmpty ? '$name$email' : '$name · $email';
+    }
+
+    return Scaffold(
+      body: DesktopUserPermissionsView(
+        userLabel: label,
+        busy: _busy,
+        roles: [
+          for (final role in allRoles)
+            DesktopRoleToggle(
+              id: role['id'] as String,
+              name: role['name'] as String,
+              assigned: assigned.contains(role['id']),
+            ),
+        ],
+        groups: groups,
+        fromRoles: ids('fromRoles'),
+        granted: ids('granted'),
+        revoked: ids('revoked'),
+        onToggleRole: (role) => _toggleRole(role.id, role.assigned),
+        onSetOverride: (key, target) => _setOverride(
+          key,
+          switch (target) {
+            DesktopPermState.inherited => _PermState.inherited,
+            DesktopPermState.granted => _PermState.granted,
+            DesktopPermState.revoked => _PermState.revoked,
+          },
         ),
       ),
     );

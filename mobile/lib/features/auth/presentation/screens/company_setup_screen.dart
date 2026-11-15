@@ -18,6 +18,7 @@ import 'package:axon_pos/features/auth/presentation/desktop/auth_desktop_kit.dar
 import 'package:axon_pos/features/auth/presentation/desktop/company_setup_desktop.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
 import 'package:axon_pos/core/widgets/modal_disposal.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 /// Lets the setup screen keep the person on it for the moment between the
 /// shop being created (which signs them in) and them opening it. Without it
@@ -206,7 +207,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     final searchController = TextEditingController();
     String? selectedId;
     try {
-      selectedId = await showModalBottomSheet<String>(
+      selectedId = await showAdaptiveModalSheet<String>(
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
@@ -1045,7 +1046,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     final pinController = TextEditingController();
     var role = LocalStaffRoles.names.first;
     String? error;
-    final draft = await showModalBottomSheet<_StaffDraft>(
+    final draft = await showAdaptiveModalSheet<_StaffDraft>(
       context: context,
       isScrollControlled: true,
       backgroundColor: SignInPalette.of(context).card,

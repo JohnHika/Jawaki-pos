@@ -22,6 +22,7 @@ import '../../../sales/domain/recorded_payment.dart';
 import '../../../sales/presentation/providers/payment_provider.dart';
 import '../desktop/desktop_payment_inspector.dart';
 import '../desktop/desktop_payments_view.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// Payments Hub - overview of today's takings plus real links into
 /// Receipts, Payment Analytics, and Customer Credit/Installments.
@@ -573,7 +574,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
               iconColor: DesignColors.error,
               onAction: _loadData,
             )
-          : RefreshIndicator(
+          : DesktopRefresh(
               color: DesignColors.brand,
               onRefresh: _loadData,
               child: PageContainer(

@@ -3393,9 +3393,12 @@ class SettingsScreen extends ConsumerWidget {
 
     if (!context.mounted) return;
 
-    if (updateService.hasOptionalUpdateAvailable) {
-      // The Android root update host displays the optional-update card. Do not
-      // open a second Navigator dialog over that root overlay.
+    final available = updateService.optionalUpdate;
+    if (available != null) {
+      // Open the update screen straight away. The root prompt shows once per
+      // launch, so after "Later" a manual check would otherwise do nothing.
+      // The screen is drawn by the root update host, not a Navigator dialog.
+      updateService.beginOptionalUpdateNow(available);
       return;
     }
     if (!wasUpdateShown) {

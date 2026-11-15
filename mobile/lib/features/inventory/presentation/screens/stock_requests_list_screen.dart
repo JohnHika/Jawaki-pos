@@ -13,6 +13,7 @@ import '../../../../core/widgets/modal_disposal.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../desktop/desktop_inventory_tabs.dart';
 import '../desktop/desktop_stock_requests_view.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 /// Stock Requests List Screen - For managers to view and approve stock requests
 class StockRequestsListScreen extends ConsumerStatefulWidget {
@@ -265,7 +266,7 @@ class _StockRequestsListScreenState
     }
 
     final showRetryNotice = loadError != null;
-    return RefreshIndicator(
+    return DesktopRefresh(
       onRefresh: _loadRequests,
       color: DesignColors.brand,
       child: ListView.builder(

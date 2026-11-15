@@ -19,6 +19,7 @@ import '../desktop/desktop_cash_flow_view.dart';
 import '../desktop/desktop_figures_row.dart';
 import '../desktop/desktop_finance_tabs.dart';
 import 'finance_screen.dart' show FinanceScreen;
+import '../../../../core/desktop/desktop_refresh.dart';
 
 enum CashFlowMode { cashOnly, allRevenue, runningBalance }
 
@@ -557,7 +558,7 @@ class _CashFlowScreenState extends ConsumerState<CashFlowScreen> {
           final dateLabel =
               date == null ? 'Today' : DateFormat('EEEE, d MMMM').format(date);
 
-          return RefreshIndicator(
+          return DesktopRefresh(
             onRefresh: () async {
               try {
                 await ref

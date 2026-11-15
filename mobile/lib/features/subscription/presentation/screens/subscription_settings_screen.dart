@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../domain/subscription_plans.dart';
+import '../desktop/desktop_subscription_view.dart';
 
 /// Status badge colors for subscription state.
 Color _statusColor(String? status) {
@@ -237,8 +239,69 @@ class _SubscriptionSettingsScreenState
     return apiErrorMessage(error);
   }
 
+  /// The page inside the desktop shell: same state, drawn as figures, an
+  /// invoice table and a side pane (see [DesktopSubscriptionView]).
+  Widget _buildDesktop() {
+    final plan = _plan;
+    final planName = plan?['plan'] as String? ?? 'CORE';
+    final status = plan?['subscriptionStatus'] as String? ?? 'TRIAL';
+    final isTrial = status.toUpperCase() == 'TRIAL';
+    final periodEnd = plan?['currentPeriodEnd'] as String?;
+    final pending = plan?['pendingPlan'] as String?;
+    final invoices = <DesktopInvoice>[
+      for (final (i, raw) in _invoices.indexed)
+        if (raw is Map<String, dynamic>) _desktopInvoice(i, raw),
+    ];
+    return Scaffold(
+      backgroundColor: context.desktop.panel,
+      body: DesktopSubscriptionView(
+        planName: plan == null ? null : planName,
+        statusLabel: _statusLabel(status),
+        statusColor: _statusColor(status),
+        priceLabel: formatKes(planPriceKes(planName)),
+        dateCaption: isTrial ? 'Trial ends' : 'Next billing',
+        dateLabel: periodEnd == null ? 'Not set' : _formatDate(periodEnd),
+        pendingPlanLabel: isTrial && pending != null && pending.trim().isNotEmpty
+            ? planDisplayName(pending)
+            : null,
+        features: [
+          for (final f in planById(planName)?.features ?? const <PlanFeature>[])
+            f.text,
+        ],
+        invoices: invoices,
+        loadingPlan: _isLoadingPlan,
+        loadingInvoices: _isLoadingInvoices,
+        changingPlan: _isChangingPlan,
+        error: _error,
+        onChoosePlan: plan != null && isTrial ? _showChangePlanDialog : null,
+        paidPlanNote: plan != null && !isTrial,
+        onRefresh: _isLoadingPlan ? null : _loadData,
+        onRetry: _isLoadingPlan ? null : _loadData,
+      ),
+    );
+  }
+
+  DesktopInvoice _desktopInvoice(int index, Map<String, dynamic> invoice) {
+    final amount = invoice['amount'] as num? ?? 0;
+    final currency = invoice['currency'] as String? ?? 'KES';
+    final status = invoice['status'] as String? ?? '';
+    final date =
+        invoice['date'] as String? ?? invoice['createdAt'] as String? ?? '';
+    return DesktopInvoice(
+      id: invoice['id']?.toString() ?? 'row-$index',
+      description: invoice['description'] as String? ?? 'Subscription',
+      dateLabel: date.isEmpty ? '' : _formatDate(date),
+      dateSort: DateTime.tryParse(date)?.millisecondsSinceEpoch ?? 0,
+      amountLabel: '$currency ${_formatAmount(amount)}',
+      amountSort: amount,
+      statusLabel: status.isEmpty ? 'Unknown' : _statusLabel(status),
+      statusColor: _statusColor(status),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) return _buildDesktop();
     return Theme(
       data: Theme.of(context).copyWith(
         splashFactory: InkRipple.splashFactory,
@@ -465,7 +528,7 @@ class _SubscriptionSettingsScreenState
                   ),
                 ),
                 child: Text(
-                  'KES 35,000 setup',
+                  'KES 125,000 setup',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: DesignColors.accent,
                         fontWeight: FontWeight.w700,

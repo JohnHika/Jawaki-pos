@@ -16,6 +16,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/import_models.dart';
 import '../desktop/desktop_imports_view.dart';
 import '../providers/imports_provider.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 Color importStatusColor(String status) => switch (status) {
       'PLANNED' => DesignColors.info,
@@ -95,7 +96,7 @@ class ImportsScreen extends ConsumerWidget {
               label: const Text('New container'),
             )
           : null,
-      body: RefreshIndicator(
+      body: DesktopRefresh(
         onRefresh: () async => ref.invalidate(importsProvider),
         child: imports.when(
           loading: () => const Center(child: CircularProgressIndicator()),

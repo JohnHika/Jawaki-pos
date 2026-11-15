@@ -16,6 +16,7 @@ import '../widgets/cart_item_tile.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../../core/widgets/modal_disposal.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 class CartScreen extends ConsumerWidget {
   const CartScreen({super.key});
@@ -565,7 +566,7 @@ class CartScreen extends ConsumerWidget {
     var percent = cart.discountAmount <= 0;
     String? error;
 
-    await showModalBottomSheet<void>(
+    await showAdaptiveModalSheet<void>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,

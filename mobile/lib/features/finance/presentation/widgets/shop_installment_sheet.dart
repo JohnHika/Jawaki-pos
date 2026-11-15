@@ -6,6 +6,7 @@ import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../domain/bulk_allocation.dart';
 import '../../domain/collections_ledger.dart';
 import '../providers/finance_hub_controller.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
 
 /// Records one instalment from another shop and spreads it across everything
 /// that shop owes, oldest due first. Returns the amount collected, or null if
@@ -16,7 +17,7 @@ Future<double?> showShopInstallmentSheet(
   required String branchId,
   required FinanceHubController controller,
 }) {
-  return showModalBottomSheet<double>(
+  return showAdaptiveModalSheet<double>(
     useRootNavigator: true,
     context: context,
     isScrollControlled: true,

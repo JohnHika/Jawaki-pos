@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 
+import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/theme/design_system.dart';
+import '../desktop/desktop_payment_analytics_view.dart';
+import '../../../dashboard/presentation/desktop/desktop_bar_chart.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/di/injection.dart';
@@ -13,6 +16,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../reports/domain/analytics_mapping.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 typedef _PaymentAnalyticsSnapshot = ({
   Map<String, dynamic> summary,
@@ -219,8 +223,71 @@ class _PaymentAnalyticsScreenState
     );
   }
 
+  Widget _buildDesktop() {
+    final trend = <DesktopChartBar>[];
+    for (final row in _transactionTrends) {
+      final date = DateTime.tryParse('${row['date'] ?? ''}')?.toLocal();
+      final amount = (row['totalAmount'] as num?)?.toDouble() ?? 0;
+      final count = (row['transactionCount'] as num?)?.toInt() ?? 0;
+      final hourly = _selectedPeriod == 0;
+      final label = date == null
+          ? ''
+          : hourly
+              ? '${date.hour}:00'
+              : '${date.day}/${date.month}';
+      trend.add(DesktopChartBar(
+        label: label,
+        value: amount,
+        tooltipTitle: label,
+        tooltipValue: '${formatMoney(amount)} · ${countLabel(count, 'transaction')}',
+      ));
+    }
+    return Scaffold(
+      body: DesktopPaymentAnalyticsView(
+        periods: _periods,
+        selectedPeriod: _selectedPeriod,
+        onPeriod: (index) {
+          if (index == _selectedPeriod) return;
+          setState(() => _selectedPeriod = index);
+          _loadPaymentData();
+        },
+        totalAmount: (_paymentSummary['totalAmount'] ?? 0.0).toDouble(),
+        transactionCount: (_paymentSummary['transactionCount'] as num?)?.toInt() ?? 0,
+        averagePayment: (_paymentSummary['avgPayment'] ?? 0.0).toDouble(),
+        methods: [
+          for (final m in _paymentMethodBreakdown)
+            DesktopPayMethod(
+              label: _formatPaymentMethod('${m['paymentMethod'] ?? 'Unknown'}'),
+              count: (m['count'] as num?)?.toInt() ?? 0,
+              total: (m['totalAmount'] as num?)?.toDouble() ?? 0,
+              color: _getPaymentMethodColor('${m['paymentMethod'] ?? ''}'),
+            ),
+        ],
+        trend: trend,
+        trendTitle: _selectedPeriod == 0 ? 'Takings by hour' : 'Takings by day',
+        peakHours: [
+          for (final h in _peakHours)
+            DesktopPayHour(
+              hour: int.tryParse('${h['hour'] ?? 0}') ?? 0,
+              count: (h['transactionCount'] as num?)?.toInt() ?? 0,
+              total: (h['totalAmount'] as num?)?.toDouble() ?? 0,
+            ),
+        ],
+        onRefresh: _loadPaymentData,
+        loading: _isLoading,
+        errorMessage: _loadError,
+        localNotice: _usingLocalData
+            ? (getIt<AuthService>().isLocalWorkspace
+                ? 'Local only: showing transactions recorded on this computer.'
+                : 'Offline: showing sales saved on this computer.')
+            : null,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (context.inDesktopShell) return _buildDesktop();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       appBar: BrandedAppBar(
@@ -250,7 +317,7 @@ class _PaymentAnalyticsScreenState
                     ),
                   ),
                 )
-              : RefreshIndicator(
+              : DesktopRefresh(
                   onRefresh: _loadPaymentData,
                   child: PageContainer(
                     withScroll: true,

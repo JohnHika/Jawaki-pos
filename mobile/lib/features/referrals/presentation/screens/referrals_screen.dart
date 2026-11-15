@@ -9,7 +9,11 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
+import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/desktop/desktop_widgets.dart';
 import '../../../../core/widgets/form_kit.dart';
+import '../desktop/desktop_referrals_view.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 final referralSummaryProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) {
@@ -29,6 +33,8 @@ class ReferralsScreen extends ConsumerWidget {
     final secondary =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
 
+    if (context.inDesktopShell) return _buildDesktop(context, ref, summary);
+
     return Scaffold(
       appBar: BrandedAppBar(
         title: ref
@@ -36,7 +42,7 @@ class ReferralsScreen extends ConsumerWidget {
             .actionLabel('/referrals', 'Invite Shops'),
         showBackButton: GoRouter.of(context).canPop(),
       ),
-      body: RefreshIndicator(
+      body: DesktopRefresh(
         onRefresh: () async => ref.invalidate(referralSummaryProvider),
         child: summary.when(
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -153,6 +159,79 @@ class ReferralsScreen extends ConsumerWidget {
             );
           },
         ),
+      ),
+    );
+  }
+
+  /// The computer layout: same summary, same redeem call, a table and side
+  /// panels instead of stacked cards.
+  Widget _buildDesktop(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<Map<String, dynamic>> summary,
+  ) {
+    final title = ref
+        .watch(businessLayoutProvider)
+        .actionLabel('/referrals', 'Invite Shops');
+    return Scaffold(
+      body: summary.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => DesktopEmptyState(
+          icon: Icons.card_giftcard_rounded,
+          title: "Couldn't load your invites",
+          message: apiErrorMessage(e),
+          action: OutlinedButton(
+            onPressed: () => ref.invalidate(referralSummaryProvider),
+            child: const Text('Try again'),
+          ),
+        ),
+        data: (data) {
+          final code = '${data['code'] ?? ''}';
+          return DesktopReferralsView(
+            title: title,
+            code: code,
+            referredDays: asInt(data['referredDays'], 14),
+            referrerDays: asInt(data['referrerDays'], 30),
+            rewarded: asInt(data['rewarded']),
+            pending: asInt(data['pending']),
+            daysEarned: asInt(data['daysEarned']),
+            referrals: [
+              for (final r in (data['referrals'] as List?) ?? const [])
+                if (r is Map)
+                  DesktopReferral(
+                    name: '${r['name']}',
+                    rewarded: r['status'] == 'REWARDED',
+                    daysEarned: asInt(r['daysEarned']),
+                  ),
+            ],
+            onRefresh: () => ref.invalidate(referralSummaryProvider),
+            onCopyCode: () {
+              Clipboard.setData(ClipboardData(text: code));
+              showGlassSnackBar(context, 'Code copied',
+                  icon: Icons.copy_rounded, color: DesignColors.success);
+            },
+            onCopyInvite: () {
+              Clipboard.setData(ClipboardData(text: '${data['shareText']}'));
+              showGlassSnackBar(context, 'Invite message copied',
+                  icon: Icons.copy_rounded, color: DesignColors.success);
+            },
+            onRedeem: (text) async {
+              try {
+                final result = await getIt<ApiClient>().redeemCode(text);
+                ref.invalidate(referralSummaryProvider);
+                return DesktopRedeemResult(
+                  ok: true,
+                  message: '${result['message'] ?? 'Code accepted.'}',
+                );
+              } catch (e) {
+                return DesktopRedeemResult(
+                  ok: false,
+                  message: apiErrorMessage(e),
+                );
+              }
+            },
+          );
+        },
       ),
     );
   }

@@ -32,12 +32,14 @@ class _Harness extends StatefulWidget {
     this.busy = false,
     this.onSend,
     this.onChip,
+    this.onStop,
   });
 
   final List<(bool, String)> messages;
   final bool busy;
   final ValueChanged<String>? onSend;
   final ValueChanged<String>? onChip;
+  final VoidCallback? onStop;
 
   @override
   State<_Harness> createState() => _HarnessState();
@@ -103,6 +105,8 @@ class _HarnessState extends State<_Harness> {
         onNewConversation: widget.messages.isEmpty ? null : () {},
         conversation: conversation,
         chipsEnabled: !widget.busy,
+        isGenerating: widget.busy,
+        onStop: widget.onStop,
         chips: [
           for (final c in const [
             (Icons.trending_up_rounded, 'Profit check'),
@@ -246,6 +250,19 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(sent, isEmpty);
+  });
+
+  testWidgets('Stop generating and Esc both halt a reply', (tester) async {
+    useWindow(tester, _sizes['1366']!);
+    var stopped = 0;
+    await tester.pumpWidget(
+      _app(_Harness(busy: true, onStop: () => stopped++)),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.text('Stop generating'));
+    expect(stopped, 1);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    expect(stopped, 2);
   });
 
   testWidgets('quick questions and the list rows report what was picked',

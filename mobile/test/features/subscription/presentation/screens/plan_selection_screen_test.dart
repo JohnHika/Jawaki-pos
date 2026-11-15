@@ -142,7 +142,7 @@ void main() {
       // culls it from the lazy list's built range).
       await _scrollTo(tester, find.text('Setup fee paid'));
       expect(find.text('Setup fee paid'), findsOneWidget);
-      expect(find.text('KES 35,000'), findsOneWidget);
+      expect(find.text('KES 125,000'), findsOneWidget);
 
       // Action button
       await _scrollTo(tester, find.text('Continue with this plan'));

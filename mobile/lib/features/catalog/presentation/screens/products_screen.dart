@@ -35,6 +35,8 @@ import '../desktop/desktop_products_view.dart';
 import '../desktop/product_actions.dart';
 import '../providers/product_history_provider.dart';
 import '../../../../core/utils/format.dart';
+import '../../../../core/desktop/adaptive_sheet.dart';
+import '../../../../core/desktop/desktop_refresh.dart';
 
 // Providers for the products screen
 final _productsProvider = StreamProvider<List<Product>>((ref) {
@@ -393,7 +395,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                 quantities: quantities,
                               );
 
-                    return RefreshIndicator(
+                    return DesktopRefresh(
                       onRefresh: () async {
                         try {
                           ref.invalidate(_catalogSyncProvider(currentUserId));
@@ -854,7 +856,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     required bool isLocal,
   }) {
     final palette = SignInPalette.of(context);
-    showModalBottomSheet<void>(
+    showAdaptiveModalSheet<void>(
       context: context,
       useRootNavigator: true,
       backgroundColor: palette.card,
