@@ -12,6 +12,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../network/api_client.dart';
 import '../widgets/update_available_dialog.dart';
@@ -31,6 +32,15 @@ const String _githubReleasesApi =
 const String _githubLatestAndroidManifest =
     'https://github.com/JohnHika/Jawaki-pos/releases/latest/download/latest.json';
 const int _minimumSafeAndroidBuildNumber = 2021;
+
+/// The downloaded APK did not match the size or checksum in the manifest, even
+/// after a second download.
+class DamagedUpdateDownload implements Exception {
+  const DamagedUpdateDownload();
+
+  @override
+  String toString() => 'DamagedUpdateDownload';
+}
 
 class UpdateSource {
   const UpdateSource({
@@ -66,6 +76,8 @@ class AppUpdateInfo {
     required this.releaseNotes,
     this.publishedAt,
     this.updateSources,
+    this.apkSha256,
+    this.apkSizeBytes,
   });
 
   factory AppUpdateInfo.fromJson(Map<String, dynamic> json) {
@@ -93,6 +105,8 @@ class AppUpdateInfo {
           ? null
           : DateTime.tryParse(json['publishedAt'].toString()),
       updateSources: sources,
+      apkSha256: _readOptionalString(json['apkSha256'])?.toLowerCase(),
+      apkSizeBytes: _readOptionalInt(json['apkSizeBytes']),
     );
   }
 
@@ -107,6 +121,13 @@ class AppUpdateInfo {
   final DateTime? publishedAt;
   final List<UpdateSource>? updateSources;
 
+  /// SHA-256 and size of the APK the release workflow built. When present, the
+  /// phone checks the downloaded file against them before opening the
+  /// installer, so a cut-short or swapped download is fetched again instead of
+  /// failing at install time. Older manifests do not carry them.
+  final String? apkSha256;
+  final int? apkSizeBytes;
+
   String get displayVersion {
     final name = releaseName?.trim();
     return name == null || name.isEmpty ? latestVersion : name;
@@ -120,6 +141,14 @@ class AppUpdateInfo {
   static String? _readOptionalString(Object? value) {
     final text = value?.toString().trim();
     return text == null || text.isEmpty ? null : text;
+  }
+
+  /// GitHub reports an asset's checksum as `sha256:<hex>`.
+  static String? _githubAssetSha256(Object? digest) {
+    final text = digest?.toString().trim().toLowerCase() ?? '';
+    if (!text.startsWith('sha256:')) return null;
+    final hex = text.substring('sha256:'.length);
+    return RegExp(r'^[a-f0-9]{64}$').hasMatch(hex) ? hex : null;
   }
 
   static int? _readOptionalInt(Object? value) {
@@ -161,6 +190,7 @@ class UpdateCheckService extends ChangeNotifier {
   int? _downloadedBytes;
   int? _totalBytes;
   String? _errorMessage;
+  bool _lastInstallDidNotFinish = false;
   String? _currentVersion;
   String? _downloadedApkPath;
   String? _downloadedApkIdentity;
@@ -176,9 +206,26 @@ class UpdateCheckService extends ChangeNotifier {
   // required immediately after a fresh login, per product decision.
   AppUpdateInfo? _postLoginUpdate;
 
+  // True when the gate was opened by choice ("Update now" on the prompt, or
+  // Settings > Check for updates). Those can be closed with "Not now"; the
+  // post-login and minimum-version gates cannot.
+  bool _gateOpenedByChoice = false;
+
+  /// Whether the update screen currently on show can be closed.
+  bool get canDismissGate =>
+      _requiredUpdate == null && _gateOpenedByChoice && _postLoginUpdate != null;
+
   bool get hasOptionalUpdateAvailable => _optionalUpdate != null;
   bool get isForceUpdateRequired => _requiredUpdate != null;
   bool get isPostLoginUpdateRequired => _postLoginUpdate != null;
+
+  /// True when the previous launch handed an update to Android but this launch
+  /// is still on the old build (the install was cancelled or refused).
+  bool get lastInstallDidNotFinish => _lastInstallDidNotFinish;
+
+  /// A page that always works, for a phone whose in-app update cannot finish.
+  static const String downloadPageUrl =
+      'https://archeaxon.com/download/counterbase/android';
   bool get isDownloading => _isDownloading;
   bool get isInstalling => _isInstalling;
   bool get requiresInstallerPermission => _requiresInstallerPermission;
@@ -351,6 +398,7 @@ class UpdateCheckService extends ChangeNotifier {
     final newer = _optionalUpdate ?? _requiredUpdate;
     if (newer != null) {
       _postLoginUpdate = newer;
+      _gateOpenedByChoice = false;
       notifyListeners();
     }
   }
@@ -474,6 +522,9 @@ class UpdateCheckService extends ChangeNotifier {
             releaseNotes: body?.trim() ?? '',
             publishedAt:
                 publishedAt != null ? DateTime.tryParse(publishedAt) : null,
+            // GitHub publishes the size and SHA-256 of every release asset.
+            apkSha256: AppUpdateInfo._githubAssetSha256(asset['digest']),
+            apkSizeBytes: AppUpdateInfo._readOptionalInt(asset['size']),
           ));
           break;
         }
@@ -541,6 +592,8 @@ class UpdateCheckService extends ChangeNotifier {
         apkUrl: update.apkUrl,
         releaseNotes: update.releaseNotes,
         publishedAt: update.publishedAt,
+        apkSha256: update.apkSha256,
+        apkSizeBytes: update.apkSizeBytes,
       );
     } catch (error) {
       if (!kReleaseMode) {
@@ -661,6 +714,12 @@ class UpdateCheckService extends ChangeNotifier {
     await prefs.remove(_pendingNoticeReleaseNotesKey);
 
     final currentBuildNumber = _currentBuildNumber(currentVersion);
+    if (currentBuildNumber != null && pendingBuild > currentBuildNumber) {
+      // Android was handed the update but this is still the old build: the
+      // install was cancelled, refused or interrupted. Say so; the normal
+      // check offers the update again.
+      _lastInstallDidNotFinish = true;
+    }
     if (currentBuildNumber == null || pendingBuild != currentBuildNumber) {
       return;
     }
@@ -687,6 +746,31 @@ class UpdateCheckService extends ChangeNotifier {
   void cancelUpdateDownload() {
     if (!_isDownloading || _isInstalling) return;
     _activeDownloadCancelToken?.cancel('Update download cancelled by user.');
+  }
+
+  /// Closes the update screen for an update nobody has to take (opened by
+  /// "Update now" on the prompt or by Settings > Check for updates). Never
+  /// closes a required update or one that is downloading.
+  void dismissOptionalGate() {
+    if (_isDownloading || _isInstalling || !canDismissGate) return;
+    _postLoginUpdate = null;
+    _gateOpenedByChoice = false;
+    _errorMessage = null;
+    _requiresInstallerPermission = false;
+    notifyListeners();
+  }
+
+  /// Opens the website download page in the browser: the same APK, installed
+  /// by the browser's own download flow. For a phone whose in-app update fails.
+  Future<bool> openDownloadPage() async {
+    try {
+      return await launchUrl(
+        Uri.parse(downloadPageUrl),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> openInstallerPermissionSettings() async {
@@ -745,11 +829,27 @@ class UpdateCheckService extends ChangeNotifier {
     _activeDownloadCancelToken = cancelToken;
     try {
       final updateIdentity = _updateIdentity(update);
-      final file = await _reuseDownloadedApk(updateIdentity) ??
-          await _downloadApk(update, cancelToken: cancelToken);
-      if (cancelToken.isCancelled) {
-        throw cancelToken.cancelError!;
+      // A file that does not match what the release built (cut short, or
+      // swapped on the way) is thrown away and fetched once more. Handing it
+      // to Android would only end in "App not installed".
+      File? file;
+      for (var attempt = 0; attempt < 2 && file == null; attempt++) {
+        final candidate = await _reuseDownloadedApk(updateIdentity) ??
+            await _downloadApk(update, cancelToken: cancelToken);
+        if (cancelToken.isCancelled) {
+          throw cancelToken.cancelError!;
+        }
+        if (await _matchesManifest(candidate, update)) {
+          file = candidate;
+        } else {
+          _downloadedApkPath = null;
+          _downloadedApkIdentity = null;
+          try {
+            await candidate.delete();
+          } catch (_) {}
+        }
       }
+      if (file == null) throw const DamagedUpdateDownload();
       _downloadedApkPath = file.path;
       _downloadedApkIdentity = updateIdentity;
       _isDownloading = false;
@@ -792,7 +892,38 @@ class UpdateCheckService extends ChangeNotifier {
     }
   }
 
+  /// Whether [file] is the APK the release workflow built: same size and, when
+  /// the manifest carries one, the same SHA-256. Manifests from before the
+  /// checksum was added carry neither, so those pass on a non-empty file.
+  @visibleForTesting
+  Future<bool> matchesManifestForTest(File file, AppUpdateInfo update) =>
+      _matchesManifest(file, update);
+
+  Future<bool> _matchesManifest(File file, AppUpdateInfo update) async {
+    try {
+      final length = await file.length();
+      if (length <= 0) return false;
+      final expectedSize = update.apkSizeBytes;
+      if (expectedSize != null && expectedSize > 0 && length != expectedSize) {
+        return false;
+      }
+      final expectedSha = update.apkSha256;
+      if (expectedSha != null && expectedSha.isNotEmpty) {
+        final digest = await sha256.bind(file.openRead()).first;
+        if (digest.toString().toLowerCase() != expectedSha.toLowerCase()) {
+          return false;
+        }
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   String _friendlyDownloadError(Object error) {
+    if (error is DamagedUpdateDownload) {
+      return 'The update file did not download correctly. Tap retry, or download it from the website.';
+    }
     if (error is DioException && CancelToken.isCancel(error)) {
       return 'Download cancelled. Tap retry to download the update again.';
     }
@@ -1063,9 +1194,12 @@ class UpdateCheckService extends ChangeNotifier {
     // left for the post-login gate to require.
     if (!hasNewerVersion) {
       _postLoginUpdate = null;
+      _gateOpenedByChoice = false;
     }
 
-    if (_requiredUpdate == null) {
+    // A re-check (app resumed, hourly timer) must not wipe the progress or
+    // the error of a download that is running right now.
+    if (_requiredUpdate == null && !_updateOperationInProgress) {
       _requiresInstallerPermission = false;
       _isDownloading = false;
       _isInstalling = false;
@@ -1117,6 +1251,7 @@ class UpdateCheckService extends ChangeNotifier {
   /// experience in the app, not a second parallel implementation.
   void beginOptionalUpdateNow(AppUpdateInfo update) {
     _postLoginUpdate = update;
+    _gateOpenedByChoice = true;
     notifyListeners();
   }
 

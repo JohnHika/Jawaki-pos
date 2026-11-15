@@ -447,6 +447,15 @@ jobs:
 
           force_update = str(workflow_inputs.get('force_update') or '').strip().lower() == 'true'
 
+          # The phone checks the file it downloaded against these before it
+          # hands it to Android, so a cut-short or swapped download is retried
+          # instead of failing at install time.
+          import hashlib
+          apk_file = Path('mobile/build/app/outputs/flutter-apk/app-release.apk')
+          apk_bytes = apk_file.read_bytes()
+          apk_sha256 = hashlib.sha256(apk_bytes).hexdigest()
+          apk_size = len(apk_bytes)
+
           manifest = {
               'platform': 'android',
               # Older installed apps only compare this field, so keep it
@@ -460,6 +469,8 @@ jobs:
               # Keep metadata and the install file on GitHub. The public R2
               # hostname has failed DNS on customer devices.
               'apkUrl': github_apk_url,
+              'apkSha256': apk_sha256,
+              'apkSizeBytes': apk_size,
               'updateSources': [
                   {'name': 'GitHub Releases', 'url': github_apk_url, 'priority': 'primary'},
               ],
@@ -599,6 +610,33 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Customers on the previous version keep getting the previous manifest
+      # until this passes. It downloads the APK from the exact URL phones will
+      # use, then checks size, checksum, package, production signature and
+      # build number. If GitHub served a broken or wrong file the run stops
+      # here and latest.json is never moved.
+      - name: Verify the download phones will use
+        id: verify_feed
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
+        shell: bash
+        env:
+          MANIFEST_FILE: ${{ steps.manifest.outputs.latest_manifest_path }}
+          EXPECTED_BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
+        run: bash scripts/check-android-update-feed.sh
+
+      # Phones also read the newest GitHub release directly when the manifest
+      # is unreachable. A release that failed the check must not be that
+      # newest release: demote it to a prerelease, which phones ignore.
+      - name: Pull back a release that failed verification
+        if: failure() && steps.verify_feed.outcome == 'failure'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ steps.version.outputs.git_tag_version }}
+        run: |
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease --latest=false || true
+          echo "::error::$TAG failed the update feed check and was demoted to a prerelease. The previous release stays the one customers receive."
 
       - name: Publish update manifest to Cloudflare R2
         if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'

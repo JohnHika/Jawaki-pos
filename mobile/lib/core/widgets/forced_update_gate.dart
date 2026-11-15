@@ -19,14 +19,25 @@ class ForcedUpdateGate extends StatelessWidget {
 
   final UpdateCheckService updateService;
 
+  // The gate redraws itself from the service. Download progress, errors and the
+  // permission state all change on the service, not on a parent widget, so a
+  // plain stateless build would show the first frame forever.
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: updateService,
+      builder: (context, _) => _buildGate(context),
+    );
+  }
+
+  Widget _buildGate(BuildContext context) {
     final update = updateService.activeGateUpdate;
     if (update == null) {
       return const SizedBox.shrink();
     }
 
     final isBusy = updateService.isDownloading || updateService.isInstalling;
+    final canDismiss = updateService.canDismissGate;
 
     return Material(
       color: context.themed(DesignColors.darkBg),
@@ -46,7 +57,11 @@ class ForcedUpdateGate extends StatelessWidget {
                   _Mark(pulsing: isBusy),
                   const SizedBox(height: DesignSpacing.xxl),
                   Text(
-                    isBusy ? 'Updating Counterbase' : 'Update Required',
+                    isBusy
+                        ? 'Updating Counterbase'
+                        : canDismiss
+                            ? 'Update available'
+                            : 'Update Required',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           color: context.themed(DesignColors.darkTextPrimary),
@@ -62,7 +77,9 @@ class ForcedUpdateGate extends StatelessWidget {
                   Text(
                     isBusy
                         ? 'Hang tight — this only takes a moment.'
-                        : 'A newer version is available. Update now to keep using Counterbase.',
+                        : canDismiss
+                            ? 'A newer version of Counterbase is ready. Your sales and records stay on this phone.'
+                            : 'A newer version is available. Update now to keep using Counterbase.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: context.themed(DesignColors.darkTextSecondary),
@@ -96,6 +113,15 @@ class ForcedUpdateGate extends StatelessWidget {
                           duration: 500.ms,
                           curve: Curves.easeOutCubic,
                         ),
+                  if (updateService.errorMessage == null &&
+                      updateService.lastInstallDidNotFinish &&
+                      !isBusy) ...[
+                    const SizedBox(height: DesignSpacing.lg),
+                    const _ErrorBanner(
+                      message:
+                          'The last update did not finish installing. Tap the button to try again.',
+                    ),
+                  ],
                   if (updateService.errorMessage != null) ...[
                     const SizedBox(height: DesignSpacing.lg),
                     _ErrorBanner(message: updateService.errorMessage!)
@@ -139,6 +165,25 @@ class ForcedUpdateGate extends StatelessWidget {
                       onPressed: updateService.cancelUpdateDownload,
                       icon: const Icon(Icons.close_rounded, size: 18),
                       label: const Text('Cancel download'),
+                    ),
+                  ],
+                  // The same file from the website, installed by the browser,
+                  // for a phone whose in-app update keeps failing.
+                  if (!isBusy &&
+                      (updateService.errorMessage != null ||
+                          updateService.lastInstallDidNotFinish)) ...[
+                    const SizedBox(height: DesignSpacing.xs),
+                    TextButton.icon(
+                      onPressed: updateService.openDownloadPage,
+                      icon: const Icon(Icons.public_rounded, size: 18),
+                      label: const Text('Download from the website instead'),
+                    ),
+                  ],
+                  if (canDismiss && !isBusy) ...[
+                    const SizedBox(height: DesignSpacing.xs),
+                    TextButton(
+                      onPressed: updateService.dismissOptionalGate,
+                      child: const Text('Not now'),
                     ),
                   ],
                   const SizedBox(height: DesignSpacing.md),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../di/injection.dart';
 import '../services/auth_service.dart';
@@ -62,6 +63,18 @@ class _OptionalUpdatePromptHostState extends State<OptionalUpdatePromptHost> {
 
   void _handleUpdateServiceChanged() {
     _queueMaybeShow();
+    // The update screen on top of the app is chosen from the service's state
+    // (activeGateUpdate), so a change there must rebuild this host. Without
+    // this, tapping "Update now" changed the service and nothing was drawn.
+    if (!mounted) return;
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    } else {
+      setState(() {});
+    }
   }
 
   void _queueMaybeShow() {

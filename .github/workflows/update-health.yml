@@ -1,0 +1,50 @@
+name: Update Feed Health
+
+# Watches the live update feed the way an installed phone reads it. If a release
+# is ever published with a broken or missing download, a wrong signature or an
+# older build than the last one, this run fails and GitHub emails the owner.
+# Customers on the previous version are never pointed at a broken file because
+# the publish workflow runs the same check before it moves the manifest.
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  feed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check the Android update feed
+        shell: bash
+        env:
+          MANIFEST_URL: https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev/android/latest.json
+          # Never allow the feed to go backwards. Raise this when a build is
+          # published; a lower build appearing means a bad rollback.
+          MIN_BUILD_NUMBER: '2225'
+        run: bash scripts/check-android-update-feed.sh
+
+      - name: Check the latest GitHub release is a real, public release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          info="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest")"
+          python3 - "$info" <<'PY'
+          import json, sys
+          rel = json.loads(sys.argv[1])
+          if rel.get("draft") or rel.get("prerelease"):
+              raise SystemExit("The latest GitHub release is a draft or prerelease; phones ignore it")
+          names = [a["name"] for a in rel.get("assets", [])]
+          if "app-release.apk" not in names:
+              raise SystemExit("The latest GitHub release has no app-release.apk")
+          print("Latest release", rel["tag_name"], "has", ", ".join(names))
+          PY
