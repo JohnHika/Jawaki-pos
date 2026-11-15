@@ -650,15 +650,20 @@ class DesktopUpdateService extends ChangeNotifier {
   Future<void> _handOver(File installer) async {
     final dir = installer.parent.path;
     final args = <String>[
-      // The installer's own small progress window stays visible: it is the
-      // "updater takes over" moment, so the screen is never silently empty.
-      '/SILENT',
+      // No installer window at all: the update happens inside Counterbase's
+      // own screens (download, progress, "restarting") and the app reopens
+      // by itself. Nothing for the shop to click.
+      '/VERYSILENT',
       '/SUPPRESSMSGBOXES',
       '/NOCANCEL',
       '/NORESTART',
       '/CLOSEAPPLICATIONS',
+      '/FORCECLOSEAPPLICATIONS',
       // Read by installer.iss: open Counterbase again once files are in.
       '/RELAUNCH=1',
+      // Read by installer.iss: wait for this copy to be fully gone before
+      // replacing its files, so the swap never races the app closing.
+      '/WAITPID=$pid',
       '/LOG=${p.join(dir, 'update.log')}',
     ];
     try {

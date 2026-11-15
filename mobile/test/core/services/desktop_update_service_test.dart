@@ -421,8 +421,13 @@ void main() {
       final (path, args) = launched.single;
       expect(p.basename(path), 'Counterbase-Setup-1.0.181-2224.exe');
       expect(await File(path).exists(), isTrue);
-      expect(args, containsAll(['/SILENT', '/NOCANCEL', '/NORESTART']));
+      // No installer window: the whole update stays inside the app.
+      expect(args, containsAll(['/VERYSILENT', '/NOCANCEL', '/NORESTART']));
+      expect(args, isNot(contains('/SILENT')));
+      expect(args, contains('/FORCECLOSEAPPLICATIONS'));
       expect(args, contains('/RELAUNCH=1'));
+      // The installer waits for this exact copy to be gone before it swaps.
+      expect(args, contains('/WAITPID=$pid'));
       expect(args.any((a) => a.startsWith('/LOG=')), isTrue);
       // The app closes after the installer has been started, not before.
       expect(events, ['launch', 'exit']);

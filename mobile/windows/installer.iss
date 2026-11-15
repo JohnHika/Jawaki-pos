@@ -31,6 +31,8 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 CloseApplications=yes
+; The in-app updater reopens Counterbase itself (see [Run] and RELAUNCH).
+RestartApplications=no
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]
@@ -60,4 +62,57 @@ Filename: "{app}\{#MyAppExeName}"; Flags: nowait; Check: ReopenAfterUpdate
 function ReopenAfterUpdate: Boolean;
 begin
   Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;
+
+const
+  SYNCHRONIZE = $00100000;
+  WAIT_TIMEOUT = $00000102;
+
+function OpenProcess(dwDesiredAccess: Cardinal; bInheritHandle: Integer;
+  dwProcessId: Cardinal): Cardinal;
+  external 'OpenProcess@kernel32.dll stdcall';
+function WaitForSingleObject(hHandle: Cardinal; dwMilliseconds: Cardinal): Cardinal;
+  external 'WaitForSingleObject@kernel32.dll stdcall';
+function CloseHandle(hObject: Cardinal): Integer;
+  external 'CloseHandle@kernel32.dll stdcall';
+function FindWindowW(lpClassName: String; lpWindowName: String): Cardinal;
+  external 'FindWindowW@user32.dll stdcall';
+
+{ The in-app updater starts this setup and then closes Counterbase. Wait for
+  that copy to be completely gone before touching its files, so the swap never
+  races the app closing (which is what made a silent update fail at "closing
+  the application"). Older copies pass no /WAITPID: for those, wait until no
+  Counterbase window is left, up to 20 seconds. }
+procedure WaitForRunningApp;
+var
+  PidText: String;
+  Pid: Integer;
+  H: Cardinal;
+  Tries: Integer;
+begin
+  PidText := ExpandConstant('{param:WAITPID|0}');
+  Pid := StrToIntDef(PidText, 0);
+  if Pid > 0 then
+  begin
+    H := OpenProcess(SYNCHRONIZE, 0, Pid);
+    if H <> 0 then
+    begin
+      WaitForSingleObject(H, 30000);
+      CloseHandle(H);
+    end;
+    Exit;
+  end;
+  Tries := 0;
+  while (Tries < 40) and (FindWindowW('FLUTTER_RUNNER_WIN32_WINDOW', 'Counterbase') <> 0) do
+  begin
+    Sleep(500);
+    Tries := Tries + 1;
+  end;
+end;
+
+function InitializeSetup: Boolean;
+begin
+  if WizardSilent or (ExpandConstant('{param:WAITPID|0}') <> '0') then
+    WaitForRunningApp;
+  Result := True;
 end;

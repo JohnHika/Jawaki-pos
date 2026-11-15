@@ -498,9 +498,9 @@ class _ApplyingView extends StatelessWidget {
       case DesktopUpdateStage.verify:
         return 'Making sure the download is complete';
       case DesktopUpdateStage.install:
-        return 'Handing over to the installer';
+        return 'Installing in the background';
       case DesktopUpdateStage.restart:
-        return 'Closing Counterbase to finish the update';
+        return 'Counterbase closes for a few seconds, then reopens';
       case DesktopUpdateStage.idle:
       case DesktopUpdateStage.error:
         return null;
