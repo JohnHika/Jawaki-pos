@@ -403,7 +403,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _showMoreSheet(List<_NavItem> moreItems) {
     _isMoreSheetOpen = true;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     showAdaptiveModalSheet(
       useRootNavigator: true,
@@ -412,130 +411,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       isScrollControlled: true,
       // Keep the sheet below the status bar/cutout rather than full-bleed.
       useSafeArea: true,
-      builder: (context) => Container(
-        padding: EdgeInsets.only(
-          bottom: bottomPadding > 0
-              ? bottomPadding + DesignSpacing.sm
-              : DesignSpacing.lg,
-        ),
-        decoration: BoxDecoration(
-          color: isDark ? DesignColors.darkSurface : Colors.white,
-          borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(DesignSpacing.radiusXxl)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
-              blurRadius: 28,
-              offset: const Offset(0, -10),
-            ),
-          ],
-        ),
-        // Material ancestor so ListTiles paint their ink on it — a bare
-        // decorated Container trips the "ListTile background color or ink
-        // splashes may be invisible" assertion on Flutter 3.44+.
-        child: Material(
-          color: isDark ? DesignColors.darkSurface : Colors.white,
-          borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(DesignSpacing.radiusXxl)),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: DesignSpacing.md),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                    color: isDark
-                        ? DesignColors.darkTextTertiary
-                        : DesignColors.textTertiary,
-                    borderRadius:
-                        BorderRadius.circular(DesignSpacing.radiusSm - 6)),
-              ),
-              const SizedBox(height: DesignSpacing.lg),
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: DesignSpacing.xl),
-                child: Row(children: [
-                  Container(
-                      padding: const EdgeInsets.all(DesignSpacing.sm),
-                      decoration: BoxDecoration(
-                        // Accent→accentLight badge gradient removed: flat
-                        // accent keeps the badge readable without the wash.
-                        color: DesignColors.accent,
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusLg - 6),
-                      ),
-                      child: const Icon(Icons.apps_rounded,
-                          color: Colors.white, size: 20)),
-                  const SizedBox(width: DesignSpacing.lg - 4),
-                  Text('More Options',
-                      style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          color: isDark
-                              ? DesignColors.darkTextPrimary
-                              : DesignColors.textPrimary)),
-                ]),
-              ),
-              const SizedBox(height: DesignSpacing.md),
-              // The list outgrows the screen once every module is enabled;
-              // scroll it instead of overflowing under the system bars.
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ...moreItems.asMap().entries.map((entry) {
-                        final item = entry.value;
-                        return KeyedSubtree(
-                          key: switch (item.path) {
-                            '/inventory' => HomeNavKeys.moreSheetInventory,
-                            '/reports' => HomeNavKeys.moreSheetReports,
-                            '/settings' => HomeNavKeys.moreSheetSettings,
-                            _ => null,
-                          },
-                          child: ListTile(
-                            // ListTile paints ink on its nearest Material ancestor; the
-                            // sheet Container's BoxDecoration alone triggers the
-                            // "background color or ink splashes may be invisible"
-                            // assertion on newer Flutter versions.
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: DesignSpacing.xl, vertical: 2),
-                            // Keep every row at the 44px+ touch minimum.
-                            minTileHeight: 48,
-                            leading: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                  color: isDark
-                                      ? DesignColors.brandSubtle
-                                      : DesignColors.accent
-                                          .withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(
-                                      DesignSpacing.radiusLg - 6)),
-                              child: Icon(item.icon,
-                                  color: isDark
-                                      ? DesignColors.brand
-                                      : DesignColors.accent,
-                                  size: 20),
-                            ),
-                            title: Text(item.label,
-                                style: const TextStyle(
-                                    fontSize: 14, fontWeight: FontWeight.w600)),
-                            onTap: () {
-                              Navigator.pop(context);
-                              context.go(item.path);
-                            },
-                          ),
-                        );
-                      }),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+      builder: (context) => _MoreGrid(
+        items: moreItems,
+        bottomPadding: bottomPadding,
+        onPick: (path) {
+          Navigator.pop(context);
+          this.context.go(path);
+        },
       ),
     ).then((_) {
       _isMoreSheetOpen = false;
@@ -831,6 +713,132 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       : null,
                 ),
         ));
+  }
+}
+
+/// The More sheet: every extra area as a plain tile in a three-column grid,
+/// so nothing hides below a long list and nothing wears an orange badge.
+class _MoreGrid extends StatelessWidget {
+  const _MoreGrid({
+    required this.items,
+    required this.bottomPadding,
+    required this.onPick,
+  });
+
+  final List<_NavItem> items;
+  final double bottomPadding;
+  final ValueChanged<String> onPick;
+
+  static const _gap = 10.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sheet = isDark ? DesignColors.darkSurface : Colors.white;
+    final tile = isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle;
+    final edge = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight;
+    final ink = isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final icon = isDark ? DesignColors.brand : DesignColors.accent;
+
+    return Material(
+      color: sheet,
+      borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(DesignSpacing.radiusXxl)),
+      child: SafeArea(
+        top: false,
+        minimum: EdgeInsets.only(bottom: bottomPadding > 0 ? 0 : DesignSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: DesignSpacing.md),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: edge,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('More',
+                    style: TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.w800, color: ink)),
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: LayoutBuilder(builder: (context, box) {
+                  final width = (box.maxWidth - _gap * 2) / 3;
+                  return Wrap(
+                    spacing: _gap,
+                    runSpacing: _gap,
+                    children: [
+                      for (final item in items)
+                        KeyedSubtree(
+                          key: switch (item.path) {
+                            '/inventory' => HomeNavKeys.moreSheetInventory,
+                            '/reports' => HomeNavKeys.moreSheetReports,
+                            '/settings' => HomeNavKeys.moreSheetSettings,
+                            _ => null,
+                          },
+                          child: SizedBox(
+                            width: width,
+                            child: Semantics(
+                              button: true,
+                              label: item.label,
+                              excludeSemantics: true,
+                              child: Material(
+                                color: tile,
+                                borderRadius: BorderRadius.circular(16),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(16),
+                                  onTap: () => onPick(item.path),
+                                  child: Container(
+                                    constraints:
+                                        const BoxConstraints(minHeight: 96),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 14),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(color: edge),
+                                    ),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(item.icon, size: 26, color: icon),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          item.label,
+                                          textAlign: TextAlign.center,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                              fontSize: 12.5,
+                                              height: 1.2,
+                                              fontWeight: FontWeight.w600,
+                                              color: ink),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                }),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

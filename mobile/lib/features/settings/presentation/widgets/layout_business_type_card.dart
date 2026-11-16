@@ -398,7 +398,12 @@ class _RequestSheetState extends ConsumerState<_RequestSheet> {
     super.dispose();
   }
 
-  bool get _valid => _selected != null && _reason.text.trim().length >= 10;
+  /// A listed type if one is ticked; otherwise the custom layout, so a plain
+  /// written request ("I need X") still goes through.
+  String? get _target =>
+      _selected ?? (widget.currentProfileId != 'custom' ? 'custom' : null);
+
+  bool get _valid => _target != null && _reason.text.trim().length >= 10;
 
   Future<void> _send() async {
     if (!_valid || _sending) return;
@@ -408,7 +413,7 @@ class _RequestSheetState extends ConsumerState<_RequestSheet> {
     });
     try {
       final request = await ref.read(layoutRequestsApiProvider).create(
-            toProfileId: _selected!,
+            toProfileId: _target!,
             reason: _reason.text.trim(),
           );
       HapticService().success();
@@ -429,7 +434,7 @@ class _RequestSheetState extends ConsumerState<_RequestSheet> {
     final isDark = theme.brightness == Brightness.dark;
     final secondary = isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final options = businessLayoutPresets
-        .where((p) => p.id != widget.currentProfileId && p.id != 'custom')
+        .where((p) => p.id != widget.currentProfileId)
         .toList(growable: false);
     final current = businessLayoutPreset(widget.currentProfileId);
 
@@ -453,11 +458,11 @@ class _RequestSheetState extends ConsumerState<_RequestSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Request a business type change',
+                  Text('Ask for a change',
                       style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 4),
                   Text(
-                    'Your shop is set up as ${current.name}. Tell us what you need and why. We will review it and reply here.',
+                    'Your shop is set up as ${current.name}. Describe what you need. Pick a type below if one fits, or just write it; "Custom layout" is for anything else. We will review it and reply here.',
                     style: theme.textTheme.bodyMedium?.copyWith(color: secondary, height: 1.4),
                   ),
                 ],

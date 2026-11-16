@@ -87,7 +87,7 @@ void main() {
     expect(find.textContaining('MAMANJERI', findRichText: true), findsOneWidget);
     expect(find.byKey(const ValueKey('settings-copy-company-code')),
         findsOneWidget);
-    expect(find.text('My business'), findsOneWidget);
+    expect(find.text('MY BUSINESS'), findsOneWidget);
     expect(find.byKey(const ValueKey('settings-tile-tax')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

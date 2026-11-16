@@ -2147,7 +2147,6 @@ class GroupedCard extends StatelessWidget {
         color: surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: border),
-            boxShadow: DesignShadows.soft(isDark),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(

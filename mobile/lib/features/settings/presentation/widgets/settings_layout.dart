@@ -82,7 +82,7 @@ class SettingsIconTile extends StatelessWidget {
     super.key,
     required this.icon,
     this.destructive = false,
-    this.size = 38,
+    this.size = 28,
   });
 
   final IconData icon;
@@ -92,16 +92,15 @@ class SettingsIconTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = destructive ? DesignColors.error : DesignColors.accent;
-    return Container(
+    // A plain icon in muted ink, not a coloured box on every row. Only a
+    // destructive action keeps its colour.
+    final color = destructive
+        ? context.readable(DesignColors.error)
+        : (isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary);
+    return SizedBox(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: isDark ? 0.16 : 0.11),
-        borderRadius: BorderRadius.circular(11),
-      ),
-      alignment: Alignment.center,
-      child: Icon(icon, color: context.readable(color), size: size * 0.5),
+      child: Icon(icon, color: color, size: 22),
     );
   }
 }
@@ -278,28 +277,27 @@ class SettingsSectionCard extends StatelessWidget {
     final entries = section.entries;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 22),
+      padding: const EdgeInsets.only(bottom: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
             child: Text(
-              section.title,
+              section.title.toUpperCase(),
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 0.2,
-                color: _secondaryTextFor(isDark),
+                letterSpacing: 0.9,
+                color: _tertiaryTextFor(isDark),
               ),
             ),
           ),
           Container(
             decoration: BoxDecoration(
               color: _surfaceFor(isDark),
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: border),
-              boxShadow: DesignShadows.soft(isDark),
             ),
             clipBehavior: Clip.antiAlias,
             child: Column(
@@ -310,7 +308,7 @@ class SettingsSectionCard extends StatelessWidget {
                     Divider(
                       height: 1,
                       thickness: 1,
-                      indent: 66,
+                      indent: 58,
                       color: border.withValues(alpha: 0.7),
                     ),
                 ],
@@ -386,9 +384,8 @@ class SettingsProfileHeader extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: _surfaceFor(isDark),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: border),
-        boxShadow: DesignShadows.soft(isDark),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
