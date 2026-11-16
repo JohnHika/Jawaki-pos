@@ -70,6 +70,7 @@ describe('AuthService linked computers', () => {
         platform: 'windows',
         place: 'Nairobi, KE',
         ip: '41.90.10.20',
+        approverDevice: null,
         deviceId: 'pc-1',
       },
       select: { id: true },

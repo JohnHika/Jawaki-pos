@@ -74,6 +74,8 @@ export interface DesktopLinkStatusResponse {
   status: LinkStatus;
   /** First name of the person who approved, once approved. */
   approvedBy?: string;
+  /** The approving phone's friendly name, once approved. */
+  approverDevice?: string;
   expiresAt: string;
 }
 
@@ -218,6 +220,7 @@ export class DesktopLinkService {
       select: {
         status: true,
         expiresAt: true,
+        approverDevice: true,
         user: { select: { firstName: true } },
       },
     });
@@ -233,6 +236,10 @@ export class DesktopLinkService {
       approvedBy:
         status === 'approved' || status === 'claimed'
           ? row.user?.firstName ?? undefined
+          : undefined,
+      approverDevice:
+        status === 'approved' || status === 'claimed'
+          ? row.approverDevice ?? undefined
           : undefined,
       expiresAt: row.expiresAt.toISOString(),
     };
@@ -261,7 +268,12 @@ export class DesktopLinkService {
   /** Phone: approve or refuse. The computer gets this person's own account. */
   async decide(
     approver: { userId: string; branchId?: string },
-    input: { linkId: string; decision?: 'approve' | 'deny'; pin?: string },
+    input: {
+      linkId: string;
+      decision?: 'approve' | 'deny';
+      pin?: string;
+      approverDevice?: string;
+    },
     origin: RequestOrigin,
   ): Promise<DesktopLinkStatusResponse> {
     const decision = input.decision ?? 'approve';
@@ -297,6 +309,7 @@ export class DesktopLinkService {
         userId: approver.userId,
         branchId: approver.branchId ?? null,
         approverIp: origin.ip?.slice(0, 64) ?? null,
+        approverDevice: cleanLabel(input.approverDevice, 60),
         approvedAt: new Date(),
       },
     });
@@ -364,6 +377,7 @@ export class DesktopLinkService {
         platform: row.platform,
         place: row.place,
         ip: row.ip,
+        approverDevice: row.approverDevice,
       },
     });
 

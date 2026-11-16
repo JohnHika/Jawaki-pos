@@ -90,6 +90,8 @@ String renderThermalReceiptText(
   }
   final phone = (receipt['branchPhone'] ?? '').toString();
   if (phone.isNotEmpty) b.writeln(center('Tel: $phone'));
+  final kraPin = (receipt['shopKraPin'] ?? '').toString();
+  if (kraPin.isNotEmpty) b.writeln(center('KRA PIN: $kraPin'));
   b.writeln(rule);
 
   // VOIDED banner: impossible to miss.

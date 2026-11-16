@@ -1,3 +1,4 @@
+import '../../../../core/utils/kra_pin.dart';
 import '../../../licence/presentation/licence_providers.dart';
 import 'dart:async';
 import 'dart:io';
@@ -403,8 +404,7 @@ class SettingsScreen extends ConsumerWidget {
               id: 'appearance',
               icon: Icons.palette_rounded,
               title: 'Appearance',
-              subtitle:
-                  'Light or dark look; Counterbase updates its icon automatically',
+              subtitle: 'Theme, text size and spacing',
               keywords: const ['theme', 'dark mode', 'light mode', 'colour'],
               trailing: SettingsStatusChip(
                 text: themeLabel,
@@ -1548,126 +1548,46 @@ class SettingsScreen extends ConsumerWidget {
       builder: (ctx) => Consumer(
         builder: (ctx, ref, _) {
           final currentMode = ref.watch(themeModeProvider);
+          final look = ref.watch(appearanceProvider);
+          // Three short rows that change the app as you tap, instead of a
+          // list of options per choice.
           return SettingsSheetBody(
             title: 'Appearance',
             child: Flexible(
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    GroupedCard(
-                      margin: EdgeInsets.zero,
-                      children: [
-                        SettingsRow(
-                          icon: Icons.light_mode_rounded,
-                          iconColor: currentMode == ThemeMode.light
-                              ? DesignColors.accent
-                              : null,
-                          title: 'Light',
-                          showChevron: false,
-                          trailing: currentMode == ThemeMode.light
-                              ? const Icon(
-                                  Icons.check_circle_rounded,
-                                  color: DesignColors.accent,
-                                )
-                              : null,
-                          onTap: () {
-                            ref
-                                .read(themeModeProvider.notifier)
-                                .setThemeMode(ThemeMode.light);
-                            Navigator.pop(ctx);
-                          },
-                        ),
-                        SettingsRow(
-                          icon: Icons.dark_mode_rounded,
-                          iconColor: currentMode == ThemeMode.dark
-                              ? DesignColors.accent
-                              : null,
-                          title: 'Dark',
-                          showChevron: false,
-                          trailing: currentMode == ThemeMode.dark
-                              ? const Icon(
-                                  Icons.check_circle_rounded,
-                                  color: DesignColors.accent,
-                                )
-                              : null,
-                          onTap: () {
-                            ref
-                                .read(themeModeProvider.notifier)
-                                .setThemeMode(ThemeMode.dark);
-                            Navigator.pop(ctx);
-                          },
-                        ),
-                        SettingsRow(
-                          icon: Icons.phone_android_rounded,
-                          iconColor: currentMode == ThemeMode.system
-                              ? DesignColors.accent
-                              : null,
-                          title: 'Match my phone',
-                          showChevron: false,
-                          subtitle: "Uses your phone's light or dark setting",
-                          trailing: currentMode == ThemeMode.system
-                              ? const Icon(
-                                  Icons.check_circle_rounded,
-                                  color: DesignColors.accent,
-                                )
-                              : null,
-                          onTap: () {
-                            ref
-                                .read(themeModeProvider.notifier)
-                                .setThemeMode(ThemeMode.system);
-                            Navigator.pop(ctx);
-                          },
-                        ),
+                    _AppearanceChoice<ThemeMode>(
+                      label: 'Theme',
+                      value: currentMode,
+                      options: const [
+                        (ThemeMode.system, 'Match phone'),
+                        (ThemeMode.light, 'Light'),
+                        (ThemeMode.dark, 'Dark'),
                       ],
+                      onChanged: (mode) => ref
+                          .read(themeModeProvider.notifier)
+                          .setThemeMode(mode),
                     ),
                     const SizedBox(height: DesignSpacing.lg),
-                    GroupedCard(
-                      margin: EdgeInsets.zero,
-                      children: [
-                        for (final s in AppTextSize.values)
-                          SettingsRow(
-                            icon: Icons.text_fields_rounded,
-                            iconColor: ref.watch(appearanceProvider).textSize == s
-                                ? DesignColors.accent
-                                : null,
-                            title: 'Text size: ${s.label}',
-                            showChevron: false,
-                            trailing: ref.watch(appearanceProvider).textSize == s
-                                ? const Icon(
-                                    Icons.check_circle_rounded,
-                                    color: DesignColors.accent,
-                                  )
-                                : null,
-                            onTap: () => ref
-                                .read(appearanceProvider.notifier)
-                                .setTextSize(s),
-                          ),
-                      ],
+                    _AppearanceChoice<AppTextSize>(
+                      label: 'Text size',
+                      value: look.textSize,
+                      options: [for (final v in AppTextSize.values) (v, v.label)],
+                      onChanged: (size) => ref
+                          .read(appearanceProvider.notifier)
+                          .setTextSize(size),
                     ),
                     const SizedBox(height: DesignSpacing.lg),
-                    GroupedCard(
-                      margin: EdgeInsets.zero,
-                      children: [
-                        for (final s in AppSpacing.values)
-                          SettingsRow(
-                            icon: Icons.density_medium_rounded,
-                            iconColor: ref.watch(appearanceProvider).spacing == s
-                                ? DesignColors.accent
-                                : null,
-                            title: 'Spacing: ${s.label}',
-                            showChevron: false,
-                            trailing: ref.watch(appearanceProvider).spacing == s
-                                ? const Icon(
-                                    Icons.check_circle_rounded,
-                                    color: DesignColors.accent,
-                                  )
-                                : null,
-                            onTap: () => ref
-                                .read(appearanceProvider.notifier)
-                                .setSpacing(s),
-                          ),
-                      ],
+                    _AppearanceChoice<AppSpacing>(
+                      label: 'Spacing',
+                      value: look.spacing,
+                      options: [for (final v in AppSpacing.values) (v, v.label)],
+                      onChanged: (spacing) => ref
+                          .read(appearanceProvider.notifier)
+                          .setSpacing(spacing),
                     ),
                     const SizedBox(height: DesignSpacing.lg),
                     const LivingIconCard(),
@@ -2451,6 +2371,14 @@ class SettingsScreen extends ConsumerWidget {
     );
     bool isSaving = false;
     bool showOnReceipt = getIt<AuthService>().showTaxOnReceipt;
+    final savedSettings = (getIt<AuthService>().currentUser?['tenant']
+        as Map?)?['settings'];
+    final pinController = TextEditingController(
+      text: savedSettings is Map ? savedSettings['kraPin']?.toString() ?? '' : '',
+    );
+    bool showPinOnReceipt =
+        savedSettings is Map && savedSettings['showKraPinOnReceipts'] == true;
+    String? pinError;
     String? error;
 
     showDialog(
@@ -2459,7 +2387,7 @@ class SettingsScreen extends ConsumerWidget {
         builder: (dialogContext, setDialogState) {
           final isDark = Theme.of(dialogContext).brightness == Brightness.dark;
           return SettingsDialog(
-            title: 'Sales tax',
+            title: 'Tax and KRA PIN',
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2504,6 +2432,42 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 18),
+                TextField(
+                  controller: pinController,
+                  textCapitalization: TextCapitalization.characters,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+                    LengthLimitingTextInputFormatter(11),
+                  ],
+                  onChanged: (_) => setDialogState(() => pinError = null),
+                  decoration: InputDecoration(
+                    labelText: 'Your KRA PIN (optional)',
+                    hintText: 'A123456789B',
+                    errorText: pinError,
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                GroupedCard(
+                  margin: EdgeInsets.zero,
+                  children: [
+                    SettingsRow(
+                      icon: Icons.badge_outlined,
+                      title: 'Print KRA PIN on receipts',
+                      subtitle: 'Off by default. Your PIN stays private.',
+                      trailing: Switch(
+                        value: showPinOnReceipt &&
+                            pinController.text.trim().isNotEmpty,
+                        activeThumbColor: DesignColors.accent,
+                        onChanged: pinController.text.trim().isEmpty
+                            ? null
+                            : (value) =>
+                                setDialogState(() => showPinOnReceipt = value),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
             actions: [
@@ -2524,6 +2488,13 @@ class SettingsScreen extends ConsumerWidget {
                     );
                     return;
                   }
+                  final enteredPin = KraPin.normalize(pinController.text);
+                  if (enteredPin.isNotEmpty && !KraPin.isValid(enteredPin)) {
+                    setDialogState(() => pinError =
+                        'A KRA PIN is a letter, nine digits and a letter, like A123456789B');
+                    return;
+                  }
+                  final printPin = enteredPin.isNotEmpty && showPinOnReceipt;
                   setDialogState(() {
                     isSaving = true;
                     error = null;
@@ -2542,6 +2513,8 @@ class SettingsScreen extends ConsumerWidget {
                           : <String, dynamic>{};
                       settings['taxRatePercent'] = rate;
                       settings['showTaxOnReceipt'] = showOnReceipt;
+                      settings['kraPin'] = enteredPin;
+                      settings['showKraPinOnReceipts'] = printPin;
                       updated = {...currentTenant, 'settings': settings};
                       await auth.updateTenantSession(updated);
                       ref
@@ -2551,6 +2524,10 @@ class SettingsScreen extends ConsumerWidget {
                       updated = await getIt<ApiClient>().updateCurrentTenant(
                         taxRatePercent: rate,
                         showTaxOnReceipt: showOnReceipt,
+                        settings: {
+                          'kraPin': enteredPin,
+                          'showKraPinOnReceipts': printPin,
+                        },
                       );
                       await _cacheTenantUpdate(ref, {
                         'id': updated['id'],
@@ -5183,4 +5160,66 @@ class _OpenEntryOnceState extends State<_OpenEntryOnce> {
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+
+/// A label with one short row of choices under it. Tapping applies at once.
+class _AppearanceChoice<T> extends StatelessWidget {
+  const _AppearanceChoice({
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+  });
+
+  final String label;
+  final T value;
+  final List<(T, String)> options;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final ink = isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final muted =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 2, bottom: 8),
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w700, color: muted)),
+        ),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<T>(
+            showSelectedIcon: false,
+            segments: [
+              for (final (v, text) in options)
+                ButtonSegment<T>(
+                  value: v,
+                  label: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+            ],
+            selected: {value},
+            onSelectionChanged: (set) => onChanged(set.first),
+            style: SegmentedButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              foregroundColor: muted,
+              selectedForegroundColor: ink,
+              selectedBackgroundColor:
+                  DesignColors.accent.withValues(alpha: isDark ? 0.22 : 0.16),
+              side: BorderSide(
+                color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+              ),
+              textStyle:
+                  const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

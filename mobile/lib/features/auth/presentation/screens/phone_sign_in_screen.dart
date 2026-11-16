@@ -18,6 +18,7 @@ import 'package:axon_pos/core/utils/api_message.dart';
 import 'package:axon_pos/features/auth/presentation/desktop/auth_desktop_kit.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/sign_in_kit.dart';
+import 'package:axon_pos/features/auth/data/linked_phone_note.dart';
 
 /// Computer sign-in by a phone that is already signed in.
 ///
@@ -143,6 +144,10 @@ class _PhoneSignInScreenState extends ConsumerState<PhoneSignInScreen> {
       if (!mounted) return;
       switch (status['status']) {
         case 'approved':
+          await LinkedPhoneNote.save(
+            device: status['approverDevice']?.toString(),
+            person: status['approvedBy']?.toString(),
+          );
           await _finish();
         case 'denied':
           _poll?.cancel();

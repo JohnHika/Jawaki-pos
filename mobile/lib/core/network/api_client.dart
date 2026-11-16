@@ -2503,11 +2503,14 @@ class ApiClient {
     required String linkId,
     required bool approve,
     String? pin,
+    String? approverDevice,
   }) async {
     final response = await _dio.post('/auth/desktop-link/decide', data: {
       'linkId': linkId,
       'decision': approve ? 'approve' : 'deny',
       if (pin != null && pin.isNotEmpty) 'pin': pin,
+      if (approverDevice != null && approverDevice.isNotEmpty)
+        'approverDevice': approverDevice,
     });
     return Map<String, dynamic>.from(response.data as Map);
   }

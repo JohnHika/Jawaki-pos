@@ -1160,8 +1160,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
           Row(
             children: [
               Container(
-                width: 52,
-                height: 52,
+                width: 68,
+                height: 68,
                 decoration: BoxDecoration(
                   color: DesignColors.accent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
@@ -1169,7 +1169,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                 child: Center(
                   child: AxonAiIcon(
                     tenantLogoUrl: ref.watch(tenantIdentityProvider).logoUrl,
-                    size: 30,
+                    size: 42,
+                    showAiTag: true,
                   ),
                 ),
               ).animateEntrance(

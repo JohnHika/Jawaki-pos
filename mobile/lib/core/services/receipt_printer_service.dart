@@ -119,6 +119,12 @@ class ReceiptPrinterService {
           styles: const PosStyles(align: PosAlign.center)));
     }
 
+    final shopKraPin = receipt['shopKraPin'] as String?;
+    if (shopKraPin != null && shopKraPin.isNotEmpty) {
+      bytes.addAll(generator.text('KRA PIN: $shopKraPin',
+          styles: const PosStyles(align: PosAlign.center)));
+    }
+
     bytes.addAll(generator.hr());
 
     // VOIDED banner — prominent, bold, centered.

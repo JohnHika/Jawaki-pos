@@ -60,6 +60,7 @@ class _FakeApi extends ApiClient {
     required String linkId,
     required bool approve,
     String? pin,
+    String? approverDevice,
   }) async {
     decisions.add({'linkId': linkId, 'approve': approve, 'pin': pin});
     return {'status': approve ? 'approved' : 'denied'};

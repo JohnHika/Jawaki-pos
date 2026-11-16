@@ -480,6 +480,9 @@ class ReceiptScreen extends ConsumerWidget {
     if ((receipt['branchPhone'] as String?)?.isNotEmpty == true) {
       buffer.writeln('Tel: ${receipt['branchPhone']}');
     }
+    if ((receipt['shopKraPin'] ?? '').toString().isNotEmpty) {
+      buffer.writeln('KRA PIN: ${receipt['shopKraPin']}');
+    }
     buffer.writeln(
         'Receipt #${receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase()}');
     buffer.writeln(_formatDateTime(receipt['createdAt']));
@@ -672,6 +675,8 @@ class ReceiptScreen extends ConsumerWidget {
           receipt['branchAddress'].toString(),
         if ((receipt['branchPhone'] ?? '').toString().isNotEmpty)
           'Tel: ${receipt['branchPhone']}',
+        if ((receipt['shopKraPin'] ?? '').toString().isNotEmpty)
+          'KRA PIN: ${receipt['shopKraPin']}',
         _formatDateTime(receipt['createdAt']),
         if (receipt['customerName'] != null)
           'Customer: ${receipt['customerName']}',

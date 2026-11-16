@@ -828,7 +828,18 @@ class _MoreGrid extends StatelessWidget {
                                     child: Column(
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
-                                        Icon(item.icon, size: 26, color: icon),
+                                        item.path == '/ai'
+                                            ? const SizedBox(
+                                                width: 40,
+                                                height: 26,
+                                                child: Center(
+                                                  child: AxonAiIcon(
+                                                    size: 26,
+                                                    showAiTag: true,
+                                                  ),
+                                                ),
+                                              )
+                                            : Icon(item.icon, size: 26, color: icon),
                                         const SizedBox(height: 8),
                                         Text(
                                           item.label,

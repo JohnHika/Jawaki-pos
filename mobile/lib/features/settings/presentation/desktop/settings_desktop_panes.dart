@@ -7,6 +7,7 @@ import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/services/desktop_update_service.dart';
 import '../../../../core/theme/appearance_provider.dart';
 import '../../../../core/theme/theme_provider.dart';
+import '../../../auth/data/linked_phone_note.dart';
 import '../widgets/settings_layout.dart';
 import 'settings_desktop_page.dart';
 import 'settings_desktop_widgets.dart';
@@ -506,6 +507,26 @@ List<DesktopSettingsPaneData> buildDesktopSettingsPanes(
       ),
       group(
         [
+          DesktopSettingItem(
+            id: 'linked-phone',
+            title: 'Linked phone',
+            helper: 'The phone that signed this computer in',
+            keywords: const ['phone', 'linked', 'sync', 'approved', 'device'],
+            builder: (_) => FutureBuilder<LinkedPhoneNote?>(
+              future: LinkedPhoneNote.read(),
+              builder: (context, snapshot) {
+                final note = snapshot.data;
+                if (note == null) return const SizedBox.shrink();
+                return DesktopSettingRow(
+                  key: const ValueKey('desktop-setting-linked-phone'),
+                  icon: Icons.phone_android_rounded,
+                  title: 'Linked phone',
+                  helper: 'The phone that signed this computer in',
+                  trailing: DesktopSettingValue(note.label),
+                );
+              },
+            ),
+          ),
           if (userGuide != null)
             DesktopSettingItem(
               id: 'user-guide',

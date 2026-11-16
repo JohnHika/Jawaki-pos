@@ -1,3 +1,4 @@
+import '../../../../core/utils/kra_pin.dart';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -224,6 +225,8 @@ Map<String, dynamic> _normalizeRemoteReceipt(
     'branchName': payload['branchName'] ?? branch['name'],
     'branchAddress': payload['branchAddress'] ?? branch['address'],
     'branchPhone': payload['branchPhone'] ?? branch['phone'],
+    if (KraPin.forReceipt(getIt<AuthService>().currentUser) != null)
+      'shopKraPin': KraPin.forReceipt(getIt<AuthService>().currentUser),
     'cashierName': payload['cashierName'] ?? payload['userName'],
     'hasCustomer': hasCustomer,
     'linkedCustomerDetailsHidden': hasCustomer && !canViewCustomerDetails,
@@ -312,6 +315,8 @@ final receiptProvider = StreamProvider.autoDispose
       'branchName': receiptHeaderName(auth.currentUser),
       if (contact.address.isNotEmpty) 'branchAddress': contact.address,
       if (contact.phone.isNotEmpty) 'branchPhone': contact.phone,
+      if (KraPin.forReceipt(auth.currentUser) != null)
+        'shopKraPin': KraPin.forReceipt(auth.currentUser),
       if (cashTender != null) 'cashGiven': cashTender['cashGiven'],
       if (cashTender != null) 'changeGiven': cashTender['change'],
       'cashierName': auth.currentUser?['name'],

@@ -18,11 +18,16 @@ class AxonAiIcon extends StatelessWidget {
   final double size;
   final Color? badgeColor;
 
+  /// A small "AI" tag on the mark, so it reads as the assistant and not as the
+  /// app's own logo.
+  final bool showAiTag;
+
   const AxonAiIcon({
     super.key,
     this.tenantLogoUrl,
     this.size = 40,
     this.badgeColor,
+    this.showAiTag = false,
   });
 
   @override
@@ -48,6 +53,32 @@ class AxonAiIcon extends StatelessWidget {
             height: size,
             semanticsLabel: 'Axon AI',
           ),
+          if (showAiTag)
+            Positioned(
+              top: -size * 0.12,
+              right: -size * 0.22,
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                    horizontal: size * 0.14, vertical: size * 0.03),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF7A33),
+                  borderRadius: BorderRadius.circular(size),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF0B0A0F) : Colors.white,
+                    width: size * 0.04,
+                  ),
+                ),
+                child: Text(
+                  'AI',
+                  style: TextStyle(
+                    fontSize: size * 0.3,
+                    height: 1.1,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF1C1917),
+                  ),
+                ),
+              ),
+            ),
           if (hasLogo)
             Positioned(
               right: -badgeSize * 0.12,

@@ -111,6 +111,7 @@ class _DesktopApprovalsScreenState
         linkId: request['linkId'].toString(),
         approve: approve,
         pin: approve && pinRequired ? _pin.text : null,
+        approverDevice: approve ? _phoneName() : null,
       );
       if (!mounted) return;
       HapticFeedback.mediumImpact();
@@ -120,6 +121,13 @@ class _DesktopApprovalsScreenState
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// "John's phone": a name the computer can show for this phone.
+  String _phoneName() {
+    final first =
+        getIt<AuthService>().currentUser?['firstName']?.toString().trim() ?? '';
+    return first.isEmpty ? 'My phone' : "$first's phone";
   }
 
   void _startOver() {

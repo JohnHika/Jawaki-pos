@@ -60,6 +60,14 @@ export class DecideDesktopLinkDto {
   @IsOptional()
   @Matches(/^\d{4,8}$/, { message: 'PIN must be 4 to 8 digits' })
   pin?: string;
+
+  @ApiPropertyOptional({
+    description: 'A friendly name for the approving phone, such as John phone',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(1, 60)
+  approverDevice?: string;
 }
 
 export class ClaimDesktopLinkDto {

@@ -18,7 +18,10 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../finance/domain/collections_ledger.dart';
+import '../../../finance/presentation/providers/finance_hub_controller.dart';
 import '../../../sales/domain/recorded_payment.dart';
+import '../../domain/money_in_today.dart';
 import '../../../sales/presentation/providers/payment_provider.dart';
 import '../desktop/desktop_payment_inspector.dart';
 import '../desktop/desktop_payments_view.dart';
@@ -491,6 +494,24 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
     final permissions = ref.watch(permissionsProvider);
     final isLocalWorkspace = getIt<AuthService>().isLocalWorkspace;
     final canViewPaymentStatus = permissions.has('payments.view_status');
+    // Money collected today from customers who owed counts as money in today,
+    // under the way each customer actually paid.
+    final financeSnapshot = permissions.canViewFinance
+        ? ref.watch(financeHubProvider).snapshot
+        : null;
+    final startOfToday = startOfDay(DateTime.now());
+    final money = moneyInToday(
+      sales: _todaysSales.map((sale) => (
+            method: sale.paymentMethod,
+            total: sale.total,
+            reference: sale.paymentReference,
+          )),
+      collections: financeSnapshot == null
+          ? const []
+          : allCollections(financeSnapshot)
+              .where((e) => !e.paidAt.isBefore(startOfToday))
+              .map((e) => (method: e.method, amount: e.amount)),
+    );
     final canViewPaymentMethods = permissions.has('payments.view_methods');
     final canSeePaymentAnalytics = isLocalWorkspace
         ? permissions.canSeeReports
@@ -687,6 +708,11 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                               ),
                             );
                           })),
+
+                    if (canViewPaymentStatus && !money.isEmpty) ...[
+                      const SizedBox(height: DesignSpacing.md),
+                      _MoneyInTodayCard(money: money),
+                    ],
 
                     if (canViewPaymentStatus)
                       const SizedBox(height: DesignSpacing.xxl),
@@ -965,6 +991,80 @@ class _PaymentMethodBadge extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+
+/// What actually came in today, whether from sales paid now or from customers
+/// settling what they owed, grouped by how it was paid.
+class _MoneyInTodayCard extends StatelessWidget {
+  const _MoneyInTodayCard({required this.money});
+
+  final MoneyInToday money;
+
+  String _kes(double value) => 'KES ${NumberFormat('#,##0').format(value)}';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final muted =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final ink = isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(DesignSpacing.lg),
+      decoration: BoxDecoration(
+        color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        border: Border.all(
+          color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Money received today',
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w700, color: muted)),
+          const SizedBox(height: DesignSpacing.xs),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              _kes(money.total),
+              style: theme.textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.w800, color: ink),
+            ),
+          ),
+          const SizedBox(height: DesignSpacing.md),
+          for (final entry in money.byMethod.entries)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(entry.key,
+                        style: theme.textTheme.bodyMedium?.copyWith(color: ink)),
+                  ),
+                  Text(
+                    _kes(entry.value / 100),
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(fontWeight: FontWeight.w700, color: ink),
+                  ),
+                ],
+              ),
+            ),
+          if (money.fromCollectionsCents > 0) ...[
+            const SizedBox(height: DesignSpacing.sm),
+            Text(
+              'Includes ${_kes(money.fromCollections)} collected from customers who owed.',
+              style: theme.textTheme.bodySmall?.copyWith(color: muted, height: 1.35),
+            ),
+          ],
         ],
       ),
     );

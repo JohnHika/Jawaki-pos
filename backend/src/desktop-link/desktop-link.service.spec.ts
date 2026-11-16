@@ -254,6 +254,7 @@ describe('DesktopLinkService', () => {
         platform: 'windows',
         place: 'Nairobi, KE',
         ip: SHOP_WIFI.ip,
+        approverDevice: null,
       },
     });
     expect(notifications.sendToUser).toHaveBeenCalledWith(

@@ -667,6 +667,8 @@ model LinkedComputer {
   place        String?
   ip           String?
   deviceId     String?
+  // The phone that approved this computer, for example "John's phone".
+  approverDevice String?
   linkedAt     DateTime  @default(now())
   lastActiveAt DateTime  @default(now())
   revokedAt    DateTime?
@@ -697,6 +699,8 @@ model DesktopLinkChallenge {
   userId          String?
   branchId        String?
   approverIp      String?
+  // The approving phone's friendly name, shown on the computer.
+  approverDevice  String?
   attempts        Int       @default(0)
   expiresAt       DateTime
   approvedAt      DateTime?

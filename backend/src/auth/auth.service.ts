@@ -153,6 +153,7 @@ export class AuthService {
         platform?: string | null;
         place?: string | null;
         ip?: string | null;
+        approverDevice?: string | null;
       };
     } = {},
   ): Promise<AuthResponseDto> {
@@ -198,6 +199,7 @@ export class AuthService {
             platform: options.computer.platform ?? null,
             place: options.computer.place ?? null,
             ip: options.computer.ip ?? null,
+            approverDevice: options.computer.approverDevice ?? null,
             deviceId: options.deviceId ?? null,
           },
           select: { id: true },

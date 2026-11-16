@@ -124,6 +124,10 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   late final TextEditingController _searchController;
   Timer? _searchDebounce;
 
+  // Phone: the search field replaces the Products / Stock switch in the
+  // header only while the owner is searching.
+  bool _searching = false;
+
   // Desktop only: the row shown in the inspector and the stock chip picked.
   String? _selectedProductId;
   DesktopStockFilter _stockFilter = DesktopStockFilter.all;
@@ -149,6 +153,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     _searchController = TextEditingController(
       text: scopeChanged ? '' : ref.read(_searchQueryProvider),
     );
+    _searching = _searchController.text.isNotEmpty;
   }
 
   @override
@@ -233,49 +238,112 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
 
     final reorderCount = allActive.where(needsReorder).length;
 
-    Widget bottomAction() {
-      if (stockView) {
-        return perms.canManageStock
-            ? BottomActionBar(
-                label: 'Receive stock',
-                icon: Icons.local_shipping_outlined,
-                onTap: () => context.push('/inventory/receive'),
-              )
-            : const SizedBox.shrink();
-      }
-      if (!perms.canEditProducts || showArchivedProducts) {
-        return const SizedBox.shrink();
-      }
-      return BottomActionBar(
-        label: 'Add ${productSingular.toLowerCase()}',
-        icon: Icons.add_rounded,
-        onTap: () =>
-            _showAddEditProduct(context, ref, entityLabel: productSingular),
-      );
+    final canAdd =
+        !stockView && perms.canEditProducts && !showArchivedProducts;
+    final canReceive = stockView && perms.canManageStock;
+    final searchOpen = _searching && !stockView;
+    final isDarkBar = Theme.of(context).brightness == Brightness.dark;
+    final barInk =
+        isDarkBar ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+
+    void closeSearch() {
+      _clearSearch();
+      setState(() => _searching = false);
     }
 
     return Scaffold(
-      appBar: BrandedAppBar(
-        title: businessLayout.actionLabel(
-          '/products',
-          businessLayout.productsLabel,
-        ),
-        showBackButton: false,
-        actions: [
-          IconButton(
-            tooltip: 'View, removed items and categories',
-            constraints: const BoxConstraints(
-              minWidth: 48,
-              minHeight: 48,
-            ),
-            icon: const Icon(Icons.tune_rounded),
-            onPressed: () => _showOptions(
-              context,
-              ref,
-              canEdit: perms.canEditProducts,
-              isLocal: isLocalWorkspace,
-            ),
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        toolbarHeight: 60,
+        titleSpacing: 16,
+        backgroundColor: isDarkBar ? DesignColors.darkBg : DesignColors.surface,
+        foregroundColor: barInk,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        shape: Border(
+          bottom: BorderSide(
+            color: isDarkBar ? DesignColors.darkBorder : DesignColors.surfaceBorder,
           ),
+        ),
+        // Products / Stock live in the header; the search box only opens when
+        // the search icon is tapped.
+        title: searchOpen
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                style: TextStyle(color: barInk, fontSize: 16),
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: businessLayout.catalogSearchHint,
+                  hintStyle: TextStyle(color: palette.faint),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  filled: false,
+                  isDense: true,
+                ),
+                onChanged: _scheduleSearch,
+                onSubmitted: _commitSearch,
+              )
+            : Align(
+                alignment: Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 220),
+                  child: ProductsSwitch(
+                    stockSelected: stockView,
+                    productsLabel: businessLayout.productsLabel,
+                    onChanged: (value) =>
+                        ref.read(_stockViewProvider.notifier).state = value,
+                  ),
+                ),
+              ),
+        actions: [
+          if (searchOpen)
+            IconButton(
+              tooltip: 'Close search',
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              icon: const Icon(Icons.close_rounded),
+              onPressed: closeSearch,
+            )
+          else ...[
+            if (!stockView)
+              IconButton(
+                tooltip: 'Search $productPlural',
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                icon: const Icon(Icons.search_rounded),
+                onPressed: () => setState(() => _searching = true),
+              ),
+            if (canAdd)
+              IconButton(
+                tooltip: 'Add ${productSingular.toLowerCase()}',
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                icon: const Icon(Icons.add_rounded),
+                onPressed: () => _showAddEditProduct(
+                  context,
+                  ref,
+                  entityLabel: productSingular,
+                ),
+              ),
+            if (canReceive)
+              IconButton(
+                tooltip: 'Receive stock',
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                icon: const Icon(Icons.local_shipping_outlined),
+                onPressed: () => context.push('/inventory/receive'),
+              ),
+            IconButton(
+              tooltip: 'View, removed items and categories',
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              icon: const Icon(Icons.tune_rounded),
+              onPressed: () => _showOptions(
+                context,
+                ref,
+                canEdit: perms.canEditProducts,
+                isLocal: isLocalWorkspace,
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
         ],
       ),
       body: MasterDetail(
@@ -296,15 +364,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         maxWidth: 960,
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
-              child: ProductsSwitch(
-                stockSelected: stockView,
-                productsLabel: businessLayout.productsLabel,
-                onChanged: (value) =>
-                    ref.read(_stockViewProvider.notifier).state = value,
-              ),
-            ),
+            const SizedBox(height: 8),
             if (stockView)
               Expanded(
                 child: StockPane(
@@ -314,17 +374,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 ),
               )
             else ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-                child: _SearchField(
-                  controller: _searchController,
-                  hint: businessLayout.catalogSearchHint,
-                  showClear: searchQuery.isNotEmpty,
-                  onChanged: _scheduleSearch,
-                  onSubmitted: _commitSearch,
-                  onClear: _clearSearch,
-                ),
-              ),
               _CategoryChips(
                 categories: categoriesAsync.valueOrNull ?? const <Category>[],
                 selected: selectedCategory,
@@ -482,7 +531,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 ),
               ),
             ],
-            bottomAction(),
           ],
         ),
       ),
@@ -1070,62 +1118,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
 }
 
 /// The search box under the Products switch.
-class _SearchField extends StatelessWidget {
-  const _SearchField({
-    required this.controller,
-    required this.hint,
-    required this.showClear,
-    required this.onChanged,
-    required this.onSubmitted,
-    required this.onClear,
-  });
-
-  final TextEditingController controller;
-  final String hint;
-  final bool showClear;
-  final ValueChanged<String> onChanged;
-  final ValueChanged<String> onSubmitted;
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = SignInPalette.of(context);
-    OutlineInputBorder outline(Color color, [double width = 1]) =>
-        OutlineInputBorder(
-          borderRadius: BorderRadius.circular(13),
-          borderSide: BorderSide(color: color, width: width),
-        );
-    return TextField(
-      controller: controller,
-      style: TextStyle(color: palette.ink),
-      textInputAction: TextInputAction.search,
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: TextStyle(color: palette.faint),
-        prefixIcon: Icon(Icons.search_rounded, color: palette.faint),
-        suffixIcon: showClear
-            ? IconButton(
-                tooltip: 'Clear search',
-                icon: Icon(Icons.clear_rounded, color: palette.faint),
-                onPressed: onClear,
-              )
-            : null,
-        filled: true,
-        fillColor: palette.field,
-        border: outline(palette.line),
-        enabledBorder: outline(palette.line),
-        focusedBorder: outline(DesignColors.brand, 1.5),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 13,
-        ),
-      ),
-      onChanged: onChanged,
-      onSubmitted: onSubmitted,
-    );
-  }
-}
-
 /// The row of filters: All, Low stock, then the shop's categories.
 class _CategoryChips extends StatelessWidget {
   const _CategoryChips({
