@@ -403,7 +403,11 @@ void main() {
     await pump(tester);
     await tester.tap(find.text('This week'));
     await settle(tester);
-    expect(find.text('Sales by day'), findsOneWidget);
+    // The week starts on Monday, so on a Monday it is one day and still
+    // charts by the hour.
+    final oneDay = DateTime.now().weekday == DateTime.monday;
+    expect(find.text(oneDay ? 'Sales by hour' : 'Sales by day'),
+        findsOneWidget);
   });
 
   testWidgets('empty period says what to do', (tester) async {
