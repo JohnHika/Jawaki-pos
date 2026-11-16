@@ -56,7 +56,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('phone: a paid shop sees its locked business type, sections and save bar',
+  testWidgets('phone: a paid shop sees its locked business type and sections, with no idle save bar',
       (tester) async {
     await pump(tester, size: const Size(390, 844), user: _owner());
 
@@ -65,9 +65,9 @@ void main() {
     expect(find.text('Request a change'), findsOneWidget);
     // The profile picker is not offered once the type is locked.
     expect(find.text('Find a shop type'), findsNothing);
-    // The save bar is always on screen.
-    expect(find.text('No changes yet'), findsOneWidget);
-    expect(find.text('Save layout'), findsOneWidget);
+    // On a phone the save bar only appears once there is something to save.
+    expect(find.text('No changes yet'), findsNothing);
+    expect(find.text('Save layout'), findsNothing);
     // Sections are collapsed except the first.
     await tester.scrollUntilVisible(find.text('Products'), 300,
         scrollable: find.byType(Scrollable).first);
@@ -105,11 +105,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Unsaved: Business type'), findsOneWidget);
+    expect(find.text('Save layout'), findsOneWidget);
     expect(find.text('Discard'), findsOneWidget);
 
     await tester.tap(find.text('Discard'));
     await tester.pumpAndSettle();
-    expect(find.text('No changes yet'), findsOneWidget);
+    expect(find.text('Save layout'), findsNothing);
   });
 
   testWidgets('tablet: sections move to a left rail and the editor fills the right',

@@ -37,12 +37,12 @@ class NavDestination {
   final Key? itemKey;
 }
 
-const double kFloatingNavHeight = 66;
+const double kFloatingNavHeight = 64;
 const double _kSlotIconBox = 44;
 
-/// The phone's bottom bar: a floating, softly lifted bar with a light that
-/// slides to the chosen tab, an icon that morphs from outline to filled, and a
-/// label that warms up. Every tab is at least 48 high and a fifth of the width.
+/// The phone's bottom bar: flat, attached to the bottom edge, one hairline on
+/// top. The chosen tab is shown one way only, a soft pill behind its icon and a
+/// bold label. Every tab is at least 48 high and an equal share of the width.
 class FloatingNavBar extends StatelessWidget {
   const FloatingNavBar({
     super.key,
@@ -69,129 +69,55 @@ class FloatingNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final hasMore = onMore != null;
-    final slots = items.length + (hasMore ? 1 : 0);
-    final litSlot = selectedIndex >= 0
-        ? selectedIndex
-        : (moreSelected && hasMore ? items.length : -1);
-    final litIsPrimary =
-        litSlot >= 0 && litSlot < items.length && items[litSlot].primary;
-    final still = reducedMotion(context);
 
-    return Container(
-      color: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-      child: SafeArea(
-        top: false,
-        minimum: const EdgeInsets.only(bottom: 10),
-        child: Container(
-          height: kFloatingNavHeight,
-          decoration: BoxDecoration(
-            color: isDark ? DesignColors.darkSurface : Colors.white,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: isDark
-                  ? DesignColors.darkBorder
-                  : DesignColors.surfaceBorderLight,
-            ),
-          ),
-          child: LayoutBuilder(
-            builder: (context, box) {
-              final slotWidth = box.maxWidth / slots;
-              return Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  // The light that slides to the chosen tab.
-                  AnimatedPositioned(
-                    duration: still ? Duration.zero : DesignAnimation.normal,
-                    curve: Curves.easeOutCubic,
-                    left: (litSlot < 0 ? 0 : litSlot) * slotWidth,
-                    top: 0,
-                    bottom: 0,
-                    width: slotWidth,
-                    child: IgnorePointer(
-                      child: AnimatedOpacity(
-                        duration: DesignAnimation.fast,
-                        opacity: litSlot < 0 || litIsPrimary ? 0 : 1,
-                        child: const _SlidingLight(),
-                      ),
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      for (var i = 0; i < items.length; i++)
-                        SizedBox(
-                          width: slotWidth,
-                          child: KeyedSubtree(
-                            key: items[i].itemKey,
-                            child: _BarSlot(
-                              destination: items[i],
-                              selected: selectedIndex == i,
-                              onTap: () => onSelect(i),
-                            ),
-                          ),
-                        ),
-                      if (hasMore)
-                        SizedBox(
-                          width: slotWidth,
-                          child: KeyedSubtree(
-                            key: moreKey,
-                            child: _BarSlot(
-                              destination: const NavDestination(
-                                icon: Icons.apps_outlined,
-                                activeIcon: Icons.apps_rounded,
-                                label: 'More',
-                                path: '',
-                              ),
-                              selected: moreSelected && selectedIndex < 0,
-                              onTap: onMore!,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              );
-            },
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isDark ? DesignColors.darkSurface : Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: isDark
+                ? DesignColors.darkBorder
+                : DesignColors.surfaceBorderLight,
           ),
         ),
       ),
-    );
-  }
-}
-
-/// A soft accent glow with a short bright edge on top, like a lit tab.
-class _SlidingLight extends StatelessWidget {
-  const _SlidingLight();
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Stack(
-      alignment: Alignment.topCenter,
-      children: [
-        Positioned.fill(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(22),
-                color: DesignColors.accent.withValues(alpha: isDark ? 0.16 : 0.12),
-              ),
-            ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: kFloatingNavHeight,
+          child: Row(
+            children: [
+              for (var i = 0; i < items.length; i++)
+                Expanded(
+                  child: KeyedSubtree(
+                    key: items[i].itemKey,
+                    child: _BarSlot(
+                      destination: items[i],
+                      selected: selectedIndex == i,
+                      onTap: () => onSelect(i),
+                    ),
+                  ),
+                ),
+              if (hasMore)
+                Expanded(
+                  child: KeyedSubtree(
+                    key: moreKey,
+                    child: _BarSlot(
+                      destination: const NavDestination(
+                        icon: Icons.apps_outlined,
+                        activeIcon: Icons.apps_rounded,
+                        label: 'More',
+                        path: '',
+                      ),
+                      selected: moreSelected && selectedIndex < 0,
+                      onTap: onMore!,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
-        Positioned(
-          top: 0,
-          child: Container(
-            width: 22,
-            height: 3.5,
-            decoration: const BoxDecoration(
-              color: DesignColors.accent,
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(4)),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -231,14 +157,26 @@ class _BarSlot extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(16),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              NavMorphIcon(
-                destination: destination,
-                selected: selected,
-                color: color,
+              AnimatedContainer(
+                duration: DesignAnimation.fast,
+                width: 56,
+                height: 30,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? DesignColors.accent.withValues(alpha: isDark ? 0.2 : 0.14)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: NavMorphIcon(
+                  destination: destination,
+                  selected: selected,
+                  color: color,
+                ),
               ),
               const SizedBox(height: 2),
               FittedBox(

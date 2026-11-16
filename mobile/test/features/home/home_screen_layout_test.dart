@@ -47,18 +47,22 @@ void main() {
     });
   }
 
-  testWidgets('AI replaces Customers in the primary bottom navigation',
+  testWidgets('the phone bar is three work tabs and More; AI and Settings lead More',
       (tester) async {
     await _pumpHome(tester, entitlement: _active);
 
-    // The centre tile shows the merged mark with no word under it.
-    expect(find.bySemanticsLabel('AI assistant'), findsOneWidget);
-    expect(find.byType(AxonAiIcon), findsOneWidget);
+    // No raised AI tile in the bar any more, and Settings is not a tab.
+    expect(find.byType(AxonAiIcon), findsNothing);
+    expect(find.text('Settings'), findsNothing);
     expect(find.text('Customers'), findsNothing);
 
     await tester.tap(find.byKey(HomeNavKeys.more));
     await tester.pumpAndSettle();
+    expect(find.text('AI assistant').hitTestable(), findsOneWidget);
+    expect(find.byKey(HomeNavKeys.moreSheetSettings).hitTestable(), findsOneWidget);
     expect(find.text('Customers').hitTestable(), findsOneWidget);
+    // Let the notification prompt's delay finish before the test ends.
+    await tester.pump(const Duration(seconds: 3));
   });
 
   testWidgets('a tablet swaps the bottom bar for a side rail with every destination',
@@ -252,9 +256,10 @@ Future<void> _exerciseNavigation(
   expect(harness.router.routeInformationProvider.value.uri.path, '/products');
   _expectFinitePage(tester, harness, 'Products');
 
-  // Settings is pinned in the bottom bar (no longer behind the More sheet),
-  // so the exercise taps it directly and skips the sheet hop.
-  await tester.tap(find.text('Settings').hitTestable());
+  // Settings sits in the More grid on a phone.
+  await tester.tap(find.byKey(HomeNavKeys.more));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(HomeNavKeys.moreSheetSettings));
   await tester.pumpAndSettle();
   expect(harness.router.routeInformationProvider.value.uri.path, '/settings');
   _expectFinitePage(tester, harness, 'Settings');

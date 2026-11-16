@@ -587,15 +587,6 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SectionHeader(
-                      title: 'Payment Management',
-                      subtitle: canViewPaymentStatus
-                          ? isLocalWorkspace
-                              ? "Today's on-device takings, receipts, and credit"
-                              : "Today's takings, receipts, and credit"
-                          : 'Payment methods available to your role',
-                      icon: Icons.payments_rounded,
-                    ),
                     if (isLocalWorkspace && canViewPaymentStatus) ...[
                       const SizedBox(height: DesignSpacing.sm),
                       Container(
@@ -619,83 +610,83 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                     if (canViewPaymentStatus)
                       StaggeredItem(
                           itemKey: 'payments-takings',
-                          child: GlassCard(
-                            padding: const EdgeInsets.all(DesignSpacing.xl),
-                            borderRadius: DesignSpacing.radiusLg,
-                            blur: 12,
-                            tint: DesignColors.brand,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(
-                                          DesignSpacing.sm),
-                                      decoration: BoxDecoration(
-                                        color: DesignColors.textOnBrand
-                                            .withValues(alpha: 0.2),
-                                        borderRadius: BorderRadius.circular(
-                                            DesignSpacing.radiusMd - 2),
-                                      ),
-                                      child: const Icon(Icons.today_rounded,
-                                          color: DesignColors.textOnBrand,
-                                          size: 24),
-                                    ),
-                                    const SizedBox(width: DesignSpacing.md),
-                                    Text(
-                                      "Today's Takings",
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyMedium
-                                          ?.copyWith(
-                                            color: DesignColors.textOnBrand,
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                    ),
-                                  ],
+                          child: Builder(builder: (context) {
+                            final isDark =
+                                Theme.of(context).brightness == Brightness.dark;
+                            final muted = isDark
+                                ? DesignColors.darkTextSecondary
+                                : DesignColors.textSecondary;
+                            return Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(DesignSpacing.lg),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? DesignColors.darkSurfaceElevated
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(
+                                    DesignSpacing.radiusLg),
+                                border: Border.all(
+                                  color: isDark
+                                      ? DesignColors.darkBorder
+                                      : DesignColors.surfaceBorderLight,
                                 ),
-                                if (_cloudTotalsAvailable &&
-                                    !_canReconcileLocalSales &&
-                                    _todaysSales
-                                        .any((sale) => !sale.isSynced)) ...[
-                                  const SizedBox(height: DesignSpacing.sm),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Text(
-                                    'Offline sales are waiting to sync.',
+                                    "Today's takings",
                                     style: Theme.of(context)
                                         .textTheme
-                                        .bodySmall
+                                        .titleSmall
                                         ?.copyWith(
-                                          color: DesignColors.textOnBrand
-                                              .withValues(alpha: 0.8),
-                                        ),
+                                            fontWeight: FontWeight.w700,
+                                            color: muted),
                                   ),
-                                ],
-                                const SizedBox(height: DesignSpacing.xl),
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceAround,
-                                  children: [
-                                    _buildGlassStatItem(
-                                      label: 'Total Sales',
-                                      value: _isLoading
-                                          ? '...'
-                                          : 'KES ${NumberFormat('#,##0').format(_todaysTotal)}',
-                                      icon: Icons.point_of_sale_rounded,
-                                    ),
-                                    _buildGlassStatItem(
-                                      label: 'Transactions',
-                                      value: _isLoading
-                                          ? '...'
-                                          : '$_todaysTransactionCount',
-                                      icon: Icons.receipt_rounded,
+                                  if (_cloudTotalsAvailable &&
+                                      !_canReconcileLocalSales &&
+                                      _todaysSales
+                                          .any((sale) => !sale.isSynced)) ...[
+                                    const SizedBox(height: DesignSpacing.xs),
+                                    Text(
+                                      'Offline sales are waiting to sync.',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(color: muted),
                                     ),
                                   ],
-                                ),
-                              ],
-                            ),
-                          )),
+                                  const SizedBox(height: DesignSpacing.md),
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        flex: 3,
+                                        child: _buildGlassStatItem(
+                                          label: 'Total sales',
+                                          value: _isLoading
+                                              ? '...'
+                                              : 'KES ${NumberFormat('#,##0').format(_todaysTotal)}',
+                                          icon: Icons.point_of_sale_rounded,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 2,
+                                        child: _buildGlassStatItem(
+                                          label: 'Transactions',
+                                          value: _isLoading
+                                              ? '...'
+                                              : '$_todaysTransactionCount',
+                                          icon: Icons.receipt_rounded,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          })),
 
                     if (canViewPaymentStatus)
                       const SizedBox(height: DesignSpacing.xxl),
@@ -896,36 +887,37 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
     return rows;
   }
 
+  /// One figure with its label underneath; the icon is not drawn on a phone.
   Widget _buildGlassStatItem({
     required String label,
     required String value,
     required IconData icon,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.all(DesignSpacing.sm + 2),
-          decoration: BoxDecoration(
-            color: DesignColors.textOnBrand.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            maxLines: 1,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: isDark
+                      ? DesignColors.darkTextPrimary
+                      : DesignColors.textPrimary,
+                ),
           ),
-          child: Icon(icon, color: DesignColors.textOnBrand, size: 24),
-        ),
-        const SizedBox(height: DesignSpacing.sm),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: DesignColors.textOnBrand,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
         ),
         const SizedBox(height: DesignSpacing.xs),
         Text(
           label,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: DesignColors.textOnBrand.withValues(alpha: 0.8),
-                fontSize: 12,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: isDark
+                    ? DesignColors.darkTextSecondary
+                    : DesignColors.textSecondary,
               ),
         ),
       ],

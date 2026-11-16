@@ -871,7 +871,6 @@ class MetricCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: surface,
               border: Border.all(color: border),
-            boxShadow: DesignShadows.soft(isDark),
               borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
             ),
             child: Column(
@@ -936,12 +935,6 @@ class MetricCard extends StatelessWidget {
                 ),
               ],
             ),
-          ),
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: Container(width: 3, color: color),
           ),
         ],
       ),
@@ -1208,19 +1201,13 @@ class SectionHeader extends StatelessWidget {
       );
     }
 
-    return FadeSlideIn(
-        from: SlideFrom.left,
-        distance: 10,
-        child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+    // Plain text, no icon: the content under it is the point. Aligned with the
+    // cards below (the page already provides the side padding).
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 6, 2, 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (icon != null) ...[
-            PopIn(
-                delay: const Duration(milliseconds: 120),
-                child: Icon(icon, color: DesignColors.accent, size: 18)),
-            const SizedBox(width: 10),
-          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1228,17 +1215,17 @@ class SectionHeader extends StatelessWidget {
                 Text(
                   title,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: titleColor,
-                    letterSpacing: -0.2,
+                    letterSpacing: -0.1,
                   ),
                 ),
                 if (subtitle != null) ...[
                   const SizedBox(height: 2),
                   Text(
                     subtitle!,
-                    style: TextStyle(fontSize: 12, color: subtitleColor),
+                    style: TextStyle(fontSize: 12.5, height: 1.3, color: subtitleColor),
                   ),
                 ],
               ],
@@ -1253,7 +1240,7 @@ class SectionHeader extends StatelessWidget {
             ),
         ],
       ),
-    ));
+    );
   }
 }
 

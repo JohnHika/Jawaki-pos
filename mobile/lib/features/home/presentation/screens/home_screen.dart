@@ -39,6 +39,9 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   static const int _maxVisiblePrimaryItems = 4;
 
+  /// Tabs on the phone bar before More.
+  static const int _phoneBarTabs = 3;
+
   List<_NavItem> _latestMoreItems = const [];
   bool _isMoreSheetOpen = false;
   String? _appVersion;
@@ -508,19 +511,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         label: 'Settings',
         path: '/settings');
     final pinnedItems = [...allNavItems, settingsItem];
-    final hasMore = pinnedItems.length > _maxVisiblePrimaryItems + 1;
-    final visibleNavItems = pinnedItems.length <= _maxVisiblePrimaryItems + 1
-        ? pinnedItems
-        : [
-            ...pinnedItems.take(_maxVisiblePrimaryItems),
-            settingsItem,
-          ];
-    final moreItems = hasMore
-        ? pinnedItems
-            .skip(_maxVisiblePrimaryItems)
-            .where((item) => item.path != '/settings')
-            .toList()
-        : <_NavItem>[];
+    final tablet = context.deviceClass == DeviceClass.tablet;
+    // Tablet and desktop keep the full rail. The phone bar is Home, Sell,
+    // Products and More: the AI assistant and Settings are used less than the
+    // daily work surfaces, so they lead the More grid instead of taking bar
+    // slots (the AI mark no longer sits raised in the middle).
+    final bool hasMore;
+    final List<_NavItem> visibleNavItems;
+    final List<_NavItem> moreItems;
+    if (tablet) {
+      hasMore = pinnedItems.length > _maxVisiblePrimaryItems + 1;
+      visibleNavItems = pinnedItems.length <= _maxVisiblePrimaryItems + 1
+          ? pinnedItems
+          : [...pinnedItems.take(_maxVisiblePrimaryItems), settingsItem];
+      moreItems = hasMore
+          ? pinnedItems
+              .skip(_maxVisiblePrimaryItems)
+              .where((item) => item.path != '/settings')
+              .toList()
+          : <_NavItem>[];
+    } else {
+      final work = allNavItems.where((item) => item.path != '/ai').toList();
+      visibleNavItems = work.take(_phoneBarTabs).toList();
+      moreItems = [
+        for (final item in allNavItems)
+          if (item.path == '/ai') item.withLabel('AI assistant'),
+        settingsItem,
+        ...work.skip(_phoneBarTabs),
+      ];
+      hasMore = true;
+    }
     _latestMoreItems = moreItems;
     // Selection is worked out against what the bar actually shows, so Settings
     // lights its own tab. More lights only for a page that lives inside it.
@@ -535,7 +555,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     // Phone: floating bottom bar. Tablet / till terminal (600 and up, computer
     // window narrower than the shell): side rail with every destination.
-    final tablet = context.deviceClass == DeviceClass.tablet;
     final logoUrl = ref.watch(tenantIdentityProvider).logoUrl;
     NavDestination destinationFor(_NavItem item) {
       final isAi = item.path == '/ai';
@@ -544,7 +563,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         activeIcon: item.activeIcon,
         label: item.label,
         path: item.path,
-        primary: isAi && !tablet,
+        primary: false,
         semanticLabel: isAi ? 'AI assistant' : null,
         iconBuilder: isAi
             ? (_) => AxonAiIcon(tenantLogoUrl: logoUrl, size: tablet ? 26 : 28)

@@ -405,7 +405,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                         : constraints.maxWidth >= 600
                             ? 2
                             : 1;
-                    const spacing = 12.0;
+                    final spacing = columns == 1 ? 8.0 : 12.0;
                     final width =
                         (constraints.maxWidth - spacing * (columns - 1)) /
                             columns;
@@ -425,6 +425,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                           child: _ProfileCard(
                             preset: preset,
                             selected: selected,
+                            compact: columns == 1,
                             onTap: !canEditLayout
                                 ? null
                                 : () => setState(
@@ -437,8 +438,12 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
                   }),
                   const SizedBox(height: 12),
                   ],
-                  BusinessLayoutPreview(layout: selectedLayout),
-                  const SizedBox(height: 16),
+                  // On a phone the locked type card above already says the same
+                  // thing; the summary only earns its space on wider screens.
+                  if (desktop || !typeLocked) ...[
+                    BusinessLayoutPreview(layout: selectedLayout),
+                    const SizedBox(height: 16),
+                  ],
                   if (!typeLocked) ...[
                   const _SectionHeading(
                     title: 'Additional shop profiles',
@@ -1628,19 +1633,25 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
 
     final layoutBody = LayoutBuilder(builder: (context, constraints) {
       final twoPane = constraints.maxWidth >= 600;
+      final phone = !twoPane && !desktop;
       final intro = <Widget>[
-        Text(
-          'Make Counterbase fit the way your shop works.',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: text,
-                fontWeight: FontWeight.w800,
-              ),
-        ),
-        const SizedBox(height: 6),
+        // The app bar already says "Layout actions" on a phone.
+        if (!phone) ...[
+          Text(
+            'Make Counterbase fit the way your shop works.',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: text,
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          const SizedBox(height: 6),
+        ],
         Text(
           isLocalWorkspace
               ? 'Choose how checkout, the dashboard and navigation look. This layout is saved on this device.'
-              : 'Choose how checkout, the dashboard and navigation look. It is saved for your whole shop, so every phone, tablet and computer shows the same layout.',
+              : phone
+                  ? 'Saved for your whole shop, so every phone, tablet and computer shows the same layout.'
+                  : 'Choose how checkout, the dashboard and navigation look. It is saved for your whole shop, so every phone, tablet and computer shows the same layout.',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: secondary,
                 height: 1.45,
@@ -1650,7 +1661,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
           const SizedBox(height: 14),
           const _PermissionNotice(),
         ],
-        const SizedBox(height: 18),
+        SizedBox(height: phone ? 12 : 18),
       ];
 
       Widget sectionBody(_LayoutSectionSpec section) => Column(
@@ -1740,7 +1751,13 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
       return Column(
         children: [
           Expanded(child: scroll),
-          saveBar,
+          // On a phone the bar only appears once there is something to save, so
+          // an always-greyed button does not eat a fifth of the screen.
+          if (desktop ||
+              _saving ||
+              _justSaved ||
+              _changedAreas(selectedLayout).isNotEmpty)
+            saveBar,
         ],
       );
     });
@@ -2498,12 +2515,8 @@ class _CollapsibleSection extends StatelessWidget {
         duration: const Duration(milliseconds: 220),
         decoration: BoxDecoration(
           color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: expanded
-                ? DesignColors.accent.withValues(alpha: .55)
-                : border,
-          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: border),
         ),
         child: Column(
           children: [
@@ -2511,20 +2524,14 @@ class _CollapsibleSection extends StatelessWidget {
               scale: .985,
               child: InkWell(
                 onTap: onToggle,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(16),
                 child: Padding(
                 padding: const EdgeInsets.all(14),
                 child: Row(
                   children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: DesignColors.accent.withValues(alpha: .13),
-                        borderRadius: BorderRadius.circular(13),
-                      ),
-                      child: Icon(spec.icon,
-                          color: DesignColors.accent, size: 21),
+                    SizedBox(
+                      width: 28,
+                      child: Icon(spec.icon, color: secondary, size: 22),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -2566,7 +2573,7 @@ class _CollapsibleSection extends StatelessWidget {
               alignment: Alignment.topCenter,
               child: expanded
                   ? Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
                       // Ink from list tiles inside paints on this, not under the
                       // card's own background.
                       child: Material(
@@ -2796,11 +2803,15 @@ class _ProfileCard extends StatelessWidget {
     required this.preset,
     required this.selected,
     required this.onTap,
+    this.compact = false,
   });
 
   final BusinessLayoutPreset preset;
   final bool selected;
   final VoidCallback? onTap;
+
+  /// One slim row (phone) instead of a tall tile (tablet, desktop).
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -2815,8 +2826,8 @@ class _ProfileCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 120),
-          padding: const EdgeInsets.all(12),
+          constraints: BoxConstraints(minHeight: compact ? 64 : 120),
+          padding: EdgeInsets.all(compact ? 10 : 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
@@ -2828,7 +2839,43 @@ class _ProfileCard extends StatelessWidget {
               width: selected ? 1.6 : 1,
             ),
           ),
-          child: Column(
+          child: compact
+              ? Row(children: [
+                  Icon(preset.icon, color: accent, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          preset.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          preset.description,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: isDark
+                                    ? DesignColors.darkTextSecondary
+                                    : DesignColors.textSecondary,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (selected) ...[
+                    const SizedBox(width: 8),
+                    Icon(Icons.check_circle_rounded, color: accent, size: 22),
+                  ],
+                ])
+              : Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [

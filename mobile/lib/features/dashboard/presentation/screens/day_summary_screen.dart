@@ -507,12 +507,6 @@ class DaySummaryScreen extends ConsumerWidget {
               ],
             ),
           ),
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: Container(width: 3, color: DesignColors.accent),
-          ),
         ],
       ),
     );

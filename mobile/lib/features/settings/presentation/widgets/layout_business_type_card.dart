@@ -368,6 +368,7 @@ Future<LayoutChangeRequest?> showLayoutChangeRequestSheet(
   final isDark = Theme.of(context).brightness == Brightness.dark;
   return showAdaptiveModalSheet<LayoutChangeRequest>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: isDark ? DesignColors.darkSurface : Colors.white,
@@ -388,6 +389,8 @@ class _RequestSheet extends ConsumerStatefulWidget {
 
 class _RequestSheetState extends ConsumerState<_RequestSheet> {
   final _reason = TextEditingController();
+  final _reasonFocus = FocusNode();
+  bool _triedSend = false;
   String? _selected;
   String? _error;
   bool _sending = false;
@@ -395,6 +398,7 @@ class _RequestSheetState extends ConsumerState<_RequestSheet> {
   @override
   void dispose() {
     _reason.dispose();
+    _reasonFocus.dispose();
     super.dispose();
   }
 
@@ -406,7 +410,13 @@ class _RequestSheetState extends ConsumerState<_RequestSheet> {
   bool get _valid => _target != null && _reason.text.trim().length >= 10;
 
   Future<void> _send() async {
-    if (!_valid || _sending) return;
+    if (_sending) return;
+    if (!_valid) {
+      // Say what is missing and put the cursor there, instead of a dead button.
+      setState(() => _triedSend = true);
+      _reasonFocus.requestFocus();
+      return;
+    }
     setState(() {
       _sending = true;
       _error = null;
@@ -438,11 +448,21 @@ class _RequestSheetState extends ConsumerState<_RequestSheet> {
         .toList(growable: false);
     final current = businessLayoutPreset(widget.currentProfileId);
 
+    const accent = DesignColors.accent;
+    final length = _reason.text.trim().length;
+    final selected = _selected == null ? null : businessLayoutPreset(_selected!);
+    final reasonError = _triedSend && length < 10
+        ? (length == 0
+            ? 'Tell us what you need before sending.'
+            : 'Add a little more detail (at least 10 characters).')
+        : null;
+
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      child: SizedBox(
-        height: MediaQuery.sizeOf(context).height * .86,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .88),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 10),
             Container(
@@ -454,74 +474,83 @@ class _RequestSheetState extends ConsumerState<_RequestSheet> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Ask for a change',
-                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Your shop is set up as ${current.name}. Describe what you need. Pick a type below if one fits, or just write it; "Custom layout" is for anything else. We will review it and reply here.',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: secondary, height: 1.4),
-                  ),
-                ],
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Ask for a change',
+                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
               ),
             ),
-            Expanded(
-              child: RadioGroup<String>(
-                groupValue: _selected,
-                onChanged: (v) {
-                  if (!_sending) setState(() => _selected = v);
-                },
-                child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
                 children: [
-                  for (final p in options)
-                    RadioListTile<String>(
-                      value: p.id,
-                      enabled: !_sending,
-                      activeColor: p.accent ?? DesignColors.accent,
-                      secondary: CircleAvatar(
-                        backgroundColor: (p.accent ?? DesignColors.accent).withValues(alpha: .14),
-                        child: Icon(p.icon, color: p.accent ?? DesignColors.accent, size: 20),
-                      ),
-                      title: Text(p.name),
-                      subtitle: Text(p.description, maxLines: 2, overflow: TextOverflow.ellipsis),
-                    ),
-                  const SizedBox(height: 10),
+                  Text(
+                    'Your shop is set up as ${current.name}. Tell us what you need and we will review it and reply here.',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: secondary, height: 1.4),
+                  ),
+                  const SizedBox(height: 16),
                   TextField(
                     controller: _reason,
+                    focusNode: _reasonFocus,
                     enabled: !_sending,
                     minLines: 3,
                     maxLines: 5,
                     maxLength: 500,
                     textCapitalization: TextCapitalization.sentences,
                     onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(
-                      labelText: 'Why do you need this change?',
+                    buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+                    decoration: InputDecoration(
+                      labelText: 'What do you need changed?',
                       hintText: 'For example: we are replacing the bookshop with a food counter.',
-                      border: OutlineInputBorder(),
-                      helperText: 'At least 10 characters',
+                      border: const OutlineInputBorder(),
+                      errorText: reasonError,
                     ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text('Closest match (optional)',
+                      style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final p in options)
+                        ChoiceChip(
+                          avatar: Icon(p.icon, size: 18, color: p.accent ?? accent),
+                          label: Text(p.name),
+                          selected: _selected == p.id,
+                          showCheckmark: false,
+                          onSelected: _sending
+                              ? null
+                              : (on) => setState(() => _selected = on ? p.id : null),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    selected?.description ??
+                        'Nothing fits? Skip this. We will treat it as a Custom layout.',
+                    style: theme.textTheme.bodySmall?.copyWith(color: secondary, height: 1.4),
                   ),
                   if (_error != null)
                     Padding(
-                      padding: const EdgeInsets.only(top: 4),
+                      padding: const EdgeInsets.only(top: 12),
                       child: Text(_error!, style: const TextStyle(color: DesignColors.error)),
                     ),
                 ],
-                ),
               ),
             ),
             SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 6, 18, 14),
+                padding: const EdgeInsets.fromLTRB(20, 6, 20, 14),
                 child: SizedBox(
                   width: double.infinity,
+                  height: 52,
                   child: FilledButton(
-                    onPressed: _valid && !_sending ? _send : null,
+                    onPressed: _sending ? null : _send,
                     child: _sending
                         ? const SizedBox(
                             width: 18,

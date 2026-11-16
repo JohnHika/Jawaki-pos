@@ -541,7 +541,9 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                           : 'Save $entityLower',
                   onPressed: _isSaving ? null : () => _saveProduct(),
                 ),
-                if (!isEditing)
+                // Hidden while typing: with the keyboard up it left the form only a
+                // sliver of screen.
+                if (!isEditing && MediaQuery.viewInsetsOf(context).bottom == 0)
                   TextButton(
                     onPressed: _isSaving ? null : () => _saveProduct(another: true),
                     style: TextButton.styleFrom(

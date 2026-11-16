@@ -56,13 +56,6 @@ class SubscriptionExpiryToast extends StatelessWidget {
         border: Border.all(
           color: DesignColors.warning.withValues(alpha: 0.35),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -81,15 +74,6 @@ class SubscriptionExpiryToast extends StatelessWidget {
                     color: DesignColors.warning,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Renew now to keep creating sales without interruption.',
-                  style: TextStyle(
-                    color: bodyColor,
-                    fontSize: 11.5,
-                    height: 1.3,
                   ),
                 ),
               ],

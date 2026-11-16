@@ -13,6 +13,7 @@ import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/core/utils/company_code.dart';
 import 'package:axon_pos/core/utils/device_features.dart';
+import 'package:axon_pos/features/auth/data/company_info_cache.dart';
 import 'package:axon_pos/features/auth/presentation/desktop/login_desktop_view.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 import 'package:axon_pos/features/auth/presentation/widgets/password_reset_sheet.dart';
@@ -128,11 +129,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _isFetchingCompany = true;
     });
     final lookupSlug = normalizedSlug;
-    _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
+    // Show what was seen last time for this code straight away; the lookup
+    // below then confirms or replaces it.
+    unawaited(CompanyInfoCache.read(lookupSlug).then((cached) {
+      if (cached == null || !mounted) return;
+      if (_normalizeCompanyCode(_tenantSlugController.text) != lookupSlug) return;
+      if (_companyName != null || _companyLogoUrl != null) return;
+      setState(() {
+        _companyName = cached['name'] as String?;
+        _companyLogoUrl = cached['logoUrl'] as String?;
+      });
+    }));
+    _debounceTimer = Timer(const Duration(milliseconds: 350), () async {
       try {
         final result = await getIt<ApiClient>()
             .getCompanyInfo(lookupSlug)
-            .timeout(const Duration(seconds: 10));
+            .timeout(const Duration(seconds: 15));
+        if (result != null && result['isActive'] != false) {
+          unawaited(CompanyInfoCache.write(
+            lookupSlug,
+            name: result['name'] as String?,
+            logoUrl: result['logoUrl'] as String?,
+          ));
+        }
         if (mounted &&
             _normalizeCompanyCode(_tenantSlugController.text) == lookupSlug) {
           setState(() {
