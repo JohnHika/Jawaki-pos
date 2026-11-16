@@ -93,15 +93,6 @@ class FloatingNavBar extends StatelessWidget {
                   ? DesignColors.darkBorder
                   : DesignColors.surfaceBorderLight,
             ),
-            boxShadow: [
-              ...DesignShadows.soft(isDark),
-              if (isDark)
-                const BoxShadow(
-                  color: Color(0x66000000),
-                  blurRadius: 18,
-                  offset: Offset(0, 8),
-                ),
-            ],
           ),
           child: LayoutBuilder(
             builder: (context, box) {
@@ -184,14 +175,7 @@ class _SlidingLight extends StatelessWidget {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(22),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    DesignColors.accent.withValues(alpha: isDark ? 0.26 : 0.18),
-                    DesignColors.accent.withValues(alpha: isDark ? 0.06 : 0.03),
-                  ],
-                ),
+                color: DesignColors.accent.withValues(alpha: isDark ? 0.16 : 0.12),
               ),
             ),
           ),
@@ -608,14 +592,7 @@ class _RailLight extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
-          gradient: LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [
-              DesignColors.accent.withValues(alpha: isDark ? 0.28 : 0.20),
-              DesignColors.accent.withValues(alpha: isDark ? 0.07 : 0.04),
-            ],
-          ),
+          color: DesignColors.accent.withValues(alpha: isDark ? 0.16 : 0.12),
         ),
         child: Align(
           alignment: Alignment.centerLeft,

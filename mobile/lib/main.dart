@@ -11,6 +11,7 @@ import 'core/desktop/window_chrome.dart';
 import 'core/di/injection.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/appearance_provider.dart';
 import 'core/theme/theme_provider.dart';
 import 'core/services/connectivity_service.dart';
 import 'core/services/lifecycle_lock_controller.dart';
@@ -246,6 +247,7 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final appearance = ref.watch(appearanceProvider);
 
     return TapTracker(
       router: router,
@@ -298,9 +300,16 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
               systemNavigationBarContrastEnforced: false,
             ),
             child: MediaQuery(
-              data: MediaQuery.of(context)
-                  .copyWith(textScaler: TextScaler.noScaling),
-              child: updateAwareContent,
+              data: MediaQuery.of(context).copyWith(
+                textScaler: appearance.textSize == AppTextSize.normal
+                    ? TextScaler.noScaling
+                    : TextScaler.linear(appearance.textSize.scale),
+              ),
+              child: Theme(
+                data: Theme.of(context)
+                    .copyWith(visualDensity: appearance.spacing.density),
+                child: updateAwareContent,
+              ),
             ),
           );
         },

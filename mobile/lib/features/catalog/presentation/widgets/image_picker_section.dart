@@ -381,13 +381,16 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
                   size: 20,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  widget.label,
-                  style: TextStyle(
-                    color: (_dark
-                        ? DesignColors.darkTextTertiary
-                        : DesignColors.textTertiary),
-                    fontSize: 13,
+                Flexible(
+                  child: Text(
+                    widget.label,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: (_dark
+                          ? DesignColors.darkTextTertiary
+                          : DesignColors.textTertiary),
+                      fontSize: 13,
+                    ),
                   ),
                 ),
               ],

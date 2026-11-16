@@ -137,13 +137,15 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
                   const Icon(Icons.attach_money,
                       size: 16, color: DesignColors.textTertiary),
                   const SizedBox(width: 8),
-                  Text(
+                  Flexible(
+                    child: Text(
                     'Original line total: ${formatMoney(widget.originalPrice)}',
                     style: const TextStyle(
                       fontSize: 14,
                       color: DesignColors.textSecondary,
                       decoration: TextDecoration.lineThrough,
                     ),
+                  ),
                   ),
                 ],
               ),

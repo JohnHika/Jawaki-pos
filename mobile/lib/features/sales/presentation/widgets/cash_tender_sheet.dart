@@ -147,19 +147,25 @@ class _CashTenderSheetState extends State<_CashTenderSheet> {
                         fontSize: 14,
                         fontWeight: FontWeight.w600),
                   ),
-                  Text(
-                    !typed
-                        ? 'KES —'
-                        : 'KES ${_money.format(enough ? change : short)}',
-                    key: const ValueKey('cash-result'),
-                    style: DesignType.numeric(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
-                      color: enough
-                          ? DesignColors.success
-                          : typed
-                              ? DesignColors.error
-                              : primary,
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        !typed
+                            ? 'KES —'
+                            : 'KES ${_money.format(enough ? change : short)}',
+                        key: const ValueKey('cash-result'),
+                        style: DesignType.numeric(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                          color: enough
+                              ? DesignColors.success
+                              : typed
+                                  ? DesignColors.error
+                                  : primary,
+                        ),
+                      ),
                     ),
                   ),
                 ],

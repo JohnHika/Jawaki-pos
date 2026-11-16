@@ -153,7 +153,8 @@ class _SubscriptionSettingsScreenState
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              content: Column(
+              content: SingleChildScrollView(
+                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
@@ -176,6 +177,7 @@ class _SubscriptionSettingsScreenState
                       const SizedBox(height: DesignSpacing.sm),
                   ],
                 ],
+              ),
               ),
               actions: [
                 TextButton(
@@ -494,28 +496,37 @@ class _SubscriptionSettingsScreenState
           ),
           const SizedBox(height: DesignSpacing.xl),
           // Price row
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.end,
+            spacing: DesignSpacing.sm,
+            runSpacing: DesignSpacing.sm,
             children: [
-              Text(
-                price,
-                style: DesignType.numeric(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  color: context.themed(DesignColors.darkTextPrimary),
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    price,
+                    style: DesignType.numeric(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      color: context.themed(DesignColors.darkTextPrimary),
+                    ),
+                  ),
+                  const SizedBox(width: DesignSpacing.sm),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: DesignSpacing.xs),
+                    child: Text(
+                      '/month',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color:
+                                context.themed(DesignColors.darkTextTertiary),
+                          ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: DesignSpacing.sm),
-              Padding(
-                padding: const EdgeInsets.only(bottom: DesignSpacing.xs),
-                child: Text(
-                  '/month',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: context.themed(DesignColors.darkTextTertiary),
-                      ),
-                ),
-              ),
-              const Spacer(),
               // Setup fee badge
               Container(
                 padding: const EdgeInsets.symmetric(

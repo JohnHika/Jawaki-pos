@@ -17,6 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/responsive/device_class.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/desktop/desktop_layout.dart';
+import '../../../../core/theme/appearance_provider.dart';
 import '../../../../core/theme/theme_provider.dart';
 import '../../../../core/theme/share_format_sheet.dart';
 import '../../../../core/di/injection.dart';
@@ -1614,6 +1615,54 @@ class SettingsScreen extends ConsumerWidget {
                             Navigator.pop(ctx);
                           },
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: DesignSpacing.lg),
+                    GroupedCard(
+                      margin: EdgeInsets.zero,
+                      children: [
+                        for (final s in AppTextSize.values)
+                          SettingsRow(
+                            icon: Icons.text_fields_rounded,
+                            iconColor: ref.watch(appearanceProvider).textSize == s
+                                ? DesignColors.accent
+                                : null,
+                            title: 'Text size: ${s.label}',
+                            showChevron: false,
+                            trailing: ref.watch(appearanceProvider).textSize == s
+                                ? const Icon(
+                                    Icons.check_circle_rounded,
+                                    color: DesignColors.accent,
+                                  )
+                                : null,
+                            onTap: () => ref
+                                .read(appearanceProvider.notifier)
+                                .setTextSize(s),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: DesignSpacing.lg),
+                    GroupedCard(
+                      margin: EdgeInsets.zero,
+                      children: [
+                        for (final s in AppSpacing.values)
+                          SettingsRow(
+                            icon: Icons.density_medium_rounded,
+                            iconColor: ref.watch(appearanceProvider).spacing == s
+                                ? DesignColors.accent
+                                : null,
+                            title: 'Spacing: ${s.label}',
+                            showChevron: false,
+                            trailing: ref.watch(appearanceProvider).spacing == s
+                                ? const Icon(
+                                    Icons.check_circle_rounded,
+                                    color: DesignColors.accent,
+                                  )
+                                : null,
+                            onTap: () => ref
+                                .read(appearanceProvider.notifier)
+                                .setSpacing(s),
+                          ),
                       ],
                     ),
                     const SizedBox(height: DesignSpacing.lg),

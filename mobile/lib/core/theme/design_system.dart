@@ -514,23 +514,9 @@ class GlassCard extends StatelessWidget {
         color: effectiveTint,
         borderRadius: BorderRadius.circular(borderRadius),
         border: Border.all(color: effectiveBorder, width: 1),
-        boxShadow: boxShadow ??
-            [
-              BoxShadow(
-                color: isDark
-                    ? Colors.black.withValues(alpha: 0.3)
-                    : const Color(0xFF8A6B45).withValues(alpha: 0.10),
-                blurRadius: isDark ? blur : blur * 2.5,
-                offset: const Offset(0, 8),
-              ),
-              BoxShadow(
-                color: isDark
-                    ? Colors.black.withValues(alpha: 0.2)
-                    : const Color(0xFF8A6B45).withValues(alpha: 0.05),
-                blurRadius: blur * 0.5,
-                offset: const Offset(0, 2),
-              ),
-            ],
+        // A flat panel: the hairline edge does the separating, no drop shadow
+        // unless the caller asks for one.
+        boxShadow: boxShadow,
       ),
       child: child,
     );

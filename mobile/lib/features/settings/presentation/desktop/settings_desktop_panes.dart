@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/desktop/desktop_layout.dart';
 import '../../../../core/services/desktop_update_service.dart';
+import '../../../../core/theme/appearance_provider.dart';
 import '../../../../core/theme/theme_provider.dart';
 import '../widgets/settings_layout.dart';
 import 'settings_desktop_page.dart';
@@ -391,6 +392,20 @@ List<DesktopSettingsPaneData> buildDesktopSettingsPanes(
               keywords: const ['dark mode', 'light mode', 'colour', 'color'],
               builder: (_) => const DesktopThemeRow(),
             ),
+            DesktopSettingItem(
+              id: 'text-size',
+              title: 'Text size',
+              helper: 'Make everything smaller or larger',
+              keywords: const ['font', 'bigger', 'smaller', 'zoom', 'readable'],
+              builder: (_) => const DesktopTextSizeRow(),
+            ),
+            DesktopSettingItem(
+              id: 'spacing',
+              title: 'Spacing',
+              helper: 'Fit more on screen, or give lists more room',
+              keywords: const ['density', 'compact', 'comfortable', 'layout'],
+              builder: (_) => const DesktopSpacingRow(),
+            ),
           ],
         ),
       ],
@@ -611,6 +626,56 @@ class DesktopThemeRow extends ConsumerWidget {
         onChanged: (next) {
           if (next == mode) return;
           ref.read(themeModeProvider.notifier).setThemeMode(next);
+          DesktopSavedController.notify(context);
+        },
+      ),
+    );
+  }
+}
+
+/// Text size for the whole app, applied the moment it is picked.
+class DesktopTextSizeRow extends ConsumerWidget {
+  const DesktopTextSizeRow({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final size = ref.watch(appearanceProvider).textSize;
+    return DesktopSettingRow(
+      key: const ValueKey('desktop-setting-text-size'),
+      icon: Icons.text_fields_rounded,
+      title: 'Text size',
+      helper: 'Make everything smaller or larger',
+      trailing: DesktopSegmented<AppTextSize>(
+        value: size,
+        options: [for (final s in AppTextSize.values) (s, s.label)],
+        onChanged: (next) {
+          if (next == size) return;
+          ref.read(appearanceProvider.notifier).setTextSize(next);
+          DesktopSavedController.notify(context);
+        },
+      ),
+    );
+  }
+}
+
+/// List and control spacing for the whole app.
+class DesktopSpacingRow extends ConsumerWidget {
+  const DesktopSpacingRow({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final spacing = ref.watch(appearanceProvider).spacing;
+    return DesktopSettingRow(
+      key: const ValueKey('desktop-setting-spacing'),
+      icon: Icons.density_medium_rounded,
+      title: 'Spacing',
+      helper: 'Fit more on screen, or give lists more room',
+      trailing: DesktopSegmented<AppSpacing>(
+        value: spacing,
+        options: [for (final s in AppSpacing.values) (s, s.label)],
+        onChanged: (next) {
+          if (next == spacing) return;
+          ref.read(appearanceProvider.notifier).setSpacing(next);
           DesktopSavedController.notify(context);
         },
       ),

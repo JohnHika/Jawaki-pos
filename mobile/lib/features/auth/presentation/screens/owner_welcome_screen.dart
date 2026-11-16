@@ -446,10 +446,15 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
                 style: DesignType.numeric(
                     fontSize: 28,
                     color: context.themed(DesignColors.darkTextPrimary))),
-            const Spacer(),
-            Text('$completed of ${steps.length} completed',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: context.themed(DesignColors.darkTextSecondary))),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text('$completed of ${steps.length} completed',
+                  textAlign: TextAlign.end,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: context.themed(DesignColors.darkTextSecondary))),
+            ),
           ]),
           const SizedBox(height: 18),
           LinearProgressIndicator(
