@@ -146,10 +146,14 @@ class SettingsScreen extends ConsumerWidget {
             SettingsEntry(
               id: 'business-layout',
               icon: Icons.tune_rounded,
-              title: 'Layout actions',
-              subtitle: 'Shape Counterbase around your shop and daily work',
+              title: 'Customize your app',
+              subtitle: 'Choose what Home shows, your tabs and checkout shortcuts',
               keywords: const [
+                'layout actions',
                 'layout action',
+                'home',
+                'dashboard',
+                'personalise',
                 'industry',
                 'bookshop',
                 'kamukunji',

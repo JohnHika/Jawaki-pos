@@ -36,6 +36,14 @@ class SetupScreen extends ConsumerWidget {
         await context.push('/settings?open=logo');
       case SetupAction.backup:
         await context.push('/settings?open=backup');
+      case SetupAction.customize:
+        await context.push('/settings/business-layout?section=dashboard');
+        // The screen cannot tell what was chosen, so opening it counts.
+        await getIt<AppDatabase>().noteSetupStep(
+          step.key,
+          status: 'DONE',
+          notedBy: getIt<AuthService>().currentUser?['name']?.toString(),
+        );
       case SetupAction.sell:
         context.go('/');
         return;

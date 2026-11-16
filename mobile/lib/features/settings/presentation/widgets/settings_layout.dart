@@ -196,15 +196,19 @@ class SettingsTile extends StatelessWidget {
     final titleColor = destructive
         ? context.readable(DesignColors.error)
         : _primaryTextFor(isDark);
+    // On a phone a row is one title and one quiet line, so a section fits on
+    // the screen; computers keep the roomier row.
+    final phone = !context.inDesktopShell;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 64),
+          constraints: BoxConstraints(minHeight: phone ? 52 : 64),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: EdgeInsets.symmetric(
+                horizontal: 14, vertical: phone ? 8 : 12),
             child: Row(
               children: [
                 SettingsIconTile(icon: icon, destructive: destructive),
@@ -219,19 +223,19 @@ class SettingsTile extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 15,
+                          fontSize: phone ? 14.5 : 15,
                           fontWeight: FontWeight.w600,
                           color: titleColor,
                         ),
                       ),
                       if (subtitle != null) ...[
-                        const SizedBox(height: 2),
+                        SizedBox(height: phone ? 1 : 2),
                         Text(
                           subtitle!,
-                          maxLines: 3,
+                          maxLines: phone ? 1 : 3,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 12.5,
+                            fontSize: phone ? 12 : 12.5,
                             height: 1.3,
                             color: _secondaryTextFor(isDark),
                           ),
@@ -276,13 +280,14 @@ class SettingsSectionCard extends StatelessWidget {
     final border = _borderFor(isDark);
     final entries = section.entries;
 
+    final phone = !context.inDesktopShell;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
+      padding: EdgeInsets.only(bottom: phone ? 14 : 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
+            padding: EdgeInsets.fromLTRB(6, 0, 6, phone ? 6 : 8),
             child: Text(
               section.title.toUpperCase(),
               style: TextStyle(
@@ -374,12 +379,177 @@ class SettingsProfileHeader extends StatelessWidget {
     );
   }
 
+  /// The phone's profile card: who is signed in and which shop, in two quiet
+  /// rows instead of a large card with coloured chips.
+  Widget _compact(BuildContext context, bool isDark, Color border,
+      Color primary, Color secondary) {
+    final status = isLocalWorkspace
+        ? 'Local only'
+        : isOnline
+            ? 'Network connected'
+            : 'No network';
+    final statusColor = isLocalWorkspace
+        ? DesignColors.info
+        : isOnline
+            ? DesignColors.success
+            : DesignColors.warning;
+    return Container(
+      decoration: BoxDecoration(
+        color: _surfaceFor(isDark),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: DesignColors.accent
+                        .withValues(alpha: isDark ? 0.2 : 0.14),
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    _initial,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: isDark
+                          ? DesignColors.accentLight
+                          : DesignColors.accentDark,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: primary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(roleLabel,
+                              style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: secondary)),
+                          const SizedBox(width: 8),
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: context.readable(statusColor),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(status,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 12.5, color: secondary)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, thickness: 1, color: border.withValues(alpha: 0.7)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
+            child: Row(
+              children: [
+                const SettingsIconTile(icon: Icons.storefront_rounded),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        businessName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w600,
+                          color: primary,
+                        ),
+                      ),
+                      if (branchName.isNotEmpty || companyCode.isNotEmpty)
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              if (branchName.isNotEmpty)
+                                TextSpan(text: branchName),
+                              if (branchName.isNotEmpty &&
+                                  companyCode.isNotEmpty)
+                                const TextSpan(text: '  ·  '),
+                              if (companyCode.isNotEmpty) ...[
+                                const TextSpan(text: 'Company code '),
+                                TextSpan(
+                                  text: companyCode,
+                                  style: TextStyle(
+                                    color: primary,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.4,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: secondary),
+                        ),
+                    ],
+                  ),
+                ),
+                if (companyCode.isNotEmpty)
+                  IconButton(
+                    key: const ValueKey('settings-copy-company-code'),
+                    tooltip: 'Copy company code',
+                    onPressed: () => _copyCode(context),
+                    icon: Icon(Icons.copy_rounded,
+                        size: 19, color: _secondaryTextFor(isDark)),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final border = _borderFor(isDark);
     final primary = _primaryTextFor(isDark);
     final secondary = _secondaryTextFor(isDark);
+
+    if (!context.inDesktopShell) {
+      return _compact(context, isDark, border, primary, secondary);
+    }
 
     return Container(
       decoration: BoxDecoration(
@@ -652,7 +822,7 @@ class _SettingsSectionListState extends State<SettingsSectionList> {
             ),
       children: [
         FadeSlideIn(distance: 10, child: widget.header),
-        const SizedBox(height: 16),
+        SizedBox(height: desktop ? 16 : 10),
         SizedBox(
           width: desktop ? 680 : double.infinity,
           child: TextField(
@@ -679,9 +849,9 @@ class _SettingsSectionListState extends State<SettingsSectionList> {
                     ),
               filled: true,
               fillColor: _surfaceFor(isDark),
-              contentPadding: const EdgeInsets.symmetric(
+              contentPadding: EdgeInsets.symmetric(
                 horizontal: 16,
-                vertical: 14,
+                vertical: desktop ? 14 : 10,
               ),
               border: outline(border),
               enabledBorder: outline(border),
@@ -689,7 +859,7 @@ class _SettingsSectionListState extends State<SettingsSectionList> {
             ),
           ),
         ),
-        const SizedBox(height: 22),
+        SizedBox(height: desktop ? 22 : 14),
         if (visible.isEmpty && searching)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 32),

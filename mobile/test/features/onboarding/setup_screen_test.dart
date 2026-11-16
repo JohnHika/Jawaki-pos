@@ -40,7 +40,7 @@ void main() {
     );
 
     expect(find.text('Get Levisa Ventures ready to sell'), findsOneWidget);
-    expect(find.textContaining('2 of 7 done'), findsOneWidget);
+    expect(find.textContaining('2 of 8 done'), findsOneWidget);
     expect(find.text('NEXT UP'), findsOneWidget);
     expect(find.text('Add staff'), findsOneWidget);
     expect(find.text('Not now'), findsOneWidget);
@@ -58,7 +58,7 @@ void main() {
         hasPaymentTill: true,
         hasLogo: true,
         saleCount: 5,
-        notes: {'backup': 'DONE'},
+        notes: {'backup': 'DONE', 'customize': 'DONE'},
       ),
     );
 

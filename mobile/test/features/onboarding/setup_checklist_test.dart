@@ -38,6 +38,7 @@ void main() {
           'staff': 'SKIPPED',
           'payments': 'SKIPPED',
           'logo': 'SKIPPED',
+          'customize': 'SKIPPED',
           'backup': 'DONE',
         },
       ));

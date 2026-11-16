@@ -116,7 +116,7 @@ class ProductGrid extends ConsumerWidget {
               icon: Icons.grid_view_rounded,
               title: 'No available $catalogName on this page',
               subtitle: canEditBusinessLayout
-                  ? 'Add products to this page in Settings → Layout actions.'
+                  ? 'Add products to this page in Settings → Customize your app.'
                   : 'Ask a shop admin to add active products to this page.',
               actionLabel: canEditBusinessLayout ? 'Edit product page' : null,
               actionIcon: Icons.tune_rounded,
@@ -173,7 +173,7 @@ class ProductGrid extends ConsumerWidget {
               icon: Icons.grid_view_rounded,
               title: 'No available products on this page',
               subtitle: canEditBusinessLayout
-                  ? 'Some items may be inactive or removed. Review this page in Settings → Layout actions.'
+                  ? 'Some items may be inactive or removed. Review this page in Settings → Customize your app.'
                   : 'Some items may be inactive or removed. Ask a shop admin to review this page.',
               actionLabel: canEditBusinessLayout ? 'Edit product page' : null,
               actionIcon: Icons.tune_rounded,

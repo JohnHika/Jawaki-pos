@@ -870,7 +870,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/settings/business-layout',
             name: 'business-layout',
-            builder: (context, state) => const BusinessLayoutScreen(),
+            builder: (context, state) => BusinessLayoutScreen(
+              initialSection: state.uri.queryParameters['section'],
+            ),
           ),
           GoRoute(
             path: '/settings/ai-gateway',

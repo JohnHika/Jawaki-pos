@@ -26,7 +26,7 @@ class BusinessLayoutPreview extends StatelessWidget {
     final startAction =
         startPath == null ? null : _layoutActionForPath(startPath);
     final startLabel = startAction == null
-        ? 'Choose a start screen in Layout actions'
+        ? 'Choose a start screen in Customize your app'
         : layout.actionLabel(startAction.path, startAction.label);
     final visibleCount = businessLayoutActions
         .where((action) => layout.isActionVisible(action.path))

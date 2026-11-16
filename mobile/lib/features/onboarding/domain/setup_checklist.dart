@@ -33,6 +33,7 @@ enum SetupAction {
   staff,
   payments,
   logo,
+  customize,
   sell,
   backup,
 }
@@ -158,6 +159,16 @@ class SetupChecklist {
         action: SetupAction.logo,
         icon: Icons.image_outlined,
         status: status('logo', facts.hasLogo),
+      ),
+      SetupStep(
+        key: 'customize',
+        title: 'Choose what Home shows',
+        why: 'Keep the figures and shortcuts your team uses, hide the rest.',
+        doneText: 'Home and the tabs are set up your way.',
+        actionLabel: 'Customize Home',
+        action: SetupAction.customize,
+        icon: Icons.dashboard_customize_outlined,
+        status: status('customize', false),
       ),
       SetupStep(
         key: 'first_sale',

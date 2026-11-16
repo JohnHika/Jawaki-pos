@@ -26,7 +26,10 @@ import '../widgets/layout_business_type_card.dart';
 import '../widgets/layout_live_preview.dart';
 
 class BusinessLayoutScreen extends ConsumerStatefulWidget {
-  const BusinessLayoutScreen({super.key});
+  const BusinessLayoutScreen({super.key, this.initialSection});
+
+  /// A section to open first: type, products, checkout, dashboard, navigation.
+  final String? initialSection;
 
   @override
   ConsumerState<BusinessLayoutScreen> createState() =>
@@ -64,7 +67,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
   /// The layout as last saved, to count what is still unsaved.
   Map<String, dynamic>? _baseline;
   String _activeSection = 'type';
-  final Set<String> _expandedSections = {'type'};
+  late final Set<String> _expandedSections = {widget.initialSection ?? 'type'};
 
   bool _isWide(BuildContext context) => MediaQuery.sizeOf(context).width >= 600;
 
@@ -1635,7 +1638,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
       final twoPane = constraints.maxWidth >= 600;
       final phone = !twoPane && !desktop;
       final intro = <Widget>[
-        // The app bar already says "Layout actions" on a phone.
+        // The app bar already says "Customize" on a phone.
         if (!phone) ...[
           Text(
             'Make Counterbase fit the way your shop works.',
@@ -1765,7 +1768,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
     if (desktop) {
       return Scaffold(
         body: DesktopSubPage(
-          title: 'Layout actions',
+          title: 'Customize',
           subtitle: 'Make Counterbase fit the way your shop works',
           maxWidth: 1000,
           child: layoutBody,
@@ -1773,7 +1776,7 @@ class _BusinessLayoutScreenState extends ConsumerState<BusinessLayoutScreen> {
       );
     }
     return Scaffold(
-      appBar: const BrandedAppBar(title: 'Layout actions'),
+      appBar: const BrandedAppBar(title: 'Customize'),
       body: SafeArea(top: false, child: layoutBody),
     );
   }

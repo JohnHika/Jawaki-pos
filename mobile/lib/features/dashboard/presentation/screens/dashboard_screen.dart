@@ -711,12 +711,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                         unawaited(_refreshWithAck(ref));
                       case 'share':
                         _shareDashboardReport(context, ref);
+                      case 'customize':
+                        context.push('/settings/business-layout?section=dashboard');
                       case 'logout':
                         _showDashboardLogoutDialog(context, ref);
                     }
                   },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
                       value: 'refresh',
                       child: ListTile(
                         leading: Icon(Icons.refresh_rounded),
@@ -724,7 +726,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                         contentPadding: EdgeInsets.zero,
                       ),
                     ),
-                    PopupMenuItem(
+                    const PopupMenuItem(
                       value: 'share',
                       child: ListTile(
                         leading: Icon(Icons.share_rounded),
@@ -732,7 +734,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                         contentPadding: EdgeInsets.zero,
                       ),
                     ),
-                    PopupMenuItem(
+                    if (ref.read(permissionsProvider).has('branches.tenant.update'))
+                      const PopupMenuItem(
+                        value: 'customize',
+                        child: ListTile(
+                          leading: Icon(Icons.dashboard_customize_outlined),
+                          title: Text('Customize Home'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    const PopupMenuItem(
                       value: 'logout',
                       child: ListTile(
                         leading: Icon(Icons.logout_rounded),
