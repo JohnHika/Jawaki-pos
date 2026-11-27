@@ -1,0 +1,632 @@
+[
+ {
+  "tag": "v1.0.164-2207",
+  "name": "Counterbase Android 1.0.164",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.164\n**Internal build:** 2207\n**Source:** GitHub Releases with Cloudflare R2 mirror\n\n### Download\n- [Cloudflare R2](https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev/releases/1.0.164/2207/app-release.apk)\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.164-2207)\n\n### Update Sources\n1. **GitHub Releases**: Direct APK URL used by legacy app updaters\n2. **Cloudflare R2**: Manifest and APK mirror used by current clients\n\nFixes: Clarify offline debt reply state\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 59369080,
+    "digest": "sha256:e9cfccfd93971d77a66699f11856d8c48df00e285f7f6b126594a7d9fa2b32b5"
+   },
+   {
+    "name": "latest.json",
+    "size": 800,
+    "digest": "sha256:2991af2f73a84eb3d47f18c98c2f26c09d3d530b1da54d9abea76d1f723885dd"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.165-2208",
+  "name": "Counterbase Android 1.0.165",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.165\n**Internal build:** 2208\n**Source:** GitHub Releases with Cloudflare R2 mirror\n\n### Download\n- [Cloudflare R2](https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev/releases/1.0.165/2208/app-release.apk)\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.165-2208)\n\n### Update Sources\n1. **GitHub Releases**: Direct APK URL used by legacy app updaters\n2. **Cloudflare R2**: Manifest and APK mirror used by current clients\n\nCounterbase 1.0.165 starts the Counterbase release line. Build 2208 was published from 5c2ec89 on counterbase/prod-vercel.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 59369080,
+    "digest": "sha256:745303e19aa9e5419587108b44f2b15a6bd0d92278c2b322151e2d8f8b879abd"
+   },
+   {
+    "name": "latest.json",
+    "size": 883,
+    "digest": "sha256:2adcba263b51992d8f62898781fe6a72f2ad9084a918a53053e5096657c2ced1"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.166-2209",
+  "name": "Counterbase Android 1.0.166",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.166\n**Internal build:** 2209\n**Source:** GitHub Releases with Cloudflare R2 mirror\n\n### Download\n- [Cloudflare R2](https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev/releases/1.0.166/2209/app-release.apk)\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.166-2209)\n\n### Update Sources\n1. **GitHub Releases**: Direct APK URL used by legacy app updaters\n2. **Cloudflare R2**: Manifest and APK mirror used by current clients\n\nFixes: Preserve catalog on malformed refresh\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 59369080,
+    "digest": "sha256:23cfb904336fcd31543336ca04dc89f195b24be582e150ecb3e1e4bd1cd1aeae"
+   },
+   {
+    "name": "latest.json",
+    "size": 805,
+    "digest": "sha256:3f11b778d02d57d40b060125abe88c3ccb0d1ee3542a357fd450b7283d9d11b7"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.167-2210",
+  "name": "Counterbase Android 1.0.167",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.167\n**Internal build:** 2210\n**Source:** GitHub Releases with Cloudflare R2 mirror\n\n### Download\n- [Cloudflare R2](https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev/releases/1.0.167/2210/app-release.apk)\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.167-2210)\n\n### Update Sources\n1. **GitHub Releases**: Direct APK URL used by legacy app updaters\n2. **Cloudflare R2**: Manifest and APK mirror used by current clients\n\nFixes: Validate product pricing tiers before cache refresh\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 59369080,
+    "digest": "sha256:264fbc80e263c2bf52162e9ff1343905d2215dc05213821af755c8a0493e6901"
+   },
+   {
+    "name": "latest.json",
+    "size": 819,
+    "digest": "sha256:6d9bb41d686a9b1e2a0ca47622204315f4b95ab84a29f9606c25cacd8bf421a2"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.168-2211",
+  "name": "Counterbase Android 1.0.168",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.168\n**Internal build:** 2211\n**Source:** GitHub Releases with Cloudflare R2 mirror\n\n### Download\n- [Cloudflare R2](https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev/releases/1.0.168/2211/app-release.apk)\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.168-2211)\n\n### Update Sources\n1. **GitHub Releases**: Direct APK URL used by legacy app updaters\n2. **Cloudflare R2**: Manifest and APK mirror used by current clients\n\nFixes: Clear stale stock on catalog refresh\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 59369080,
+    "digest": "sha256:d634e31e1a6e375740c90f72f3022737a6d68ecfc43e41e3b4327c91bc2f9fee"
+   },
+   {
+    "name": "latest.json",
+    "size": 804,
+    "digest": "sha256:8efd2b2602cabbc350ac73c6fd3454a71a426e0a4b00aaedce17150b64715737"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.169-2212",
+  "name": "Counterbase Android 1.0.169",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.169\n**Internal build:** 2212\n**Source:** GitHub Releases with Cloudflare R2 mirror\n\n### Download\n- [Cloudflare R2](https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev/releases/1.0.169/2212/app-release.apk)\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.169-2212)\n\n### Update Sources\n1. **GitHub Releases**: Direct APK URL used by legacy app updaters\n2. **Cloudflare R2**: Manifest and APK mirror used by current clients\n\nFixes: Make adaptive app icon automatic\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 59369000,
+    "digest": "sha256:658c99d76bad5e6a52b183d3e0e7a4fd9fa16de45da07d3c5bd7fe1ec7210741"
+   },
+   {
+    "name": "latest.json",
+    "size": 800,
+    "digest": "sha256:bcc726ed91680e3798afe1a2aaadc19eab653eded2b31077490749178793c26f"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.170-2213",
+  "name": "Counterbase Android 1.0.170",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.170\n**Internal build:** 2213\n**Source:** GitHub Releases with Cloudflare R2 mirror\n\n### Download\n- [Cloudflare R2](https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev/releases/1.0.170/2213/app-release.apk)\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.170-2213)\n\n### Update Sources\n1. **GitHub Releases**: Direct APK URL used by legacy app updaters\n2. **Cloudflare R2**: Manifest and APK mirror used by current clients\n\nFixes: Make service recovery actionable\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 59369000,
+    "digest": "sha256:20e4931a5d8b207973f4c2cdf56a97ba59b109723434a5f37a4fc0550b18ded2"
+   },
+   {
+    "name": "latest.json",
+    "size": 800,
+    "digest": "sha256:cb187c9a0c8565c53c7a1f4c68ce96f2630800886b344c385e1afbd3357ecd91"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.171-2214",
+  "name": "Counterbase Android 1.0.171",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.171\n**Internal build:** 2214\n**Source:** GitHub Releases with Cloudflare R2 mirror\n\n### Download\n- [Cloudflare R2](https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev/releases/1.0.171/2214/app-release.apk)\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.171-2214)\n\n### Update Sources\n1. **GitHub Releases**: Direct APK URL used by legacy app updaters\n2. **Cloudflare R2**: Manifest and APK mirror used by current clients\n\nFixes: Report business layout save outcome accurately\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 59369040,
+    "digest": "sha256:d8ff0d2bb08a3a277d391abf2b630a08942753464f87170c16e1082ab5fa78ee"
+   },
+   {
+    "name": "latest.json",
+    "size": 814,
+    "digest": "sha256:abf28bdb4530e7c7e044c509ffc33b6381211c3a91ab84760d3ce6f7c0545695"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.172-2215",
+  "name": "Counterbase Android 1.0.172",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.172\n**Internal build:** 2215\n**Source:** GitHub Releases with Cloudflare R2 mirror\n\n### Download\n- [Cloudflare R2](https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev/releases/1.0.172/2215/app-release.apk)\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.172-2215)\n\n### Update Sources\n1. **GitHub Releases**: Direct APK URL used by legacy app updaters\n2. **Cloudflare R2**: Manifest and APK mirror used by current clients\n\nFixes: Report tenant update persistence accurately\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 59369040,
+    "digest": "sha256:124334b336ee86c2474b63178527978b810f311fb3a40064b38e3611296eef89"
+   },
+   {
+    "name": "latest.json",
+    "size": 811,
+    "digest": "sha256:05e2a5e4f6186f2e146c8aab7e4f45aea7d9fd3488fcaf61284d2fd0d362330b"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.173-2216",
+  "name": "Counterbase Android 1.0.173",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.173\n**Internal build:** 2216\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.173-2216)\n\nIn-app update checks and downloads both use this GitHub release.\n\nFixes: The secure local database now ships with the current Android toolchain. Improves: Sign-up opens the workspace setup flow directly.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 63597646,
+    "digest": "sha256:b9e2744fbdec1861f488da322ceaf9e20533b5207ef05856981cd4efd2243b6b"
+   },
+   {
+    "name": "latest.json",
+    "size": 718,
+    "digest": "sha256:36d118d69999b240bd36b8f0bb5152fbba991280772ec8187f9c8f005f892caf"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.174-2217",
+  "name": "Counterbase Android 1.0.174",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.174\n**Internal build:** 2217\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.174-2217)\n\nIn-app update checks and downloads both use this GitHub release.\n\nFixes: The one-time shop setup can no longer get stuck — devices upgrading from the online edition now open straight into their shop. Improves: The setup screen is clearer and friendlier, and PIN sign-in is smoother.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 63597646,
+    "digest": "sha256:40465d2e09aad01c0ab395d94b3b2e46ae959743d1dd3b220e00fdbfd9ea5f59"
+   },
+   {
+    "name": "latest.json",
+    "size": 802,
+    "digest": "sha256:aac5ae611a4a3d1fa01977dfa57d3b84f9a2bdb3f5a2f563e9e74a56b65c63db"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.176-2219",
+  "name": "Counterbase Android 1.0.176",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.176\n**Internal build:** 2219\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.176-2219)\n\nIn-app update checks and downloads both use this GitHub release.\n\nFixes a problem where some shops could not open their saved products and sales after an update. Your data is kept. Sign-in screens are refreshed.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 63531734,
+    "digest": "sha256:d5265dfa6d95fa2758c9ff172fff8e787db8479145f3d8d197f16f884e12be24"
+   },
+   {
+    "name": "latest.json",
+    "size": 726,
+    "digest": "sha256:be816f81662a7ca31f6f3c8ff7f3a8e859867b54187116cce9519dd1a6a7eaa2"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.177-2220",
+  "name": "Counterbase Android 1.0.177",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.177\n**Internal build:** 2220\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.177-2220)\n\nIn-app update checks and downloads both use this GitHub release.\n\nPay several suppliers in one go from Finance. A short welcome for each person and a setup checklist for the owner. Expenses against daily sales, with cash expenses taken off the till at End of day. Cash given and change on receipts, which also show your location, phone and the customer. Customer statements as PDF, spreadsheet or message. Debt payments by cash, M-Pesa or bank. Fixes the Sell screen after saving a supplier bill.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 64254033,
+    "digest": "sha256:448b16cacb777311e7a68a43186651ccebccd012ccfc7aa2cbf88e1a8ea97109"
+   },
+   {
+    "name": "latest.json",
+    "size": 1011,
+    "digest": "sha256:e789ce8aef9a741646dcf03d469058a3b14d33f10c39ddee7e01abe201387ac0"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.178-2221",
+  "name": "Counterbase Android 1.0.178",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.178\n**Internal build:** 2221\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.178-2221)\n\nIn-app update checks and downloads both use this GitHub release.\n\nFixes from the Levisa Ventures phone check: real dates and receipt numbers in a customer's purchase history, the Record collection button no longer hidden on small screens, M-Pesa collections confirmed as payments, clearer wording when a customer pays part of a debt, and a tidier customer statement PDF.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 64254033,
+    "digest": "sha256:924a2885c0ba6b55283d2140a2df86e9f4ab5a4c272443d99e30992374515a4a"
+   },
+   {
+    "name": "latest.json",
+    "size": 885,
+    "digest": "sha256:d7d3151f3a678bc51a4e723be06fce827bf1240a60e70894fb9191d42ab2ee49"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.179-2222",
+  "name": "Counterbase Android 1.0.179",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.179\n**Internal build:** 2222\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.179-2222)\n\nIn-app update checks and downloads both use this GitHub release.\n\nAdding a carton or pack price to a product now starts with the unit Carton and asks how many pieces are in it. Before, it started with Copy. The product name example now reads Sugar 1kg.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 64254033,
+    "digest": "sha256:9703a0d4d627d2b029d5a9a3b961d5c6d2b804a03411c95778755280034e046b"
+   },
+   {
+    "name": "latest.json",
+    "size": 767,
+    "digest": "sha256:d99043abe20eaf19c1f97113e2b4218168a1416d477229385cdae3f7aece172b"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.180-2223",
+  "name": "Counterbase Android 1.0.180",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.180\n**Internal build:** 2223\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.180-2223)\n\nIn-app update checks and downloads both use this GitHub release.\n\nSign in a computer: on a computer, open Counterbase and choose Sign in with your phone. On this phone, open Settings, then Sign in a computer, and scan the code the computer shows. The computer opens your shop with your account, and no password is typed on it. Company codes now never contain a space: a space you type becomes a hyphen, so levisa ventures becomes levisa-ventures.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 64254085,
+    "digest": "sha256:60ab38f4be43ee5ee22b896be01568b3b2e8e1743b05612c875cd06063ce57d6"
+   },
+   {
+    "name": "Counterbase-Setup.exe",
+    "size": 19777895,
+    "digest": "sha256:a9f61f1b40af199f782a1fb5db4fc1e94be1038b1c4487d17e34787e22d3c257"
+   },
+   {
+    "name": "latest.json",
+    "size": 961,
+    "digest": "sha256:a80bebf471bd0b1386bf84d05aac091cde5876b1f9ab2ab21dee783f6d24de7a"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.181-2224",
+  "name": "Counterbase Android 1.0.181",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.181\n**Internal build:** 2224\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.181-2224)\n\nIn-app update checks and downloads both use this GitHub release.\n\nCounterbase 1.0.181 adds expanded Windows desktop workflows, manually confirmed HTTPSMS statements, and stronger customer-data permission handling.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 66106659,
+    "digest": "sha256:1d8ff4de46f917ba72b9b8bf43e2f1b53821299cba0d61d1bb22e1dbb1da1d99"
+   },
+   {
+    "name": "Counterbase-Setup.exe",
+    "size": 20489430,
+    "digest": "sha256:a6f27f35e09d104c874b97720da0b8fd82a3be791a1f70718c803c36fa5ed9cb"
+   },
+   {
+    "name": "latest.json",
+    "size": 728,
+    "digest": "sha256:2a7e79645d152d30b7a43cee43e62898618a9c4575c808358845b9d1a42de7e3"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.182-2225",
+  "name": "Counterbase Android 1.0.182",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.182\n**Internal build:** 2225\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.182-2225)\n\nIn-app update checks and downloads both use this GitHub release.\n\nSales made on another device now show up on Home and Receipts when you open the app, come back to it, or pull down to refresh. Home is calmer: the Sold today card and the team invite prompt are quieter, with bigger buttons.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 66106659,
+    "digest": "sha256:578b5a41a29d5da38c7d7c50285d4481c7a918e0ed8832169f3e618ca63452ca"
+   },
+   {
+    "name": "latest.json",
+    "size": 804,
+    "digest": "sha256:ee6ee5bbcbe5963bf527aeb019e6ba7ee13c757f27931d824565fcaa67fb3c7d"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.183-2226",
+  "name": "Counterbase Android 1.0.183",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.183\n**Internal build:** 2226\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.183-2226)\n\nIn-app update checks and downloads both use this GitHub release.\n\nUpdate screen now opens and shows progress, with Not now and a website fallback. Downloads are checked before install. Setup price is KES 125,000. Desktop screens finished.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 66565803,
+    "digest": "sha256:4a77ac2c3e706c01f62978445fc570fbcec4ce642bc88218aac7c11ab1b0c1d9"
+   },
+   {
+    "name": "Counterbase-Setup.exe",
+    "size": 20618907,
+    "digest": "sha256:e667f90152e1484a9a32f470c8e5a88decc6ffed16de00bee563965a3891ae01"
+   },
+   {
+    "name": "latest.json",
+    "size": 864,
+    "digest": "sha256:51ebda20658b43ef0d1d52df6c10cac366228f68ea6ad621b2827800efc591de"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.184-2227",
+  "name": "Counterbase Android 1.0.184",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.184\n**Internal build:** 2227\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.184-2227)\n\nIn-app update checks and downloads both use this GitHub release.\n\nYour layout now stays put after you lock and unlock. A new look for Home, the price list and the bottom bar, with tablet and fold-phone layouts and a side-by-side Sell screen. Manage plan now lets you compare plans, upgrade, downgrade or cancel at renewal. Sign a computer in from your phone and see or sign out your linked computers. Fixes for the checkout that would not start.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 66893903,
+    "digest": "sha256:8ce405bc6703b82361f3b8281f023f3ac9104663eef78ed05d220d2d4ccf7201"
+   },
+   {
+    "name": "Counterbase-Setup.exe",
+    "size": 20731548,
+    "digest": "sha256:3e76abae8af4bbfc1d0b60454a1be888ed1ef52b858e5be11e74dc58aea6eaab"
+   },
+   {
+    "name": "latest.json",
+    "size": 1071,
+    "digest": "sha256:bcacffd6de60242408b7b68f1df57b216197dfa53db942d2f6ae500ec8ba6761"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.185-2228",
+  "name": "Counterbase Android 1.0.185",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.185\n**Internal build:** 2228\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.185-2228)\n\nIn-app update checks and downloads both use this GitHub release.\n\nFixed: updating Counterbase on Windows now happens inside the app, with no installer window and no failure when the app closes.\nImproved: the update screen explains clearly that Counterbase closes for a few seconds and reopens by itself.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 66893903,
+    "digest": "sha256:58aea420e05550b0d2a4701f09d09858ee00923884e5b964ae632ec7801deda7"
+   },
+   {
+    "name": "Counterbase-Setup.exe",
+    "size": 20731229,
+    "digest": "sha256:8ec0828db246bdc7711a0f23f996c34c0369125d859795ae7f82b12c83f097cf"
+   },
+   {
+    "name": "latest.json",
+    "size": 930,
+    "digest": "sha256:43e5687e6281a78dc5ba6897fb430f45a98d00b098a0fba94739f95f5b00712b"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.186-2229",
+  "name": "Counterbase Android 1.0.186",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.186\n**Internal build:** 2229\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.186-2229)\n\nIn-app update checks and downloads both use this GitHub release.\n\nAppearance settings: pick Small, Default or Large text and Compact or Comfortable spacing. The More menu is now a clean grid, Settings is calmer, cards are flatter, and you can ask for any layout change, not just a listed business type.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 66894023,
+    "digest": "sha256:7115532bbc5f33699f2a1215111b33dd0fe03fdb43bcb95fcfd24ea20fe3a5f6"
+   },
+   {
+    "name": "Counterbase-Setup.exe",
+    "size": 20736495,
+    "digest": "sha256:dfd63429ff0114ac3dab4cfd2a1aa44a3dda6a8a1a11b4476b520ffa616c04c2"
+   },
+   {
+    "name": "latest.json",
+    "size": 928,
+    "digest": "sha256:4e77e882de217f3e56d6cc9490545debc44d9b54207b48561815acc61f26b926"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.187-2230",
+  "name": "Counterbase Android 1.0.187",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.187\n**Internal build:** 2230\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.187-2230)\n\nIn-app update checks and downloads both use this GitHub release.\n\nA simpler bottom bar: Home, Sell, Products and More, with the AI assistant and Settings at the top of More. Asking for a layout change now starts with your reason, and Send tells you what is missing. Layout actions, Payments and other screens are calmer and easier to scan. Sign-in shows your business logo straight away on repeat visits.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 66894023,
+    "digest": "sha256:618a88ab0ec82aec9fa2743354be83575b243490877fa05e91e4726174febfdb"
+   },
+   {
+    "name": "Counterbase-Setup.exe",
+    "size": 20732163,
+    "digest": "sha256:141ef0f5b3120693bb01e612bc47c7900c4f713ba90a6e1c041da0b46180a877"
+   },
+   {
+    "name": "latest.json",
+    "size": 1030,
+    "digest": "sha256:93a71dc8a02b438e5178ace1276b8c5fa95ef3094e643b1e4183d63cb4590eb7"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.188-2231",
+  "name": "Counterbase Android 1.0.188",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.188\n**Internal build:** 2231\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.188-2231)\n\nIn-app update checks and downloads both use this GitHub release.\n\nYour computer now shows which phone signed it in. Add your KRA PIN under Tax and KRA PIN, and choose whether it prints on receipts (off unless you turn it on). Payments shows the money received today, including what customers paid toward debts, by cash, M-Pesa and bank. Products has a Products and Stock switch, a search icon and a plus icon in the header. Debt Replies, Appearance and Settings are calmer and easier to scan. The AI assistant shows the Axon mark with an AI tag.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 66959435,
+    "digest": "sha256:aa70ad592f72b1ce67e400c45cd3b5561c734594ff484c0a4b05dbed33c895a9"
+   },
+   {
+    "name": "Counterbase-Setup.exe",
+    "size": 20742116,
+    "digest": "sha256:c8a09c3be3c1eed69eae74564390994223deb4740ea3aff69c7a311ac76db40d"
+   },
+   {
+    "name": "latest.json",
+    "size": 1171,
+    "digest": "sha256:6061312a0a98ced3869feccfbecdf07567fda2f40533f584009384ca0c18b07c"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.189-2232",
+  "name": "Counterbase Android 1.0.189",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.189\n**Internal build:** 2232\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.189-2232)\n\nIn-app update checks and downloads both use this GitHub release.\n\nThe Back button now takes you to the screen you came from instead of closing the app. New Store room for shops that keep stock in a back room: receive stock into the store, bring it to the shelf and keep count. Bookshop tools: special orders with deposits, school book lists and sale or return. Computers get a Back arrow and mouse-back support. Sales checks now warn the owner if they cannot run.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 67418811,
+    "digest": "sha256:ad0698bf973a31b7149540dc22fbd7346c9c07ebe28e7648f44b4c463a8a459b"
+   },
+   {
+    "name": "latest.json",
+    "size": 1089,
+    "digest": "sha256:eeb449b46de69ec45c35ca88c6a07b2a8339e89d55c7980a95a8b9c6db4c188f"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.190-2233",
+  "name": "Counterbase Android 1.0.190",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.190\n**Internal build:** 2233\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.190-2233)\n\nIn-app update checks and downloads both use this GitHub release.\n\nAdds a 14-day free trial with a small card check, and paying the setup fee in 1 to 5 monthly parts, with a Your account page showing every payment and receipt. Adds a link to Your account on Plan & Billing. Shops more than 7 days late on a setup payment pause new sales and records (viewing and paying stay open).\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 67484347,
+    "digest": "sha256:f3c0441fda62f8530c049a9c098622987fe164f2d242759fc971cb13dd87e5da"
+   },
+   {
+    "name": "Counterbase-Setup.exe",
+    "size": 20923949,
+    "digest": "sha256:c7e04cf1d11c92af5bcf9cbf0ae14232d150bbb3772d3e1e761c68944631af82"
+   },
+   {
+    "name": "Counterbase-Setup.exe.sha256",
+    "size": 89,
+    "digest": "sha256:1d35080da941f3c61523f67335422f7ddda5d2229a46f5efe822bdcd15407140"
+   },
+   {
+    "name": "latest.json",
+    "size": 1005,
+    "digest": "sha256:b71fe6076bce19367f249c3e7394443d05b79027c83b5fcbc567a2346e01ca04"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.191-2234",
+  "name": "Counterbase Android 1.0.191",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.191\n**Internal build:** 2234\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.191-2234)\n\nIn-app update checks and downloads both use this GitHub release.\n\nShops that stay offline now pause new sales on time when a setup part is overdue. Trial wording says 14 days everywhere. The store room is now included in the backup file and in stock value. Customers can have their own KRA PIN, shown on receipts and statements.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 67484347,
+    "digest": "sha256:0dd43daaf5bdd1cc6c42ce269244889da3185f28a814f80d2503e08fdd7fb23e"
+   },
+   {
+    "name": "Counterbase-Setup.exe",
+    "size": 20934690,
+    "digest": "sha256:52a11ff1b62eac06b85a227de055a9b7370c3dfe3b080433cf285d0585840946"
+   },
+   {
+    "name": "Counterbase-Setup.exe.sha256",
+    "size": 89,
+    "digest": "sha256:e306b021137c71566455ce815c90360d04639ef8e6e7a4f9d96e1f21cec66e75"
+   },
+   {
+    "name": "latest.json",
+    "size": 954,
+    "digest": "sha256:02cf7e923c983277d84dfda0af9b8c47b62a76172f36f0a22396f109446d4923"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.192-2235",
+  "name": "Counterbase Android 1.0.192",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.192\n**Internal build:** 2235\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.192-2235)\n\nIn-app update checks and downloads both use this GitHub release.\n\nWindows: the back arrow now returns to the page you came from (Plan & Billing back to Settings, not Home). Sell: change the price of any ticket line by clicking its total, pressing P or F6, or right-clicking the line.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 67484347,
+    "digest": "sha256:8c2e0c2ec383bf766cd8ecefea64fac8ee54c2993c0b69d7bc8bea5546fbd27c"
+   },
+   {
+    "name": "Counterbase-Setup.exe",
+    "size": 20934208,
+    "digest": "sha256:6b330e61419dd1162b09b9150afd8cd7a4c4919dceb7b0ae308d737ab960fa66"
+   },
+   {
+    "name": "Counterbase-Setup.exe.sha256",
+    "size": 89,
+    "digest": "sha256:dae3866571f1bd404f00a3bbe3fd6687293a6a45098df9a07867f64d0bbee8f4"
+   },
+   {
+    "name": "latest.json",
+    "size": 909,
+    "digest": "sha256:17a51fdd8c6005f73b21962628ea302471b88d7145dd5015b677aa185f82a6a8"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.193-2236",
+  "name": "Counterbase Android 1.0.193",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.193\n**Internal build:** 2236\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.193-2236)\n\nIn-app update checks and downloads both use this GitHub release.\n\nFixes the stock levels error on Inventory, the Review sale layout with the keyboard open, and deleting stock counts for admins. Business news now stays current and is read inside the app. Axon AI is ready without typing a key. Windows: the update notice now comes back by itself.\n",
+  "latest": false,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 67549883,
+    "digest": "sha256:51387c72e1d3e7d8f7f6eda9da59be8762f9f05f9c70c662da1a23e1c41ab11a"
+   },
+   {
+    "name": "Counterbase-Setup.exe",
+    "size": 20947595,
+    "digest": "sha256:a01257130151e691d4a84f42f8f8a083cabe983c02b8fed47f98768cfaee6110"
+   },
+   {
+    "name": "Counterbase-Setup.exe.sha256",
+    "size": 89,
+    "digest": "sha256:091d58af4cd4f00356c3362fda3c0d6ae44b8923713569321f07e85296c4e4e6"
+   },
+   {
+    "name": "latest.json",
+    "size": 971,
+    "digest": "sha256:706213689e0e7e723c3060557b4512cb2d55129c4dd8774416b713c515e73bb4"
+   }
+  ]
+ },
+ {
+  "tag": "v1.0.194-2237",
+  "name": "Counterbase Android 1.0.194",
+  "body": "## Counterbase Android Update\n\n**Release:** Counterbase 1.0.194\n**Internal build:** 2237\n**Source:** GitHub Releases\n\n### Download\n- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.194-2237)\n\nIn-app update checks and downloads both use this GitHub release.\n\nThe store room now works for online shops too: turn it on from Inventory or Settings, and moves between the back room and the shelf update your shop account. Includes the 1.0.193 fixes.\n",
+  "latest": true,
+  "assets": [
+   {
+    "name": "app-release.apk",
+    "size": 67615419,
+    "digest": "sha256:6ddf768b1221c1df04b8ca6e733c12380b51009e27349db5d4bdf03e0c155cf1"
+   },
+   {
+    "name": "Counterbase-Setup.exe",
+    "size": 20946297,
+    "digest": "sha256:62094ac9ac5bada5f7cf172ad1830906953bdf3738891e2c71197005cc5eb70f"
+   },
+   {
+    "name": "Counterbase-Setup.exe.sha256",
+    "size": 89,
+    "digest": "sha256:930df4d9cca108853a4cb670d46f4bc26f4d01b58595899e245ce76240d4dc3a"
+   },
+   {
+    "name": "latest.json",
+    "size": 877,
+    "digest": "sha256:1749ac8e467c58ad975eb04cb32bf42723fed07f85193dbe9dd1ffc936e7a463"
+   }
+  ]
+ }
+]
